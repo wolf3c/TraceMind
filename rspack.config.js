@@ -11,9 +11,18 @@ const sveltePreprocess = require("svelte-preprocess");
  *
  * Use these flags to adjust your build settings based on environment.
  */
-module.exports = defineConfig((Meteor) => {
+module.exports = defineConfig((env) => {
+  const isClient = env.isClient || env.Meteor?.isClient;
+  const isServer = env.isServer || env.Meteor?.isServer;
+  const isProduction = env.isProduction || env.Meteor?.isProduction;
+
   return {
-    ...(Meteor.isClient && {
+    ...(isServer && {
+      optimization: {
+        usedExports: false,
+      },
+    }),
+    ...(isClient && {
       resolve: {
         extensions: [".mjs", ".js", ".ts", ".svelte", ".json"],
         mainFields: ["svelte", "browser", "module", "main"],
@@ -27,11 +36,11 @@ module.exports = defineConfig((Meteor) => {
               {
                 loader: "svelte-loader",
                 options: {
-                  compilerOptions: { dev: !Meteor.isProduction },
-                  emitCss: Meteor.isProduction,
-                  hotReload: !Meteor.isProduction,
+                  compilerOptions: { dev: !isProduction },
+                  emitCss: isProduction,
+                  hotReload: !isProduction,
                   preprocess: sveltePreprocess({
-                    sourceMap: !Meteor.isProduction,
+                    sourceMap: !isProduction,
                     postcss: true,
                   }),
                 },

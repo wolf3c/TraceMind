@@ -13,6 +13,7 @@
         ".meteor/local/types/packages.d.ts"
       ]
     },
+    "skipLibCheck": true,
     "preserveSymlinks": true, // required by zodern:types
     "preserveValueImports": true // otherwise TS will remove imported components
   },

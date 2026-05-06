@@ -21,3 +21,6 @@ hot-module-replacement@0.6.0  # Update client in development without reloading t
 zodern:types            # Enable types from meteor/atmosphere packages
 
 rspack@1.1.0                  # Integrate Rspack into Meteor for client and server app bundling
+email
+accounts-passwordless
+service-configuration

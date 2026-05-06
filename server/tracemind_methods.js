@@ -1,0 +1,200 @@
+import { Meteor } from 'meteor/meteor';
+import { Random } from 'meteor/random';
+import { Accounts } from 'meteor/accounts-base';
+import {
+  Developers,
+  Projects,
+  RawBehaviors,
+  SemanticEvents,
+  normalizeEmail,
+  normalizeToken,
+  publicProject,
+  publicSemanticEvent,
+} from '/imports/api/tracemind';
+import { summarizeSemanticEvents } from '/imports/api/semantic';
+
+const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
+
+function newToken(prefix) {
+  return `${prefix}_${Random.secret(32)}`;
+}
+
+function ensureMailUrlFromSettings() {
+  const settingsMailUrl = Meteor.settings?.private?.MAIL_URL || Meteor.settings?.MAIL_URL;
+  if (!process.env.MAIL_URL && settingsMailUrl) {
+    process.env.MAIL_URL = settingsMailUrl;
+  }
+}
+
+function configurePasswordlessEmail() {
+  ensureMailUrlFromSettings();
+
+  Accounts.emailTemplates.siteName = 'TraceMind';
+  Accounts.emailTemplates.from = LOGIN_EMAIL_FROM;
+  Accounts.emailTemplates.sendLoginToken = {
+    subject: () => 'TraceMind 登录验证码',
+    text: (user, url, { sequence }) => (
+      `你的 TraceMind 登录验证码是：${sequence}\n\n` +
+      `也可以点击以下链接直接登录：\n${url}\n\n` +
+      '验证码 1 小时内有效。如果这不是你本人操作，可以忽略这封邮件。'
+    ),
+    html: (user, url, { sequence }) => (
+      '<p>你的 TraceMind 登录验证码是：</p>' +
+      `<p style="font-size:24px;font-weight:700;letter-spacing:4px;">${sequence}</p>` +
+      `<p>也可以点击 <a href="${url}">这个链接</a> 直接登录。</p>` +
+      '<p>验证码 1 小时内有效。如果这不是你本人操作，可以忽略这封邮件。</p>'
+    ),
+  };
+}
+
+configurePasswordlessEmail();
+
+async function findDeveloperByToken(token) {
+  const authToken = normalizeToken(token);
+  if (!authToken) return null;
+  return Developers.findOneAsync({ authToken });
+}
+
+async function findProjectForDeveloper(projectId, developerId) {
+  return Projects.findOneAsync({ _id: projectId, developerId });
+}
+
+async function userEmail(userId) {
+  const user = await Meteor.users.findOneAsync(userId, {
+    fields: { emails: 1 },
+  });
+  const email = normalizeEmail(user?.emails?.[0]?.address);
+  if (!email) {
+    throw new Meteor.Error('email-not-found', 'Account email is required.');
+  }
+  return email;
+}
+
+async function getOrCreateDeveloperForUser(userId) {
+  if (!userId) {
+    throw new Meteor.Error('not-authorized', 'Login is required.');
+  }
+
+  const email = await userEmail(userId);
+  let developer = await Developers.findOneAsync({ userId });
+  if (developer) return developer;
+
+  developer = await Developers.findOneAsync({ email });
+  if (developer) {
+    await Developers.updateAsync(developer._id, { $set: { userId } });
+    return Developers.findOneAsync(developer._id);
+  }
+
+  const developerId = await Developers.insertAsync({
+    userId,
+    email,
+    authToken: newToken('tm_dev'),
+    createdAt: new Date(),
+  });
+  return Developers.findOneAsync(developerId);
+}
+
+async function getOrCreateDefaultProject(developer) {
+  const existing = await Projects.findOneAsync({ developerId: developer._id }, { sort: { createdAt: 1 } });
+  if (existing) return existing;
+
+  const projectId = await Projects.insertAsync({
+    developerId: developer._id,
+    name: 'My Web App',
+    projectKey: newToken('tm_proj'),
+    createdAt: new Date(),
+  });
+
+  return Projects.findOneAsync(projectId);
+}
+
+export async function resolveProjectByKey(projectKey) {
+  const key = normalizeToken(projectKey);
+  if (!key) return null;
+  return Projects.findOneAsync({ projectKey: key });
+}
+
+Meteor.startup(() => {
+  configurePasswordlessEmail();
+});
+
+Meteor.methods({
+  async 'tracemind.dashboard'() {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    await getOrCreateDefaultProject(developer);
+
+    const projects = await Projects.find({ developerId: developer._id }, { sort: { createdAt: 1 } }).fetchAsync();
+    const projectIds = projects.map((project) => project._id);
+    const rawCount = await RawBehaviors.find({ projectId: { $in: projectIds } }).countAsync();
+    const semanticCount = await SemanticEvents.find({ projectId: { $in: projectIds } }).countAsync();
+
+    const semanticEvents = await SemanticEvents.find(
+      { projectId: { $in: projectIds } },
+      { sort: { occurredAt: -1 }, limit: 200 },
+    ).fetchAsync();
+
+    return {
+      developer: { email: developer.email, authToken: developer.authToken },
+      projects: projects.map(publicProject),
+      rawCount,
+      semanticCount,
+      summary: summarizeSemanticEvents(semanticEvents),
+      recentEvents: semanticEvents.slice(0, 20).map(publicSemanticEvent),
+    };
+  },
+
+  async 'tracemind.project.create'(nameInput) {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const name = String(nameInput || 'Untitled Web App').trim().slice(0, 80);
+    const projectId = await Projects.insertAsync({
+      developerId: developer._id,
+      name,
+      projectKey: newToken('tm_proj'),
+      createdAt: new Date(),
+    });
+
+    return publicProject(await Projects.findOneAsync(projectId));
+  },
+
+  async 'tracemind.project.summary'(projectId) {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const project = await findProjectForDeveloper(projectId, developer._id);
+    if (!project) {
+      throw new Meteor.Error('not-found', 'Project not found.');
+    }
+
+    const events = await SemanticEvents.find(
+      { projectId: project._id },
+      { sort: { occurredAt: -1 }, limit: 200 },
+    ).fetchAsync();
+
+    return {
+      project: publicProject(project),
+      summary: summarizeSemanticEvents(events),
+      recentEvents: events.slice(0, 30).map(publicSemanticEvent),
+    };
+  },
+
+  async 'tracemind.project.summaryByToken'(authToken, projectId) {
+    const developer = await findDeveloperByToken(authToken);
+    if (!developer) {
+      throw new Meteor.Error('not-authorized', 'Login is required.');
+    }
+
+    const project = await findProjectForDeveloper(projectId, developer._id);
+    if (!project) {
+      throw new Meteor.Error('not-found', 'Project not found.');
+    }
+
+    const events = await SemanticEvents.find(
+      { projectId: project._id },
+      { sort: { occurredAt: -1 }, limit: 200 },
+    ).fetchAsync();
+
+    return {
+      project: publicProject(project),
+      summary: summarizeSemanticEvents(events),
+      recentEvents: events.slice(0, 30).map(publicSemanticEvent),
+    };
+  },
+});

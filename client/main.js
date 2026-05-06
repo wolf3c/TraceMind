@@ -4,6 +4,8 @@ import { mount, unmount } from 'svelte';
 
 let app; // will hold the mounted instance
 
+window.TraceMindUserId = () => Meteor.userId();
+
 Meteor.startup(() => {
   const target = document.getElementById('app');
 
