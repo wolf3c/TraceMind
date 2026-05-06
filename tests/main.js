@@ -6,6 +6,7 @@ import {
   Projects,
   SemanticEvents,
   buildEventQuery,
+  buildRawBehaviorQuery,
   normalizeEmail,
 } from '../imports/api/tracemind';
 
@@ -46,6 +47,12 @@ describe('TraceMind', function () {
       type: 'custom',
       eventName: 'plan_selected',
       path: '/pricing',
+      target: {
+        tag: 'BUTTON',
+        text: 'More',
+        path: 'main:nth-of-type(1)>section:nth-of-type(2)>button:nth-of-type(1)',
+      },
+      targetHash: 'tm_target_abc123',
       properties: { plan: 'pro', amount: 29 },
       context: { source: 'manual' },
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -59,8 +66,44 @@ describe('TraceMind', function () {
     assert.deepStrictEqual(event.deviceInfo, { browser: 'Chrome', os: 'macOS' });
     assert.deepStrictEqual(event.geo, { country: 'US', region: 'CA', city: 'San Francisco', source: 'headers' });
     assert.strictEqual(event.eventName, 'plan_selected');
+    assert.deepStrictEqual(event.target, {
+      tag: 'BUTTON',
+      text: 'More',
+      path: 'main:nth-of-type(1)>section:nth-of-type(2)>button:nth-of-type(1)',
+    });
+    assert.strictEqual(event.targetHash, 'tm_target_abc123');
     assert.deepStrictEqual(event.properties, { plan: 'pro', amount: 29 });
     assert.deepStrictEqual(event.context, { source: 'manual' });
+  });
+
+  it('builds target-specific queries for repeated labels on the same page', function () {
+    assert.deepStrictEqual(
+      buildEventQuery('project-1', {
+        path: '/settings',
+        eventType: 'click',
+        targetHash: 'tm_target_more_footer',
+      }),
+      {
+        projectId: 'project-1',
+        eventType: 'click',
+        path: '/settings',
+        targetHash: 'tm_target_more_footer',
+      },
+    );
+
+    assert.deepStrictEqual(
+      buildRawBehaviorQuery('project-1', {
+        path: '/settings',
+        eventType: 'click',
+        targetHash: 'tm_target_more_footer',
+      }),
+      {
+        projectId: 'project-1',
+        type: 'click',
+        path: '/settings',
+        targetHash: 'tm_target_more_footer',
+      },
+    );
   });
 
   it('summarizes semantic event counts and paths', function () {

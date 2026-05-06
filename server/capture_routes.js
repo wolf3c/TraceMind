@@ -109,6 +109,7 @@ function mcpTools() {
           userId: { type: 'string', description: '业务用户 ID。' },
           sessionId: { type: 'string', description: 'Session ID。' },
           deviceId: { type: 'string', description: '设备 ID。' },
+          targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
         },
       },
     },
@@ -131,6 +132,7 @@ function mcpTools() {
           anonymousId: { type: 'string', description: '匿名用户 ID。' },
           sessionId: { type: 'string', description: 'Session ID。' },
           deviceId: { type: 'string', description: '设备 ID。' },
+          targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
           path: { type: 'string', description: '页面或接口路径。' },
         },
       },
@@ -154,6 +156,7 @@ function mcpTools() {
           anonymousId: { type: 'string', description: '匿名用户 ID。' },
           sessionId: { type: 'string', description: 'Session ID。' },
           deviceId: { type: 'string', description: '设备 ID。' },
+          targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
           path: { type: 'string', description: '页面或接口路径。' },
         },
       },
@@ -255,10 +258,10 @@ function clientScript(host) {
   localStorage.setItem('tracemind_anonymous_id', anonymousId);
   localStorage.setItem('tracemind_device_id', deviceId);
 
-  function hash(value) {
+  function hash(value, prefix) {
     var h = 5381;
     for (var i = 0; i < value.length; i += 1) h = ((h << 5) + h) + value.charCodeAt(i);
-    return 'tm_fp_' + (h >>> 0).toString(36);
+    return (prefix || 'tm_hash_') + (h >>> 0).toString(36);
   }
 
   function fingerprintInfo() {
@@ -280,10 +283,69 @@ function clientScript(host) {
     });
   }
 
-  var fingerprint = hash(JSON.stringify(fingerprintInfo()));
+  var fingerprint = hash(JSON.stringify(fingerprintInfo()), 'tm_fp_');
 
   function textOf(element) {
-    return ((element && (element.innerText || element.value || element.getAttribute('aria-label') || element.name)) || '').trim().slice(0, 120);
+    if (!element) return '';
+    return (element.innerText || element.getAttribute('aria-label') || element.placeholder || element.name || element.id || '').trim().slice(0, 120);
+  }
+
+  function attr(element, name) {
+    return element && element.getAttribute && element.getAttribute(name);
+  }
+
+  function elementIndex(element) {
+    if (!element || !element.parentElement) return 1;
+    var tag = element.tagName;
+    var index = 1;
+    var node = element.previousElementSibling;
+    while (node) {
+      if (node.tagName === tag) index += 1;
+      node = node.previousElementSibling;
+    }
+    return index;
+  }
+
+  function selectorPart(element) {
+    if (!element || !element.tagName) return '';
+    var tag = element.tagName.toLowerCase();
+    var id = element.id ? ('#' + element.id) : '';
+    var testId = attr(element, 'data-testid') || attr(element, 'data-test') || attr(element, 'data-cy');
+    if (id) return tag + id;
+    if (testId) return tag + '[data-testid="' + testId.slice(0, 80) + '"]';
+    return tag + ':nth-of-type(' + elementIndex(element) + ')';
+  }
+
+  function elementPath(element) {
+    var parts = [];
+    var node = element;
+    while (node && node.nodeType === 1 && parts.length < 6) {
+      parts.unshift(selectorPart(node));
+      if (node.id) break;
+      node = node.parentElement;
+    }
+    return parts.filter(Boolean).join('>');
+  }
+
+  function targetInfo(element) {
+    if (!element) return {};
+    var info = {
+      tag: element.tagName,
+      text: textOf(element),
+      id: element.id || undefined,
+      className: String(element.className || '').slice(0, 160) || undefined,
+      name: element.name || undefined,
+      type: element.type || undefined,
+      role: attr(element, 'role') || undefined,
+      ariaLabel: attr(element, 'aria-label') || undefined,
+      placeholder: element.placeholder || undefined,
+      testId: attr(element, 'data-testid') || attr(element, 'data-test') || attr(element, 'data-cy') || undefined,
+      path: elementPath(element)
+    };
+    Object.keys(info).forEach(function (key) {
+      if (info[key] === undefined || info[key] === '') delete info[key];
+    });
+    return info;
   }
 
   function valueAtPath(path) {
@@ -339,25 +401,34 @@ function clientScript(host) {
   send('page_view');
   document.addEventListener('click', function (event) {
     var target = event.target;
+    var targetDetails = targetInfo(target);
     send('click', {
       targetText: textOf(target),
-      targetTag: target && target.tagName
+      targetTag: target && target.tagName,
+      target: targetDetails,
+      targetHash: hash(JSON.stringify(targetDetails), 'tm_target_')
     });
   }, true);
 
   document.addEventListener('change', function (event) {
     var target = event.target;
+    var targetDetails = targetInfo(target);
     send('input', {
       targetText: textOf(target),
-      targetTag: target && target.tagName
+      targetTag: target && target.tagName,
+      target: targetDetails,
+      targetHash: hash(JSON.stringify(targetDetails), 'tm_target_')
     });
   }, true);
 
   document.addEventListener('submit', function (event) {
     var target = event.target;
+    var targetDetails = targetInfo(target);
     send('submit', {
       targetText: textOf(target),
-      targetTag: target && target.tagName
+      targetTag: target && target.tagName,
+      target: targetDetails,
+      targetHash: hash(JSON.stringify(targetDetails), 'tm_target_')
     });
   }, true);
 
@@ -424,6 +495,8 @@ async function handleCapture(req, res) {
     title: safeString(payload.title, 160),
     targetText: safeString(payload.targetText, 200),
     targetTag: safeString(payload.targetTag, 40),
+    target: safeObject(payload.target, 4096),
+    targetHash: safeString(payload.targetHash, 160),
     method: safeString(payload.method, 20),
     status: safeString(payload.status, 20),
     properties: safeObject(payload.properties || payload.custom || payload.data),

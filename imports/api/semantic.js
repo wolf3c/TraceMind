@@ -33,6 +33,8 @@ export function buildSemanticEvent(behavior) {
     path,
     targetText: cleanText(behavior.targetText),
     targetTag: cleanText(behavior.targetTag),
+    target: behavior.target || {},
+    targetHash: behavior.targetHash,
     properties: behavior.properties || {},
     context: behavior.context || {},
     occurredAt: behavior.occurredAt || behavior.createdAt || new Date(),

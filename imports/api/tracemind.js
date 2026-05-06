@@ -27,21 +27,21 @@ export const EVENT_DEFINITIONS = [
     eventType: 'click',
     name: '元素点击',
     meaning: '用户点击了页面或客户端界面上的元素，用于分析功能入口、按钮转化和交互兴趣。',
-    typicalProperties: ['targetText', 'targetTag', 'path'],
+    typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
     platforms: ['web', 'ios', 'android'],
   },
   {
     eventType: 'input',
     name: '输入变化',
     meaning: '用户修改了输入控件，用于分析表单填写、设置修改和关键流程参与度。',
-    typicalProperties: ['targetText', 'targetTag', 'path'],
+    typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
     platforms: ['web', 'ios', 'android'],
   },
   {
     eventType: 'submit',
     name: '表单提交',
     meaning: '用户提交了表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。',
-    typicalProperties: ['targetText', 'targetTag', 'path'],
+    typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
     platforms: ['web', 'ios', 'android'],
   },
   {
@@ -96,6 +96,7 @@ export function buildEventQuery(projectId, filters = {}) {
   if (filters.anonymousId) query.anonymousId = String(filters.anonymousId);
   if (filters.sessionId) query.sessionId = String(filters.sessionId);
   if (filters.deviceId) query.deviceId = String(filters.deviceId);
+  if (filters.targetHash) query.targetHash = String(filters.targetHash);
   if (filters.path) query.path = String(filters.path);
   if (startAt || endAt) {
     query.occurredAt = {};
@@ -118,6 +119,7 @@ export function buildRawBehaviorQuery(projectId, filters = {}) {
   if (filters.anonymousId) query.anonymousId = String(filters.anonymousId);
   if (filters.sessionId) query.sessionId = String(filters.sessionId);
   if (filters.deviceId) query.deviceId = String(filters.deviceId);
+  if (filters.targetHash) query.targetHash = String(filters.targetHash);
   if (filters.path) query.path = String(filters.path);
   if (startAt || endAt) {
     query.occurredAt = {};
@@ -159,6 +161,8 @@ export function publicSemanticEvent(event) {
     path: event.path,
     targetText: event.targetText,
     targetTag: event.targetTag,
+    target: event.target,
+    targetHash: event.targetHash,
     properties: event.properties,
     context: event.context,
     occurredAt: event.occurredAt,
@@ -185,6 +189,8 @@ export function publicRawBehavior(behavior) {
     title: behavior.title,
     targetText: behavior.targetText,
     targetTag: behavior.targetTag,
+    target: behavior.target,
+    targetHash: behavior.targetHash,
     method: behavior.method,
     status: behavior.status,
     properties: behavior.properties,

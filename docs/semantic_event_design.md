@@ -43,6 +43,14 @@
   "path": "/pricing",
   "targetText": "Start trial",
   "targetTag": "BUTTON",
+  "target": {
+    "tag": "BUTTON",
+    "text": "Start trial",
+    "id": "start-trial",
+    "role": "button",
+    "path": "main:nth-of-type(1)>section:nth-of-type(2)>button#start-trial"
+  },
+  "targetHash": "tm_fp_xxx",
   "properties": {
     "plan": "pro",
     "amount": 29
@@ -77,14 +85,21 @@
 - `context` 保存上报上下文，例如 `source: "server"`、trace id、feature flag、入口渠道。
 - Web 手动埋点和服务端埋点都使用同一字段，后续扩展不用修改表结构。
 
+## 元素定位
+
+- `targetText` 和 `targetTag` 只适合做人类阅读摘要，不能作为唯一定位依据。
+- `target` 保存元素摘要，包括 tag、id、class、name、type、role、aria-label、placeholder、testId 和短 DOM path。
+- `targetHash` 基于 `target` 计算，用于区分同一个页面上的相同文案按钮、多个输入框或重复列表项操作。
+- 对于长期稳定的关键漏斗，优先推荐开发者手动上报明确 `eventName`，自动 `targetHash` 主要用于自动采集和问题复核。
+
 ## 事件含义说明表
 
 | eventType | 名称 | 含义 | 常见字段 | 平台 |
 | --- | --- | --- | --- | --- |
 | `page_view` | 页面浏览 | 用户打开或刷新页面，用于分析访问量、落地页、路径入口和页面级留存。 | `title`, `path`, `referrer` | Web, iOS, Android, Server |
-| `click` | 元素点击 | 用户点击界面元素，用于分析功能入口、按钮转化和交互兴趣。 | `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度。 | `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `submit` | 表单提交 | 用户提交表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。 | `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `click` | 元素点击 | 用户点击界面元素，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `submit` | 表单提交 | 用户提交表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
 | `route_change` | 页面跳转 | 用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, Android |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` | Web, iOS, Android, Server |
 | `custom` | 自定义事件 | 开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。 | `eventName`, `properties`, `context` | Web, iOS, Android, Server |
