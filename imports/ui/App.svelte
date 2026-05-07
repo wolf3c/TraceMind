@@ -27,6 +27,7 @@
   let dashboardRequestId = $state(0);
   let status = $state("");
   let loading = $state(false);
+  let selectedProjectId = $state("");
   let dashboardLoadPromise = null;
 
   let consoleState = $derived(resolveConsoleState({
@@ -35,7 +36,9 @@
     loggingIn,
     dashboardLoadError,
   }));
-  let primaryProject = $derived(dashboard?.projects?.[0]);
+  let primaryProject = $derived(
+    dashboard?.projects?.find((project) => project._id === selectedProjectId) || dashboard?.projects?.[0],
+  );
   let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
   let sourceSummary = $derived(primaryProject ? (dashboard?.sourceSummaries?.[primaryProject._id] || []) : []);
   let summary = $derived(dashboard?.summary);
@@ -85,6 +88,17 @@
     }
 
     return messages[error.error] ? translateNow(messages[error.error]) : reason;
+  }
+
+  function syncSelectedProject(nextDashboard) {
+    const projects = nextDashboard?.projects || [];
+    if (!projects.length) {
+      selectedProjectId = "";
+      return;
+    }
+    if (!projects.some((project) => project._id === selectedProjectId)) {
+      selectedProjectId = projects[0]._id;
+    }
   }
 
   function requestLoginToken(options) {
@@ -149,6 +163,7 @@
     const loadPromise = callMethod("tracemind.dashboard")
       .then((nextDashboard) => {
         if (requestId !== dashboardRequestId || requestUserId !== Meteor.userId()) return null;
+        syncSelectedProject(nextDashboard);
         dashboard = nextDashboard;
         return nextDashboard;
       })
@@ -189,10 +204,11 @@
     loading = true;
     status = "";
     try {
-      await callMethod("tracemind.project.create", name);
+      const createdProject = await callMethod("tracemind.project.create", name);
+      selectedProjectId = createdProject._id;
       projectName = "";
       await loadDashboard();
-      status = translateNow("Project created.");
+      status = translateNow("Project created and selected.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -598,6 +614,16 @@
               <strong>{summary?.uniqueDevices || 0}</strong>
             </div>
           </div>
+          {#if dashboard.projects.length > 1}
+            <label class="field-label">
+              <span>{$t("Selected project")}</span>
+              <select id="selected-project" name="selectedProject" bind:value={selectedProjectId}>
+                {#each dashboard.projects as project}
+                  <option value={project._id}>{project.name}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
           <label class="field-label">
             <span>{$t("New project")}</span>
             <input id="project-name" name="projectName" bind:value={projectName} placeholder={$t("Production Web App")} />
