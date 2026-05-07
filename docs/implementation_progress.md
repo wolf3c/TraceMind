@@ -19,6 +19,7 @@
 - Added MCP tools for event definitions, filtered semantic event queries, filtered raw behavior queries, and filtered summaries.
 - Added concise technical design docs for auth, capture, semantic extraction, MCP, and the MVP architecture.
 - Added Meteor Mocha coverage for normalization, semantic event building, summaries, and login/project creation.
+- Added local MUP deployment config for running TraceMind as an independent app at `https://tracemind.super-tree.com` on the same server as yezi2, plus deployment docs and npm deploy commands.
 
 ## 2026-05-07
 

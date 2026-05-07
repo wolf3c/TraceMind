@@ -37,6 +37,12 @@ email passwordless login -> project key -> one-line web auto capture -> raw beha
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.
 
+## Deployment Shape
+
+TraceMind is deployed as a separate Meteor app on the same server as yezi2, served from `https://tracemind.super-tree.com`. It keeps its own MUP app name, Docker container, Meteor routes, and Mongo database while sharing the server and proxy layer. The yezi2 root app remains on `https://super-tree.com`.
+
+This deployment shape keeps `/capture.js`, `/api/capture`, and `/mcp` owned by TraceMind and avoids mixing TraceMind's background semantic extraction job or passwordless email templates into the yezi2 Meteor process. See `docs/deployment.md` for the operational commands and verification checklist.
+
 ## Run Commands
 
 - `npm start` starts local development.
