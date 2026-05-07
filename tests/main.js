@@ -91,12 +91,21 @@ describe('TraceMind', function () {
       assert.strictEqual(validation.structuredContent.ok, false);
       assert.ok(validation.structuredContent.findings.some((finding) => finding.code === 'forbidden_property'));
 
+      const missingEventNameValidation = await callMcpTool(project, 'tracemind.validate_event_payload', {
+        eventType: 'custom',
+        properties: {
+          plan: 'pro',
+        },
+      });
+      assert.strictEqual(missingEventNameValidation.structuredContent.ok, false);
+      assert.ok(missingEventNameValidation.structuredContent.findings.some((finding) => finding.code === 'missing_custom_event_name'));
+
       const diffValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
-        diff: "+ capture({ eventType: 'custom', eventName: 'new_checkout_event', properties: { email: user.email } })",
+        diff: "+ capture({ eventType: 'custom', eventName: 'new_checkout_event', properties: { prompt: userPrompt, userEmail: user.email, access_token: token } })",
       });
       assert.strictEqual(diffValidation.structuredContent.ok, false);
       assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.code === 'new_event_requires_review'));
-      assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.code === 'forbidden_property'));
+      assert.ok(diffValidation.structuredContent.findings.filter((finding) => finding.code === 'forbidden_property').length >= 3);
     });
   });
 

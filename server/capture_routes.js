@@ -336,17 +336,13 @@ function flattenFields(value, prefix = '') {
 
 function privacyFindings(fields = {}) {
   const findings = [];
-  const forbidden = new Set(FORBIDDEN_ANALYTICS_KEYS.map((key) => key.toLowerCase()));
   flattenFields(fields).forEach((field) => {
-    const key = field.key.toLowerCase();
     const value = String(field.value || '');
-    const normalized = key.replace(/[_-]/g, '').toLowerCase();
-    const isForbiddenKey = [...forbidden].some((item) => normalized.includes(item.toLowerCase()));
     const looksLikeEmail = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(value);
     const looksLikeSecret = /(sk-|pk_|bearer\s+|api[_-]?key|access[_-]?token)/i.test(value);
     const looksLikeFullQueryUrl = /^https?:\/\/\S+\?\S+/.test(value);
 
-    if (isForbiddenKey || looksLikeEmail || looksLikeSecret || looksLikeFullQueryUrl) {
+    if (isForbiddenAnalyticsKey(field.key) || looksLikeEmail || looksLikeSecret || looksLikeFullQueryUrl) {
       addFinding(
         findings,
         'error',
@@ -357,6 +353,17 @@ function privacyFindings(fields = {}) {
     }
   });
   return findings;
+}
+
+function normalizePrivacyKey(key) {
+  return String(key || '').replace(/[_\-\s]/g, '').toLowerCase();
+}
+
+function isForbiddenAnalyticsKey(key) {
+  const normalized = normalizePrivacyKey(key);
+  return FORBIDDEN_ANALYTICS_KEYS.some((forbiddenKey) => (
+    normalized.includes(normalizePrivacyKey(forbiddenKey))
+  ));
 }
 
 function validateEventName(eventName) {
@@ -371,6 +378,21 @@ function validateEventName(eventName) {
     }];
 }
 
+function validateEventIdentity(eventType, eventName) {
+  const findings = [];
+  if (eventType === 'custom' && !String(eventName || '').trim()) {
+    addFinding(
+      findings,
+      'error',
+      'missing_custom_event_name',
+      'Custom events must include a business eventName such as checkout_started.',
+      'eventName',
+    );
+  }
+  validateEventName(eventName).forEach((finding) => findings.push(finding));
+  return findings;
+}
+
 function validationResult(findings, recommendations = []) {
   return guidanceResult({
     ok: findings.every((finding) => finding.severity !== 'error'),
@@ -382,14 +404,16 @@ function validationResult(findings, recommendations = []) {
 
 function extractSensitiveKeysFromDiff(addedText) {
   const findings = [];
-  const sensitiveKeyPattern = /\b(email|phone|password|secret|token|accessToken|apiKey|rawPrompt|rawUserContent|userContent)\b\s*:/gi;
-  [...String(addedText || '').matchAll(sensitiveKeyPattern)].forEach((match) => {
-    addFinding(
-      findings,
-      'error',
-      'forbidden_property',
-      `Do not send sensitive analytics property: ${match[1]}.`,
-    );
+  const keyPattern = /([A-Za-z_$][\w$-]*)\s*:/g;
+  [...String(addedText || '').matchAll(keyPattern)].forEach((match) => {
+    if (isForbiddenAnalyticsKey(match[1])) {
+      addFinding(
+        findings,
+        'error',
+        'forbidden_property',
+        `Do not send sensitive analytics property: ${match[1]}.`,
+      );
+    }
   });
   return findings;
 }
@@ -416,7 +440,7 @@ async function diffFindings(project, diff = '') {
   const knownEvents = await projectEventNames(project, '', 50);
   const knownNames = new Set(knownEvents.flatMap((event) => [event.eventType, event.eventName]).filter(Boolean));
   eventNameMatches.forEach((match) => {
-    validateEventName(match[1]).forEach((finding) => findings.push(finding));
+    validateEventIdentity('custom', match[1]).forEach((finding) => findings.push(finding));
     if (!knownNames.has(match[1])) {
       addFinding(
         findings,
@@ -513,7 +537,7 @@ export async function callMcpTool(project, name, args = {}) {
 
   if (name === 'tracemind.validate_event_payload') {
     const findings = [
-      ...validateEventName(args.eventName),
+      ...validateEventIdentity(args.eventType, args.eventName),
       ...privacyFindings({ properties: args.properties || {}, context: args.context || {} }),
     ];
     if (args.eventType && !EVENT_DEFINITIONS.some((definition) => definition.eventType === args.eventType)) {
