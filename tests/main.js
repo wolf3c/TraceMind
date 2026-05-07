@@ -15,6 +15,11 @@ import {
 } from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
 import { resolveConsoleState } from '../imports/ui/console_state';
+import {
+  resolveInitialProjectSummaryState,
+  resolveSelectedProjectId,
+  shouldApplyProjectSummaryResponse,
+} from '../imports/ui/project_console_state';
 import enMessages from '../imports/ui/i18n/locales/en';
 import zhMessages from '../imports/ui/i18n/locales/zh';
 import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n';
@@ -191,6 +196,9 @@ describe('TraceMind', function () {
       'Retry',
       'Create project',
       'Project created.',
+      'Recent users',
+      'Recent DAU',
+      'Recent devices',
     ];
 
     it('normalizes supported UI locales and falls back to English', function () {
@@ -279,6 +287,37 @@ describe('TraceMind', function () {
         }),
         'dashboard-error',
       );
+    });
+  });
+
+  describe('Project console state', function () {
+    it('resolves selected projects with a stable fallback', function () {
+      const projects = [{ _id: 'project-a' }, { _id: 'project-b' }];
+
+      assert.strictEqual(resolveSelectedProjectId(projects, 'project-b'), 'project-b');
+      assert.strictEqual(resolveSelectedProjectId(projects, 'missing-project'), 'project-a');
+      assert.strictEqual(resolveSelectedProjectId([], 'project-a'), '');
+      assert.deepStrictEqual(resolveInitialProjectSummaryState(), {
+        selectedProjectSummary: null,
+        projectSummaryLoading: false,
+        projectSummaryError: '',
+      });
+    });
+
+    it('rejects stale project summary responses', function () {
+      const current = {
+        requestId: 7,
+        activeRequestId: 7,
+        requestUserId: 'user-a',
+        currentUserId: 'user-a',
+        projectId: 'project-a',
+        selectedProjectId: 'project-a',
+      };
+
+      assert.strictEqual(shouldApplyProjectSummaryResponse(current), true);
+      assert.strictEqual(shouldApplyProjectSummaryResponse({ ...current, requestId: 6 }), false);
+      assert.strictEqual(shouldApplyProjectSummaryResponse({ ...current, currentUserId: 'user-b' }), false);
+      assert.strictEqual(shouldApplyProjectSummaryResponse({ ...current, selectedProjectId: 'project-b' }), false);
     });
   });
 
@@ -596,9 +635,20 @@ describe('TraceMind', function () {
         meaning: 'Selected project event.',
         userId: 'selected-user',
         deviceId: 'selected-device',
-        occurredAt: new Date('2026-05-07T01:05:00.000Z'),
-        createdAt: new Date('2026-05-07T01:05:00.000Z'),
+        occurredAt: new Date('2026-05-08T01:05:00.000Z'),
+        createdAt: new Date('2026-05-08T01:05:00.000Z'),
       });
+      await Promise.all(Array.from({ length: 200 }, (_, index) => SemanticEvents.insertAsync({
+        projectId: selectedProject._id,
+        eventType: 'custom',
+        eventName: `selected_window_event_${index}`,
+        title: `Selected window event ${index}`,
+        meaning: 'Selected project window event.',
+        userId: 'selected-user',
+        deviceId: 'selected-device',
+        occurredAt: new Date(`2026-05-07T${String(index % 24).padStart(2, '0')}:00:00.000Z`),
+        createdAt: new Date(`2026-05-07T${String(index % 24).padStart(2, '0')}:00:00.000Z`),
+      })));
       await SemanticEvents.insertAsync({
         projectId: otherProject._id,
         eventType: 'custom',
@@ -615,12 +665,19 @@ describe('TraceMind', function () {
 
       assert.strictEqual(result.project._id, selectedProject._id);
       assert.strictEqual(result.rawCount, 1);
-      assert.strictEqual(result.semanticCount, 1);
-      assert.strictEqual(result.summary.totalEvents, 1);
+      assert.strictEqual(result.semanticCount, 201);
+      assert.deepStrictEqual(result.summaryWindow, {
+        semanticEventLimit: 200,
+        rawBehaviorLimit: 500,
+        semanticEventSampleSize: 200,
+        rawBehaviorSampleSize: 1,
+      });
+      assert.strictEqual(result.summary.totalEvents, 200);
       assert.strictEqual(result.summary.uniqueUsers, 1);
       assert.strictEqual(result.summary.uniqueDevices, 1);
       assert.deepStrictEqual(result.sources.map((source) => source.sourceKey), ['selected.example']);
-      assert.deepStrictEqual(result.recentEvents.map((event) => event.eventName), ['selected_event']);
+      assert.ok(result.recentEvents.some((event) => event.eventName === 'selected_event'));
+      assert.strictEqual(result.recentEvents.some((event) => event.eventName === 'other_event'), false);
     });
 
     it('resolves MCP access only through independent MCP tokens', async function () {

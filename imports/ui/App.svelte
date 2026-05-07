@@ -7,6 +7,11 @@
   import { buildAgentInstallPrompt } from "./agent_setup";
   import { resolveConsoleState } from "./console_state";
   import { locale, locales, t } from "./i18n/i18n";
+  import {
+    resolveInitialProjectSummaryState,
+    resolveSelectedProjectId,
+    shouldApplyProjectSummaryResponse,
+  } from "./project_console_state";
 
   const currentOrigin = () => (typeof location === "undefined" ? "" : location.origin);
   const translateNow = (key, vars) => get(t)(key, vars);
@@ -101,13 +106,12 @@
 
   function syncSelectedProject(nextDashboard) {
     const projects = nextDashboard?.projects || [];
-    if (!projects.length) {
+    const nextSelectedProjectId = resolveSelectedProjectId(projects, selectedProjectId);
+    if (!nextSelectedProjectId) {
       selectedProjectId = "";
-      selectedProjectSummary = null;
-      return;
-    }
-    if (!projects.some((project) => project._id === selectedProjectId)) {
-      selectedProjectId = projects[0]._id;
+      ({ selectedProjectSummary, projectSummaryLoading, projectSummaryError } = resolveInitialProjectSummaryState());
+    } else if (nextSelectedProjectId !== selectedProjectId) {
+      selectedProjectId = nextSelectedProjectId;
     }
   }
 
@@ -125,31 +129,40 @@
 
     try {
       const nextSummary = await callMethod("tracemind.project.summary", projectId);
-      if (
-        requestId !== projectSummaryRequestId
-        || requestUserId !== Meteor.userId()
-        || projectId !== selectedProjectId
-      ) {
+      if (!shouldApplyProjectSummaryResponse({
+        requestId,
+        activeRequestId: projectSummaryRequestId,
+        requestUserId,
+        currentUserId: Meteor.userId(),
+        projectId,
+        selectedProjectId,
+      })) {
         return null;
       }
       selectedProjectSummary = nextSummary;
       if (nextSummary?.project) replaceProject(nextSummary.project);
       return nextSummary;
     } catch (error) {
-      if (
-        requestId === projectSummaryRequestId
-        && requestUserId === Meteor.userId()
-        && projectId === selectedProjectId
-      ) {
+      if (shouldApplyProjectSummaryResponse({
+        requestId,
+        activeRequestId: projectSummaryRequestId,
+        requestUserId,
+        currentUserId: Meteor.userId(),
+        projectId,
+        selectedProjectId,
+      })) {
         projectSummaryError = errorMessage(error);
       }
       throw error;
     } finally {
-      if (
-        requestId === projectSummaryRequestId
-        && requestUserId === Meteor.userId()
-        && projectId === selectedProjectId
-      ) {
+      if (shouldApplyProjectSummaryResponse({
+        requestId,
+        activeRequestId: projectSummaryRequestId,
+        requestUserId,
+        currentUserId: Meteor.userId(),
+        projectId,
+        selectedProjectId,
+      })) {
         projectSummaryLoading = false;
       }
     }
@@ -204,7 +217,7 @@
     }
   }
 
-  async function loadDashboard() {
+  async function loadDashboard({ loadProjectSummary: shouldLoadProjectSummary = true } = {}) {
     const requestUserId = Meteor.userId();
     if (!requestUserId) return null;
     if (dashboardLoadPromise) return dashboardLoadPromise;
@@ -219,7 +232,7 @@
         if (requestId !== dashboardRequestId || requestUserId !== Meteor.userId()) return null;
         syncSelectedProject(nextDashboard);
         dashboard = nextDashboard;
-        if (selectedProjectId) {
+        if (shouldLoadProjectSummary && selectedProjectId) {
           loadProjectSummary(selectedProjectId).catch(() => {});
         }
         return nextDashboard;
@@ -286,7 +299,7 @@
       selectedProjectId = createdProject._id;
       projectName = "";
       showProjectCreate = false;
-      await loadDashboard();
+      await loadDashboard({ loadProjectSummary: false });
       await loadProjectSummary(createdProject._id);
       status = translateNow("Project created and selected.");
     } catch (error) {
@@ -899,15 +912,15 @@
             <strong>{selectedProjectSummary?.semanticCount || 0}</strong>
           </div>
           <div>
-            <span>{$t("Users")}</span>
+            <span>{$t("Recent users")}</span>
             <strong>{summary?.uniqueUsers || 0}</strong>
           </div>
           <div>
-            <span>{$t("DAU")}</span>
+            <span>{$t("Recent DAU")}</span>
             <strong>{latestDau}</strong>
           </div>
           <div>
-            <span>{$t("Devices")}</span>
+            <span>{$t("Recent devices")}</span>
             <strong>{summary?.uniqueDevices || 0}</strong>
           </div>
         </div>

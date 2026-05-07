@@ -166,3 +166,23 @@
 - Add Meteor Mocha coverage proving project summaries do not include sibling project data.
 - Run `meteor test --once --driver-package meteortesting:mocha --port <free-port>`.
 - Run `npx svelte-check`.
+
+## 2026-05-07 Project Summary Follow-up Pass
+
+### Current Behavior
+
+- New project creation can trigger duplicate current-project summary loads.
+- Project summary full counts and recent-window user metrics are displayed together without explicit window metadata.
+- Project selection and stale-response checks live directly inside `App.svelte`.
+
+### Target Behavior
+
+- Let dashboard loading skip automatic project summary loading when a caller will explicitly load one.
+- Return `summaryWindow` from project summary methods to document the recent-event sample used for users, DAU, devices, sources, and recent events.
+- Extract selected-project fallback and stale-response predicates into pure helpers with Meteor Mocha coverage.
+
+### Verification Plan
+
+- Add tests for `summaryWindow` and UI helper predicates before implementation.
+- Run `meteor test --once --driver-package meteortesting:mocha --port <free-port>`.
+- Run `npx svelte-check`.

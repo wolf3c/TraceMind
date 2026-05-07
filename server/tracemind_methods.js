@@ -17,6 +17,8 @@ import {
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 
 const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
+const PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT = 200;
+const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
 
 function newToken(prefix) {
   return `${prefix}_${Random.secret(32)}`;
@@ -103,17 +105,23 @@ async function buildProjectSummary(project) {
   const semanticCount = await SemanticEvents.find({ projectId: project._id }).countAsync();
   const events = await SemanticEvents.find(
     { projectId: project._id },
-    { sort: { occurredAt: -1 }, limit: 200 },
+    { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT },
   ).fetchAsync();
   const rawBehaviors = await RawBehaviors.find(
     { projectId: project._id },
-    { sort: { occurredAt: -1 }, limit: 500 },
+    { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT },
   ).fetchAsync();
 
   return {
     project: publicProject(await ensureProjectMcpTokens(project)),
     rawCount,
     semanticCount,
+    summaryWindow: {
+      semanticEventLimit: PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT,
+      rawBehaviorLimit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT,
+      semanticEventSampleSize: events.length,
+      rawBehaviorSampleSize: rawBehaviors.length,
+    },
     summary: summarizeSemanticEvents(events),
     sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
     recentEvents: events.slice(0, 30).map(publicSemanticEvent),
