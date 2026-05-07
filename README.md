@@ -1,0 +1,245 @@
+# TraceMind
+
+TraceMind 是一个 AI-native 产品行为分析层。开发者只需要在网站里添加一行脚本，就可以自动记录页面浏览、点击、输入变化、表单提交和路由变化，并通过语义事件和 MCP 给 LLM 做产品行为分析。
+
+## 5 分钟接入
+
+把下面这行代码放到页面的 `<head>` 或 `</body>` 前：
+
+```html
+<script src="https://tracemind.sandbox.galaxycloud.app/capture.js" data-tracemind-token="tm_proj_xxx" async></script>
+```
+
+其中：
+
+- `src` 是 TraceMind 的采集脚本地址。
+- `data-tracemind-token` 是项目的公开采集 token。
+- `async` 表示脚本异步加载，不阻塞页面解析。
+
+接入后会自动采集：
+
+- `page_view`: 页面打开或刷新。
+- `click`: 用户点击页面元素。
+- `input`: 输入控件发生变化，不采集输入值。
+- `submit`: 表单提交。
+- `route_change`: SPA 路由变化。
+
+## Web 接入方式
+
+最简单方式是一行脚本：
+
+```html
+<script src="https://tracemind.sandbox.galaxycloud.app/capture.js" data-tracemind-token="tm_proj_xxx" async></script>
+```
+
+如果需要自定义上报地址，可以加 `data-tracemind-endpoint`：
+
+```html
+<script
+  src="https://tracemind.sandbox.galaxycloud.app/capture.js"
+  data-tracemind-token="tm_proj_xxx"
+  data-tracemind-endpoint="https://tracemind.sandbox.galaxycloud.app/api/capture"
+  async>
+</script>
+```
+
+TraceMind 会在页面上暴露：
+
+```js
+window.TraceMind.capture(type, data);
+window.TraceMind.identify(userId, traits);
+```
+
+## 记录登录用户 UID
+
+如果网站有登录系统，建议把业务用户 ID 传给 TraceMind。这样才能计算 DAU、留存、用户路径、转化漏斗等常见产品分析指标。
+
+方式一：使用全局 UID 获取方法。
+
+```html
+<script>
+  window.getCurrentUserId = function () {
+    return window.appUser && window.appUser.id;
+  };
+</script>
+
+<script
+  src="https://tracemind.sandbox.galaxycloud.app/capture.js"
+  data-tracemind-token="tm_proj_xxx"
+  data-tracemind-user-id-provider="getCurrentUserId"
+  async>
+</script>
+```
+
+这个方式适合 React、Vue、Svelte、Angular、Meteor、Next.js 或普通 HTML 页面。只要最终能在 `window` 上提供一个函数或值，TraceMind 就能读取。
+
+方式二：登录成功后主动 identify。
+
+```js
+window.TraceMind.identify("user-123", {
+  plan: "pro",
+  role: "admin"
+});
+```
+
+TraceMind 会把 `userId` 保存到浏览器本地，并随之后的事件自动上报。DAU 口径使用 `userId || anonymousId` 按自然日去重。
+
+## 手动埋点
+
+自动采集适合快速覆盖通用行为。关键业务动作建议使用手动埋点，提供稳定、明确的事件名。
+
+```js
+window.TraceMind.capture("custom", {
+  eventName: "plan_selected",
+  userId: "user-123",
+  properties: {
+    plan: "pro",
+    amount: 29
+  },
+  context: {
+    source: "pricing_page",
+    experiment: "pricing_v2"
+  }
+});
+```
+
+字段约定：
+
+- `eventName`: 稳定的业务事件名，例如 `plan_selected`、`checkout_started`。
+- `properties`: 事件自身属性，例如套餐、金额、按钮位置、订单 ID。
+- `context`: 上报上下文，例如来源、实验分组、trace id、feature flag。
+- `userId`: 业务用户 ID。前端已调用 `identify()` 时可省略。
+
+服务端也可以向同一个 `/api/capture` 上报事件，建议设置 `platform: "server"`：
+
+```json
+{
+  "projectKey": "tm_proj_xxx",
+  "platform": "server",
+  "type": "custom",
+  "eventName": "invoice_paid",
+  "userId": "user-123",
+  "properties": {
+    "invoiceId": "inv_123",
+    "amount": 2900
+  },
+  "context": {
+    "source": "stripe_webhook"
+  }
+}
+```
+
+## Semantic Event 事件说明
+
+TraceMind 会先保存原始行为日志，再抽取为语义事件，方便 LLM/MCP 按业务含义查询。
+
+| eventType | 名称 | 含义 | 常见字段 |
+| --- | --- | --- | --- |
+| `page_view` | 页面浏览 | 用户打开或刷新页面，用于分析访问量、落地页、路径入口和页面级留存。 | `title`, `path`, `referrer` |
+| `click` | 元素点击 | 用户点击界面元素，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` |
+| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` |
+| `submit` | 表单提交 | 用户提交表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` |
+| `route_change` | 页面跳转 | 用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` |
+| `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` |
+| `custom` | 自定义事件 | 开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。 | `eventName`, `properties`, `context` |
+
+每条语义事件会尽量保留这些分析字段：
+
+- 身份字段：`userId`、`anonymousId`、`sessionId`
+- 设备字段：`deviceId`、`deviceFingerprint`、`deviceInfo`
+- 平台字段：`platform`
+- 地理字段：`ip`、`geo`
+- 页面字段：`path`、`title`
+- 元素字段：`target`、`targetHash`、`targetText`、`targetTag`
+- 扩展字段：`properties`、`context`
+
+## 区分相同按钮和输入框
+
+如果同一个页面有两个输入框，或者两个都叫“更多”的按钮，只看文案是不够的。
+
+TraceMind 会为 `click`、`input`、`submit` 自动记录：
+
+```json
+{
+  "target": {
+    "tag": "BUTTON",
+    "text": "更多",
+    "id": "order-more",
+    "role": "button",
+    "testId": "order-card-more",
+    "path": "main:nth-of-type(1)>section:nth-of-type(2)>button#order-more"
+  },
+  "targetHash": "tm_target_xxx"
+}
+```
+
+`targetHash` 用于查询和区分同一页面上的相同文案元素。对于长期稳定的关键漏斗，仍建议手动上报明确事件名，例如：
+
+```js
+window.TraceMind.capture("custom", {
+  eventName: "order_card_more_clicked",
+  properties: {
+    orderId: "order_123"
+  }
+});
+```
+
+## 对用户网站的影响
+
+添加脚本后，TraceMind 不会修改页面 DOM、不会插入 UI、不会修改样式。它会新增：
+
+```js
+window.TraceMind
+window.__TraceMindLoaded
+```
+
+并包装一次 `history.pushState`，用于记录 SPA 路由变化。
+
+网络影响：
+
+- 页面会额外加载一次 `capture.js`。
+- 每次自动事件会向 `/api/capture` 发送一次后台请求。
+- 优先使用 `navigator.sendBeacon`，不支持时使用 `fetch(..., keepalive: true)`。
+
+性能影响：
+
+- 普通页面影响很小。
+- 高流量网站、复杂页面或高频交互场景会增加请求量和数据库写入量。
+- 后续生产版本应支持采样、节流和批量上报。
+
+兼容性影响：
+
+- 支持普通 HTML、React、Vue、Svelte、Angular、Meteor、Next.js 等前端技术。
+- 如果网站配置了 CSP，需要允许脚本和上报地址。
+
+```text
+script-src https://tracemind.sandbox.galaxycloud.app
+connect-src https://tracemind.sandbox.galaxycloud.app
+```
+
+## 隐私与安全
+
+自动采集会记录：
+
+- 页面路径、标题、来源页。
+- 匿名 ID、session ID、device ID。
+- 登录用户 ID，如果开发者配置了 UID 获取方法或调用 `identify()`。
+- 浏览器 UA、语言、平台、时区、屏幕、viewport、硬件并发、设备内存等设备信息。
+- IP 和无感地理位置，由服务端从请求头或 IP 推断。
+- 点击/输入/提交元素的 tag、id、class、name、role、placeholder、aria-label、data-testid、DOM path。
+
+自动采集不会记录：
+
+- 输入框真实输入值。
+- 密码字段内容。
+- 页面截图。
+- localStorage、cookie 的业务内容。
+
+合规建议：
+
+- 在隐私政策中说明行为分析、设备信息、IP/地理位置采集。
+- 对欧盟、加州、中国等地区用户，结合业务场景提供同意管理或 opt-out。
+- 不要在 URL query string、DOM id、class、placeholder、aria-label 中放敏感信息。
+- 生产环境建议开启域名白名单、Origin/Referer 校验、rate limit 和异常流量过滤。
+
+`data-tracemind-token` 是公开项目 token，不是开发者密钥。但它会暴露在前端，因此服务端必须把它当作公开标识处理，不能把它当作私密凭证。
