@@ -47,3 +47,28 @@ This checkout does not include Git history, so no repository-specific commit con
 ## Security & Configuration Tips
 
 Do not commit `node_modules/`, generated build output, or local secret files. Keep server-only credentials out of client code and expose data through publications or methods with explicit access checks.
+
+You are able to use the Flowbite-Svelte MCP server, where you have access to comprehensive Flowbite-Svelte component documentation. Here's how to use the available tools effectively:
+
+## Available MCP Tools:
+
+### 1. findComponent
+
+Use this FIRST to discover components by name or category. Returns component information including the documentation path.
+When asked about Flowbite-Svelte components, ALWAYS use this tool to locate the correct component before fetching documentation.
+Example queries: 'Button', 'CardPlaceholder', 'form checkbox'
+
+### 2. getComponentList
+
+Lists all available Flowbite-Svelte components with their categories.
+Use this to discover what components are available or to help users explore component options.
+
+### 3. getComponentDoc
+
+Retrieves full documentation content for a specific component. Accepts the component path found using findComponent.
+After calling findComponent, use this tool to fetch the complete documentation including usage examples, props, and best practices.
+
+### 4. searchDocs
+
+Performs full-text search across all Flowbite-Svelte documentation.
+Use this when you need to find specific information that might span multiple components or when the user asks about features or patterns.
