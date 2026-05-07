@@ -14,6 +14,20 @@ TraceMind is a Meteor app with a Svelte client.
 
 Keep reusable code under `imports/` so Meteor imports it explicitly instead of relying on legacy file load order.
 
+## Agent Workflow Guardrails
+
+- Work only on files required for the current task. Do not modify, revert, reformat, stage, or otherwise clean up files changed by other people or unrelated work.
+- Before editing production code for behavior changes or optimizations, state the current behavior, target behavior, affected modules, risks, verification plan, and concise implementation plan.
+- Keep changes minimal and aligned with existing product semantics. Avoid opportunistic refactors, broad cleanup, or expanding scope beyond the requested task.
+- After finishing any task, provide one or more suggested git commit messages that accurately describe the completed change.
+- If the user explicitly points out an agent mistake, update this file with the underlying lesson: summarize why the mistake happened, the deeper rule that should have prevented it, and how future agents should apply that rule.
+
+## Error Ledger
+
+Add entries here when an agent mistake reveals a reusable rule for future work. Use this format:
+
+- `YYYY-MM-DD`: What went wrong. Root cause. Future rule to prevent recurrence.
+
 ## Optimization Workflow Requirements
 
 For every optimization or behavior-changing improvement, do the design work before editing production code:
@@ -42,7 +56,7 @@ Tests use Node `assert` with Meteor Mocha. Add new tests in `tests/main.js` or s
 
 ## Commit & Pull Request Guidelines
 
-This checkout does not include Git history, so no repository-specific commit convention can be inferred. Use concise imperative commits such as `Add link publication test` or `Refine Svelte startup`. Pull requests should include a short summary, testing performed, linked issue or task when available, and screenshots for visible UI changes.
+Use concise imperative commits such as `Add link publication test` or `Refine Svelte startup`. At handoff, include suggested commit message(s) even if you do not create the commit. Pull requests should include a short summary, testing performed, linked issue or task when available, and screenshots for visible UI changes.
 
 ## Security & Configuration Tips
 
