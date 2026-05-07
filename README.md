@@ -1,8 +1,8 @@
 # TraceMind
 
-TraceMind 是一个 AI-native 产品行为分析层。开发者只需要在网站里添加一行脚本，就可以自动记录页面浏览、点击、输入变化、表单提交和路由变化，并通过语义事件和 MCP 给 LLM 做产品行为分析。
+TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行脚本，TraceMind 就会把真实用户行为自动整理成可分析的产品线索，并通过只读 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题。
 
-## 5 分钟接入
+## 1 分钟接入
 
 把下面这行代码放到页面的 `<head>` 或 `</body>` 前：
 

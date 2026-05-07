@@ -342,8 +342,8 @@
           <span class="tm-badge tm-badge-signal">{$t("AI-native behavior intelligence")}</span>
           <span class="tm-badge tm-badge-amber">{$t("Remote MCP ready")}</span>
         </div>
-        <h1>{$t("Understand real user behavior without writing complex tracking code.")}</h1>
-        <p class="lede">{$t("TraceMind captures raw behavior from web products with one script, turns it into readable semantic events, and lets AI coding agents query product data through remote MCP.")}</p>
+        <h1>{$t("See how users actually use your product with one line of code.")}</h1>
+        <p class="lede">{$t("TraceMind turns real user behavior into product signals you can analyze. With remote MCP, you can ask Codex, Claude Code, or Cursor about drop-off, feature usage, and conversion issues directly.")}</p>
         <div class="hero-actions">
           <a href="#console" class="button">{$t("Start setup")}</a>
           <a href="#how" class="button secondary">{$t("View workflow")}</a>
@@ -385,14 +385,14 @@
           <div>
             <span>{$t("AI agent access")}</span>
             <strong>{$t("mcp.tools.call")}</strong>
-            <small>{$t("Ask from Codex, Claude Code, Cursor, and more")}</small>
+            <small>{$t("Codex, Claude Code, and Cursor read semantic events through MCP")}</small>
           </div>
         </div>
 
         <div class="agent-query">
           <span>{$t("Codex asks")}</span>
-          <strong>{$t("Which users reached pricing but did not submit?")}</strong>
-          <p>{$t("TraceMind returns path trends, user counts, device counts, and source health.")}</p>
+          <strong>{$t("Why did users reach pricing but not submit?")}</strong>
+          <p>{$t("TraceMind returns key paths, user distribution, device sources, and reviewable behavior evidence.")}</p>
         </div>
       </div>
     </div>
@@ -400,13 +400,13 @@
 
   <section id="how" class="workflow">
     <div>
-      <p class="section-label">{$t("MVP setup flow")}</p>
-      <h2>{$t("Create a product behavior understanding layer with one line of code.")}</h2>
+      <p class="section-label">{$t("1-minute setup flow")}</p>
+      <h2>{$t("Turn real user behavior into AI-readable product data with one line of code.")}</h2>
     </div>
     <div class="one-line-example">
       <div>
         <span>{$t("Setup example")}</span>
-        <strong>{$t("Put this line into your web product page")}</strong>
+        <strong>{$t("Put this script into your web product page")}</strong>
       </div>
       <code>&lt;script src="{currentOrigin()}/capture.js" data-tracemind-token="tm_proj_xxx" async&gt;&lt;/script&gt;</code>
     </div>
@@ -419,17 +419,17 @@
       <article>
         <span class="tm-badge tm-badge-signal">02</span>
         <h3>{$t("Auto capture")}</h3>
-        <p>{$t("Copy one global script to record page views, clicks, inputs, forms, and route changes.")}</p>
+        <p>{$t("Copy one script to automatically record page views, clicks, inputs, form submits, and path changes.")}</p>
       </article>
       <article>
         <span class="tm-badge tm-badge-amber">03</span>
-        <h3>{$t("Semantic events")}</h3>
-        <p>{$t("The server extracts stable and readable behavior events from raw behavior.")}</p>
+        <h3>{$t("Behavior semantics")}</h3>
+        <p>{$t("TraceMind turns raw clicks and visits into readable events like viewed pricing page and submitted signup form.")}</p>
       </article>
       <article>
         <span class="tm-badge tm-badge-amber">04</span>
-        <h3>{$t("Remote MCP")}</h3>
-        <p>{$t("Add the MCP URL to your AI coding agent and inspect product data through chat.")}</p>
+        <h3>{$t("AI analysis")}</h3>
+        <p>{$t("Add the read-only MCP URL to Codex, Claude Code, or Cursor so AI can analyze product usage directly.")}</p>
       </article>
     </div>
   </section>
@@ -437,7 +437,7 @@
   <section id="console" class="console">
     <div class="console-header">
       <span class="tm-badge tm-badge-muted">{$t("Developer console")}</span>
-      <h2>{$t("Log in, copy your project key, and start capturing.")}</h2>
+      <h2>{$t("Log in, copy your setup script, and start capturing real user behavior.")}</h2>
     </div>
 
     {#if !dashboard}
@@ -501,11 +501,11 @@
               <input id="project-key" name="projectKey" readonly value={primaryProject.projectKey} />
             </label>
             <label class="field-label">
-              <span>{$t("One-line Auto Capture code")}</span>
+              <span>{$t("One-line capture script")}</span>
               <textarea id="capture-snippet" name="captureSnippet" readonly rows={3} value={captureSnippet}></textarea>
             </label>
             <label class="field-label">
-              <span>{$t("Default remote MCP URL")}</span>
+              <span>{$t("MCP URL for AI analysis")}</span>
               <input id="mcp-url" name="mcpUrl" readonly value={mcpUrl} />
             </label>
 
@@ -591,7 +591,7 @@
                   {/each}
                 </div>
               {:else}
-                <p class="empty">{$t("This project has no MCP token. Add one before querying data through remote MCP.")}</p>
+                <p class="empty">{$t("This project has no MCP token. Add one so AI agents can read semantic events with read-only access.")}</p>
               {/if}
             </div>
           {/if}

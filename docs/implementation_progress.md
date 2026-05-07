@@ -16,7 +16,7 @@
 - Added DAU, unique user, and unique device summary output.
 - Added `/mcp` remote MCP endpoint with JSON-RPC `initialize`, `tools/list`, `tools/call`, and `ping`, plus a GET preview for manual debugging.
 - Added independent multi-token MCP authorization so MCP access no longer reuses the public Auto Capture project key.
-- Added MCP tools for event definitions, filtered semantic event queries, filtered raw behavior queries, and filtered summaries.
+- Added read-only MCP analysis tools for event definitions, filtered semantic event queries, filtered raw behavior queries, and filtered summaries, so AI coding agents can answer product usage questions from behavior evidence.
 - Added concise technical design docs for auth, capture, semantic extraction, MCP, and the MVP architecture.
 - Added Meteor Mocha coverage for normalization, semantic event building, summaries, and login/project creation.
 - Added local MUP deployment config for running TraceMind as an independent app at `https://tracemind.super-tree.com` on the same server as yezi2, plus deployment docs and npm deploy commands.
@@ -29,6 +29,7 @@
 - Added `imports/ui/i18n` support for English and Chinese UI text, including locale normalization, persisted language selection, translated status messages, translated confirmation text, and a console language selector.
 - Switched UI copy to English source-text translation keys so `en.js` can rely on fallback behavior while `zh.js` carries only Chinese overrides.
 - Added `DESIGN.md` and refreshed the first viewport into a darker AI behavior cockpit with a live stream preview, signal metrics, and clearer semantic chips.
+- Refined the landing-page positioning around the developer outcome: one script turns real user behavior into product signals that can be questioned from Codex, Claude Code, or Cursor through read-only MCP.
 - Replaced the placeholder `T` favicon and navigation mark with the Calm Glyph brand icon, combining a clean Mind glyph with a subtle behavior trace.
 - Removed Flowbite-Svelte after evaluating its limited product fit and Meteor Rspack integration cost; repeated cards, form fields, selects, textareas, alerts, and badges now use local semantic markup and CSS primitives.
 - Added Meteor Mocha coverage for i18n locale normalization, compact English fallback, required Chinese overrides, fallback translation, and interpolation.

@@ -2,7 +2,7 @@
 
 ## 目标
 
-让 LLM / AI Coding Agent 可以通过远程 MCP 查询 TraceMind 采集到的产品行为数据：先查事件含义说明表，再按时间、事件名、用户、Session、设备、路径等维度查询语义事件；需要复核时再查询原始日志。
+让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义。MCP 不是采集目标，而是让开发者在 Codex、Claude Code、Cursor 等工具里直接追问用户流失、功能使用和转化问题的只读入口：默认查询语义事件，需要复核时再查询原始日志。
 
 ## Endpoint
 

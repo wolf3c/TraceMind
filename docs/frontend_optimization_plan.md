@@ -99,3 +99,23 @@
 - Run `npx svelte-check --compiler-warnings error`.
 - Run `npm test`.
 - Start the app and verify HTTP 200 plus a browser render smoke check.
+
+## 2026-05-07 Landing Positioning Pass
+
+### Current Behavior
+
+- The hero headline emphasized avoiding complex tracking work, which sounded too internal and implementation-focused for first-time developers.
+- The hero lede listed low-level capture categories before explaining the product value.
+- The workflow presented MCP as a setup goal instead of the read-only analysis path that lets developers ask product questions from AI coding tools.
+
+### Target Behavior
+
+- Lead with the developer outcome: one script helps developers see how users actually use the product.
+- Summarize captured behavior as analyzable product signals instead of listing every raw event category in the hero.
+- Present remote MCP as the AI-analysis entrypoint for Codex, Claude Code, Cursor, and similar tools, while preserving its read-only security model.
+
+### Verification Plan
+
+- Run `npx svelte-check --compiler-warnings error`.
+- Run `npm test`.
+- Inspect the Chinese landing page copy and verify the setup flow says `1 分钟接入流程`.

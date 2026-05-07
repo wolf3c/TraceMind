@@ -127,7 +127,7 @@ button:disabled {
   max-width: 760px;
   margin: 18px 0 18px;
   color: #fffdf8;
-  font-size: clamp(42px, 6.4vw, 78px);
+  font-size: clamp(40px, 5.2vw, 64px);
   line-height: 0.98;
   letter-spacing: 0;
 }
@@ -375,10 +375,10 @@ button:disabled {
 
 .workflow h2,
 .console h2 {
-  max-width: 620px;
+  max-width: 860px;
   margin: 8px 0 24px;
   color: var(--ink);
-  font-size: clamp(30px, 4vw, 48px);
+  font-size: clamp(30px, 3.4vw, 44px);
   line-height: 1.05;
 }
 

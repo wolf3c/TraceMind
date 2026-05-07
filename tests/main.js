@@ -22,7 +22,7 @@ describe('TraceMind', function () {
     const requiredKeys = [
       'Language',
       'AI-native behavior intelligence',
-      'Understand real user behavior without writing complex tracking code.',
+      'See how users actually use your product with one line of code.',
       'Email',
       'Send code',
       'Create project',
