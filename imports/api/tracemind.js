@@ -79,6 +79,168 @@ export function normalizeToken(token) {
   return String(token || '').trim();
 }
 
+function cleanString(value, max = 200, fallback = '') {
+  return String(value || fallback).trim().slice(0, max);
+}
+
+function safeObject(value, maxBytes = 4096) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  try {
+    const json = JSON.stringify(value);
+    if (!json) return {};
+    if (json.length > maxBytes) {
+      return { truncated: true, preview: json.slice(0, maxBytes) };
+    }
+    return JSON.parse(json);
+  } catch (error) {
+    return {};
+  }
+}
+
+function parseUrl(value) {
+  if (!value) return null;
+  try {
+    return new URL(String(value));
+  } catch (error) {
+    return null;
+  }
+}
+
+function normalizeSourceType(value) {
+  const sourceType = cleanString(value, 40).toLowerCase();
+  return ['web', 'ios', 'android', 'server'].includes(sourceType) ? sourceType : 'unknown';
+}
+
+export function normalizeCaptureSource(payload = {}, headers = {}) {
+  const source = safeObject(payload.source);
+  const sourceType = normalizeSourceType(source.type || payload.sourceType || payload.platform || 'web');
+
+  if (sourceType === 'web') {
+    const referrer = cleanString(headers.referer || headers.referrer || source.referrer || payload.referrer, 500);
+    const originUrl = parseUrl(headers.origin);
+    const referrerUrl = parseUrl(headers.referer || headers.referrer);
+    const payloadUrl = parseUrl(source.url || payload.url || payload.href);
+    const pageUrl = originUrl || referrerUrl || payloadUrl;
+
+    if (pageUrl) {
+      const sourceKey = cleanString(pageUrl.hostname.toLowerCase(), 200, 'unknown');
+      const payloadUrlMatchesSource = payloadUrl && payloadUrl.hostname.toLowerCase() === sourceKey;
+      const detailUrl = payloadUrlMatchesSource ? payloadUrl : (!originUrl && referrerUrl ? referrerUrl : null);
+
+      return {
+        sourceType,
+        sourceKey,
+        sourceLabel: sourceKey,
+        sourceDetails: {
+          origin: pageUrl.origin,
+          path: detailUrl ? `${detailUrl.pathname || '/'}${detailUrl.search || ''}` : '/',
+          referrer,
+        },
+      };
+    }
+  }
+
+  const sourceKey = cleanString(
+    source.key || payload.sourceKey || source.bundleId || source.packageName || source.appId,
+    200,
+    'unknown',
+  );
+  return {
+    sourceType,
+    sourceKey,
+    sourceLabel: cleanString(source.label || payload.sourceLabel || sourceKey, 200, sourceKey),
+    sourceDetails: safeObject(source.details || payload.sourceDetails),
+  };
+}
+
+export function normalizeBlockedSource(input = {}) {
+  const source = normalizeCaptureSource({
+    platform: input.sourceType || input.type || 'unknown',
+    sourceKey: input.sourceKey || input.key,
+    sourceLabel: input.sourceLabel || input.label,
+    sourceDetails: input.sourceDetails || input.details,
+  });
+
+  return {
+    sourceType: source.sourceType,
+    sourceKey: source.sourceKey,
+    sourceLabel: cleanString(input.sourceLabel || input.label || source.sourceLabel, 200, source.sourceKey),
+  };
+}
+
+export function isSourceBlocked(project = {}, source = {}) {
+  const sourceType = cleanString(source.sourceType, 40).toLowerCase();
+  const sourceKey = cleanString(source.sourceKey, 200).toLowerCase();
+  if (!sourceType || !sourceKey) return false;
+
+  return (project.blockedSources || []).some((blockedSource) => (
+    cleanString(blockedSource.sourceType, 40).toLowerCase() === sourceType
+    && cleanString(blockedSource.sourceKey, 200).toLowerCase() === sourceKey
+  ));
+}
+
+export function publicBlockedSource(source) {
+  if (!source) return null;
+
+  return {
+    sourceType: source.sourceType,
+    sourceKey: source.sourceKey,
+    sourceLabel: source.sourceLabel || source.sourceKey,
+    reason: source.reason || '',
+    blockedAt: source.blockedAt,
+  };
+}
+
+export function summarizeBehaviorSources(behaviors = [], blockedSources = []) {
+  const blockedProject = { blockedSources };
+  const sourceMap = new Map();
+
+  blockedSources.forEach((source) => {
+    const sourceType = source.sourceType || 'unknown';
+    const sourceKey = source.sourceKey || 'unknown';
+    const key = `${sourceType}:${sourceKey}`;
+    sourceMap.set(key, {
+      sourceType,
+      sourceKey,
+      sourceLabel: source.sourceLabel || sourceKey,
+      count: 0,
+      lastSeenAt: null,
+      blocked: true,
+      reason: source.reason || '',
+      blockedAt: source.blockedAt,
+    });
+  });
+
+  behaviors.forEach((behavior) => {
+    const sourceType = behavior.sourceType || 'unknown';
+    const sourceKey = behavior.sourceKey || 'unknown';
+    const key = `${sourceType}:${sourceKey}`;
+    const occurredAt = behavior.occurredAt || behavior.createdAt || null;
+    const existing = sourceMap.get(key) || {
+      sourceType,
+      sourceKey,
+      sourceLabel: behavior.sourceLabel || sourceKey,
+      count: 0,
+      lastSeenAt: null,
+      blocked: isSourceBlocked(blockedProject, { sourceType, sourceKey }),
+    };
+
+    if (existing.blocked) {
+      existing.reason = existing.reason || '';
+    }
+    existing.count += 1;
+    if (occurredAt && (!existing.lastSeenAt || new Date(occurredAt) > new Date(existing.lastSeenAt))) {
+      existing.lastSeenAt = occurredAt;
+    }
+    sourceMap.set(key, existing);
+  });
+
+  return [...sourceMap.values()].sort((left, right) => {
+    if (right.count !== left.count) return right.count - left.count;
+    return new Date(right.lastSeenAt || 0) - new Date(left.lastSeenAt || 0);
+  });
+}
+
 export function publicMcpToken(token) {
   if (!token) return null;
 
@@ -150,6 +312,7 @@ export function publicProject(project) {
     name: project.name,
     projectKey: project.projectKey,
     mcpTokens: (project.mcpTokens || []).map(publicMcpToken).filter(Boolean),
+    blockedSources: (project.blockedSources || []).map(publicBlockedSource).filter(Boolean),
     createdAt: project.createdAt,
   };
 }
@@ -167,6 +330,10 @@ export function publicSemanticEvent(event) {
     deviceInfo: event.deviceInfo,
     ip: event.ip,
     geo: event.geo,
+    sourceType: event.sourceType,
+    sourceKey: event.sourceKey,
+    sourceLabel: event.sourceLabel,
+    sourceDetails: event.sourceDetails,
     eventType: event.eventType,
     eventName: event.eventName,
     title: event.title,
@@ -196,6 +363,10 @@ export function publicRawBehavior(behavior) {
     deviceInfo: behavior.deviceInfo,
     ip: behavior.ip,
     geo: behavior.geo,
+    sourceType: behavior.sourceType,
+    sourceKey: behavior.sourceKey,
+    sourceLabel: behavior.sourceLabel,
+    sourceDetails: behavior.sourceDetails,
     type: behavior.type,
     eventName: behavior.eventName,
     path: behavior.path,

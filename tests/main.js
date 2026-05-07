@@ -4,10 +4,14 @@ import { buildSemanticEvent, summarizeSemanticEvents } from '../imports/api/sema
 import {
   Developers,
   Projects,
+  RawBehaviors,
   SemanticEvents,
   buildEventQuery,
   buildRawBehaviorQuery,
+  isSourceBlocked,
+  normalizeCaptureSource,
   normalizeEmail,
+  summarizeBehaviorSources,
 } from '../imports/api/tracemind';
 
 describe('TraceMind', function () {
@@ -120,11 +124,144 @@ describe('TraceMind', function () {
     assert.deepStrictEqual(summary.dailyActiveUsers[0], { date: '2026-05-06', count: 2 });
   });
 
+  it('normalizes capture sources with cross-platform source fields', function () {
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        source: {
+          type: 'web',
+          url: 'https://app.example.com/pricing?plan=pro',
+          referrer: 'https://google.com/search?q=app',
+        },
+      }),
+      {
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        sourceLabel: 'app.example.com',
+        sourceDetails: {
+          origin: 'https://app.example.com',
+          path: '/pricing?plan=pro',
+          referrer: 'https://google.com/search?q=app',
+        },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource(
+        {
+          platform: 'web',
+          source: { url: 'https://spoofed.example/pricing?plan=pro' },
+        },
+        { origin: 'https://fallback.example.org', referer: 'https://fallback.example.org/docs' },
+      ),
+      {
+        sourceType: 'web',
+        sourceKey: 'fallback.example.org',
+        sourceLabel: 'fallback.example.org',
+        sourceDetails: {
+          origin: 'https://fallback.example.org',
+          path: '/',
+          referrer: 'https://fallback.example.org/docs',
+        },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource(
+        {
+          platform: 'web',
+          source: { url: 'https://spoofed.example/pricing?plan=pro' },
+        },
+        { referer: 'https://referrer.example.org/docs' },
+      ),
+      {
+        sourceType: 'web',
+        sourceKey: 'referrer.example.org',
+        sourceLabel: 'referrer.example.org',
+        sourceDetails: {
+          origin: 'https://referrer.example.org',
+          path: '/docs',
+          referrer: 'https://referrer.example.org/docs',
+        },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({ platform: 'ios', source: { key: 'com.example.app', label: 'Example iOS' } }),
+      {
+        sourceType: 'ios',
+        sourceKey: 'com.example.app',
+        sourceLabel: 'Example iOS',
+        sourceDetails: {},
+      },
+    );
+  });
+
+  it('summarizes raw behavior sources and marks blocked sources', function () {
+    const blockedSources = [
+      {
+        sourceType: 'web',
+        sourceKey: 'evil.example',
+        sourceLabel: 'evil.example',
+        reason: 'Not our app',
+        blockedAt: new Date('2026-05-06T04:00:00.000Z'),
+      },
+      {
+        sourceType: 'web',
+        sourceKey: 'old.example',
+        sourceLabel: 'old.example',
+        reason: 'Old abuse',
+        blockedAt: new Date('2026-05-06T05:00:00.000Z'),
+      },
+    ];
+    const sources = summarizeBehaviorSources([
+      { sourceType: 'web', sourceKey: 'app.example.com', sourceLabel: 'app.example.com', occurredAt: new Date('2026-05-06T01:00:00.000Z') },
+      { sourceType: 'web', sourceKey: 'app.example.com', sourceLabel: 'app.example.com', occurredAt: new Date('2026-05-06T02:00:00.000Z') },
+      { sourceType: 'web', sourceKey: 'evil.example', sourceLabel: 'evil.example', occurredAt: new Date('2026-05-06T03:00:00.000Z') },
+    ], blockedSources);
+
+    assert.deepStrictEqual(sources, [
+      {
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        sourceLabel: 'app.example.com',
+        count: 2,
+        lastSeenAt: new Date('2026-05-06T02:00:00.000Z'),
+        blocked: false,
+      },
+      {
+        sourceType: 'web',
+        sourceKey: 'evil.example',
+        sourceLabel: 'evil.example',
+        count: 1,
+        lastSeenAt: new Date('2026-05-06T03:00:00.000Z'),
+        blocked: true,
+        reason: 'Not our app',
+        blockedAt: new Date('2026-05-06T04:00:00.000Z'),
+      },
+      {
+        sourceType: 'web',
+        sourceKey: 'old.example',
+        sourceLabel: 'old.example',
+        count: 0,
+        lastSeenAt: null,
+        blocked: true,
+        reason: 'Old abuse',
+        blockedAt: new Date('2026-05-06T05:00:00.000Z'),
+      },
+    ]);
+
+    assert.strictEqual(isSourceBlocked({ blockedSources }, { sourceType: 'web', sourceKey: 'evil.example' }), true);
+    assert.strictEqual(isSourceBlocked({ blockedSources }, { sourceType: 'web', sourceKey: 'app.example.com' }), false);
+  });
+
   if (Meteor.isServer) {
+    let ingestCapturePayload;
     let resolveProjectByMcpToken;
 
     before(async function () {
+      const captureRoutes = await import('../server/capture_routes');
       const methods = await import('../server/tracemind_methods');
+      ingestCapturePayload = captureRoutes.ingestCapturePayload;
       resolveProjectByMcpToken = methods.resolveProjectByMcpToken;
     });
 
@@ -216,6 +353,97 @@ describe('TraceMind', function () {
         false,
       );
       assert.strictEqual(await resolveProjectByMcpToken(refreshedToken.token), null);
+    });
+
+    it('lets project owners block and unblock capture sources', async function () {
+      const email = `source-owner-${Date.now()}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: email, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const blockMethod = Meteor.server.method_handlers['tracemind.project.source.block'];
+      const unblockMethod = Meteor.server.method_handlers['tracemind.project.source.unblock'];
+
+      const dashboard = await dashboardMethod.apply({ userId }, []);
+      const projectId = dashboard.projects[0]._id;
+
+      const blockedProject = await blockMethod.apply(
+        { userId },
+        [projectId, { sourceType: 'web', sourceKey: 'evil.example', reason: 'Not our app' }],
+      );
+      assert.deepStrictEqual(blockedProject.blockedSources.map((source) => ({
+        sourceType: source.sourceType,
+        sourceKey: source.sourceKey,
+        reason: source.reason,
+      })), [{ sourceType: 'web', sourceKey: 'evil.example', reason: 'Not our app' }]);
+
+      const unblockedProject = await unblockMethod.apply(
+        { userId },
+        [projectId, { sourceType: 'web', sourceKey: 'evil.example' }],
+      );
+      assert.deepStrictEqual(unblockedProject.blockedSources, []);
+    });
+
+    it('accepts blocked capture requests without inserting raw behavior', async function () {
+      const projectId = `project-blocked-capture-${Date.now()}`;
+      const projectKey = `tm_proj_blocked_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-blocked-capture',
+        name: 'Blocked Capture Project',
+        projectKey,
+        blockedSources: [{ sourceType: 'web', sourceKey: 'evil.example', blockedAt: new Date() }],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload(
+        {
+          projectKey,
+          type: 'page_view',
+          source: { type: 'web', url: 'https://evil.example/pricing' },
+        },
+        { headers: {}, socket: {} },
+      );
+      const count = await RawBehaviors.find({ projectId }).countAsync();
+
+      assert.deepStrictEqual(result, { ok: true, ignored: true });
+      assert.strictEqual(count, 0);
+    });
+
+    it('stores source fields for accepted capture requests', async function () {
+      const projectId = `project-source-capture-${Date.now()}`;
+      const projectKey = `tm_proj_source_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-source-capture',
+        name: 'Source Capture Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload(
+        {
+          projectKey,
+          type: 'page_view',
+          source: { type: 'web', url: 'https://app.example.com/docs' },
+        },
+        { headers: {}, socket: {} },
+      );
+      const behavior = await RawBehaviors.findOneAsync({ projectId });
+
+      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.strictEqual(behavior.sourceType, 'web');
+      assert.strictEqual(behavior.sourceKey, 'app.example.com');
+      assert.strictEqual(behavior.sourceLabel, 'app.example.com');
+      assert.deepStrictEqual(behavior.sourceDetails, {
+        origin: 'https://app.example.com',
+        path: '/docs',
+        referrer: '',
+      });
     });
 
     it('requires a Meteor Accounts session for the dashboard', async function () {

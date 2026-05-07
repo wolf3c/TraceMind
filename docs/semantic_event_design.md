@@ -35,6 +35,14 @@
     "city": "San Francisco",
     "source": "headers"
   },
+  "sourceType": "web",
+  "sourceKey": "app.example.com",
+  "sourceLabel": "app.example.com",
+  "sourceDetails": {
+    "origin": "https://app.example.com",
+    "path": "/pricing",
+    "referrer": "https://google.com/search?q=app"
+  },
   "rawBehaviorId": "raw-id",
   "eventType": "custom",
   "eventName": "checkout_started",
@@ -108,9 +116,10 @@
 
 ## 跨平台扩展原则
 
-- 表结构保持平台无关：`platform` 区分 `web`、`ios`、`android`、`server`，平台差异写入 `deviceInfo`、`properties` 和 `context`。
+- 表结构保持平台无关：`platform` 区分 `web`、`ios`、`android`、`server`，平台差异写入 `deviceInfo`、`sourceDetails`、`properties` 和 `context`。
+- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源，Native SDK 后续使用应用标识。
 - 自动采集字段和手动埋点字段共用同一事件模型，避免未来增加移动端 SDK 时迁移 Mongo 集合。
-- 移动端可复用 `sessionId`、`anonymousId`、`userId`、`deviceId`、`deviceFingerprint`、`eventType`、`eventName`、`properties`、`context`。
+- 移动端可复用 `sessionId`、`anonymousId`、`userId`、`deviceId`、`deviceFingerprint`、`sourceType`、`sourceKey`、`eventType`、`eventName`、`properties`、`context`。
 - 服务端埋点可使用 `platform: "server"`，通常上报 `userId`、`eventName`、`properties`、`context.traceId` 和 `occurredAt`。
 
 ## MVP 决策

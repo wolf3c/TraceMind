@@ -37,6 +37,7 @@ The developer `authToken` still exists internally for compatibility with early A
 - Human login uses Meteor Accounts with `accounts-passwordless`.
 - Email sending uses Meteor `email` and Mailgun SMTP through `MAIL_URL`.
 - TraceMind exposes `projectKey` for Auto Capture and separate MCP tokens for read-only MCP access. Project keys are public write identifiers and cannot query MCP.
+- Public project keys are protected by post-ingestion governance rather than a required setup-time whitelist in the MVP: the console shows source statistics, and owners can block a `sourceType + sourceKey` so future events from that source are accepted at the HTTP layer but not stored.
 - Developer `authToken` should stay hidden until there is a separate management API that actually needs it.
 
 ## Mailgun Configuration

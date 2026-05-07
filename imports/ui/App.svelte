@@ -16,6 +16,7 @@
 
   $: primaryProject = dashboard?.projects?.[0];
   $: primaryMcpToken = primaryProject?.mcpTokens?.[0];
+  $: sourceSummary = primaryProject ? (dashboard?.sourceSummaries?.[primaryProject._id] || []) : [];
   $: summary = dashboard?.summary;
   $: latestDau = summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0;
   $: captureSnippet = primaryProject
@@ -212,6 +213,47 @@
     }
   }
 
+  async function blockSource(source) {
+    if (!primaryProject || !source) return;
+    if (!window.confirm(`屏蔽来源 ${source.sourceLabel || source.sourceKey} 后，新事件会被静默拒收，确认继续？`)) return;
+
+    loading = true;
+    status = "";
+    try {
+      await callMethod("tracemind.project.source.block", primaryProject._id, {
+        sourceType: source.sourceType,
+        sourceKey: source.sourceKey,
+        sourceLabel: source.sourceLabel,
+        reason: "Blocked from console",
+      });
+      await loadDashboard();
+      status = "来源已屏蔽，后续事件不会进入数据库。";
+    } catch (error) {
+      status = errorMessage(error);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function unblockSource(source) {
+    if (!primaryProject || !source) return;
+
+    loading = true;
+    status = "";
+    try {
+      await callMethod("tracemind.project.source.unblock", primaryProject._id, {
+        sourceType: source.sourceType,
+        sourceKey: source.sourceKey,
+      });
+      await loadDashboard();
+      status = "来源已解除屏蔽。";
+    } catch (error) {
+      status = errorMessage(error);
+    } finally {
+      loading = false;
+    }
+  }
+
   function logout() {
     Meteor.logout(() => {
       userId = null;
@@ -387,6 +429,41 @@
               默认远程 MCP 地址
               <input readonly value={mcpUrl} />
             </label>
+            <div class="source-panel">
+              <div class="source-header">
+                <div>
+                  <span>来源统计</span>
+                  <strong>查看最近写入这个项目 key 的来源</strong>
+                </div>
+              </div>
+              {#if sourceSummary.length}
+                <div class="source-list">
+                  {#each sourceSummary as source (`${source.sourceType}:${source.sourceKey}`)}
+                    <div class:blocked={source.blocked} class="source-row">
+                      <div>
+                        <strong>{source.sourceLabel || source.sourceKey}</strong>
+                        <span>{source.sourceType} / {source.sourceKey}</span>
+                      </div>
+                      <div>
+                        <span>事件数</span>
+                        <strong>{source.count}</strong>
+                      </div>
+                      <div>
+                        <span>最近出现</span>
+                        <strong>{source.lastSeenAt ? new Date(source.lastSeenAt).toLocaleString() : "未知"}</strong>
+                      </div>
+                      {#if source.blocked}
+                        <button class="ghost" on:click={() => unblockSource(source)} disabled={loading}>解除屏蔽</button>
+                      {:else}
+                        <button class="ghost danger" on:click={() => blockSource(source)} disabled={loading}>屏蔽</button>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <p class="empty">暂时没有来源数据。采集到事件后会显示来源统计。</p>
+              {/if}
+            </div>
             <div class="mcp-token-panel">
               <div class="mcp-token-header">
                 <div>

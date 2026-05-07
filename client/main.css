@@ -359,6 +359,52 @@ code {
   border-top: 1px solid #e5ded2;
 }
 
+.source-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px 0;
+  border-top: 1px solid #e5ded2;
+  border-bottom: 1px solid #e5ded2;
+}
+
+.source-header span,
+.source-row span {
+  display: block;
+  color: #708179;
+  font-size: 0.85rem;
+}
+
+.source-header strong {
+  display: block;
+  margin-top: 3px;
+  color: #173c35;
+}
+
+.source-list {
+  display: grid;
+  gap: 10px;
+}
+
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(90px, 0.28fr) minmax(170px, 0.42fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
+  background: #f8faf7;
+}
+
+.source-row.blocked {
+  border-color: #d9b6a8;
+  background: #fff3ee;
+}
+
+.source-row strong {
+  overflow-wrap: anywhere;
+}
+
 .mcp-token-header {
   display: grid;
   grid-template-columns: minmax(0, 0.42fr) minmax(260px, 0.58fr);
@@ -455,7 +501,8 @@ code {
   .steps,
   .one-line-example,
   .mcp-token-header,
-  .mcp-token-row {
+  .mcp-token-row,
+  .source-row {
     grid-template-columns: 1fr;
   }
 

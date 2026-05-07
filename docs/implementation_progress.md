@@ -12,6 +12,7 @@
 - Added `/api/capture` raw behavior ingestion.
 - Added scheduled Raw Behavior -> Semantic Event extraction.
 - Added user identity fields, anonymous IDs, session IDs, device IDs, lightweight device fingerprints, device info, IP, passive geo headers, and custom `properties` / `context` fields to the capture and semantic event model.
+- Added cross-platform capture source fields, source statistics in the developer console, and project-level source blocking for suspicious public project-key writes.
 - Added DAU, unique user, and unique device summary output.
 - Added `/mcp` remote MCP endpoint with JSON-RPC `initialize`, `tools/list`, `tools/call`, and `ping`, plus a GET preview for manual debugging.
 - Added independent multi-token MCP authorization so MCP access no longer reuses the public Auto Capture project key.

@@ -258,8 +258,10 @@ connect-src https://tracemind.sandbox.galaxycloud.app
 - 在隐私政策中说明行为分析、设备信息、IP/地理位置采集。
 - 对欧盟、加州、中国等地区用户，结合业务场景提供同意管理或 opt-out。
 - 不要在 URL query string、DOM id、class、placeholder、aria-label 中放敏感信息。
-- 生产环境建议开启域名白名单、Origin/Referer 校验、rate limit 和异常流量过滤。
+- 生产环境建议开启 rate limit 和异常流量过滤；域名白名单可以在客户明确需要更强治理时再启用。
 
 `data-tracemind-token` 是公开项目 token，不是开发者密钥。但它会暴露在前端，因此服务端必须把它当作公开标识处理，不能把它当作私密凭证。
+
+TraceMind 会记录采集来源并在控制台展示来源统计。Web 来源会归一化为跨平台字段 `sourceType: "web"` 和 `sourceKey`，其中 `sourceKey` 优先来自请求 `Origin`，其次来自请求 `Referer`，最后回退到页面 hostname；未来 iOS/Android 可复用同一字段放 bundle id 或 package name。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
 
 MCP Token 是查询凭证，不要放到前端页面里。为不同成员或 Agent 使用不同 MCP Token，泄露时只刷新或删除对应 token。

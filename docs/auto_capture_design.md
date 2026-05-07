@@ -101,6 +101,11 @@ window.TraceMind.capture("custom", {
     "language": "zh-CN",
     "timezone": "Asia/Shanghai"
   },
+  "source": {
+    "type": "web",
+    "url": "https://app.example.com/pricing?plan=pro",
+    "referrer": "https://google.com/search?q=app"
+  },
   "type": "custom",
   "eventName": "checkout_started",
   "path": "/pricing",
@@ -130,7 +135,14 @@ window.TraceMind.capture("custom", {
 
 - `ip`: 从 `x-forwarded-for`、`cf-connecting-ip`、`x-real-ip` 或 socket 地址读取。
 - `geo`: 从 Cloudflare、Vercel、CloudFront、App Engine 等代理/CDN 请求头读取国家、地区、城市。
+- `sourceType` / `sourceKey` / `sourceLabel` / `sourceDetails`: 从 SDK payload 和请求头归一化得到的来源字段。Web 的 `sourceKey` 优先使用请求 `Origin`，其次使用请求 `Referer`，最后才回退到 SDK payload URL；iOS/Android 后续可使用 bundle id 或 package name。
 - `semanticStatus: "pending"`: 等待语义抽取任务处理。
+
+## 来源治理
+
+`data-tracemind-token` 是公开项目 key，不是密钥。为了保持一行脚本的低接入成本，MVP 不要求开发者预先配置白名单。
+
+服务端会统计每个项目的来源。开发者可以在控制台看到最近写入该项目 key 的来源、事件数和最近出现时间；已屏蔽来源即使没有近期事件，也会保留在列表中以便解除屏蔽。发现异常来源后，可以屏蔽对应 `sourceType + sourceKey`。屏蔽命中后，`/api/capture` 仍返回正常 ok，但不会插入 `RawBehaviors`，也不会产生语义事件。
 
 ## 元素区分
 
@@ -144,11 +156,13 @@ window.TraceMind.capture("custom", {
 ## 跨平台字段
 
 - `platform`: 当前约定为 `web`、`ios`、`android`、`server`，但不强制封闭，方便未来 SDK 扩展。
+- `sourceType` 和 `sourceKey`: 表达采集来源，避免使用 `hostname` 这种 Web-only 字段名。Web 使用页面 hostname；Native SDK 后续使用应用标识。
 - `deviceInfo`: 平台差异字段放这里，例如 iOS/Android 的 OS version、app version、model、network。
 - `properties` 和 `context`: 所有业务扩展字段都放这里，避免为每个业务事件改表。
 
 ## MVP 决策
 
 - 项目 key 是公开采集 key，只允许写入行为数据。
+- 项目 key 不做默认白名单；先提供来源统计和项目级来源屏蔽。
 - 脚本优先使用 `navigator.sendBeacon`，失败时回退到 `fetch(..., keepalive: true)`。
 - 暂不做 session replay、DOM snapshot、脱敏规则或批量压缩。

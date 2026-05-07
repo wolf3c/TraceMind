@@ -6,6 +6,8 @@ import {
   SemanticEvents,
   buildEventQuery,
   buildRawBehaviorQuery,
+  isSourceBlocked,
+  normalizeCaptureSource,
   publicRawBehavior,
   publicSemanticEvent,
 } from '/imports/api/tracemind';
@@ -288,6 +290,14 @@ function clientScript(host) {
     });
   }
 
+  function currentSource() {
+    return {
+      type: 'web',
+      url: location.href,
+      referrer: document.referrer
+    };
+  }
+
   var fingerprint = hash(JSON.stringify(fingerprintInfo()), 'tm_fp_');
 
   function textOf(element) {
@@ -392,6 +402,7 @@ function clientScript(host) {
       deviceFingerprint: fingerprint,
       platform: 'web',
       deviceInfo: deviceInfo(),
+      source: currentSource(),
       type: type,
       eventName: data && data.eventName,
       path: location.pathname + location.search,
@@ -457,6 +468,54 @@ function clientScript(host) {
 })();`;
 }
 
+export async function ingestCapturePayload(payload = {}, req = {}) {
+  payload = payload || {};
+  const project = await resolveProjectByKey(payload.projectKey);
+  if (!project) {
+    return { ok: false, statusCode: 401, error: 'invalid_project_key' };
+  }
+  const source = normalizeCaptureSource(payload, req.headers || {});
+
+  if (isSourceBlocked(project, source)) {
+    return { ok: true, ignored: true };
+  }
+
+  await RawBehaviors.insertAsync({
+    projectId: project._id,
+    projectKey: project.projectKey,
+    sessionId: safeString(payload.sessionId, 120),
+    anonymousId: safeString(payload.anonymousId, 120),
+    userId: safeString(payload.userId, 160),
+    deviceId: safeString(payload.deviceId, 120),
+    deviceFingerprint: safeString(payload.deviceFingerprint, 120),
+    platform: safeString(payload.platform, 40, 'web'),
+    deviceInfo: safeObject(payload.deviceInfo),
+    ip: safeString(clientIp(req), 80),
+    geo: { ...geoFromHeaders(req), ...safeObject(payload.geo, 2048) },
+    sourceType: source.sourceType,
+    sourceKey: source.sourceKey,
+    sourceLabel: source.sourceLabel,
+    sourceDetails: source.sourceDetails,
+    type: safeString(payload.type, 40, 'custom'),
+    eventName: safeString(payload.eventName || payload.name || payload.type, 120),
+    path: safeString(payload.path, 500, '/'),
+    title: safeString(payload.title, 160),
+    targetText: safeString(payload.targetText, 200),
+    targetTag: safeString(payload.targetTag, 40),
+    target: safeObject(payload.target, 4096),
+    targetHash: safeString(payload.targetHash, 160),
+    method: safeString(payload.method, 20),
+    status: safeString(payload.status, 20),
+    properties: safeObject(payload.properties || payload.custom || payload.data),
+    context: safeObject(payload.context),
+    occurredAt: payload.occurredAt ? new Date(payload.occurredAt) : new Date(),
+    semanticStatus: 'pending',
+    createdAt: new Date(),
+  });
+
+  return { ok: true, ignored: false };
+}
+
 async function handleCapture(req, res) {
   if (req.method === 'OPTIONS') {
     sendJson(res, 204, {});
@@ -476,40 +535,11 @@ async function handleCapture(req, res) {
     return;
   }
 
-  const project = await resolveProjectByKey(payload.projectKey);
-  if (!project) {
-    sendJson(res, 401, { error: 'invalid_project_key' });
+  const result = await ingestCapturePayload(payload, req);
+  if (!result.ok) {
+    sendJson(res, result.statusCode || 400, { error: result.error });
     return;
   }
-
-  await RawBehaviors.insertAsync({
-    projectId: project._id,
-    projectKey: project.projectKey,
-    sessionId: safeString(payload.sessionId, 120),
-    anonymousId: safeString(payload.anonymousId, 120),
-    userId: safeString(payload.userId, 160),
-    deviceId: safeString(payload.deviceId, 120),
-    deviceFingerprint: safeString(payload.deviceFingerprint, 120),
-    platform: safeString(payload.platform, 40, 'web'),
-    deviceInfo: safeObject(payload.deviceInfo),
-    ip: safeString(clientIp(req), 80),
-    geo: { ...geoFromHeaders(req), ...safeObject(payload.geo, 2048) },
-    type: safeString(payload.type, 40, 'custom'),
-    eventName: safeString(payload.eventName || payload.name || payload.type, 120),
-    path: safeString(payload.path, 500, '/'),
-    title: safeString(payload.title, 160),
-    targetText: safeString(payload.targetText, 200),
-    targetTag: safeString(payload.targetTag, 40),
-    target: safeObject(payload.target, 4096),
-    targetHash: safeString(payload.targetHash, 160),
-    method: safeString(payload.method, 20),
-    status: safeString(payload.status, 20),
-    properties: safeObject(payload.properties || payload.custom || payload.data),
-    context: safeObject(payload.context),
-    occurredAt: payload.occurredAt ? new Date(payload.occurredAt) : new Date(),
-    semanticStatus: 'pending',
-    createdAt: new Date(),
-  });
 
   sendJson(res, 202, { ok: true });
 }
