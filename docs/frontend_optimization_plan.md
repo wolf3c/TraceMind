@@ -119,3 +119,30 @@
 - Run `npx svelte-check --compiler-warnings error`.
 - Run `npm test`.
 - Inspect the Chinese landing page copy and verify the setup flow says `1 分钟接入流程`.
+
+## 2026-05-07 Auth Restore State Pass
+
+### Current Behavior
+
+- The console section uses `dashboard === null` for both signed-out and dashboard-not-loaded states.
+- After a production refresh, Meteor Accounts restores the session asynchronously, then the client calls `tracemind.dashboard`.
+- During that gap, authenticated developers can briefly see the email verification login form.
+
+### Target Behavior
+
+- Resolve console rendering through explicit states: ready, restoring session, loading dashboard, dashboard error, and signed out.
+- Show the login form only after Meteor confirms there is no logged-in user.
+- Keep dashboard load failures inside an authenticated error panel with retry and logout controls.
+
+### Risks
+
+- Dashboard refresh requests must not race with logout or a later request.
+- Automatic dashboard load failures should not be hidden by falling back to the login form.
+- Existing login, project creation, source blocking, MCP token, refresh, and logout flows must keep their current method contracts.
+
+### Verification Plan
+
+- Add Meteor Mocha coverage for the console-state resolver before implementation.
+- Run `npm test`.
+- Run `npx svelte-check --compiler-warnings error`.
+- Manually refresh an authenticated production-like session and verify the login form does not flash before the console loads.

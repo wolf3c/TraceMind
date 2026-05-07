@@ -17,6 +17,10 @@ Provide the minimum login and authorization flow developers need before installi
 
 The developer `authToken` still exists internally for compatibility with early API experiments, but the MVP console does not expose it. New users only need the project key.
 
+## Client Session Restore
+
+Meteor Accounts restores the browser session asynchronously after a page refresh. The console UI must not treat a missing `dashboard` object as proof that the developer is signed out. It distinguishes session restore, confirmed signed-out, dashboard loading, dashboard error, and ready states so production latency does not briefly show the email login form to an already authenticated developer.
+
 ## Collections
 
 - `Meteor.users`: owned by Meteor Accounts and `accounts-passwordless`.

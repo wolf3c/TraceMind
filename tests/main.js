@@ -14,6 +14,7 @@ import {
   summarizeBehaviorSources,
 } from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
+import { resolveConsoleState } from '../imports/ui/console_state';
 import enMessages from '../imports/ui/i18n/locales/en';
 import zhMessages from '../imports/ui/i18n/locales/zh';
 import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n';
@@ -106,6 +107,10 @@ describe('TraceMind', function () {
       'See how users actually use your product with one line of code.',
       'Email',
       'Send code',
+      'Checking your session...',
+      'Loading your console...',
+      'Could not load your console.',
+      'Retry',
       'Create project',
       'Project created.',
     ];
@@ -134,6 +139,68 @@ describe('TraceMind', function () {
 
       assert.strictEqual(translateMessage(messages, 'greeting', { name: 'TraceMind' }), 'Hello TraceMind');
       assert.strictEqual(translateMessage(messages, 'missing.key'), 'missing.key');
+    });
+  });
+
+  describe('Console state', function () {
+    it('shows the dashboard when dashboard data exists', function () {
+      assert.strictEqual(
+        resolveConsoleState({
+          dashboard: { developer: { email: 'founder@example.com' } },
+          userId: null,
+          loggingIn: true,
+          dashboardLoadError: 'network failed',
+        }),
+        'ready',
+      );
+    });
+
+    it('keeps the login form hidden while Meteor restores the session', function () {
+      assert.strictEqual(
+        resolveConsoleState({
+          dashboard: null,
+          userId: null,
+          loggingIn: true,
+          dashboardLoadError: '',
+        }),
+        'restoring-session',
+      );
+    });
+
+    it('shows the login form only after the signed-out state is confirmed', function () {
+      assert.strictEqual(
+        resolveConsoleState({
+          dashboard: null,
+          userId: null,
+          loggingIn: false,
+          dashboardLoadError: '',
+        }),
+        'signed-out',
+      );
+    });
+
+    it('keeps the login form hidden while an authenticated dashboard loads', function () {
+      assert.strictEqual(
+        resolveConsoleState({
+          dashboard: null,
+          userId: 'user-1',
+          loggingIn: false,
+          dashboardLoadError: '',
+        }),
+        'loading-dashboard',
+      );
+    });
+
+    it('shows an authenticated dashboard error instead of the login form', function () {
+      assert.strictEqual(
+        resolveConsoleState({
+          dashboard: null,
+          userId: 'user-1',
+          loggingIn: false,
+          dashboardLoadError: 'network failed',
+        }),
+        'dashboard-error',
+      );
     });
   });
 

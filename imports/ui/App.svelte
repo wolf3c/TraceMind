@@ -4,6 +4,7 @@
   import { Tracker } from "meteor/tracker";
   import { get } from "svelte/store";
   import { buildAgentInstallPrompt } from "./agent_setup";
+  import { resolveConsoleState } from "./console_state";
   import { locale, locales, t } from "./i18n/i18n";
 
   const currentOrigin = () => (typeof location === "undefined" ? "" : location.origin);
@@ -18,11 +19,22 @@
   let projectName = $state("");
   let mcpTokenName = $state("");
   let selectedLocale = $state("en");
-  let userId = $state(null);
+  let userId = $state(Meteor.userId());
+  let loggingIn = $state(!Meteor.userId() || Meteor.loggingIn());
   let dashboard = $state(null);
+  let dashboardLoading = $state(false);
+  let dashboardLoadError = $state("");
+  let dashboardRequestId = $state(0);
   let status = $state("");
   let loading = $state(false);
+  let dashboardLoadPromise = null;
 
+  let consoleState = $derived(resolveConsoleState({
+    dashboard,
+    userId,
+    loggingIn,
+    dashboardLoadError,
+  }));
   let primaryProject = $derived(dashboard?.projects?.[0]);
   let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
   let sourceSummary = $derived(primaryProject ? (dashboard?.sourceSummaries?.[primaryProject._id] || []) : []);
@@ -125,8 +137,49 @@
   }
 
   async function loadDashboard() {
-    if (!Meteor.userId()) return;
-    dashboard = await callMethod("tracemind.dashboard");
+    const requestUserId = Meteor.userId();
+    if (!requestUserId) return null;
+    if (dashboardLoadPromise) return dashboardLoadPromise;
+
+    const requestId = dashboardRequestId + 1;
+    dashboardRequestId = requestId;
+    dashboardLoading = true;
+    dashboardLoadError = "";
+
+    const loadPromise = callMethod("tracemind.dashboard")
+      .then((nextDashboard) => {
+        if (requestId !== dashboardRequestId || requestUserId !== Meteor.userId()) return null;
+        dashboard = nextDashboard;
+        return nextDashboard;
+      })
+      .catch((error) => {
+        if (requestId === dashboardRequestId && requestUserId === Meteor.userId()) {
+          dashboardLoadError = errorMessage(error);
+        }
+        throw error;
+      })
+      .finally(() => {
+        if (dashboardLoadPromise === loadPromise) {
+          dashboardLoadPromise = null;
+        }
+        if (requestId === dashboardRequestId && requestUserId === Meteor.userId()) {
+          dashboardLoading = false;
+        }
+      });
+
+    dashboardLoadPromise = loadPromise;
+    return loadPromise;
+  }
+
+  async function retryDashboard() {
+    status = "";
+    try {
+      await loadDashboard();
+    } catch (error) {
+      if (dashboard) {
+        status = errorMessage(error);
+      }
+    }
   }
 
   async function createProject() {
@@ -294,6 +347,13 @@
   }
 
   function logout() {
+    dashboardRequestId += 1;
+    dashboardLoadPromise = null;
+    dashboardLoading = false;
+    dashboardLoadError = "";
+    userId = null;
+    loggingIn = false;
+    dashboard = null;
     Meteor.logout(() => {
       userId = null;
       dashboard = null;
@@ -315,18 +375,28 @@
 
   $effect(() => {
     const computation = Tracker.autorun(() => {
-      userId = Meteor.userId();
-      if (userId && window.TraceMind) {
-        window.TraceMind.identify(userId);
+      const nextUserId = Meteor.userId();
+      const nextLoggingIn = Meteor.loggingIn();
+      userId = nextUserId;
+      loggingIn = nextLoggingIn;
+
+      if (nextUserId && window.TraceMind) {
+        window.TraceMind.identify(nextUserId);
       }
-      if (!userId) {
-        dashboard = null;
+
+      if (!nextUserId) {
+        if (!nextLoggingIn) {
+          dashboardRequestId += 1;
+          dashboardLoadPromise = null;
+          dashboardLoading = false;
+          dashboardLoadError = "";
+          dashboard = null;
+        }
         return;
       }
-      if (!dashboard) {
-        loadDashboard().catch((error) => {
-          status = errorMessage(error);
-        });
+
+      if (!dashboard && !dashboardLoading && !dashboardLoadError) {
+        loadDashboard().catch(() => {});
       }
     });
 
@@ -355,7 +425,7 @@
             {/each}
           </select>
         </label>
-        {#if dashboard}
+        {#if userId}
           <button class="ghost" type="button" onclick={logout}>{$t("Log out")}</button>
         {/if}
       </div>
@@ -465,7 +535,7 @@
       <h2>{$t("Log in, copy your setup script, and start capturing real user behavior.")}</h2>
     </div>
 
-    {#if !dashboard}
+    {#if consoleState === "signed-out"}
       <div class="auth-panel card-panel">
         <label class="field-label">
           <span>{$t("Email")}</span>
@@ -479,6 +549,28 @@
           <input id="login-code" name="code" bind:value={code} inputmode="numeric" placeholder={$t("123456")} />
         </label>
         <button type="button" onclick={verifyCode} disabled={loading}>{$t("Log in")}</button>
+      </div>
+    {:else if consoleState === "restoring-session"}
+      <div class="console-state-panel card-panel" role="status" aria-live="polite">
+        <span class="tm-badge tm-badge-signal">{$t("Developer console")}</span>
+        <strong>{$t("Checking your session...")}</strong>
+      </div>
+    {:else if consoleState === "loading-dashboard"}
+      <div class="console-state-panel card-panel" role="status" aria-live="polite">
+        <span class="tm-badge tm-badge-signal">{$t("Developer console")}</span>
+        <strong>{$t("Loading your console...")}</strong>
+      </div>
+    {:else if consoleState === "dashboard-error"}
+      <div class="console-state-panel card-panel" role="alert">
+        <span class="tm-badge tm-badge-amber">{$t("Developer console")}</span>
+        <strong>{$t("Could not load your console.")}</strong>
+        <p>{dashboardLoadError}</p>
+        <div class="console-state-actions">
+          <button type="button" onclick={retryDashboard} disabled={dashboardLoading}>
+            {dashboardLoading ? $t("Loading your console...") : $t("Retry")}
+          </button>
+          <button class="ghost" type="button" onclick={logout}>{$t("Log out")}</button>
+        </div>
       </div>
     {:else}
       <div class="dashboard-grid">
@@ -651,7 +743,7 @@
       <div class="events card-panel">
         <div class="events-header">
           <h3>{$t("Recent semantic events")}</h3>
-          <button class="ghost" type="button" onclick={loadDashboard}>{$t("Refresh")}</button>
+          <button class="ghost" type="button" onclick={retryDashboard} disabled={dashboardLoading}>{$t("Refresh")}</button>
         </div>
         {#if dashboard.recentEvents.length}
           <ul>

@@ -200,6 +200,7 @@ button:disabled {
 
 .signal-panel,
 .auth-panel,
+.console-state-panel,
 .account-panel,
 .setup-panel,
 .events,
@@ -464,6 +465,29 @@ button:disabled {
   max-width: 560px;
   gap: 16px;
   padding: 22px;
+}
+
+.console-state-panel {
+  display: grid;
+  max-width: 560px;
+  gap: 12px;
+  padding: 22px;
+}
+
+.console-state-panel strong {
+  color: var(--deep);
+  font-size: clamp(1.2rem, 2vw, 1.55rem);
+}
+
+.console-state-panel p {
+  margin: 0;
+  color: #5f6f68;
+}
+
+.console-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 label {
