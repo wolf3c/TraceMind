@@ -1,14 +1,15 @@
 {
   "name": "tracemind-instrumentation",
-  "guidanceVersion": "2026.05.07.1",
+  "guidanceVersion": "2026.05.07.2",
   "resources": {
     "skill": "/agents/tracemind/SKILL.md",
     "agentSnippet": "/agents/tracemind/AGENTS_SNIPPET.md",
     "manifest": "/agents/tracemind/manifest.json"
   },
   "mcp": {
-    "serverName": "tracemind",
+    "serverNamePattern": "tm-<project-code>",
     "tools": [
+      "tracemind.project_info",
       "tracemind.agent_guidance",
       "tracemind.capture_setup",
       "tracemind.search_event_names",
@@ -18,5 +19,5 @@
       "tracemind.privacy_check"
     ]
   },
-  "updatePolicy": "Check tracemind.agent_guidance before changing TraceMind instrumentation. Ask the user before updating local skill or instruction files."
+  "updatePolicy": "Check tracemind.agent_guidance before changing TraceMind instrumentation. In multi-project setups, use tracemind.project_info or MCP tool metadata to confirm the project before adding events. Ask the user before updating local skill or instruction files."
 }

@@ -8,6 +8,7 @@ import {
   buildEventQuery,
   buildRawBehaviorQuery,
   isSourceBlocked,
+  mcpServerNameForProject,
   normalizeCaptureSource,
   publicRawBehavior,
   publicSemanticEvent,
@@ -17,7 +18,7 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.07.1';
+const AGENT_GUIDANCE_VERSION = '2026.05.07.2';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -102,12 +103,47 @@ function jsonRpcError(id, code, message, data) {
   };
 }
 
-export function mcpTools() {
+function projectDisplayName(project = {}) {
+  return String(project.name || 'current TraceMind project').trim() || 'current TraceMind project';
+}
+
+function projectScopedTitle(title, project = {}) {
+  return `${title} - ${projectDisplayName(project)}`;
+}
+
+function projectScopedDescription(description, project = {}) {
+  return `${description} This MCP server is bound to TraceMind project "${projectDisplayName(project)}" only.`;
+}
+
+function projectInfoResult(project = {}) {
+  return {
+    projectId: project._id,
+    projectName: projectDisplayName(project),
+    mcpServerName: mcpServerNameForProject(project),
+  };
+}
+
+export function mcpInitializeInstructions(project) {
+  return project
+    ? `使用 TraceMind 工具查看项目 "${projectDisplayName(project)}" 的语义行为事件。当前 MCP server 建议命名为 ${mcpServerNameForProject(project)}。`
+    : '使用 TraceMind 工具查看当前 Web 项目的语义行为事件。后续 tools/list 会在有效 MCP token 下返回项目身份。';
+}
+
+export function mcpTools(project) {
   return [
     {
       name: 'tracemind.event_definitions',
-      title: 'TraceMind Event Definitions',
-      description: '返回 TraceMind 语义事件定义表，帮助 LLM 判断应该查询哪些事件。',
+      title: projectScopedTitle('TraceMind Event Definitions', project),
+      description: projectScopedDescription('返回 TraceMind 语义事件定义表，帮助 LLM 判断应该查询哪些事件。', project),
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+    },
+    {
+      name: 'tracemind.project_info',
+      title: projectScopedTitle('TraceMind Project Info', project),
+      description: projectScopedDescription('返回当前 MCP server 绑定的 TraceMind 项目身份，用于多项目场景下确认项目归属。', project),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -115,8 +151,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.agent_guidance',
-      title: 'TraceMind Agent Guidance',
-      description: '返回当前 TraceMind coding agent 指导版本、公开 skill/rules 资源和推荐工作流。',
+      title: projectScopedTitle('TraceMind Agent Guidance', project),
+      description: projectScopedDescription('返回当前 TraceMind coding agent 指导版本、公开 skill/rules 资源和推荐工作流。', project),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -124,8 +160,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.capture_setup',
-      title: 'TraceMind Capture Setup',
-      description: '返回当前项目的 Web Auto Capture 项目 key 和一行接入脚本。',
+      title: projectScopedTitle('TraceMind Capture Setup', project),
+      description: projectScopedDescription('返回当前项目的 Web Auto Capture 项目 key 和一行接入脚本。', project),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -133,8 +169,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.search_event_names',
-      title: 'TraceMind Search Event Names',
-      description: '搜索内置事件定义和当前项目已出现的自定义事件，帮助 agent 复用事件名。',
+      title: projectScopedTitle('TraceMind Search Event Names', project),
+      description: projectScopedDescription('搜索内置事件定义和当前项目已出现的自定义事件，帮助 agent 复用事件名。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -145,8 +181,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.suggest_instrumentation',
-      title: 'TraceMind Suggest Instrumentation',
-      description: '根据业务意图和代码上下文摘要，建议复用事件、跳过手动埋点或创建 draft custom event。',
+      title: projectScopedTitle('TraceMind Suggest Instrumentation', project),
+      description: projectScopedDescription('根据业务意图和代码上下文摘要，建议复用事件、跳过手动埋点或创建 draft custom event。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -158,8 +194,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.validate_event_payload',
-      title: 'TraceMind Validate Event Payload',
-      description: '校验单个 TraceMind 事件 payload 的命名、字段和隐私风险。',
+      title: projectScopedTitle('TraceMind Validate Event Payload', project),
+      description: projectScopedDescription('校验单个 TraceMind 事件 payload 的命名、字段和隐私风险。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -172,8 +208,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.validate_instrumentation_diff',
-      title: 'TraceMind Validate Instrumentation Diff',
-      description: '检查本次代码 diff 中的 TraceMind 埋点命名、隐私字段和明显错误用法。',
+      title: projectScopedTitle('TraceMind Validate Instrumentation Diff', project),
+      description: projectScopedDescription('检查本次代码 diff 中的 TraceMind 埋点命名、隐私字段和明显错误用法。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -183,8 +219,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.privacy_check',
-      title: 'TraceMind Privacy Check',
-      description: '检查字段名和值样例是否疑似 PII、secret、token、raw prompt、raw user content 或完整 query URL。',
+      title: projectScopedTitle('TraceMind Privacy Check', project),
+      description: projectScopedDescription('检查字段名和值样例是否疑似 PII、secret、token、raw prompt、raw user content 或完整 query URL。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -194,8 +230,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.summary',
-      title: 'TraceMind Behavior Summary',
-      description: '汇总当前 Web 产品最近的语义行为事件。',
+      title: projectScopedTitle('TraceMind Behavior Summary', project),
+      description: projectScopedDescription('汇总当前 Web 产品最近的语义行为事件。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -216,8 +252,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.query_events',
-      title: 'TraceMind Query Semantic Events',
-      description: '按时间、事件类型、事件名、用户、Session、设备等维度查询语义事件。',
+      title: projectScopedTitle('TraceMind Query Semantic Events', project),
+      description: projectScopedDescription('按时间、事件类型、事件名、用户、Session、设备等维度查询语义事件。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -240,8 +276,8 @@ export function mcpTools() {
     },
     {
       name: 'tracemind.query_raw_behaviors',
-      title: 'TraceMind Query Raw Behaviors',
-      description: '必要时查询原始行为日志，用于复核语义事件背后的原始采集数据。',
+      title: projectScopedTitle('TraceMind Query Raw Behaviors', project),
+      description: projectScopedDescription('必要时查询原始行为日志，用于复核语义事件背后的原始采集数据。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -316,6 +352,7 @@ function guidanceResult(extra = {}) {
     resources: AGENT_GUIDANCE_RESOURCES,
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
+      'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
       'For web apps, call tracemind.capture_setup before adding manual custom events.',
       'Verify /capture.js and data-tracemind-token are installed before custom instrumentation.',
       'Search existing events before adding a custom event.',
@@ -542,10 +579,22 @@ export async function callMcpTool(project, name, args = {}) {
     );
   }
 
+  if (name === 'tracemind.project_info') {
+    const projectInfo = projectInfoResult(project);
+    return textResult(
+      `This TraceMind MCP server is bound to project "${projectInfo.projectName}" (${projectInfo.mcpServerName}).`,
+      projectInfo,
+    );
+  }
+
   if (name === 'tracemind.agent_guidance') {
+    const projectInfo = projectInfoResult(project);
     return textResult(
       `TraceMind agent guidance version ${AGENT_GUIDANCE_VERSION}.`,
-      guidanceResult(),
+      guidanceResult({
+        projectName: projectInfo.projectName,
+        mcpServerName: projectInfo.mcpServerName,
+      }),
     );
   }
 
@@ -961,8 +1010,9 @@ async function handleMcpGet(req, res) {
 
   sendJson(res, 200, {
     protocol: 'tracemind-mcp-preview',
-    tools: mcpTools().map((tool) => ({
+    tools: mcpTools(project).map((tool) => ({
       name: tool.name,
+      title: tool.title,
       description: tool.description,
     })),
     summary: summarizeSemanticEvents(events),
@@ -994,6 +1044,8 @@ async function handleMcpPost(req, res) {
   const messages = Array.isArray(message) ? message : [message];
   const responses = [];
   const url = new URL(req.url, 'http://localhost');
+  const mcpToken = mcpTokenFromRequest(req, url);
+  const requestProject = await resolveProjectByMcpToken(mcpToken);
 
   for (const item of messages) {
     if (item.id === undefined || item.id === null) {
@@ -1012,7 +1064,7 @@ async function handleMcpPost(req, res) {
           title: 'TraceMind',
           version: '1.0.0-mvp',
         },
-        instructions: '使用 TraceMind 工具查看当前 Web 项目的语义行为事件。',
+        instructions: mcpInitializeInstructions(requestProject),
       }));
       continue;
     }
@@ -1022,15 +1074,14 @@ async function handleMcpPost(req, res) {
       continue;
     }
 
-    const mcpToken = mcpTokenFromRequest(req, url);
-    const project = await resolveProjectByMcpToken(mcpToken);
+    const project = requestProject;
     if (!project) {
       responses.push(jsonRpcError(item.id, -32001, 'Invalid or missing MCP token'));
       continue;
     }
 
     if (item.method === 'tools/list') {
-      responses.push(jsonRpcResult(item.id, { tools: mcpTools() }));
+      responses.push(jsonRpcResult(item.id, { tools: mcpTools(project) }));
       continue;
     }
 

@@ -19,6 +19,18 @@ Authorization: Bearer MCP_TOKEN
 
 `MCP_TOKEN` 是独立的只读 MCP 凭证，格式为 `tm_mcp_xxx`。它不同于 Auto Capture 使用的公开 `projectKey`，项目 key 不能访问 MCP。
 
+## 多项目识别
+
+一个 MCP token 只绑定一个 TraceMind 项目。多项目使用同一个 coding agent 时，MCP server 配置名使用短稳定 ASCII 名称，例如 `tm-a8f3k2`，由项目 `_id` 归一化后取后 6 位生成，不从项目显示名生成。项目名可以是中文或包含空格，但只出现在 MCP metadata 和安装提示词里。
+
+项目归属由 MCP 自描述提供，而不是依赖 agent rules 中的静态映射：
+
+- `initialize.instructions` 在 token 可解析时说明当前 MCP 绑定的项目名和建议 server name。
+- `tools/list` 的每个 tool `title` / `description` 都包含当前项目显示名。
+- `tracemind.project_info` 返回当前 MCP 绑定的 `{ projectId, projectName, mcpServerName }`，不返回 MCP token 或项目 key。
+
+Agent 看到多个 `tm-*` TraceMind MCP server 时，应先读取 tools 描述或调用 `tracemind.project_info` 确认项目，不要只凭 server name 猜。
+
 ## Transport
 
 端点实现最小 Streamable HTTP JSON-RPC MCP 表面，协议版本为 `2025-06-18`，兼容 `2025-03-26`：
@@ -116,6 +128,26 @@ Input:
 
 ```json
 {}
+```
+
+### `tracemind.project_info`
+
+返回当前 MCP server 绑定的 TraceMind 项目身份，供多项目场景下确认项目归属。
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "projectId": "abc123",
+  "projectName": "我的 Web App",
+  "mcpServerName": "tm-abc123"
+}
 ```
 
 ### `tracemind.capture_setup`
@@ -260,5 +292,6 @@ Input:
 - LLM 默认从语义事件开始分析，但可以显式查询原始行为日志。
 - MCP 使用独立 token，可以在控制台新增、重命名、刷新或删除；刷新/删除后旧 token 立即失效。
 - MCP token 可以通过 `mcpToken` URL 参数或 `Authorization: Bearer` 传入，推荐 Bearer。
+- 多项目 MCP 配置使用短稳定 server name，项目名通过 MCP metadata 和 `tracemind.project_info` 暴露。
 - Auto Capture 的项目 key 只用于采集写入，不能访问 MCP。
 - 暂不实现 resources、prompts、SSE streaming、OAuth discovery 或多成员项目权限。

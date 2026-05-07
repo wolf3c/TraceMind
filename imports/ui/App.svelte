@@ -71,6 +71,8 @@
         locale: selectedLocale,
         origin: currentOrigin(),
         mcpUrl,
+        projectId: primaryProject._id,
+        projectName: primaryProject.name,
         skillUrl: agentSkillUrl,
         snippetUrl: agentSnippetUrl,
         manifestUrl: agentManifestUrl,

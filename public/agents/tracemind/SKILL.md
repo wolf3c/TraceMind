@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.07.1
+version: 2026.05.07.2
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -11,11 +11,12 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 ## Required Workflow
 
 1. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-2. For web apps, call `tracemind.capture_setup` and verify Web Auto Capture is installed before adding manual custom events.
-3. Search for an existing event with `tracemind.search_event_names`.
-4. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
-5. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
-6. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
+3. For web apps, call `tracemind.capture_setup` and verify Web Auto Capture is installed before adding manual custom events.
+4. Search for an existing event with `tracemind.search_event_names`.
+5. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
+6. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
+7. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
 
 ## Web Auto Capture Setup
 

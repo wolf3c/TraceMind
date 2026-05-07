@@ -9,6 +9,7 @@ import {
   buildEventQuery,
   buildRawBehaviorQuery,
   isSourceBlocked,
+  mcpServerNameForProject,
   normalizeCaptureSource,
   normalizeEmail,
   summarizeBehaviorSources,
@@ -31,17 +32,27 @@ describe('TraceMind', function () {
         locale: 'zh',
         origin: 'https://local.example',
         mcpUrl: 'https://local.example/mcp?mcpToken=tm_mcp_current',
+        projectId: 'project-中文-ABC123',
+        projectName: '我的 Web App',
         skillUrl: 'https://local.example/agents/tracemind/SKILL.md',
         snippetUrl: 'https://local.example/agents/tracemind/AGENTS_SNIPPET.md',
         manifestUrl: 'https://local.example/agents/tracemind/manifest.json',
       });
 
       assert.ok(prompt.includes('https://local.example/mcp?mcpToken=tm_mcp_current'));
+      assert.ok(prompt.includes('- Name: tm-abc123'));
+      assert.ok(prompt.includes('- Project label: 我的 Web App'));
+      assert.ok(!prompt.includes('tracemind-my-web-app'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/SKILL.md'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/AGENTS_SNIPPET.md'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/manifest.json'));
       assert.ok(prompt.includes('不要覆盖已有配置，只能合并或追加'));
       assert.ok(prompt.includes('请不要创建自定义 skill 目录'));
+      assert.ok(prompt.includes('如果已经安装过 TraceMind Skill 或已经追加过 TraceMind rules'));
+      assert.ok(prompt.includes('如果已有同名 MCP server `tm-abc123`'));
+      assert.ok(prompt.includes('如果已有其他 `tm-*` TraceMind MCP server'));
+      assert.ok(prompt.includes('如果已有旧的 `tracemind` MCP server'));
+      assert.ok(prompt.includes('优先读取 MCP tools/list 的描述或调用 `tracemind.project_info`'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
       assert.ok(prompt.includes('通过 `tracemind.capture_setup` 获取 Web Auto Capture 接入脚本'));
       assert.ok(prompt.includes('pending-global-confirmation'));
@@ -53,6 +64,8 @@ describe('TraceMind', function () {
         locale: 'en',
         origin: 'https://local.example',
         mcpUrl: 'https://local.example/mcp?mcpToken=tm_mcp_current',
+        projectId: 'project-XYZ789',
+        projectName: 'Customer Portal',
         skillUrl: 'https://local.example/agents/tracemind/SKILL.md',
         snippetUrl: 'https://local.example/agents/tracemind/AGENTS_SNIPPET.md',
         manifestUrl: 'https://local.example/agents/tracemind/manifest.json',
@@ -61,10 +74,20 @@ describe('TraceMind', function () {
         locale: 'fr',
         origin: 'https://local.example',
         mcpUrl: 'https://local.example/mcp?mcpToken=tm_mcp_current',
+        projectId: 'project-XYZ789',
+        projectName: 'Customer Portal',
       });
 
       assert.ok(prompt.includes('Install TraceMind coding agent support in the current project.'));
+      assert.ok(prompt.includes('- Name: tm-xyz789'));
+      assert.ok(prompt.includes('- Project label: Customer Portal'));
+      assert.ok(!prompt.includes('tracemind-customer-portal'));
       assert.ok(prompt.includes('Do not create a custom skill directory'));
+      assert.ok(prompt.includes('If TraceMind Skill or TraceMind rules already exist'));
+      assert.ok(prompt.includes('If an MCP server named `tm-xyz789` already exists'));
+      assert.ok(prompt.includes('If other `tm-*` TraceMind MCP servers exist'));
+      assert.ok(prompt.includes('If an old `tracemind` MCP server exists'));
+      assert.ok(prompt.includes('Prefer MCP tools/list descriptions or call `tracemind.project_info`'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
       assert.ok(prompt.includes('Call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
       assert.ok(prompt.includes('pending-global-confirmation'));
@@ -77,6 +100,12 @@ describe('TraceMind', function () {
       assert.strictEqual(fallbackPrompt.includes('请帮我在当前项目中安装 TraceMind 的 coding agent 支持。'), false);
     });
 
+    it('builds stable short MCP server names from project ids', function () {
+      assert.strictEqual(mcpServerNameForProject({ _id: 'project-中文-ABC123', name: '中文项目' }), 'tm-abc123');
+      assert.strictEqual(mcpServerNameForProject({ _id: 'tiny' }), 'tm-tiny');
+      assert.strictEqual(mcpServerNameForProject({ name: 'No id' }), 'tm-project');
+    });
+
     it('ships static public guidance without project tokens or hard-coded deployment URLs', async function () {
       const [skill, snippet, manifestResponse] = await Promise.all([
         fetch(Meteor.absoluteUrl('/agents/tracemind/SKILL.md')).then((response) => response.text()),
@@ -85,13 +114,19 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.07.1'));
+      assert.ok(skill.includes('version: 2026.05.07.2'));
       assert.ok(skill.includes('## Web Auto Capture Setup'));
+      assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.07.1');
+      assert.ok(snippet.includes('tracemind.project_info'));
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.07.2');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
+      assert.strictEqual(manifest.mcp.serverNamePattern, 'tm-<project-code>');
+      assert.strictEqual(manifest.mcp.serverName, undefined);
+      assert.ok(manifest.mcp.tools.includes('tracemind.project_info'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
+      assert.ok(manifest.updatePolicy.includes('tracemind.project_info'));
       [skill, snippet, JSON.stringify(manifest)].forEach((content) => {
         assert.ok(!content.includes('tm_mcp_'));
         assert.ok(!content.includes('tracemind.super-tree.com'));
@@ -113,14 +148,46 @@ describe('TraceMind', function () {
 
       const toolNames = mcpTools().map((tool) => tool.name);
       assert.ok(toolNames.includes('tracemind.agent_guidance'));
+      assert.ok(toolNames.includes('tracemind.project_info'));
       assert.ok(toolNames.includes('tracemind.capture_setup'));
       assert.ok(toolNames.includes('tracemind.validate_event_payload'));
       assert.ok(toolNames.includes('tracemind.validate_instrumentation_diff'));
 
+      const projectTools = mcpTools(project);
+      assert.ok(projectTools.some((tool) => (
+        tool.name === 'tracemind.summary'
+        && tool.title.includes('Agent Guidance Project')
+        && tool.description.includes('Agent Guidance Project')
+      )));
+
+      const projectInfo = await callMcpTool({
+        ...project,
+        projectKey: 'tm_proj_hidden',
+        mcpTokens: [{ token: 'tm_mcp_hidden' }],
+      }, 'tracemind.project_info', {});
+      const otherProjectInfo = await callMcpTool({
+        _id: `${projectId}-other`,
+        name: 'Other TraceMind Project',
+      }, 'tracemind.project_info', {});
+      assert.strictEqual(projectInfo.structuredContent.projectId, projectId);
+      assert.strictEqual(projectInfo.structuredContent.projectName, 'Agent Guidance Project');
+      assert.strictEqual(projectInfo.structuredContent.mcpServerName, mcpServerNameForProject(project));
+      assert.notStrictEqual(
+        otherProjectInfo.structuredContent.mcpServerName,
+        projectInfo.structuredContent.mcpServerName,
+      );
+      assert.ok(!JSON.stringify(projectInfo.structuredContent).includes('tm_mcp_'));
+      assert.ok(!JSON.stringify(projectInfo.structuredContent).includes('tm_proj_'));
+
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.07.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.07.2');
+      assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
+      assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
+      assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
       assert.ok(guidance.structuredContent.workflow.includes('For web apps, call tracemind.capture_setup before adding manual custom events.'));
+      assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
+      assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_proj_'));
 
       const search = await callMcpTool(project, 'tracemind.search_event_names', { query: 'checkout' });
       assert.ok(search.structuredContent.events.some((event) => event.eventName === 'checkout_started'));
@@ -171,6 +238,27 @@ describe('TraceMind', function () {
       assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
       assert.ok(setup.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
       assert.ok(!JSON.stringify(setup.structuredContent).includes('tm_mcp_'));
+    });
+
+    it('exposes project identity through MCP initialize and tools/list metadata', async function () {
+      const { mcpInitializeInstructions, mcpTools } = await import('../server/capture_routes');
+      const projectId = `project-http-mcp-${Date.now()}`;
+      const projectName = 'HTTP MCP Project';
+      const project = { _id: projectId, name: projectName };
+      const initializeInstructions = mcpInitializeInstructions(project);
+      const tools = mcpTools(project);
+
+      assert.ok(initializeInstructions.includes(projectName));
+      assert.ok(initializeInstructions.includes(mcpServerNameForProject(project)));
+      assert.deepStrictEqual(
+        tools.map((tool) => tool.name).sort(),
+        mcpTools().map((tool) => tool.name).sort(),
+      );
+      assert.ok(tools.some((tool) => (
+        tool.name === 'tracemind.project_info'
+        && tool.title.includes(projectName)
+        && tool.description.includes(projectName)
+      )));
     });
 
     it('reports a clear capture setup error when projectKey is missing', async function () {
