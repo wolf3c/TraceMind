@@ -6,9 +6,11 @@
     "test": "meteor test --once --driver-package meteortesting:mocha",
     "test-app": "TEST_WATCH=1 meteor test --full-app --driver-package meteortesting:mocha",
     "visualize": "meteor --production --extra-packages bundle-visualizer",
-    "deploy:setup": "mup setup --config .deploy/mup.js",
-    "deploy": "mup deploy --config .deploy/mup.js --settings .deploy/settings.json",
-    "deploy:logs": "mup logs --config .deploy/mup.js -f"
+    "deploy": "meteor deploy tracemind.sandbox.galaxycloud.app --settings .deploy/settings.json",
+    "deploy:logs": "meteor logs tracemind.sandbox.galaxycloud.app",
+    "deploy:selfhost:setup": "mup setup --config .deploy/mup.js",
+    "deploy:selfhost": "mup deploy --config .deploy/mup.js --settings .deploy/settings.json",
+    "deploy:selfhost:logs": "mup logs --config .deploy/mup.js -f"
   },
   "dependencies": {
     "@babel/runtime": "^7.23.5",

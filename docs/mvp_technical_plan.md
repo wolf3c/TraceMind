@@ -39,7 +39,7 @@ email passwordless login -> project key -> one-line web auto capture -> raw beha
 
 ## Deployment Shape
 
-TraceMind is deployed as a separate Meteor app on the same server as yezi2, served from `https://tracemind.super-tree.com`. It keeps its own MUP app name, Docker container, Meteor routes, and Mongo database while sharing the server and proxy layer. The yezi2 root app remains on `https://super-tree.com`.
+TraceMind is deployed as a separate Meteor app on Galaxy, served from `https://tracemind.sandbox.galaxycloud.app`. It keeps its own Meteor routes, runtime settings, and Mongo database. The yezi2 root app remains on `https://super-tree.com`.
 
 This deployment shape keeps `/capture.js`, `/api/capture`, and `/mcp` owned by TraceMind and avoids mixing TraceMind's background semantic extraction job or passwordless email templates into the yezi2 Meteor process. See `docs/deployment.md` for the operational commands and verification checklist.
 
