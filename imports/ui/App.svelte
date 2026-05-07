@@ -2,6 +2,7 @@
   import { Accounts } from "meteor/accounts-base";
   import { Meteor } from "meteor/meteor";
   import { Tracker } from "meteor/tracker";
+  import { untrack } from "svelte";
   import { get } from "svelte/store";
   import { buildAgentInstallPrompt } from "./agent_setup";
   import { resolveConsoleState } from "./console_state";
@@ -26,9 +27,11 @@
   let dashboardLoadError = $state("");
   let dashboardRequestId = $state(0);
   let status = $state("");
+  let copiedTarget = $state("");
   let loading = $state(false);
   let selectedProjectId = $state("");
   let dashboardLoadPromise = null;
+  let copiedTargetTimer = null;
 
   let consoleState = $derived(resolveConsoleState({
     dashboard,
@@ -55,6 +58,7 @@
   let agentInstallPrompt = $derived(
     mcpUrl
       ? buildAgentInstallPrompt({
+        locale: selectedLocale,
         origin: currentOrigin(),
         mcpUrl,
         skillUrl: agentSkillUrl,
@@ -311,10 +315,23 @@
   }
 
   async function copyAgentInstallPrompt() {
-    if (!agentInstallPrompt || !navigator?.clipboard) return;
+    await copyText("agent-install-prompt", agentInstallPrompt, "Agent install prompt copied.");
+  }
+
+  async function copyText(target, value, message) {
+    if (!value || !navigator?.clipboard) {
+      status = translateNow("Clipboard is unavailable in this browser.");
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(agentInstallPrompt);
-      status = translateNow("Agent install prompt copied.");
+      await navigator.clipboard.writeText(value);
+      copiedTarget = target;
+      status = translateNow(message);
+      if (copiedTargetTimer) window.clearTimeout(copiedTargetTimer);
+      copiedTargetTimer = window.setTimeout(() => {
+        copiedTarget = "";
+        copiedTargetTimer = null;
+      }, 1800);
     } catch (error) {
       status = errorMessage(error);
     }
@@ -385,35 +402,41 @@
     return new Date(value).toLocaleString(selectedLocale === "zh" ? "zh-CN" : "en-US");
   }
 
+  function copiedLabel(target) {
+    return copiedTarget === target ? translateNow("Copied") : translateNow("Copy");
+  }
+
   $effect(() => locale.subscribe((value) => {
     selectedLocale = value;
   }));
 
   $effect(() => {
     const computation = Tracker.autorun(() => {
-      const nextUserId = Meteor.userId();
-      const nextLoggingIn = Meteor.loggingIn();
-      userId = nextUserId;
-      loggingIn = nextLoggingIn;
+      untrack(() => {
+        const nextUserId = Meteor.userId();
+        const nextLoggingIn = Meteor.loggingIn();
+        userId = nextUserId;
+        loggingIn = nextLoggingIn;
 
-      if (nextUserId && window.TraceMind) {
-        window.TraceMind.identify(nextUserId);
-      }
-
-      if (!nextUserId) {
-        if (!nextLoggingIn) {
-          dashboardRequestId += 1;
-          dashboardLoadPromise = null;
-          dashboardLoading = false;
-          dashboardLoadError = "";
-          dashboard = null;
+        if (nextUserId && window.TraceMind) {
+          window.TraceMind.identify(nextUserId);
         }
-        return;
-      }
 
-      if (!dashboard && !dashboardLoading && !dashboardLoadError) {
-        loadDashboard().catch(() => {});
-      }
+        if (!nextUserId) {
+          if (!nextLoggingIn) {
+            dashboardRequestId += 1;
+            dashboardLoadPromise = null;
+            dashboardLoading = false;
+            dashboardLoadError = "";
+            dashboard = null;
+          }
+          return;
+        }
+
+        if (!dashboard && !dashboardLoading && !dashboardLoadError) {
+          loadDashboard().catch(() => {});
+        }
+      });
     });
 
     return () => computation.stop();
@@ -548,7 +571,7 @@
   <section id="console" class="console">
     <div class="console-header">
       <span class="tm-badge tm-badge-muted">{$t("Developer console")}</span>
-      <h2>{$t("Log in, copy your setup script, and start capturing real user behavior.")}</h2>
+      <h2>{$t("Capture real user behavior after login.")}</h2>
     </div>
 
     {#if consoleState === "signed-out"}
@@ -641,40 +664,100 @@
             </div>
             <label class="field-label">
               <span>{$t("Project key")}</span>
-              <input id="project-key" name="projectKey" readonly value={primaryProject.projectKey} />
+              <div class="field-copy-group">
+                <input id="project-key" name="projectKey" readonly value={primaryProject.projectKey} />
+                <button class:copied={copiedTarget === "project-key"} class="ghost compact-copy" type="button" onclick={() => copyText("project-key", primaryProject.projectKey, "Project key copied.")}>
+                  {copiedLabel("project-key")}
+                </button>
+              </div>
             </label>
             <label class="field-label">
               <span>{$t("One-line capture script")}</span>
-              <textarea id="capture-snippet" name="captureSnippet" readonly rows={3} value={captureSnippet}></textarea>
-            </label>
-            <label class="field-label">
-              <span>{$t("MCP URL for AI analysis")}</span>
-              <input id="mcp-url" name="mcpUrl" readonly value={mcpUrl} />
+              <div class="field-copy-group multiline">
+                <textarea id="capture-snippet" name="captureSnippet" readonly rows={2} value={captureSnippet}></textarea>
+                <button class:copied={copiedTarget === "capture-snippet"} class="ghost compact-copy" type="button" onclick={() => copyText("capture-snippet", captureSnippet, "Capture script copied.")}>
+                  {copiedLabel("capture-snippet")}
+                </button>
+              </div>
             </label>
 
             <div class="agent-setup-panel">
               <div class="agent-setup-header">
                 <div>
                   <span>{$t("Coding Agent Setup")}</span>
-                  <strong>{$t("Send this prompt to your coding agent so it installs TraceMind guidance and MCP.")}</strong>
+                  <strong>{$t("Copy the install prompt and send it to your coding agent.")}</strong>
                 </div>
-                <button class="ghost" type="button" onclick={copyAgentInstallPrompt} disabled={!agentInstallPrompt}>
-                  {$t("Copy install prompt")}
+                <button class:copied={copiedTarget === "agent-install-prompt"} class="ghost" type="button" onclick={copyAgentInstallPrompt} disabled={!agentInstallPrompt}>
+                  {copiedTarget === "agent-install-prompt" ? $t("Copied install prompt") : $t("Copy install prompt")}
                 </button>
               </div>
               {#if agentInstallPrompt}
-                <label class="field-label">
-                  <span>{$t("Agent install prompt")}</span>
-                  <textarea id="agent-install-prompt" name="agentInstallPrompt" readonly rows={10} value={agentInstallPrompt}></textarea>
-                </label>
-                <div class="agent-links">
-                  <a href={agentSkillUrl} target="_blank" rel="noreferrer">{$t("Skill")}</a>
-                  <a href={agentSnippetUrl} target="_blank" rel="noreferrer">{$t("Agent rules")}</a>
-                  <a href={agentManifestUrl} target="_blank" rel="noreferrer">{$t("Manifest")}</a>
-                </div>
+                <details class="disclosure-panel">
+                  <summary>{$t("View install prompt and guidance links")}</summary>
+                  <label class="field-label">
+                    <span>{$t("Agent install prompt")}</span>
+                    <textarea id="agent-install-prompt" name="agentInstallPrompt" readonly rows={8} value={agentInstallPrompt}></textarea>
+                  </label>
+                  <div class="agent-links">
+                    <a href={agentSkillUrl} target="_blank" rel="noreferrer">{$t("Skill")}</a>
+                    <a href={agentSnippetUrl} target="_blank" rel="noreferrer">{$t("Agent rules")}</a>
+                    <a href={agentManifestUrl} target="_blank" rel="noreferrer">{$t("Manifest")}</a>
+                  </div>
+                </details>
               {:else}
                 <p class="empty">{$t("Create an MCP token before generating the coding agent setup prompt.")}</p>
               {/if}
+
+              <details class="disclosure-panel">
+                <summary>{$t("Manage MCP tokens")}</summary>
+                <div class="mcp-token-panel">
+                  <div class="mcp-token-header">
+                    <div>
+                      <span>{$t("MCP Tokens")}</span>
+                      <strong>{$t("Assign independent read-only credentials to members or agents")}</strong>
+                    </div>
+                    <div class="mcp-token-create">
+                      <input id="mcp-token-name" name="mcpTokenName" bind:value={mcpTokenName} placeholder={$t("Cursor / Claude / teammate")} />
+                      <button type="button" onclick={createMcpToken} disabled={loading}>{$t("Add")}</button>
+                    </div>
+                  </div>
+                  {#if primaryProject.mcpTokens.length}
+                    <div class="mcp-token-list">
+                      {#each primaryProject.mcpTokens as token (token.id)}
+                        <div class="mcp-token-row">
+                          <label class="field-label">
+                            <span>{$t("Name")}</span>
+                            <input id={`mcp-token-name-${token._id}`} name={`mcpTokenName-${token._id}`} bind:value={token.name} />
+                          </label>
+                          <label class="field-label">
+                            <span>{$t("Token")}</span>
+                            <input id={`mcp-token-value-${token._id}`} name={`mcpTokenValue-${token._id}`} readonly value={token.token} />
+                          </label>
+                          <div class="mcp-url-copy">
+                            <span>{$t("MCP URL")}</span>
+                            <button class:copied={copiedTarget === `mcp-url-${token.id}`} class="ghost compact-copy" type="button" onclick={() => copyText(`mcp-url-${token.id}`, `${currentOrigin()}/mcp?mcpToken=${token.token}`, "MCP URL copied.")}>
+                              {copiedLabel(`mcp-url-${token.id}`)}
+                            </button>
+                          </div>
+                          <div class="mcp-token-actions">
+                            <button class="ghost" type="button" onclick={() => renameMcpToken(token)} disabled={loading}>
+                              {$t("Save name")}
+                            </button>
+                            <button class="ghost" type="button" onclick={() => refreshMcpToken(token)} disabled={loading}>
+                              {$t("Refresh")}
+                            </button>
+                            <button class="ghost danger" type="button" onclick={() => removeMcpToken(token)} disabled={loading}>
+                              {$t("Delete")}
+                            </button>
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {:else}
+                    <p class="empty">{$t("This project has no MCP token. Add one so AI agents can read semantic events with read-only access.")}</p>
+                  {/if}
+                </div>
+              </details>
             </div>
 
             <div class="source-panel">
@@ -717,51 +800,6 @@
               {/if}
             </div>
 
-            <div class="mcp-token-panel">
-              <div class="mcp-token-header">
-                <div>
-                  <span>{$t("MCP Tokens")}</span>
-                  <strong>{$t("Assign independent read-only credentials to members or agents")}</strong>
-                </div>
-                <div class="mcp-token-create">
-                  <input id="mcp-token-name" name="mcpTokenName" bind:value={mcpTokenName} placeholder={$t("Cursor / Claude / teammate")} />
-                  <button type="button" onclick={createMcpToken} disabled={loading}>{$t("Add")}</button>
-                </div>
-              </div>
-              {#if primaryProject.mcpTokens.length}
-                <div class="mcp-token-list">
-                  {#each primaryProject.mcpTokens as token (token.id)}
-                    <div class="mcp-token-row">
-                      <label class="field-label">
-                        <span>{$t("Name")}</span>
-                        <input id={`mcp-token-name-${token._id}`} name={`mcpTokenName-${token._id}`} bind:value={token.name} />
-                      </label>
-                      <label class="field-label">
-                        <span>{$t("Token")}</span>
-                        <input id={`mcp-token-value-${token._id}`} name={`mcpTokenValue-${token._id}`} readonly value={token.token} />
-                      </label>
-                      <label class="field-label">
-                        <span>{$t("MCP URL")}</span>
-                        <input id={`mcp-token-url-${token._id}`} name={`mcpTokenUrl-${token._id}`} readonly value={`${currentOrigin()}/mcp?mcpToken=${token.token}`} />
-                      </label>
-                      <div class="mcp-token-actions">
-                        <button class="ghost" type="button" onclick={() => renameMcpToken(token)} disabled={loading}>
-                          {$t("Save name")}
-                        </button>
-                        <button class="ghost" type="button" onclick={() => refreshMcpToken(token)} disabled={loading}>
-                          {$t("Refresh")}
-                        </button>
-                        <button class="ghost danger" type="button" onclick={() => removeMcpToken(token)} disabled={loading}>
-                          {$t("Delete")}
-                        </button>
-                      </div>
-                    </div>
-                  {/each}
-                </div>
-              {:else}
-                <p class="empty">{$t("This project has no MCP token. Add one so AI agents can read semantic events with read-only access.")}</p>
-              {/if}
-            </div>
           {/if}
         </div>
       </div>
