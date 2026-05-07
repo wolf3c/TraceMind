@@ -79,6 +79,18 @@ export function normalizeToken(token) {
   return String(token || '').trim();
 }
 
+export function publicMcpToken(token) {
+  if (!token) return null;
+
+  return {
+    id: token.id,
+    name: token.name,
+    token: token.token,
+    createdAt: token.createdAt,
+    updatedAt: token.updatedAt,
+  };
+}
+
 function validDate(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -137,6 +149,7 @@ export function publicProject(project) {
     _id: project._id,
     name: project.name,
     projectKey: project.projectKey,
+    mcpTokens: (project.mcpTokens || []).map(publicMcpToken).filter(Boolean),
     createdAt: project.createdAt,
   };
 }

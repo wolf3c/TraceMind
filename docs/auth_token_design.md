@@ -12,7 +12,8 @@ Provide the minimum login and authorization flow developers need before installi
 4. Developer submits the token, or clicks the magic login link from the email.
 5. Client calls `Meteor.passwordlessLoginWithToken()`.
 6. After login, TraceMind server uses `this.userId` to create or reuse a developer in `tracemind_developers`, and returns:
-   - `projectKey`: public capture and MCP key for the default project.
+   - `projectKey`: public Auto Capture key for the default project.
+   - `mcpTokens`: one or more independent read-only MCP tokens for the default project.
 
 The developer `authToken` still exists internally for compatibility with early API experiments, but the MVP console does not expose it. New users only need the project key.
 
@@ -20,7 +21,7 @@ The developer `authToken` still exists internally for compatibility with early A
 
 - `Meteor.users`: owned by Meteor Accounts and `accounts-passwordless`.
 - `Developers`: `{ userId, email, authToken, createdAt }`
-- `Projects`: `{ developerId, name, projectKey, createdAt }`
+- `Projects`: `{ developerId, name, projectKey, mcpTokens, createdAt }`
 
 ## Server Methods
 
@@ -35,7 +36,7 @@ The developer `authToken` still exists internally for compatibility with early A
 - No OAuth.
 - Human login uses Meteor Accounts with `accounts-passwordless`.
 - Email sending uses Meteor `email` and Mailgun SMTP through `MAIL_URL`.
-- TraceMind exposes only `projectKey` in the UI because SDK capture and MCP read access use the project-level key in the MVP.
+- TraceMind exposes `projectKey` for Auto Capture and separate MCP tokens for read-only MCP access. Project keys are public write identifiers and cannot query MCP.
 - Developer `authToken` should stay hidden until there is a separate management API that actually needs it.
 
 ## Mailgun Configuration

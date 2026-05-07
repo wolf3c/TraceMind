@@ -25,13 +25,13 @@ email passwordless login -> project key -> one-line web auto capture -> raw beha
 | Auth + projects | `server/tracemind_methods.js`, `imports/api/tracemind.js` | Configure passwordless email, map `Meteor.userId()` to developer record and project key |
 | Auto capture | `server/capture_routes.js` | Serve `/capture.js` and ingest `/api/capture` raw behavior with identity, device, IP/geo, custom fields |
 | Semantic extraction | `server/semantic_jobs.js`, `imports/api/semantic.js` | Periodically convert raw behavior into semantic events |
-| Remote MCP | `server/capture_routes.js` | Serve `/mcp?projectKey=...` with event definitions, filtered semantic event queries, raw log queries, summaries, and a GET preview |
+| Remote MCP | `server/capture_routes.js` | Serve `/mcp?mcpToken=...` or Bearer MCP tokens with event definitions, filtered semantic event queries, raw log queries, summaries, and a GET preview |
 | Tests | `tests/main.js` | Cover email normalization, semantic extraction, summary logic, and login/project creation |
 
 ## MVP Boundaries
 
 - Human login uses `accounts-passwordless` and Mailgun-backed Meteor `email`.
-- SDK capture and MCP access use a simple project key, separate from Meteor Accounts browser sessions.
+- SDK capture uses a public project key. MCP access uses independent read-only `tm_mcp_*` tokens, separate from both project keys and Meteor Accounts browser sessions.
 - Remote MCP uses a minimal Streamable HTTP JSON-RPC surface with `initialize`, `tools/list`, `tools/call`, and `ping`.
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.

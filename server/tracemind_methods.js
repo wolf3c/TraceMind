@@ -19,6 +19,20 @@ function newToken(prefix) {
   return `${prefix}_${Random.secret(32)}`;
 }
 
+function newMcpToken(nameInput = 'Default MCP Token') {
+  return {
+    id: `mcp_${Random.id(17)}`,
+    name: normalizeMcpTokenName(nameInput),
+    token: newToken('tm_mcp'),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+function normalizeMcpTokenName(nameInput) {
+  return String(nameInput || 'MCP Token').trim().slice(0, 80) || 'MCP Token';
+}
+
 function ensureMailUrlFromSettings() {
   const settingsMailUrl = Meteor.settings?.private?.MAIL_URL || Meteor.settings?.MAIL_URL;
   if (!process.env.MAIL_URL && settingsMailUrl) {
@@ -57,6 +71,24 @@ async function findDeveloperByToken(token) {
 
 async function findProjectForDeveloper(projectId, developerId) {
   return Projects.findOneAsync({ _id: projectId, developerId });
+}
+
+async function ensureProjectMcpTokens(project) {
+  if (!project) return null;
+  if (Array.isArray(project.mcpTokens) && project.mcpTokens.length) return project;
+
+  const mcpTokens = [newMcpToken()];
+  await Projects.updateAsync(project._id, { $set: { mcpTokens } });
+  return { ...project, mcpTokens };
+}
+
+async function findOwnedProjectWithMcpTokens(projectId, userId) {
+  const developer = await getOrCreateDeveloperForUser(userId);
+  const project = await findProjectForDeveloper(projectId, developer._id);
+  if (!project) {
+    throw new Meteor.Error('not-found', 'Project not found.');
+  }
+  return ensureProjectMcpTokens(project);
 }
 
 async function userEmail(userId) {
@@ -102,6 +134,7 @@ async function getOrCreateDefaultProject(developer) {
     developerId: developer._id,
     name: 'My Web App',
     projectKey: newToken('tm_proj'),
+    mcpTokens: [newMcpToken()],
     createdAt: new Date(),
   });
 
@@ -114,6 +147,12 @@ export async function resolveProjectByKey(projectKey) {
   return Projects.findOneAsync({ projectKey: key });
 }
 
+export async function resolveProjectByMcpToken(mcpToken) {
+  const token = normalizeToken(mcpToken);
+  if (!token) return null;
+  return (await Projects.findOneAsync({ 'mcpTokens.token': token })) || null;
+}
+
 Meteor.startup(() => {
   configurePasswordlessEmail();
 });
@@ -124,6 +163,7 @@ Meteor.methods({
     await getOrCreateDefaultProject(developer);
 
     const projects = await Projects.find({ developerId: developer._id }, { sort: { createdAt: 1 } }).fetchAsync();
+    const projectsWithMcpTokens = await Promise.all(projects.map(ensureProjectMcpTokens));
     const projectIds = projects.map((project) => project._id);
     const rawCount = await RawBehaviors.find({ projectId: { $in: projectIds } }).countAsync();
     const semanticCount = await SemanticEvents.find({ projectId: { $in: projectIds } }).countAsync();
@@ -135,7 +175,7 @@ Meteor.methods({
 
     return {
       developer: { email: developer.email, authToken: developer.authToken },
-      projects: projects.map(publicProject),
+      projects: projectsWithMcpTokens.map(publicProject),
       rawCount,
       semanticCount,
       summary: summarizeSemanticEvents(semanticEvents),
@@ -150,10 +190,65 @@ Meteor.methods({
       developerId: developer._id,
       name,
       projectKey: newToken('tm_proj'),
+      mcpTokens: [newMcpToken()],
       createdAt: new Date(),
     });
 
     return publicProject(await Projects.findOneAsync(projectId));
+  },
+
+  async 'tracemind.project.mcpToken.create'(projectId, nameInput) {
+    const project = await findOwnedProjectWithMcpTokens(projectId, this.userId);
+    const mcpTokens = [...project.mcpTokens, newMcpToken(nameInput)];
+    await Projects.updateAsync(project._id, { $set: { mcpTokens } });
+    return publicProject(await Projects.findOneAsync(project._id));
+  },
+
+  async 'tracemind.project.mcpToken.rename'(projectId, tokenId, nameInput) {
+    const project = await findOwnedProjectWithMcpTokens(projectId, this.userId);
+    const normalizedTokenId = String(tokenId || '');
+    const mcpTokens = project.mcpTokens.map((token) => (
+      token.id === normalizedTokenId
+        ? { ...token, name: normalizeMcpTokenName(nameInput), updatedAt: new Date() }
+        : token
+    ));
+
+    if (!mcpTokens.some((token) => token.id === normalizedTokenId)) {
+      throw new Meteor.Error('not-found', 'MCP token not found.');
+    }
+
+    await Projects.updateAsync(project._id, { $set: { mcpTokens } });
+    return publicProject(await Projects.findOneAsync(project._id));
+  },
+
+  async 'tracemind.project.mcpToken.refresh'(projectId, tokenId) {
+    const project = await findOwnedProjectWithMcpTokens(projectId, this.userId);
+    const normalizedTokenId = String(tokenId || '');
+    const mcpTokens = project.mcpTokens.map((token) => (
+      token.id === normalizedTokenId
+        ? { ...token, token: newToken('tm_mcp'), updatedAt: new Date() }
+        : token
+    ));
+
+    if (!mcpTokens.some((token) => token.id === normalizedTokenId)) {
+      throw new Meteor.Error('not-found', 'MCP token not found.');
+    }
+
+    await Projects.updateAsync(project._id, { $set: { mcpTokens } });
+    return publicProject(await Projects.findOneAsync(project._id));
+  },
+
+  async 'tracemind.project.mcpToken.remove'(projectId, tokenId) {
+    const project = await findOwnedProjectWithMcpTokens(projectId, this.userId);
+    const normalizedTokenId = String(tokenId || '');
+    const mcpTokens = project.mcpTokens.filter((token) => token.id !== normalizedTokenId);
+
+    if (mcpTokens.length === project.mcpTokens.length) {
+      throw new Meteor.Error('not-found', 'MCP token not found.');
+    }
+
+    await Projects.updateAsync(project._id, { $set: { mcpTokens } });
+    return publicProject(await Projects.findOneAsync(project._id));
   },
 
   async 'tracemind.project.summary'(projectId) {

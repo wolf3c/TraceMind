@@ -7,27 +7,29 @@
 ## Endpoint
 
 ```text
-GET /mcp?projectKey=PROJECT_KEY
-POST /mcp?projectKey=PROJECT_KEY
+GET /mcp?mcpToken=MCP_TOKEN
+POST /mcp?mcpToken=MCP_TOKEN
 ```
 
-也可以使用：
+推荐使用 Bearer 方式，避免 token 出现在 URL 日志里：
 
 ```text
-Authorization: Bearer PROJECT_KEY
+Authorization: Bearer MCP_TOKEN
 ```
+
+`MCP_TOKEN` 是独立的只读 MCP 凭证，格式为 `tm_mcp_xxx`。它不同于 Auto Capture 使用的公开 `projectKey`，项目 key 不能访问 MCP。
 
 ## Transport
 
 端点实现最小 Streamable HTTP JSON-RPC MCP 表面，协议版本为 `2025-06-18`，兼容 `2025-03-26`：
 
-- `POST /mcp?projectKey=...` 接收 JSON-RPC 消息。
+- `POST /mcp?mcpToken=...` 接收 JSON-RPC 消息。
 - `initialize` 返回 server capabilities 和 tools 能力。
 - `notifications/initialized` 返回 HTTP `202`。
 - `ping` 返回空结果。
 - `tools/list` 返回 TraceMind 工具列表。
 - `tools/call` 调用 TraceMind 工具。
-- `GET /mcp?projectKey=...` 保留为人工调试 JSON preview。
+- `GET /mcp?mcpToken=...` 保留为人工调试 JSON preview。
 
 ## Tools
 
@@ -143,5 +145,7 @@ Input:
 
 - MCP 端点只读。
 - LLM 默认从语义事件开始分析，但可以显式查询原始行为日志。
-- 项目 key 可以通过 URL 或 `Authorization: Bearer` 传入。
+- MCP 使用独立 token，可以在控制台新增、重命名、刷新或删除；刷新/删除后旧 token 立即失效。
+- MCP token 可以通过 `mcpToken` URL 参数或 `Authorization: Bearer` 传入，推荐 Bearer。
+- Auto Capture 的项目 key 只用于采集写入，不能访问 MCP。
 - 暂不实现 resources、prompts、SSE streaming、OAuth discovery 或多成员项目权限。

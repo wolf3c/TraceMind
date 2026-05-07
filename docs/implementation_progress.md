@@ -14,6 +14,7 @@
 - Added user identity fields, anonymous IDs, session IDs, device IDs, lightweight device fingerprints, device info, IP, passive geo headers, and custom `properties` / `context` fields to the capture and semantic event model.
 - Added DAU, unique user, and unique device summary output.
 - Added `/mcp` remote MCP endpoint with JSON-RPC `initialize`, `tools/list`, `tools/call`, and `ping`, plus a GET preview for manual debugging.
+- Added independent multi-token MCP authorization so MCP access no longer reuses the public Auto Capture project key.
 - Added MCP tools for event definitions, filtered semantic event queries, filtered raw behavior queries, and filtered summaries.
 - Added concise technical design docs for auth, capture, semantic extraction, MCP, and the MVP architecture.
 - Added Meteor Mocha coverage for normalization, semantic event building, summaries, and login/project creation.
@@ -35,4 +36,4 @@ npm test
 npm start
 ```
 
-Then add the capture snippet to a small test web page, generate several interactions, and verify that `/mcp?projectKey=...` returns semantic events.
+Then add the capture snippet to a small test web page, generate several interactions, and verify that `/mcp?mcpToken=...` or a Bearer MCP token returns semantic events.

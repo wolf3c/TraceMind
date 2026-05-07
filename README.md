@@ -184,6 +184,24 @@ window.TraceMind.capture("custom", {
 });
 ```
 
+## 远程 MCP 授权
+
+MCP 使用独立的只读 token，格式为 `tm_mcp_xxx`。它和 Auto Capture 的公开 `tm_proj_xxx` 项目 token 分离，项目 token 只能写入采集数据，不能查询 MCP。
+
+控制台里可以为同一个项目创建多个 MCP Token，分别发给不同成员或 Agent。泄露后可以刷新单个 token，刷新后旧 token 立即失效；也可以删除不再使用的 token。
+
+MCP 连接地址：
+
+```text
+https://tracemind.sandbox.galaxycloud.app/mcp?mcpToken=tm_mcp_xxx
+```
+
+推荐在支持自定义请求头的 MCP 客户端中使用 Bearer：
+
+```text
+Authorization: Bearer tm_mcp_xxx
+```
+
 ## 对用户网站的影响
 
 添加脚本后，TraceMind 不会修改页面 DOM、不会插入 UI、不会修改样式。它会新增：
@@ -243,3 +261,5 @@ connect-src https://tracemind.sandbox.galaxycloud.app
 - 生产环境建议开启域名白名单、Origin/Referer 校验、rate limit 和异常流量过滤。
 
 `data-tracemind-token` 是公开项目 token，不是开发者密钥。但它会暴露在前端，因此服务端必须把它当作公开标识处理，不能把它当作私密凭证。
+
+MCP Token 是查询凭证，不要放到前端页面里。为不同成员或 Agent 使用不同 MCP Token，泄露时只刷新或删除对应 token。

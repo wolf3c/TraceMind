@@ -10,7 +10,7 @@ import {
   publicSemanticEvent,
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
-import { resolveProjectByKey } from './tracemind_methods';
+import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
@@ -164,8 +164,13 @@ function mcpTools() {
   ];
 }
 
-function projectKeyFromRequest(req, url) {
-  return url.searchParams.get('projectKey') || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+function bearerToken(req) {
+  const match = String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || '';
+}
+
+function mcpTokenFromRequest(req, url) {
+  return url.searchParams.get('mcpToken') || bearerToken(req);
 }
 
 function safeLimit(value, fallback, max) {
@@ -516,10 +521,10 @@ async function handleMcpGet(req, res) {
   }
 
   const url = new URL(req.url, 'http://localhost');
-  const projectKey = projectKeyFromRequest(req, url);
-  const project = await resolveProjectByKey(projectKey);
+  const mcpToken = mcpTokenFromRequest(req, url);
+  const project = await resolveProjectByMcpToken(mcpToken);
   if (!project) {
-    sendJson(res, 401, { error: 'invalid_project_key' });
+    sendJson(res, 401, { error: 'invalid_mcp_token' });
     return;
   }
 
@@ -605,10 +610,10 @@ async function handleMcpPost(req, res) {
       continue;
     }
 
-    const projectKey = projectKeyFromRequest(req, url);
-    const project = await resolveProjectByKey(projectKey);
+    const mcpToken = mcpTokenFromRequest(req, url);
+    const project = await resolveProjectByMcpToken(mcpToken);
     if (!project) {
-      responses.push(jsonRpcError(item.id, -32001, 'Invalid or missing project key'));
+      responses.push(jsonRpcError(item.id, -32001, 'Invalid or missing MCP token'));
       continue;
     }
 

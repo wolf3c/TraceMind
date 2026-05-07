@@ -121,8 +121,11 @@ describe('TraceMind', function () {
   });
 
   if (Meteor.isServer) {
+    let resolveProjectByMcpToken;
+
     before(async function () {
-      await import('../server/tracemind_methods');
+      const methods = await import('../server/tracemind_methods');
+      resolveProjectByMcpToken = methods.resolveProjectByMcpToken;
     });
 
     it('creates TraceMind developer data from a Meteor Accounts user', async function () {
@@ -143,7 +146,76 @@ describe('TraceMind', function () {
       assert.strictEqual(result.projects.length, 1);
       assert.strictEqual(result.summary.totalEvents, 0);
       assert.ok(result.projects[0].projectKey.startsWith('tm_proj_'));
+      assert.strictEqual(result.projects[0].mcpTokens.length, 1);
+      assert.strictEqual(result.projects[0].mcpTokens[0].name, 'Default MCP Token');
+      assert.ok(result.projects[0].mcpTokens[0].token.startsWith('tm_mcp_'));
       assert.strictEqual(project._id, result.projects[0]._id);
+    });
+
+    it('resolves MCP access only through independent MCP tokens', async function () {
+      const projectId = `project-mcp-auth-${Date.now()}`;
+      const mcpToken = `tm_mcp_test_${Date.now()}`;
+      const projectKey = `tm_proj_test_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-mcp-auth',
+        name: 'MCP Auth Project',
+        projectKey,
+        mcpTokens: [{
+          id: 'mcp-token-1',
+          name: 'Agent Seat',
+          token: mcpToken,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }],
+        createdAt: new Date(),
+      });
+
+      const projectByToken = await resolveProjectByMcpToken(mcpToken);
+      const projectByProjectKey = await resolveProjectByMcpToken(projectKey);
+
+      assert.strictEqual(projectByToken._id, projectId);
+      assert.strictEqual(projectByProjectKey, null);
+    });
+
+    it('lets project owners create, rename, refresh, and remove MCP tokens', async function () {
+      const email = `mcp-owner-${Date.now()}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: email, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const createMethod = Meteor.server.method_handlers['tracemind.project.mcpToken.create'];
+      const renameMethod = Meteor.server.method_handlers['tracemind.project.mcpToken.rename'];
+      const refreshMethod = Meteor.server.method_handlers['tracemind.project.mcpToken.refresh'];
+      const removeMethod = Meteor.server.method_handlers['tracemind.project.mcpToken.remove'];
+
+      const dashboard = await dashboardMethod.apply({ userId }, []);
+      const projectId = dashboard.projects[0]._id;
+
+      const createdProject = await createMethod.apply({ userId }, [projectId, 'Claude']);
+      const createdToken = createdProject.mcpTokens.find((token) => token.name === 'Claude');
+      assert.ok(createdToken.token.startsWith('tm_mcp_'));
+
+      const renamedProject = await renameMethod.apply({ userId }, [projectId, createdToken.id, 'Cursor']);
+      assert.strictEqual(
+        renamedProject.mcpTokens.find((token) => token.id === createdToken.id).name,
+        'Cursor',
+      );
+
+      const refreshedProject = await refreshMethod.apply({ userId }, [projectId, createdToken.id]);
+      const refreshedToken = refreshedProject.mcpTokens.find((token) => token.id === createdToken.id);
+      assert.ok(refreshedToken.token.startsWith('tm_mcp_'));
+      assert.notStrictEqual(refreshedToken.token, createdToken.token);
+      assert.strictEqual(await resolveProjectByMcpToken(createdToken.token), null);
+      assert.strictEqual((await resolveProjectByMcpToken(refreshedToken.token))._id, projectId);
+
+      const removedProject = await removeMethod.apply({ userId }, [projectId, createdToken.id]);
+      assert.strictEqual(
+        removedProject.mcpTokens.some((token) => token.id === createdToken.id),
+        false,
+      );
+      assert.strictEqual(await resolveProjectByMcpToken(refreshedToken.token), null);
     });
 
     it('requires a Meteor Accounts session for the dashboard', async function () {

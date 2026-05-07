@@ -7,6 +7,7 @@
   let email = "";
   let code = "";
   let projectName = "";
+  let mcpTokenName = "";
   let userId = null;
   let dashboard = null;
   let status = "";
@@ -14,12 +15,13 @@
   let computation;
 
   $: primaryProject = dashboard?.projects?.[0];
+  $: primaryMcpToken = primaryProject?.mcpTokens?.[0];
   $: summary = dashboard?.summary;
   $: latestDau = summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0;
   $: captureSnippet = primaryProject
     ? `<script src="${location.origin}/capture.js" data-tracemind-token="${primaryProject.projectKey}" async><\/script>`
     : "";
-  $: mcpUrl = primaryProject ? `${location.origin}/mcp?projectKey=${primaryProject.projectKey}` : "";
+  $: mcpUrl = primaryMcpToken ? `${location.origin}/mcp?mcpToken=${primaryMcpToken.token}` : "";
 
   function callMethod(name, ...args) {
     return new Promise((resolve, reject) => {
@@ -110,6 +112,99 @@
       projectName = "";
       await loadDashboard();
       status = "项目已创建。";
+    } catch (error) {
+      status = errorMessage(error);
+    } finally {
+      loading = false;
+    }
+  }
+
+  function replaceProject(updatedProject) {
+    dashboard = {
+      ...dashboard,
+      projects: dashboard.projects.map((project) => (
+        project._id === updatedProject._id ? updatedProject : project
+      )),
+    };
+  }
+
+  async function createMcpToken() {
+    if (!primaryProject) return;
+
+    loading = true;
+    status = "";
+    try {
+      const updatedProject = await callMethod(
+        "tracemind.project.mcpToken.create",
+        primaryProject._id,
+        mcpTokenName.trim() || "MCP Token",
+      );
+      mcpTokenName = "";
+      replaceProject(updatedProject);
+      status = "MCP Token 已创建。";
+    } catch (error) {
+      status = errorMessage(error);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function renameMcpToken(token) {
+    if (!primaryProject || !token) return;
+
+    loading = true;
+    status = "";
+    try {
+      const updatedProject = await callMethod(
+        "tracemind.project.mcpToken.rename",
+        primaryProject._id,
+        token.id,
+        token.name,
+      );
+      replaceProject(updatedProject);
+      status = "MCP Token 名称已更新。";
+    } catch (error) {
+      status = errorMessage(error);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function refreshMcpToken(token) {
+    if (!primaryProject || !token) return;
+    if (!window.confirm("刷新后旧 MCP Token 会立即失效，确认继续？")) return;
+
+    loading = true;
+    status = "";
+    try {
+      const updatedProject = await callMethod(
+        "tracemind.project.mcpToken.refresh",
+        primaryProject._id,
+        token.id,
+      );
+      replaceProject(updatedProject);
+      status = "MCP Token 已刷新，旧 Token 已失效。";
+    } catch (error) {
+      status = errorMessage(error);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function removeMcpToken(token) {
+    if (!primaryProject || !token) return;
+    if (!window.confirm("删除后这个 MCP Token 会立即失效，确认删除？")) return;
+
+    loading = true;
+    status = "";
+    try {
+      const updatedProject = await callMethod(
+        "tracemind.project.mcpToken.remove",
+        primaryProject._id,
+        token.id,
+      );
+      replaceProject(updatedProject);
+      status = "MCP Token 已删除。";
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -289,9 +384,48 @@
               <textarea readonly rows="3">{captureSnippet}</textarea>
             </label>
             <label>
-              远程 MCP 地址
+              默认远程 MCP 地址
               <input readonly value={mcpUrl} />
             </label>
+            <div class="mcp-token-panel">
+              <div class="mcp-token-header">
+                <div>
+                  <span>MCP Tokens</span>
+                  <strong>为不同成员或 Agent 分配独立只读访问凭证</strong>
+                </div>
+                <div class="mcp-token-create">
+                  <input bind:value={mcpTokenName} placeholder="例如 Cursor / Claude / teammate" />
+                  <button on:click={createMcpToken} disabled={loading}>新增</button>
+                </div>
+              </div>
+              {#if primaryProject.mcpTokens.length}
+                <div class="mcp-token-list">
+                  {#each primaryProject.mcpTokens as token (token.id)}
+                    <div class="mcp-token-row">
+                      <label>
+                        名称
+                        <input bind:value={token.name} />
+                      </label>
+                      <label>
+                        Token
+                        <input readonly value={token.token} />
+                      </label>
+                      <label>
+                        MCP 地址
+                        <input readonly value={`${location.origin}/mcp?mcpToken=${token.token}`} />
+                      </label>
+                      <div class="mcp-token-actions">
+                        <button class="ghost" on:click={() => renameMcpToken(token)} disabled={loading}>保存名称</button>
+                        <button class="ghost" on:click={() => refreshMcpToken(token)} disabled={loading}>刷新</button>
+                        <button class="ghost danger" on:click={() => removeMcpToken(token)} disabled={loading}>删除</button>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <p class="empty">当前项目没有 MCP Token。新增后才能通过远程 MCP 查询数据。</p>
+              {/if}
+            </div>
           {/if}
         </div>
       </div>

@@ -14,6 +14,16 @@ TraceMind is a Meteor app with a Svelte client.
 
 Keep reusable code under `imports/` so Meteor imports it explicitly instead of relying on legacy file load order.
 
+## Optimization Workflow Requirements
+
+For every optimization or behavior-changing improvement, do the design work before editing production code:
+
+- First identify the current behavior, the target behavior, affected modules, risks, and verification plan.
+- Write a concise implementation plan before making code changes.
+- Reflect on whether the plan preserves existing product semantics and avoids unnecessary scope.
+- Update all relevant documentation under `docs/` in the same change, including product, technical design, implementation progress, and user-facing usage docs when affected.
+- Treat tests passing as insufficient by itself; confirm that docs, tests, and implementation all cover the requested optimization.
+
 ## Build, Test, and Development Commands
 
 - `npm start` runs `meteor run` for local development.

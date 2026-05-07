@@ -352,6 +352,66 @@ code {
   gap: 3px;
 }
 
+.mcp-token-panel {
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid #e5ded2;
+}
+
+.mcp-token-header {
+  display: grid;
+  grid-template-columns: minmax(0, 0.42fr) minmax(260px, 0.58fr);
+  gap: 14px;
+  align-items: end;
+}
+
+.mcp-token-header span {
+  display: block;
+  color: #708179;
+  font-size: 0.85rem;
+}
+
+.mcp-token-header strong {
+  display: block;
+  margin-top: 3px;
+  color: #173c35;
+}
+
+.mcp-token-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.mcp-token-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mcp-token-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.24fr) minmax(220px, 0.38fr) minmax(220px, 0.38fr);
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
+  background: #f8faf7;
+}
+
+.mcp-token-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ghost.danger {
+  border-color: #d9b6a8;
+  color: #8b2f18;
+}
+
 .events {
   margin-top: 16px;
 }
@@ -393,7 +453,9 @@ code {
   .hero-grid,
   .dashboard-grid,
   .steps,
-  .one-line-example {
+  .one-line-example,
+  .mcp-token-header,
+  .mcp-token-row {
     grid-template-columns: 1fr;
   }
 
