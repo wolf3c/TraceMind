@@ -31,6 +31,7 @@ MCP server:
 
 Add this server according to the current coding agent's MCP configuration method. Prefer project-level MCP configuration. If only global configuration is available, tell me first and wait for confirmation.
 Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md, Skill, README, source code, or any other rules file that may be committed to the repository; only write it into the agent MCP configuration.
+After MCP is configured, Call \`tracemind.capture_setup\` to retrieve the Web Auto Capture script for the current project. Use the returned public projectKey only as \`data-tracemind-token\`; never use the MCP token in frontend code.
 
 Execution requirements:
 - Before modifying any file or running any command, list the files and commands you plan to use.
@@ -68,6 +69,7 @@ MCP server:
 
 请根据当前 coding agent 的 MCP 配置方式添加这个 server。优先使用项目级 MCP 配置。如果只能使用全局配置，请先告诉我并等待确认。
 不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md、Skill、README、源码或其他会进入仓库的规则文件；只能写入 agent 的 MCP 配置。
+MCP 配好后，通过 \`tracemind.capture_setup\` 获取 Web Auto Capture 接入脚本。只把返回的公开 projectKey 用作 \`data-tracemind-token\`，不要把 MCP token 写进前端代码。
 
 执行要求：
 - 在修改任何文件或运行任何命令前，先列出你准备修改的文件和命令。

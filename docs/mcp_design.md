@@ -118,6 +118,28 @@ Input:
 {}
 ```
 
+### `tracemind.capture_setup`
+
+返回当前项目的 Web Auto Capture 公开项目 key、一行接入脚本和安全说明。Coding agent 应在 Web 项目中先调用它，验证 `/capture.js` 和 `data-tracemind-token` 已安装，再考虑添加手动 `custom` 事件。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "ok": true,
+  "projectKey": "tm_proj_xxx",
+  "captureScriptUrl": "https://tracemind.example.com/capture.js",
+  "captureSnippet": "<script src=\"https://tracemind.example.com/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
+  "tokenType": "public_auto_capture_project_key"
+}
+```
+
 ### `tracemind.search_event_names`
 
 搜索内置事件定义和当前项目已出现的自定义事件，帮助 coding agent 复用事件名，避免随意发明新的 `eventName`。

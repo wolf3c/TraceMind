@@ -12,6 +12,8 @@
 
 本地开发时，控制台会显示当前 `localhost` 对应的一行代码。
 
+Coding agent 接入时不应从静态 skill 或 rules 文件读取项目 key。应先配置 TraceMind MCP，再调用 `tracemind.capture_setup` 获取当前项目的一行 Auto Capture 脚本。
+
 ## 自动采集信号
 
 - `page_view`: 页面首次打开。

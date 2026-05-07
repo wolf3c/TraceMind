@@ -1,5 +1,6 @@
 import { WebApp } from 'meteor/webapp';
 import { Random } from 'meteor/random';
+import { Meteor } from 'meteor/meteor';
 import {
   EVENT_DEFINITIONS,
   RawBehaviors,
@@ -16,7 +17,7 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.07';
+const AGENT_GUIDANCE_VERSION = '2026.05.07.1';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -116,6 +117,15 @@ export function mcpTools() {
       name: 'tracemind.agent_guidance',
       title: 'TraceMind Agent Guidance',
       description: '返回当前 TraceMind coding agent 指导版本、公开 skill/rules 资源和推荐工作流。',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+    },
+    {
+      name: 'tracemind.capture_setup',
+      title: 'TraceMind Capture Setup',
+      description: '返回当前项目的 Web Auto Capture 项目 key 和一行接入脚本。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -306,6 +316,8 @@ function guidanceResult(extra = {}) {
     resources: AGENT_GUIDANCE_RESOURCES,
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
+      'For web apps, call tracemind.capture_setup before adding manual custom events.',
+      'Verify /capture.js and data-tracemind-token are installed before custom instrumentation.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
       'Ask the user before updating local skill or instruction files.',
@@ -321,6 +333,33 @@ function addFinding(findings, severity, code, message, path) {
     message,
     ...(path ? { path } : {}),
   });
+}
+
+function captureSetupResult(project) {
+  if (!project?.projectKey) {
+    return {
+      ok: false,
+      findings: [{
+        severity: 'error',
+        code: 'missing_project_key',
+        message: 'Current project is missing a public Auto Capture project key.',
+      }],
+    };
+  }
+
+  const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
+  return {
+    ok: true,
+    projectKey: project.projectKey,
+    captureScriptUrl,
+    captureSnippet: `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" async></script>`,
+    tokenType: 'public_auto_capture_project_key',
+    notes: [
+      'Use projectKey only for Auto Capture writes.',
+      'Do not use the MCP token as data-tracemind-token.',
+      'Do not put MCP tokens in frontend code.',
+    ],
+  };
 }
 
 function flattenFields(value, prefix = '') {
@@ -507,6 +546,16 @@ export async function callMcpTool(project, name, args = {}) {
     return textResult(
       `TraceMind agent guidance version ${AGENT_GUIDANCE_VERSION}.`,
       guidanceResult(),
+    );
+  }
+
+  if (name === 'tracemind.capture_setup') {
+    const setup = captureSetupResult(project);
+    return textResult(
+      setup.ok
+        ? 'TraceMind Web Auto Capture setup is available for this project.'
+        : 'TraceMind Web Auto Capture setup is unavailable for this project.',
+      setup,
     );
   }
 
@@ -912,24 +961,10 @@ async function handleMcpGet(req, res) {
 
   sendJson(res, 200, {
     protocol: 'tracemind-mcp-preview',
-    tools: [
-      {
-        name: 'tracemind.event_definitions',
-        description: '返回事件含义说明表，帮助 LLM 判断查询口径。',
-      },
-      {
-        name: 'tracemind.summary',
-        description: '汇总当前 Web 产品最近的语义行为事件。',
-      },
-      {
-        name: 'tracemind.query_events',
-        description: '按时间、事件名、用户、Session、设备等维度查询语义事件。',
-      },
-      {
-        name: 'tracemind.query_raw_behaviors',
-        description: '查询原始行为日志，用于复核语义分析。',
-      },
-    ],
+    tools: mcpTools().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+    })),
     summary: summarizeSemanticEvents(events),
     eventDefinitions: EVENT_DEFINITIONS,
     recentEvents: events.slice(0, 50).map(publicSemanticEvent),

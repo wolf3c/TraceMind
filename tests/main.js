@@ -38,6 +38,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('不要覆盖已有配置，只能合并或追加'));
       assert.ok(prompt.includes('请不要创建自定义 skill 目录'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
+      assert.ok(prompt.includes('通过 `tracemind.capture_setup` 获取 Web Auto Capture 接入脚本'));
       assert.ok(prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
     });
@@ -60,6 +61,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('Install TraceMind coding agent support in the current project.'));
       assert.ok(prompt.includes('Do not create a custom skill directory'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
+      assert.ok(prompt.includes('Call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
       assert.ok(prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
       assert.ok(prompt.includes('https://local.example/mcp?mcpToken=tm_mcp_current'));
@@ -78,10 +80,13 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.07'));
+      assert.ok(skill.includes('version: 2026.05.07.1'));
+      assert.ok(skill.includes('## Web Auto Capture Setup'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.07');
+      assert.ok(snippet.includes('Auto Capture before manual custom events'));
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.07.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
+      assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
       [skill, snippet, JSON.stringify(manifest)].forEach((content) => {
         assert.ok(!content.includes('tm_mcp_'));
         assert.ok(!content.includes('tracemind.super-tree.com'));
@@ -103,12 +108,14 @@ describe('TraceMind', function () {
 
       const toolNames = mcpTools().map((tool) => tool.name);
       assert.ok(toolNames.includes('tracemind.agent_guidance'));
+      assert.ok(toolNames.includes('tracemind.capture_setup'));
       assert.ok(toolNames.includes('tracemind.validate_event_payload'));
       assert.ok(toolNames.includes('tracemind.validate_instrumentation_diff'));
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.07');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.07.1');
+      assert.ok(guidance.structuredContent.workflow.includes('For web apps, call tracemind.capture_setup before adding manual custom events.'));
 
       const search = await callMcpTool(project, 'tracemind.search_event_names', { query: 'checkout' });
       assert.ok(search.structuredContent.events.some((event) => event.eventName === 'checkout_started'));
@@ -139,6 +146,35 @@ describe('TraceMind', function () {
       assert.strictEqual(diffValidation.structuredContent.ok, false);
       assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.code === 'new_event_requires_review'));
       assert.ok(diffValidation.structuredContent.findings.filter((finding) => finding.code === 'forbidden_property').length >= 3);
+    });
+
+    it('returns the current project web auto capture setup through MCP', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const project = {
+        _id: `project-capture-setup-${Date.now()}`,
+        name: 'Capture Setup Project',
+        projectKey: 'tm_proj_test',
+      };
+
+      const setup = await callMcpTool(project, 'tracemind.capture_setup', {});
+
+      assert.strictEqual(setup.structuredContent.ok, true);
+      assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
+      assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
+      assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
+      assert.ok(setup.structuredContent.captureSnippet.includes('/capture.js'));
+      assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
+      assert.ok(setup.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
+      assert.ok(!JSON.stringify(setup.structuredContent).includes('tm_mcp_'));
+    });
+
+    it('reports a clear capture setup error when projectKey is missing', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+
+      const setup = await callMcpTool({ _id: 'project-missing-key' }, 'tracemind.capture_setup', {});
+
+      assert.strictEqual(setup.structuredContent.ok, false);
+      assert.ok(setup.structuredContent.findings.some((finding) => finding.code === 'missing_project_key'));
     });
   });
 
