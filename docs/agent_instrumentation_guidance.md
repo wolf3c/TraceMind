@@ -26,6 +26,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 - 项目级 skill 只在当前 agent 明确支持官方项目级 skill 目录时安装；否则回退到项目级 rules/instructions，不创建自定义目录。
 - MCP URL 和 token 只写入 agent 的 MCP 配置，不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件。
 - 如果 MCP 只能写入全局配置，agent 必须先等待用户确认，并把结果标记为 partially installed，而不是声称三项全部完成。
+- 安装提示词跟随当前控制台 UI 语言：中文界面生成中文提示词，英文或其他语言生成英文提示词。
 
 如果项目没有 MCP token，控制台不生成安装提示词，先引导用户创建 token。
 

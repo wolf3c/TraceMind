@@ -21,8 +21,9 @@ import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n'
 
 describe('TraceMind', function () {
   describe('Coding agent guidance', function () {
-    it('builds install prompts with the current project MCP URL and public guidance links', function () {
+    it('builds Chinese install prompts with the current project MCP URL and public guidance links', function () {
       const prompt = buildAgentInstallPrompt({
+        locale: 'zh',
         origin: 'https://local.example',
         mcpUrl: 'https://local.example/mcp?mcpToken=tm_mcp_current',
         skillUrl: 'https://local.example/agents/tracemind/SKILL.md',
@@ -39,6 +40,34 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
       assert.ok(prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
+    });
+
+    it('builds English install prompts for English and unknown locales', function () {
+      const prompt = buildAgentInstallPrompt({
+        locale: 'en',
+        origin: 'https://local.example',
+        mcpUrl: 'https://local.example/mcp?mcpToken=tm_mcp_current',
+        skillUrl: 'https://local.example/agents/tracemind/SKILL.md',
+        snippetUrl: 'https://local.example/agents/tracemind/AGENTS_SNIPPET.md',
+        manifestUrl: 'https://local.example/agents/tracemind/manifest.json',
+      });
+      const fallbackPrompt = buildAgentInstallPrompt({
+        locale: 'fr',
+        origin: 'https://local.example',
+        mcpUrl: 'https://local.example/mcp?mcpToken=tm_mcp_current',
+      });
+
+      assert.ok(prompt.includes('Install TraceMind coding agent support in the current project.'));
+      assert.ok(prompt.includes('Do not create a custom skill directory'));
+      assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
+      assert.ok(prompt.includes('pending-global-confirmation'));
+      assert.ok(prompt.includes('fallback-installed'));
+      assert.ok(prompt.includes('https://local.example/mcp?mcpToken=tm_mcp_current'));
+      assert.ok(prompt.includes('https://local.example/agents/tracemind/SKILL.md'));
+      assert.ok(prompt.includes('https://local.example/agents/tracemind/AGENTS_SNIPPET.md'));
+      assert.ok(prompt.includes('https://local.example/agents/tracemind/manifest.json'));
+      assert.strictEqual(fallbackPrompt.includes('Install TraceMind coding agent support in the current project.'), true);
+      assert.strictEqual(fallbackPrompt.includes('请帮我在当前项目中安装 TraceMind 的 coding agent 支持。'), false);
     });
 
     it('ships static public guidance without project tokens or hard-coded deployment URLs', async function () {

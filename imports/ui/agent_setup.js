@@ -1,4 +1,5 @@
 export function buildAgentInstallPrompt({
+  locale,
   origin,
   mcpUrl,
   skillUrl,
@@ -9,6 +10,44 @@ export function buildAgentInstallPrompt({
   const resolvedSkillUrl = skillUrl || `${resolvedOrigin}/agents/tracemind/SKILL.md`;
   const resolvedSnippetUrl = snippetUrl || `${resolvedOrigin}/agents/tracemind/AGENTS_SNIPPET.md`;
   const resolvedManifestUrl = manifestUrl || `${resolvedOrigin}/agents/tracemind/manifest.json`;
+
+  if (locale !== 'zh') {
+    return `Install TraceMind coding agent support in the current project.
+
+Install 3 items:
+
+1. Add the TraceMind Skill
+Skill URL: ${resolvedSkillUrl}
+Read this file and first confirm whether the current agent explicitly supports a project-level skill directory. If it does, install the skill into the official project-level skill directory recognized by that agent. If project-level skills are unsupported or cannot be confirmed: Do not create a custom skill directory and do not fail; instead, append the skill link, version, and core workflow to the project-level agent instruction / rules file.
+
+2. Update the project agent instruction
+Read and append this rules snippet: ${resolvedSnippetUrl}
+Append it to AGENTS.md, CLAUDE.md, .cursor/rules, .windsurf/rules, or the current agent's supported project-level rules/instructions file.
+
+3. Add the TraceMind MCP
+MCP server:
+- Name: tracemind
+- URL: ${mcpUrl}
+
+Add this server according to the current coding agent's MCP configuration method. Prefer project-level MCP configuration. If only global configuration is available, tell me first and wait for confirmation.
+Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md, Skill, README, source code, or any other rules file that may be committed to the repository; only write it into the agent MCP configuration.
+
+Execution requirements:
+- Before modifying any file or running any command, list the files and commands you plan to use.
+- Do not overwrite existing configuration; only merge or append.
+- If existing TraceMind configuration is found, reuse and update it instead of adding duplicates.
+- After installation, verify that the skill or instruction exists, the MCP server is configured, and list TraceMind MCP tools if possible.
+- If the current agent cannot automatically verify MCP, explain the limitation.
+- If MCP is waiting for user confirmation because only global configuration is available, mark the state as "rules/skill installed, MCP pending confirmation" and do not claim all 3 items are complete.
+
+Report completion with these statuses:
+- Skill / instruction: installed | fallback-installed | pending
+- MCP: configured | pending-global-confirmation | unsupported
+- Tools: listed | manifest-only | unavailable
+
+Manifest: ${resolvedManifestUrl}
+`;
+  }
 
   return `请帮我在当前项目中安装 TraceMind 的 coding agent 支持。
 
