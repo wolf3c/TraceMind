@@ -27,6 +27,7 @@ Keep reusable code under `imports/` so Meteor imports it explicitly instead of r
 Add entries here when an agent mistake reveals a reusable rule for future work. Use this format:
 
 - `YYYY-MM-DD`: What went wrong. Root cause. Future rule to prevent recurrence.
+- `2026-05-07`: UI feedback was implemented too weakly and a duplicated MCP URL field stayed in the primary setup area after MCP token management was moved below Coding Agent setup. Root cause: screenshot annotations were mapped mechanically without rechecking the intended information hierarchy and visible success state. Future rule: for annotated UI fixes, verify each numbered note against the final hierarchy and make state changes visually obvious, especially copy actions that otherwise look inert.
 
 ## Optimization Workflow Requirements
 
