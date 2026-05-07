@@ -108,6 +108,89 @@ Input:
 }
 ```
 
+### `tracemind.agent_guidance`
+
+返回当前 coding agent guidance 版本、公开 skill/rules/manifest 路径和推荐埋点工作流。Agent 在添加或修改 TraceMind 埋点前应先调用它，发现本地 skill 过期时先请求用户确认再更新。
+
+Input:
+
+```json
+{}
+```
+
+### `tracemind.search_event_names`
+
+搜索内置事件定义和当前项目已出现的自定义事件，帮助 coding agent 复用事件名，避免随意发明新的 `eventName`。
+
+Input:
+
+```json
+{
+  "query": "checkout",
+  "limit": 20
+}
+```
+
+### `tracemind.suggest_instrumentation`
+
+根据业务意图、代码上下文摘要和平台，建议复用已有事件、跳过手动埋点，或创建 draft custom event proposal。
+
+Input:
+
+```json
+{
+  "intent": "user starts checkout",
+  "context": "pricing page checkout button handler",
+  "platform": "web"
+}
+```
+
+### `tracemind.validate_event_payload`
+
+校验单个事件 payload 的 `eventType`、`eventName`、`properties` 和 `context`，返回命名、字段和隐私风险 findings。
+
+Input:
+
+```json
+{
+  "eventType": "custom",
+  "eventName": "checkout_started",
+  "properties": {
+    "plan": "pro"
+  },
+  "context": {
+    "source": "manual"
+  }
+}
+```
+
+### `tracemind.validate_instrumentation_diff`
+
+检查本次代码 diff 是否包含明显错误的埋点调用、敏感字段、命名问题或绕过 TraceMind 规范的调用。它只返回 findings，不修改代码。
+
+Input:
+
+```json
+{
+  "diff": "git diff text"
+}
+```
+
+### `tracemind.privacy_check`
+
+检查字段名和值样例是否疑似 PII、secret、token、raw prompt、raw user content 或完整 query URL。
+
+Input:
+
+```json
+{
+  "fields": {
+    "plan": "pro",
+    "userId": "user-123"
+  }
+}
+```
+
 ## 推荐 LLM 查询顺序
 
 1. 调用 `tracemind.event_definitions` 理解事件含义和字段。
@@ -116,6 +199,14 @@ Input:
 4. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。
 
 当同一页面存在多个相同文案的按钮或输入框时，不要只按 `targetText` 判断。先查看事件里的 `target.path`、`target.id`、`target.name`、`target.testId`，再用 `targetHash` 精确查询同一元素。
+
+## 推荐 Coding Agent 埋点顺序
+
+1. 调用 `tracemind.agent_guidance` 检查 guidance 版本。
+2. 调用 `tracemind.search_event_names` 搜索可复用事件。
+3. 必要时调用 `tracemind.suggest_instrumentation` 获取复用或 draft 建议。
+4. 修改代码前后使用 `tracemind.validate_event_payload` 或 `tracemind.privacy_check` 复核字段。
+5. 完成前调用 `tracemind.validate_instrumentation_diff` 校验本次 diff。
 
 ## GET Preview Response
 

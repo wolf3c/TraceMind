@@ -93,6 +93,15 @@
 - `context` 保存上报上下文，例如 `source: "server"`、trace id、feature flag、入口渠道。
 - Web 手动埋点和服务端埋点都使用同一字段，后续扩展不用修改表结构。
 
+## 手动埋点与 Coding Agent 规则
+
+- Coding agent 添加或修改手动埋点前，应通过 MCP 搜索当前项目已有事件，优先复用业务含义匹配的 `eventName`。
+- 自动采集已经能稳定覆盖的页面浏览、点击、输入、表单提交和路由跳转，不需要重复添加手动埋点。
+- 手动 `custom` 事件适合表达自动采集无法稳定推断的业务结果，例如 `checkout_started`、`subscription_created`、`invite_sent`。
+- 如果没有匹配事件，agent 只能生成 draft custom event proposal，并让用户确认后再当作正式事件使用。
+- `eventName` 使用 lower snake_case，例如 `checkout_started`。
+- 禁止在 `properties` 或 `context` 中上报 email、phone、secret、access token、API key、raw prompt、raw user content 或带 query string 的完整 URL。
+
 ## 元素定位
 
 - `targetText` 和 `targetTag` 只适合做人类阅读摘要，不能作为唯一定位依据。

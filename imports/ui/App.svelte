@@ -3,6 +3,7 @@
   import { Meteor } from "meteor/meteor";
   import { Tracker } from "meteor/tracker";
   import { get } from "svelte/store";
+  import { buildAgentInstallPrompt } from "./agent_setup";
   import { locale, locales, t } from "./i18n/i18n";
 
   const currentOrigin = () => (typeof location === "undefined" ? "" : location.origin);
@@ -33,6 +34,20 @@
       : "",
   );
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
+  let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
+  let agentSnippetUrl = $derived(`${currentOrigin()}/agents/tracemind/AGENTS_SNIPPET.md`);
+  let agentManifestUrl = $derived(`${currentOrigin()}/agents/tracemind/manifest.json`);
+  let agentInstallPrompt = $derived(
+    mcpUrl
+      ? buildAgentInstallPrompt({
+        origin: currentOrigin(),
+        mcpUrl,
+        skillUrl: agentSkillUrl,
+        snippetUrl: agentSnippetUrl,
+        manifestUrl: agentManifestUrl,
+      })
+      : "",
+  );
 
   function callMethod(name, ...args) {
     return new Promise((resolve, reject) => {
@@ -223,6 +238,16 @@
       status = errorMessage(error);
     } finally {
       loading = false;
+    }
+  }
+
+  async function copyAgentInstallPrompt() {
+    if (!agentInstallPrompt || !navigator?.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(agentInstallPrompt);
+      status = translateNow("Agent install prompt copied.");
+    } catch (error) {
+      status = errorMessage(error);
     }
   }
 
@@ -508,6 +533,31 @@
               <span>{$t("MCP URL for AI analysis")}</span>
               <input id="mcp-url" name="mcpUrl" readonly value={mcpUrl} />
             </label>
+
+            <div class="agent-setup-panel">
+              <div class="agent-setup-header">
+                <div>
+                  <span>{$t("Coding Agent Setup")}</span>
+                  <strong>{$t("Send this prompt to your coding agent so it installs TraceMind guidance and MCP.")}</strong>
+                </div>
+                <button class="ghost" type="button" onclick={copyAgentInstallPrompt} disabled={!agentInstallPrompt}>
+                  {$t("Copy install prompt")}
+                </button>
+              </div>
+              {#if agentInstallPrompt}
+                <label class="field-label">
+                  <span>{$t("Agent install prompt")}</span>
+                  <textarea id="agent-install-prompt" name="agentInstallPrompt" readonly rows={10} value={agentInstallPrompt}></textarea>
+                </label>
+                <div class="agent-links">
+                  <a href={agentSkillUrl} target="_blank" rel="noreferrer">{$t("Skill")}</a>
+                  <a href={agentSnippetUrl} target="_blank" rel="noreferrer">{$t("Agent rules")}</a>
+                  <a href={agentManifestUrl} target="_blank" rel="noreferrer">{$t("Manifest")}</a>
+                </div>
+              {:else}
+                <p class="empty">{$t("Create an MCP token before generating the coding agent setup prompt.")}</p>
+              {/if}
+            </div>
 
             <div class="source-panel">
               <div class="source-header">

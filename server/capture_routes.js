@@ -16,6 +16,25 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
+const AGENT_GUIDANCE_VERSION = '2026.05.07';
+const AGENT_GUIDANCE_RESOURCES = {
+  skill: '/agents/tracemind/SKILL.md',
+  agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
+  manifest: '/agents/tracemind/manifest.json',
+};
+const FORBIDDEN_ANALYTICS_KEYS = [
+  'email',
+  'phone',
+  'password',
+  'secret',
+  'token',
+  'accessToken',
+  'apiKey',
+  'rawPrompt',
+  'prompt',
+  'rawUserContent',
+  'userContent',
+];
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -82,7 +101,7 @@ function jsonRpcError(id, code, message, data) {
   };
 }
 
-function mcpTools() {
+export function mcpTools() {
   return [
     {
       name: 'tracemind.event_definitions',
@@ -91,6 +110,76 @@ function mcpTools() {
       inputSchema: {
         type: 'object',
         properties: {},
+      },
+    },
+    {
+      name: 'tracemind.agent_guidance',
+      title: 'TraceMind Agent Guidance',
+      description: '返回当前 TraceMind coding agent 指导版本、公开 skill/rules 资源和推荐工作流。',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+    },
+    {
+      name: 'tracemind.search_event_names',
+      title: 'TraceMind Search Event Names',
+      description: '搜索内置事件定义和当前项目已出现的自定义事件，帮助 agent 复用事件名。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '业务意图或事件关键词，例如 checkout、signup、export。' },
+          limit: { type: 'number', description: '最多返回多少个事件，默认 20。' },
+        },
+      },
+    },
+    {
+      name: 'tracemind.suggest_instrumentation',
+      title: 'TraceMind Suggest Instrumentation',
+      description: '根据业务意图和代码上下文摘要，建议复用事件、跳过手动埋点或创建 draft custom event。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          intent: { type: 'string', description: '准备记录的用户行为或业务结果。' },
+          context: { type: 'string', description: '相关代码或产品流程摘要。' },
+          platform: { type: 'string', description: 'web、ios、android 或 server。' },
+        },
+      },
+    },
+    {
+      name: 'tracemind.validate_event_payload',
+      title: 'TraceMind Validate Event Payload',
+      description: '校验单个 TraceMind 事件 payload 的命名、字段和隐私风险。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          eventType: { type: 'string' },
+          eventName: { type: 'string' },
+          properties: { type: 'object' },
+          context: { type: 'object' },
+        },
+      },
+    },
+    {
+      name: 'tracemind.validate_instrumentation_diff',
+      title: 'TraceMind Validate Instrumentation Diff',
+      description: '检查本次代码 diff 中的 TraceMind 埋点命名、隐私字段和明显错误用法。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          diff: { type: 'string', description: 'git diff 文本。' },
+        },
+      },
+    },
+    {
+      name: 'tracemind.privacy_check',
+      title: 'TraceMind Privacy Check',
+      description: '检查字段名和值样例是否疑似 PII、secret、token、raw prompt、raw user content 或完整 query URL。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          fields: { type: 'object', description: '字段名和值样例。' },
+        },
       },
     },
     {
@@ -210,11 +299,245 @@ function textResult(text, structuredContent) {
   };
 }
 
-async function callMcpTool(project, name, args = {}) {
+function guidanceResult(extra = {}) {
+  return {
+    ok: true,
+    guidanceVersion: AGENT_GUIDANCE_VERSION,
+    resources: AGENT_GUIDANCE_RESOURCES,
+    workflow: [
+      'Call tracemind.agent_guidance before TraceMind instrumentation work.',
+      'Search existing events before adding a custom event.',
+      'Validate payloads and diffs before finishing.',
+      'Ask the user before updating local skill or instruction files.',
+    ],
+    ...extra,
+  };
+}
+
+function addFinding(findings, severity, code, message, path) {
+  findings.push({
+    severity,
+    code,
+    message,
+    ...(path ? { path } : {}),
+  });
+}
+
+function flattenFields(value, prefix = '') {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  return Object.entries(value).flatMap(([key, fieldValue]) => {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (fieldValue && typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
+      return [{ path, key, value: fieldValue }, ...flattenFields(fieldValue, path)];
+    }
+    return [{ path, key, value: fieldValue }];
+  });
+}
+
+function privacyFindings(fields = {}) {
+  const findings = [];
+  const forbidden = new Set(FORBIDDEN_ANALYTICS_KEYS.map((key) => key.toLowerCase()));
+  flattenFields(fields).forEach((field) => {
+    const key = field.key.toLowerCase();
+    const value = String(field.value || '');
+    const normalized = key.replace(/[_-]/g, '').toLowerCase();
+    const isForbiddenKey = [...forbidden].some((item) => normalized.includes(item.toLowerCase()));
+    const looksLikeEmail = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(value);
+    const looksLikeSecret = /(sk-|pk_|bearer\s+|api[_-]?key|access[_-]?token)/i.test(value);
+    const looksLikeFullQueryUrl = /^https?:\/\/\S+\?\S+/.test(value);
+
+    if (isForbiddenKey || looksLikeEmail || looksLikeSecret || looksLikeFullQueryUrl) {
+      addFinding(
+        findings,
+        'error',
+        'forbidden_property',
+        'Do not send PII, secrets, tokens, raw prompts, raw user content, or full URLs with query strings.',
+        field.path,
+      );
+    }
+  });
+  return findings;
+}
+
+function validateEventName(eventName) {
+  if (!eventName) return [];
+  return /^[a-z][a-z0-9_]*$/.test(String(eventName))
+    ? []
+    : [{
+      severity: 'warning',
+      code: 'event_name_format',
+      message: 'Use lower snake_case event names such as checkout_started.',
+      path: 'eventName',
+    }];
+}
+
+function validationResult(findings, recommendations = []) {
+  return guidanceResult({
+    ok: findings.every((finding) => finding.severity !== 'error'),
+    findings,
+    recommendations,
+    requiresUserReview: findings.some((finding) => finding.severity === 'error' || finding.severity === 'warning'),
+  });
+}
+
+function extractSensitiveKeysFromDiff(addedText) {
+  const findings = [];
+  const sensitiveKeyPattern = /\b(email|phone|password|secret|token|accessToken|apiKey|rawPrompt|rawUserContent|userContent)\b\s*:/gi;
+  [...String(addedText || '').matchAll(sensitiveKeyPattern)].forEach((match) => {
+    addFinding(
+      findings,
+      'error',
+      'forbidden_property',
+      `Do not send sensitive analytics property: ${match[1]}.`,
+    );
+  });
+  return findings;
+}
+
+async function diffFindings(project, diff = '') {
+  const findings = [];
+  const text = String(diff || '');
+  const addedLines = text.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++'));
+  const addedText = addedLines.join('\n');
+
+  if (/analytics\.track\s*\(/.test(addedText)) {
+    addFinding(
+      findings,
+      'warning',
+      'unapproved_sdk_call',
+      'Use the project-approved TraceMind capture API or SDK helper instead of ad-hoc analytics.track calls.',
+    );
+  }
+
+  privacyFindings({ diff: addedText }).forEach((finding) => findings.push(finding));
+  extractSensitiveKeysFromDiff(addedText).forEach((finding) => findings.push(finding));
+
+  const eventNameMatches = [...addedText.matchAll(/eventName\s*:\s*['"]([^'"]+)['"]/g)];
+  const knownEvents = await projectEventNames(project, '', 50);
+  const knownNames = new Set(knownEvents.flatMap((event) => [event.eventType, event.eventName]).filter(Boolean));
+  eventNameMatches.forEach((match) => {
+    validateEventName(match[1]).forEach((finding) => findings.push(finding));
+    if (!knownNames.has(match[1])) {
+      addFinding(
+        findings,
+        'warning',
+        'new_event_requires_review',
+        `Event name "${match[1]}" is not present in current TraceMind evidence. Treat it as a draft until the user approves it.`,
+        'eventName',
+      );
+    }
+  });
+
+  return findings;
+}
+
+async function projectEventNames(project, query = '', limit = 20) {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  const customEvents = await SemanticEvents.find(
+    { projectId: project._id, eventName: { $exists: true, $ne: '' } },
+    { sort: { occurredAt: -1 }, limit: 300 },
+  ).fetchAsync();
+  const byName = new Map();
+
+  EVENT_DEFINITIONS.forEach((definition) => {
+    byName.set(definition.eventType, {
+      eventType: definition.eventType,
+      eventName: '',
+      meaning: definition.meaning,
+      source: 'definition',
+    });
+  });
+
+  customEvents.forEach((event) => {
+    const key = event.eventName || event.eventType;
+    if (!byName.has(key)) {
+      byName.set(key, {
+        eventType: event.eventType,
+        eventName: event.eventName,
+        meaning: event.meaning,
+        properties: event.properties || {},
+        source: 'project',
+      });
+    }
+  });
+
+  return [...byName.values()]
+    .filter((event) => {
+      if (!normalizedQuery) return true;
+      return [event.eventType, event.eventName, event.meaning]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+    })
+    .slice(0, safeLimit(limit, 20, 50));
+}
+
+export async function callMcpTool(project, name, args = {}) {
   if (name === 'tracemind.event_definitions') {
     return textResult(
       EVENT_DEFINITIONS.map((event) => `${event.eventType}: ${event.meaning}`).join('\n'),
       { eventDefinitions: EVENT_DEFINITIONS },
+    );
+  }
+
+  if (name === 'tracemind.agent_guidance') {
+    return textResult(
+      `TraceMind agent guidance version ${AGENT_GUIDANCE_VERSION}.`,
+      guidanceResult(),
+    );
+  }
+
+  if (name === 'tracemind.search_event_names') {
+    const events = await projectEventNames(project, args.query, args.limit);
+    return textResult(
+      events.map((event) => event.eventName || event.eventType).join('\n') || '没有找到可复用事件。',
+      guidanceResult({ events }),
+    );
+  }
+
+  if (name === 'tracemind.suggest_instrumentation') {
+    const events = await projectEventNames(project, args.intent, 8);
+    const recommendations = events.length
+      ? ['Reuse an existing event if the business meaning matches.']
+      : ['Create a draft custom event proposal and ask the user for review before treating it as approved.'];
+    return textResult(
+      recommendations.join(' '),
+      guidanceResult({
+        intent: args.intent || '',
+        platform: args.platform || '',
+        events,
+        recommendations,
+        requiresUserReview: events.length === 0,
+      }),
+    );
+  }
+
+  if (name === 'tracemind.validate_event_payload') {
+    const findings = [
+      ...validateEventName(args.eventName),
+      ...privacyFindings({ properties: args.properties || {}, context: args.context || {} }),
+    ];
+    if (args.eventType && !EVENT_DEFINITIONS.some((definition) => definition.eventType === args.eventType)) {
+      addFinding(findings, 'warning', 'unknown_event_type', `Unknown eventType: ${args.eventType}`, 'eventType');
+    }
+    return textResult(
+      findings.length ? 'TraceMind found instrumentation issues.' : 'TraceMind payload validation passed.',
+      validationResult(findings, ['Use internal stable IDs instead of direct personal identifiers.']),
+    );
+  }
+
+  if (name === 'tracemind.validate_instrumentation_diff') {
+    const findings = await diffFindings(project, args.diff);
+    return textResult(
+      findings.length ? 'TraceMind found diff issues.' : 'TraceMind diff validation passed.',
+      validationResult(findings, ['Call tracemind.search_event_names before introducing new custom events.']),
+    );
+  }
+
+  if (name === 'tracemind.privacy_check') {
+    const findings = privacyFindings(args.fields || {});
+    return textResult(
+      findings.length ? 'TraceMind found privacy risks.' : 'TraceMind privacy check passed.',
+      validationResult(findings),
     );
   }
 

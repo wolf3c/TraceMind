@@ -579,6 +579,49 @@ code {
   border-bottom: 1px solid #e5ded2;
 }
 
+.agent-setup-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px 0;
+  border-top: 1px solid #e5ded2;
+}
+
+.agent-setup-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.agent-setup-header span {
+  display: block;
+  color: #708179;
+  font-size: 0.85rem;
+}
+
+.agent-setup-header strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--deep);
+}
+
+.agent-links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.agent-links a {
+  border: 1px solid #bacbc4;
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: var(--deep);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  background: #f8faf7;
+}
+
 .source-header span,
 .source-row span {
   display: block;
@@ -723,6 +766,7 @@ code {
   .dashboard-grid,
   .steps,
   .one-line-example,
+  .agent-setup-header,
   .mcp-token-header,
   .mcp-token-row,
   .source-row {

@@ -13,11 +13,92 @@ import {
   normalizeEmail,
   summarizeBehaviorSources,
 } from '../imports/api/tracemind';
+import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
 import enMessages from '../imports/ui/i18n/locales/en';
 import zhMessages from '../imports/ui/i18n/locales/zh';
 import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n';
 
 describe('TraceMind', function () {
+  describe('Coding agent guidance', function () {
+    it('builds install prompts with the current project MCP URL and public guidance links', function () {
+      const prompt = buildAgentInstallPrompt({
+        origin: 'https://local.example',
+        mcpUrl: 'https://local.example/mcp?mcpToken=tm_mcp_current',
+        skillUrl: 'https://local.example/agents/tracemind/SKILL.md',
+        snippetUrl: 'https://local.example/agents/tracemind/AGENTS_SNIPPET.md',
+        manifestUrl: 'https://local.example/agents/tracemind/manifest.json',
+      });
+
+      assert.ok(prompt.includes('https://local.example/mcp?mcpToken=tm_mcp_current'));
+      assert.ok(prompt.includes('https://local.example/agents/tracemind/SKILL.md'));
+      assert.ok(prompt.includes('https://local.example/agents/tracemind/AGENTS_SNIPPET.md'));
+      assert.ok(prompt.includes('https://local.example/agents/tracemind/manifest.json'));
+      assert.ok(prompt.includes('不要覆盖已有配置，只能合并或追加'));
+    });
+
+    it('ships static public guidance without project tokens or hard-coded deployment URLs', async function () {
+      const [skill, snippet, manifestResponse] = await Promise.all([
+        fetch(Meteor.absoluteUrl('/agents/tracemind/SKILL.md')).then((response) => response.text()),
+        fetch(Meteor.absoluteUrl('/agents/tracemind/AGENTS_SNIPPET.md')).then((response) => response.text()),
+        fetch(Meteor.absoluteUrl('/agents/tracemind/manifest.json')).then((response) => response.json()),
+      ]);
+      const manifest = manifestResponse;
+
+      assert.ok(skill.includes('version: 2026.05.07'));
+      assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.07');
+      assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
+      [skill, snippet, JSON.stringify(manifest)].forEach((content) => {
+        assert.ok(!content.includes('tm_mcp_'));
+        assert.ok(!content.includes('tracemind.super-tree.com'));
+      });
+    });
+
+    it('exposes MCP guidance and privacy validation tools', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const projectId = `project-agent-guidance-${Date.now()}`;
+      const project = { _id: projectId, name: 'Agent Guidance Project' };
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'checkout_started',
+        properties: { plan: 'pro' },
+        occurredAt: new Date('2026-05-01T10:00:00.000Z'),
+        createdAt: new Date(),
+      });
+
+      const toolNames = mcpTools().map((tool) => tool.name);
+      assert.ok(toolNames.includes('tracemind.agent_guidance'));
+      assert.ok(toolNames.includes('tracemind.validate_event_payload'));
+      assert.ok(toolNames.includes('tracemind.validate_instrumentation_diff'));
+
+      const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
+      assert.strictEqual(guidance.structuredContent.ok, true);
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.07');
+
+      const search = await callMcpTool(project, 'tracemind.search_event_names', { query: 'checkout' });
+      assert.ok(search.structuredContent.events.some((event) => event.eventName === 'checkout_started'));
+
+      const validation = await callMcpTool(project, 'tracemind.validate_event_payload', {
+        eventType: 'custom',
+        eventName: 'user_signup_completed',
+        properties: {
+          email: 'person@example.com',
+          plan: 'pro',
+        },
+      });
+      assert.strictEqual(validation.structuredContent.ok, false);
+      assert.ok(validation.structuredContent.findings.some((finding) => finding.code === 'forbidden_property'));
+
+      const diffValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
+        diff: "+ capture({ eventType: 'custom', eventName: 'new_checkout_event', properties: { email: user.email } })",
+      });
+      assert.strictEqual(diffValidation.structuredContent.ok, false);
+      assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.code === 'new_event_requires_review'));
+      assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.code === 'forbidden_property'));
+    });
+  });
+
   describe('UI i18n', function () {
     const requiredKeys = [
       'Language',

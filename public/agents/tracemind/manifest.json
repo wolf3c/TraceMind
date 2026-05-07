@@ -1,0 +1,21 @@
+{
+  "name": "tracemind-instrumentation",
+  "guidanceVersion": "2026.05.07",
+  "resources": {
+    "skill": "/agents/tracemind/SKILL.md",
+    "agentSnippet": "/agents/tracemind/AGENTS_SNIPPET.md",
+    "manifest": "/agents/tracemind/manifest.json"
+  },
+  "mcp": {
+    "serverName": "tracemind",
+    "tools": [
+      "tracemind.agent_guidance",
+      "tracemind.search_event_names",
+      "tracemind.suggest_instrumentation",
+      "tracemind.validate_event_payload",
+      "tracemind.validate_instrumentation_diff",
+      "tracemind.privacy_check"
+    ]
+  },
+  "updatePolicy": "Check tracemind.agent_guidance before changing TraceMind instrumentation. Ask the user before updating local skill or instruction files."
+}
