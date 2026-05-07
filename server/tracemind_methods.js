@@ -98,6 +98,28 @@ async function findOwnedProjectWithMcpTokens(projectId, userId) {
   return ensureProjectMcpTokens(project);
 }
 
+async function buildProjectSummary(project) {
+  const rawCount = await RawBehaviors.find({ projectId: project._id }).countAsync();
+  const semanticCount = await SemanticEvents.find({ projectId: project._id }).countAsync();
+  const events = await SemanticEvents.find(
+    { projectId: project._id },
+    { sort: { occurredAt: -1 }, limit: 200 },
+  ).fetchAsync();
+  const rawBehaviors = await RawBehaviors.find(
+    { projectId: project._id },
+    { sort: { occurredAt: -1 }, limit: 500 },
+  ).fetchAsync();
+
+  return {
+    project: publicProject(await ensureProjectMcpTokens(project)),
+    rawCount,
+    semanticCount,
+    summary: summarizeSemanticEvents(events),
+    sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
+    recentEvents: events.slice(0, 30).map(publicSemanticEvent),
+  };
+}
+
 async function userEmail(userId) {
   const user = await Meteor.users.findOneAsync(userId, {
     fields: { emails: 1 },
@@ -315,22 +337,7 @@ Meteor.methods({
     if (!project) {
       throw new Meteor.Error('not-found', 'Project not found.');
     }
-
-    const events = await SemanticEvents.find(
-      { projectId: project._id },
-      { sort: { occurredAt: -1 }, limit: 200 },
-    ).fetchAsync();
-    const rawBehaviors = await RawBehaviors.find(
-      { projectId: project._id },
-      { sort: { occurredAt: -1 }, limit: 500 },
-    ).fetchAsync();
-
-    return {
-      project: publicProject(project),
-      summary: summarizeSemanticEvents(events),
-      sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
-      recentEvents: events.slice(0, 30).map(publicSemanticEvent),
-    };
+    return buildProjectSummary(project);
   },
 
   async 'tracemind.project.summaryByToken'(authToken, projectId) {
@@ -343,21 +350,6 @@ Meteor.methods({
     if (!project) {
       throw new Meteor.Error('not-found', 'Project not found.');
     }
-
-    const events = await SemanticEvents.find(
-      { projectId: project._id },
-      { sort: { occurredAt: -1 }, limit: 200 },
-    ).fetchAsync();
-    const rawBehaviors = await RawBehaviors.find(
-      { projectId: project._id },
-      { sort: { occurredAt: -1 }, limit: 500 },
-    ).fetchAsync();
-
-    return {
-      project: publicProject(project),
-      summary: summarizeSemanticEvents(events),
-      sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
-      recentEvents: events.slice(0, 30).map(publicSemanticEvent),
-    };
+    return buildProjectSummary(project);
   },
 });

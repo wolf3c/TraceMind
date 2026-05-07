@@ -38,6 +38,7 @@
 - Added current-project selection in the developer console so newly created projects are selected immediately and existing multi-project accounts can switch the displayed project key, capture script, MCP URL, source stats, and token controls.
 - Tightened the authenticated setup console with shorter Chinese-first copy, adjacent copy buttons for the project key, capture script, and install prompt, token-scoped MCP URL copy actions, plus collapsed advanced areas for the full agent prompt and MCP token management.
 - Localized the coding-agent setup prompt so Chinese UI produces Chinese install instructions while English and other locales produce English instructions.
+- Split the multi-project console into account identity, current-project setup, and current-project events so behavior metrics, source stats, and recent events share the same selected-project scope.
 
 ### Not Yet Included
 

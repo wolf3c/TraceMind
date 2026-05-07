@@ -146,3 +146,23 @@
 - Run `npm test`.
 - Run `npx svelte-check --compiler-warnings error`.
 - Manually refresh an authenticated production-like session and verify the login form does not flash before the console loads.
+
+## 2026-05-07 Multi-project Scope Pass
+
+### Current Behavior
+
+- The account panel mixes account identity with all-project behavior metrics.
+- The selected project controls the setup panel, but recent semantic events still come from all projects.
+- Project creation is shown as a standalone form instead of an action near project selection.
+
+### Target Behavior
+
+- Keep account identity separate from behavior analytics.
+- Put project selection and compact project creation at the top of the setup panel.
+- Drive metrics, source stats, and recent events from `tracemind.project.summary(projectId)` for the selected project.
+
+### Verification Plan
+
+- Add Meteor Mocha coverage proving project summaries do not include sibling project data.
+- Run `meteor test --once --driver-package meteortesting:mocha --port <free-port>`.
+- Run `npx svelte-check`.

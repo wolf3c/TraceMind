@@ -30,6 +30,11 @@
   let copiedTarget = $state("");
   let loading = $state(false);
   let selectedProjectId = $state("");
+  let showProjectCreate = $state(false);
+  let selectedProjectSummary = $state(null);
+  let projectSummaryLoading = $state(false);
+  let projectSummaryError = $state("");
+  let projectSummaryRequestId = $state(0);
   let dashboardLoadPromise = null;
   let copiedTargetTimer = null;
 
@@ -43,8 +48,8 @@
     dashboard?.projects?.find((project) => project._id === selectedProjectId) || dashboard?.projects?.[0],
   );
   let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
-  let sourceSummary = $derived(primaryProject ? (dashboard?.sourceSummaries?.[primaryProject._id] || []) : []);
-  let summary = $derived(dashboard?.summary);
+  let sourceSummary = $derived(selectedProjectSummary?.sources || []);
+  let summary = $derived(selectedProjectSummary?.summary);
   let latestDau = $derived(summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0);
   let captureSnippet = $derived(
     primaryProject
@@ -98,10 +103,55 @@
     const projects = nextDashboard?.projects || [];
     if (!projects.length) {
       selectedProjectId = "";
+      selectedProjectSummary = null;
       return;
     }
     if (!projects.some((project) => project._id === selectedProjectId)) {
       selectedProjectId = projects[0]._id;
+    }
+  }
+
+  async function loadProjectSummary(projectId = selectedProjectId) {
+    const requestUserId = Meteor.userId();
+    if (!requestUserId || !projectId) {
+      selectedProjectSummary = null;
+      return null;
+    }
+
+    const requestId = projectSummaryRequestId + 1;
+    projectSummaryRequestId = requestId;
+    projectSummaryLoading = true;
+    projectSummaryError = "";
+
+    try {
+      const nextSummary = await callMethod("tracemind.project.summary", projectId);
+      if (
+        requestId !== projectSummaryRequestId
+        || requestUserId !== Meteor.userId()
+        || projectId !== selectedProjectId
+      ) {
+        return null;
+      }
+      selectedProjectSummary = nextSummary;
+      if (nextSummary?.project) replaceProject(nextSummary.project);
+      return nextSummary;
+    } catch (error) {
+      if (
+        requestId === projectSummaryRequestId
+        && requestUserId === Meteor.userId()
+        && projectId === selectedProjectId
+      ) {
+        projectSummaryError = errorMessage(error);
+      }
+      throw error;
+    } finally {
+      if (
+        requestId === projectSummaryRequestId
+        && requestUserId === Meteor.userId()
+        && projectId === selectedProjectId
+      ) {
+        projectSummaryLoading = false;
+      }
     }
   }
 
@@ -169,6 +219,9 @@
         if (requestId !== dashboardRequestId || requestUserId !== Meteor.userId()) return null;
         syncSelectedProject(nextDashboard);
         dashboard = nextDashboard;
+        if (selectedProjectId) {
+          loadProjectSummary(selectedProjectId).catch(() => {});
+        }
         return nextDashboard;
       })
       .catch((error) => {
@@ -201,6 +254,27 @@
     }
   }
 
+  async function retryProjectSummary() {
+    status = "";
+    try {
+      await loadProjectSummary();
+    } catch (error) {
+      status = errorMessage(error);
+    }
+  }
+
+  function changeSelectedProject() {
+    selectedProjectSummary = null;
+    loadProjectSummary().catch(() => {});
+  }
+
+  function toggleProjectCreate() {
+    showProjectCreate = !showProjectCreate;
+    if (!showProjectCreate) {
+      projectName = "";
+    }
+  }
+
   async function createProject() {
     const name = projectName.trim();
     if (!name) return;
@@ -211,7 +285,9 @@
       const createdProject = await callMethod("tracemind.project.create", name);
       selectedProjectId = createdProject._id;
       projectName = "";
+      showProjectCreate = false;
       await loadDashboard();
+      await loadProjectSummary(createdProject._id);
       status = translateNow("Project created and selected.");
     } catch (error) {
       status = errorMessage(error);
@@ -384,6 +460,12 @@
     dashboardLoadPromise = null;
     dashboardLoading = false;
     dashboardLoadError = "";
+    projectSummaryRequestId += 1;
+    projectSummaryLoading = false;
+    projectSummaryError = "";
+    selectedProjectSummary = null;
+    selectedProjectId = "";
+    showProjectCreate = false;
     userId = null;
     loggingIn = false;
     dashboard = null;
@@ -428,6 +510,12 @@
             dashboardLoadPromise = null;
             dashboardLoading = false;
             dashboardLoadError = "";
+            projectSummaryRequestId += 1;
+            projectSummaryLoading = false;
+            projectSummaryError = "";
+            selectedProjectSummary = null;
+            selectedProjectId = "";
+            showProjectCreate = false;
             dashboard = null;
           }
           return;
@@ -617,51 +705,38 @@
           <span class="tm-badge tm-badge-signal">{$t("Current account")}</span>
           <strong>{dashboard.developer.email}</strong>
           <p>
-            {$t("{{projects}} projects, {{raw}} raw behaviors, {{semantic}} semantic events.", {
+            {$t("{{projects}} projects.", {
               projects: dashboard.projects.length,
-              raw: dashboard.rawCount,
-              semantic: dashboard.semanticCount,
             })}
           </p>
-          <div class="metrics" aria-label="Behavior analytics summary">
-            <div>
-              <span>{$t("Users")}</span>
-              <strong>{summary?.uniqueUsers || 0}</strong>
-            </div>
-            <div>
-              <span>{$t("DAU")}</span>
-              <strong>{latestDau}</strong>
-            </div>
-            <div>
-              <span>{$t("Devices")}</span>
-              <strong>{summary?.uniqueDevices || 0}</strong>
-            </div>
-          </div>
-          {#if dashboard.projects.length > 1}
-            <label class="field-label">
-              <span>{$t("Selected project")}</span>
-              <select id="selected-project" name="selectedProject" bind:value={selectedProjectId}>
-                {#each dashboard.projects as project}
-                  <option value={project._id}>{project.name}</option>
-                {/each}
-              </select>
-            </label>
-          {/if}
-          <label class="field-label">
-            <span>{$t("New project")}</span>
-            <input id="project-name" name="projectName" bind:value={projectName} placeholder={$t("Production Web App")} />
-          </label>
-          <button type="button" onclick={createProject} disabled={loading || !projectName.trim()}>
-            {$t("Create project")}
-          </button>
         </div>
 
         <div class="setup-panel card-panel">
           {#if primaryProject}
-            <div class="project-title">
-              <span>{$t("Project")}</span>
-              <strong>{primaryProject.name}</strong>
+            <div class="project-toolbar">
+              <label class="field-label project-selector" for="selected-project">
+                <span>{$t("Current project")}</span>
+                <select id="selected-project" name="selectedProject" bind:value={selectedProjectId} onchange={changeSelectedProject}>
+                  {#each dashboard.projects as project}
+                    <option value={project._id}>{project.name}</option>
+                  {/each}
+                </select>
+              </label>
+              <button class="ghost project-add-button" type="button" onclick={toggleProjectCreate} aria-label={$t("New project")}>
+                {showProjectCreate ? $t("Cancel") : "+"}
+              </button>
             </div>
+            {#if showProjectCreate}
+              <div class="project-create-row">
+                <input id="project-name" name="projectName" bind:value={projectName} placeholder={$t("Production Web App")} />
+                <button type="button" onclick={createProject} disabled={loading || !projectName.trim()}>
+                  {$t("Create")}
+                </button>
+                <button class="ghost" type="button" onclick={toggleProjectCreate} disabled={loading}>
+                  {$t("Cancel")}
+                </button>
+              </div>
+            {/if}
             <label class="field-label">
               <span>{$t("Project key")}</span>
               <div class="field-copy-group">
@@ -806,12 +881,46 @@
 
       <div class="events card-panel">
         <div class="events-header">
-          <h3>{$t("Recent semantic events")}</h3>
-          <button class="ghost" type="button" onclick={retryDashboard} disabled={dashboardLoading}>{$t("Refresh")}</button>
+          <div>
+            <span>{$t("Current project events")}</span>
+            <h3>{primaryProject?.name || $t("Project")}</h3>
+          </div>
+          <button class="ghost" type="button" onclick={retryProjectSummary} disabled={projectSummaryLoading || !primaryProject}>
+            {projectSummaryLoading ? $t("Loading project events...") : $t("Refresh")}
+          </button>
         </div>
-        {#if dashboard.recentEvents.length}
+        <div class="event-metrics" aria-label="Current project analytics summary">
+          <div>
+            <span>{$t("Raw behaviors")}</span>
+            <strong>{selectedProjectSummary?.rawCount || 0}</strong>
+          </div>
+          <div>
+            <span>{$t("Semantic events")}</span>
+            <strong>{selectedProjectSummary?.semanticCount || 0}</strong>
+          </div>
+          <div>
+            <span>{$t("Users")}</span>
+            <strong>{summary?.uniqueUsers || 0}</strong>
+          </div>
+          <div>
+            <span>{$t("DAU")}</span>
+            <strong>{latestDau}</strong>
+          </div>
+          <div>
+            <span>{$t("Devices")}</span>
+            <strong>{summary?.uniqueDevices || 0}</strong>
+          </div>
+        </div>
+        {#if projectSummaryError}
+          <div class="inline-error" role="alert">
+            <strong>{$t("Could not load current project events.")}</strong>
+            <span>{projectSummaryError}</span>
+          </div>
+        {:else if projectSummaryLoading && !selectedProjectSummary}
+          <p class="empty">{$t("Loading project events...")}</p>
+        {:else if selectedProjectSummary?.recentEvents?.length}
           <ul>
-            {#each dashboard.recentEvents as event (event._id)}
+            {#each selectedProjectSummary.recentEvents as event (event._id)}
               <li>
                 <strong>{event.title}</strong>
                 <span>{event.meaning}</span>
@@ -819,7 +928,7 @@
             {/each}
           </ul>
         {:else}
-          <p class="empty">{$t("No semantic events yet. Add the script to a web product, generate behavior, then refresh.")}</p>
+          <p class="empty">{$t("No current project events yet. Add the script to this project, generate behavior, then refresh.")}</p>
         {/if}
       </div>
     {/if}

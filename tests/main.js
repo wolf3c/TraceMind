@@ -520,6 +520,73 @@ describe('TraceMind', function () {
       assert.strictEqual(project._id, result.projects[0]._id);
     });
 
+    it('summarizes only the selected project for project detail views', async function () {
+      const email = `project-summary-${Date.now()}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: email, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const createProjectMethod = Meteor.server.method_handlers['tracemind.project.create'];
+      const projectSummaryMethod = Meteor.server.method_handlers['tracemind.project.summary'];
+
+      const dashboard = await dashboardMethod.apply({ userId }, []);
+      const selectedProject = dashboard.projects[0];
+      const otherProject = await createProjectMethod.apply({ userId }, ['Other Web App']);
+
+      await RawBehaviors.insertAsync({
+        projectId: selectedProject._id,
+        type: 'page_view',
+        sourceType: 'web',
+        sourceKey: 'selected.example',
+        sourceLabel: 'selected.example',
+        occurredAt: new Date('2026-05-07T01:00:00.000Z'),
+        createdAt: new Date('2026-05-07T01:00:00.000Z'),
+      });
+      await RawBehaviors.insertAsync({
+        projectId: otherProject._id,
+        type: 'page_view',
+        sourceType: 'web',
+        sourceKey: 'other.example',
+        sourceLabel: 'other.example',
+        occurredAt: new Date('2026-05-07T02:00:00.000Z'),
+        createdAt: new Date('2026-05-07T02:00:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId: selectedProject._id,
+        eventType: 'custom',
+        eventName: 'selected_event',
+        title: 'Selected event',
+        meaning: 'Selected project event.',
+        userId: 'selected-user',
+        deviceId: 'selected-device',
+        occurredAt: new Date('2026-05-07T01:05:00.000Z'),
+        createdAt: new Date('2026-05-07T01:05:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId: otherProject._id,
+        eventType: 'custom',
+        eventName: 'other_event',
+        title: 'Other event',
+        meaning: 'Other project event.',
+        userId: 'other-user',
+        deviceId: 'other-device',
+        occurredAt: new Date('2026-05-07T02:05:00.000Z'),
+        createdAt: new Date('2026-05-07T02:05:00.000Z'),
+      });
+
+      const result = await projectSummaryMethod.apply({ userId }, [selectedProject._id]);
+
+      assert.strictEqual(result.project._id, selectedProject._id);
+      assert.strictEqual(result.rawCount, 1);
+      assert.strictEqual(result.semanticCount, 1);
+      assert.strictEqual(result.summary.totalEvents, 1);
+      assert.strictEqual(result.summary.uniqueUsers, 1);
+      assert.strictEqual(result.summary.uniqueDevices, 1);
+      assert.deepStrictEqual(result.sources.map((source) => source.sourceKey), ['selected.example']);
+      assert.deepStrictEqual(result.recentEvents.map((event) => event.eventName), ['selected_event']);
+    });
+
     it('resolves MCP access only through independent MCP tokens', async function () {
       const projectId = `project-mcp-auth-${Date.now()}`;
       const mcpToken = `tm_mcp_test_${Date.now()}`;
