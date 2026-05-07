@@ -2,7 +2,7 @@
 
 ## 目标
 
-让开发者把 TraceMind 埋点规范交给自己的 coding agent 执行，而不是手动研究各家 agent 的配置差异。用户在控制台复制一段动态安装提示词，发给 Codex、Claude Code、Cursor、Windsurf 或其他 coding agent；agent 负责在当前项目安装 TraceMind skill、追加项目级规则并配置 MCP。
+让开发者把 TraceMind 埋点规范交给自己的 coding agent 执行，而不是手动研究各家 agent 的配置差异。用户在控制台复制一段动态安装提示词，发给 Codex、Claude Code、Cursor、Windsurf 或其他 coding agent；agent 负责在当前项目安装 TraceMind guidance、追加项目级规则，并在能力允许时配置 MCP。
 
 ## 公开资源
 
@@ -23,6 +23,9 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 - Manifest URL。
 - 当前项目 MCP URL。
 - 修改前必须列出文件和命令、只合并追加、不覆盖已有配置、安装后验证的要求。
+- 项目级 skill 只在当前 agent 明确支持官方项目级 skill 目录时安装；否则回退到项目级 rules/instructions，不创建自定义目录。
+- MCP URL 和 token 只写入 agent 的 MCP 配置，不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件。
+- 如果 MCP 只能写入全局配置，agent 必须先等待用户确认，并把结果标记为 partially installed，而不是声称三项全部完成。
 
 如果项目没有 MCP token，控制台不生成安装提示词，先引导用户创建 token。
 

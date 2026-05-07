@@ -35,6 +35,10 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('https://local.example/agents/tracemind/AGENTS_SNIPPET.md'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/manifest.json'));
       assert.ok(prompt.includes('不要覆盖已有配置，只能合并或追加'));
+      assert.ok(prompt.includes('请不要创建自定义 skill 目录'));
+      assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
+      assert.ok(prompt.includes('pending-global-confirmation'));
+      assert.ok(prompt.includes('fallback-installed'));
     });
 
     it('ships static public guidance without project tokens or hard-coded deployment URLs', async function () {
