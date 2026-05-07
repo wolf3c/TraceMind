@@ -2,27 +2,37 @@
   import { Accounts } from "meteor/accounts-base";
   import { Meteor } from "meteor/meteor";
   import { Tracker } from "meteor/tracker";
-  import { onMount, onDestroy } from "svelte";
+  import { get } from "svelte/store";
+  import { locale, locales, t } from "./i18n/i18n";
 
-  let email = "";
-  let code = "";
-  let projectName = "";
-  let mcpTokenName = "";
-  let userId = null;
-  let dashboard = null;
-  let status = "";
-  let loading = false;
-  let computation;
+  const currentOrigin = () => (typeof location === "undefined" ? "" : location.origin);
+  const translateNow = (key, vars) => get(t)(key, vars);
+  const localeLabels = {
+    en: "English",
+    zh: "Chinese",
+  };
 
-  $: primaryProject = dashboard?.projects?.[0];
-  $: primaryMcpToken = primaryProject?.mcpTokens?.[0];
-  $: sourceSummary = primaryProject ? (dashboard?.sourceSummaries?.[primaryProject._id] || []) : [];
-  $: summary = dashboard?.summary;
-  $: latestDau = summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0;
-  $: captureSnippet = primaryProject
-    ? `<script src="${location.origin}/capture.js" data-tracemind-token="${primaryProject.projectKey}" async><\/script>`
-    : "";
-  $: mcpUrl = primaryMcpToken ? `${location.origin}/mcp?mcpToken=${primaryMcpToken.token}` : "";
+  let email = $state("");
+  let code = $state("");
+  let projectName = $state("");
+  let mcpTokenName = $state("");
+  let selectedLocale = $state("en");
+  let userId = $state(null);
+  let dashboard = $state(null);
+  let status = $state("");
+  let loading = $state(false);
+
+  let primaryProject = $derived(dashboard?.projects?.[0]);
+  let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
+  let sourceSummary = $derived(primaryProject ? (dashboard?.sourceSummaries?.[primaryProject._id] || []) : []);
+  let summary = $derived(dashboard?.summary);
+  let latestDau = $derived(summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0);
+  let captureSnippet = $derived(
+    primaryProject
+      ? `<script src="${currentOrigin()}/capture.js" data-tracemind-token="${primaryProject.projectKey}" async><\/script>`
+      : "",
+  );
+  let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
 
   function callMethod(name, ...args) {
     return new Promise((resolve, reject) => {
@@ -35,17 +45,19 @@
 
   function errorMessage(error) {
     const messages = {
-      "invalid-email": "请输入有效的邮箱地址。",
-      "invalid-code": "验证码无效或已过期。",
-      "not-authorized": "请先登录。",
-      "not-found": "没有找到对应项目。",
+      "invalid-email": "Enter a valid email address.",
+      "invalid-code": "The verification code is invalid or expired.",
+      "not-authorized": "Log in first.",
+      "not-found": "Project not found.",
     };
     const reason = error.reason || error.message || "";
 
-    if (reason.includes("Expired token")) return "验证码已过期，请重新获取。";
-    if (reason.includes("token mismatch") || reason.includes("Email or token mismatch")) return "验证码不正确，请检查邮件后重试。";
+    if (reason.includes("Expired token")) return translateNow("The verification code expired. Request a new one.");
+    if (reason.includes("token mismatch") || reason.includes("Email or token mismatch")) {
+      return translateNow("The verification code is incorrect. Check the email and try again.");
+    }
 
-    return messages[error.error] || reason;
+    return messages[error.error] ? translateNow(messages[error.error]) : reason;
   }
 
   function requestLoginToken(options) {
@@ -75,7 +87,7 @@
         selector: { email: normalizedEmail },
         userData: { email: normalizedEmail },
       });
-      status = "验证码已发送，请检查邮箱。也可以点击邮件中的登录链接直接进入。";
+      status = translateNow("Verification code sent. Check your inbox or use the login link in the email.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -89,7 +101,7 @@
     try {
       await passwordlessLogin({ email: email.trim().toLowerCase() }, code.trim());
       await loadDashboard();
-      status = "已登录。";
+      status = translateNow("Logged in.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -112,7 +124,7 @@
       await callMethod("tracemind.project.create", name);
       projectName = "";
       await loadDashboard();
-      status = "项目已创建。";
+      status = translateNow("Project created.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -121,6 +133,7 @@
   }
 
   function replaceProject(updatedProject) {
+    if (!dashboard) return;
     dashboard = {
       ...dashboard,
       projects: dashboard.projects.map((project) => (
@@ -142,7 +155,7 @@
       );
       mcpTokenName = "";
       replaceProject(updatedProject);
-      status = "MCP Token 已创建。";
+      status = translateNow("MCP token created.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -163,7 +176,7 @@
         token.name,
       );
       replaceProject(updatedProject);
-      status = "MCP Token 名称已更新。";
+      status = translateNow("MCP token name updated.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -173,7 +186,7 @@
 
   async function refreshMcpToken(token) {
     if (!primaryProject || !token) return;
-    if (!window.confirm("刷新后旧 MCP Token 会立即失效，确认继续？")) return;
+    if (!window.confirm(translateNow("Refreshing this MCP token immediately invalidates the old token. Continue?"))) return;
 
     loading = true;
     status = "";
@@ -184,7 +197,7 @@
         token.id,
       );
       replaceProject(updatedProject);
-      status = "MCP Token 已刷新，旧 Token 已失效。";
+      status = translateNow("MCP token refreshed. The old token is invalid.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -194,7 +207,7 @@
 
   async function removeMcpToken(token) {
     if (!primaryProject || !token) return;
-    if (!window.confirm("删除后这个 MCP Token 会立即失效，确认删除？")) return;
+    if (!window.confirm(translateNow("Deleting this MCP token immediately invalidates it. Continue?"))) return;
 
     loading = true;
     status = "";
@@ -205,7 +218,7 @@
         token.id,
       );
       replaceProject(updatedProject);
-      status = "MCP Token 已删除。";
+      status = translateNow("MCP token deleted.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -215,7 +228,8 @@
 
   async function blockSource(source) {
     if (!primaryProject || !source) return;
-    if (!window.confirm(`屏蔽来源 ${source.sourceLabel || source.sourceKey} 后，新事件会被静默拒收，确认继续？`)) return;
+    const sourceName = source.sourceLabel || source.sourceKey;
+    if (!window.confirm(translateNow("Block source {{source}}? New events from it will be silently rejected.", { source: sourceName }))) return;
 
     loading = true;
     status = "";
@@ -227,7 +241,7 @@
         reason: "Blocked from console",
       });
       await loadDashboard();
-      status = "来源已屏蔽，后续事件不会进入数据库。";
+      status = translateNow("Source blocked. Future events from it will not enter the database.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -246,7 +260,7 @@
         sourceKey: source.sourceKey,
       });
       await loadDashboard();
-      status = "来源已解除屏蔽。";
+      status = translateNow("Source unblocked.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -261,8 +275,21 @@
     });
   }
 
-  onMount(() => {
-    computation = Tracker.autorun(() => {
+  function changeLocale() {
+    locale.set(selectedLocale);
+  }
+
+  function formatDate(value) {
+    if (!value) return translateNow("Unknown");
+    return new Date(value).toLocaleString(selectedLocale === "zh" ? "zh-CN" : "en-US");
+  }
+
+  $effect(() => locale.subscribe((value) => {
+    selectedLocale = value;
+  }));
+
+  $effect(() => {
+    const computation = Tracker.autorun(() => {
       userId = Meteor.userId();
       if (userId && window.TraceMind) {
         window.TraceMind.identify(userId);
@@ -277,10 +304,8 @@
         });
       }
     });
-  });
 
-  onDestroy(() => {
-    computation?.stop?.();
+    return () => computation.stop();
   });
 </script>
 
@@ -288,40 +313,86 @@
   <section class="hero">
     <nav class="nav">
       <div class="brand">
-        <span class="brand-mark">T</span>
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+          <rect width="64" height="64" rx="15" fill="#FFFDF8"/>
+          <path d="M17 43V21h7.5L32 35l7.5-14H47v22" fill="none" stroke="#0F2F2A" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M19 47c8-6 18-6 27 0" fill="none" stroke="#18A77A" stroke-width="4.5" stroke-linecap="round"/>
+          <circle cx="47" cy="47" r="3.6" fill="#F2B84B"/>
+        </svg>
         <span>TraceMind</span>
       </div>
-      {#if dashboard}
-        <button class="ghost" on:click={logout}>退出登录</button>
-      {/if}
+      <div class="nav-actions">
+        <label class="language-label" for="locale-select">
+          <span class="sr-only">{$t("Language")}</span>
+          <select id="locale-select" bind:value={selectedLocale} onchange={changeLocale}>
+            {#each locales as localeCode (localeCode)}
+              <option value={localeCode}>{$t(localeLabels[localeCode] || localeCode)}</option>
+            {/each}
+          </select>
+        </label>
+        {#if dashboard}
+          <button class="ghost" type="button" onclick={logout}>{$t("Log out")}</button>
+        {/if}
+      </div>
     </nav>
 
     <div class="hero-grid">
       <div class="hero-copy">
-        <p class="eyebrow">AI 原生行为智能平台</p>
-        <h1>不用手写复杂埋点，也能理解用户真实行为。</h1>
-        <p class="lede">
-          TraceMind 通过一行脚本自动采集 Web 产品中的原始行为，并将其抽取为可读的语义事件，
-          让 Codex、Claude Code、Cursor 等 AI Coding Agent 直接通过远程 MCP 查询产品数据。
-        </p>
+        <div class="hero-badges">
+          <span class="tm-badge tm-badge-signal">{$t("AI-native behavior intelligence")}</span>
+          <span class="tm-badge tm-badge-amber">{$t("Remote MCP ready")}</span>
+        </div>
+        <h1>{$t("Understand real user behavior without writing complex tracking code.")}</h1>
+        <p class="lede">{$t("TraceMind captures raw behavior from web products with one script, turns it into readable semantic events, and lets AI coding agents query product data through remote MCP.")}</p>
         <div class="hero-actions">
-          <a href="#console" class="button">开始接入</a>
-          <a href="#how" class="button secondary">查看流程</a>
+          <a href="#console" class="button">{$t("Start setup")}</a>
+          <a href="#how" class="button secondary">{$t("View workflow")}</a>
         </div>
       </div>
 
-      <div class="signal-panel" aria-label="TraceMind 数据流">
-        <div class="signal-row">
-          <span>原始行为</span>
-          <strong>click, page_view, submit</strong>
+      <div class="signal-panel card-panel" aria-label="TraceMind data flow">
+        <div class="signal-panel-header">
+          <span class="tm-badge tm-badge-signal">{$t("Live behavior stream")}</span>
+          <span>tm_proj_xxx</span>
         </div>
-        <div class="signal-row">
-          <span>语义理解</span>
-          <strong>查看价格页、提交注册表单</strong>
+
+        <div class="signal-metrics">
+          <div>
+            <span>{$t("Raw events")}</span>
+            <strong>1,248</strong>
+          </div>
+          <div>
+            <span>{$t("Semantic events")}</span>
+            <strong>317</strong>
+          </div>
+          <div>
+            <span>{$t("Agent queries")}</span>
+            <strong>42</strong>
+          </div>
         </div>
-        <div class="signal-row">
-          <span>AI Agent 访问</span>
-          <strong>通过 Codex、Claude Code、Cursor 提问</strong>
+
+        <div class="event-stream">
+          <div>
+            <span>{$t("Raw behavior")}</span>
+            <strong>{$t("POST /api/capture")}</strong>
+            <small>{$t("click, page_view, submit")}</small>
+          </div>
+          <div>
+            <span>{$t("Semantic understanding")}</span>
+            <strong>{$t("semantic_event.created")}</strong>
+            <small>{$t("Viewed pricing page, submitted signup form")}</small>
+          </div>
+          <div>
+            <span>{$t("AI agent access")}</span>
+            <strong>{$t("mcp.tools.call")}</strong>
+            <small>{$t("Ask from Codex, Claude Code, Cursor, and more")}</small>
+          </div>
+        </div>
+
+        <div class="agent-query">
+          <span>{$t("Codex asks")}</span>
+          <strong>{$t("Which users reached pricing but did not submit?")}</strong>
+          <p>{$t("TraceMind returns path trends, user counts, device counts, and source health.")}</p>
         </div>
       </div>
     </div>
@@ -329,111 +400,120 @@
 
   <section id="how" class="workflow">
     <div>
-      <p class="section-label">MVP 接入流程</p>
-      <h2>一行代码，创建产品行为理解层。</h2>
+      <p class="section-label">{$t("MVP setup flow")}</p>
+      <h2>{$t("Create a product behavior understanding layer with one line of code.")}</h2>
     </div>
     <div class="one-line-example">
       <div>
-        <span>接入示例</span>
-        <strong>把这行代码放到你的 Web 产品页面中</strong>
+        <span>{$t("Setup example")}</span>
+        <strong>{$t("Put this line into your web product page")}</strong>
       </div>
-      <code>&lt;script src="{location.origin}/capture.js" data-tracemind-token="tm_proj_xxx" async&gt;&lt;/script&gt;</code>
+      <code>&lt;script src="{currentOrigin()}/capture.js" data-tracemind-token="tm_proj_xxx" async&gt;&lt;/script&gt;</code>
     </div>
     <div class="steps">
       <article>
-        <span>01</span>
-        <h3>邮箱登录</h3>
-        <p>使用邮箱验证码登录，获取项目 key 和接入代码。</p>
+        <span class="tm-badge tm-badge-signal">01</span>
+        <h3>{$t("Email login")}</h3>
+        <p>{$t("Use an email verification code to get your project key and snippet.")}</p>
       </article>
       <article>
-        <span>02</span>
-        <h3>自动采集</h3>
-        <p>复制一行全局脚本，即可记录页面访问、点击、输入、表单和路由变化。</p>
+        <span class="tm-badge tm-badge-signal">02</span>
+        <h3>{$t("Auto capture")}</h3>
+        <p>{$t("Copy one global script to record page views, clicks, inputs, forms, and route changes.")}</p>
       </article>
       <article>
-        <span>03</span>
-        <h3>语义事件</h3>
-        <p>服务端定时将 Raw Behavior 抽取为稳定、可读的行为事件。</p>
+        <span class="tm-badge tm-badge-amber">03</span>
+        <h3>{$t("Semantic events")}</h3>
+        <p>{$t("The server extracts stable and readable behavior events from raw behavior.")}</p>
       </article>
       <article>
-        <span>04</span>
-        <h3>远程 MCP</h3>
-        <p>把 MCP 地址添加到 AI Coding Agent，通过对话查看产品数据。</p>
+        <span class="tm-badge tm-badge-amber">04</span>
+        <h3>{$t("Remote MCP")}</h3>
+        <p>{$t("Add the MCP URL to your AI coding agent and inspect product data through chat.")}</p>
       </article>
     </div>
   </section>
 
   <section id="console" class="console">
     <div class="console-header">
-      <p class="section-label">开发者控制台</p>
-      <h2>登录后复制项目 key，即可开始采集。</h2>
+      <span class="tm-badge tm-badge-muted">{$t("Developer console")}</span>
+      <h2>{$t("Log in, copy your project key, and start capturing.")}</h2>
     </div>
 
     {#if !dashboard}
-      <div class="auth-panel">
-        <label>
-          邮箱
-          <input bind:value={email} type="email" placeholder="you@example.com" autocomplete="email" />
+      <div class="auth-panel card-panel">
+        <label class="field-label">
+          <span>{$t("Email")}</span>
+          <input id="email" name="email" bind:value={email} type="email" placeholder={$t("you@example.com")} autocomplete="email" />
         </label>
         <div class="auth-actions">
-          <button on:click={requestCode} disabled={loading}>发送验证码</button>
+          <button type="button" onclick={requestCode} disabled={loading}>{$t("Send code")}</button>
         </div>
-        <label>
-          验证码
-          <input bind:value={code} inputmode="numeric" placeholder="123456" />
+        <label class="field-label">
+          <span>{$t("Verification code")}</span>
+          <input id="login-code" name="code" bind:value={code} inputmode="numeric" placeholder={$t("123456")} />
         </label>
-        <button on:click={verifyCode} disabled={loading}>登录</button>
+        <button type="button" onclick={verifyCode} disabled={loading}>{$t("Log in")}</button>
       </div>
     {:else}
       <div class="dashboard-grid">
-        <aside class="account-panel">
-          <span>当前账号</span>
+        <div class="account-panel card-panel">
+          <span class="tm-badge tm-badge-signal">{$t("Current account")}</span>
           <strong>{dashboard.developer.email}</strong>
-          <p>{dashboard.projects.length} 个项目，{dashboard.rawCount} 条原始行为，{dashboard.semanticCount} 条语义事件。</p>
-          <div class="metrics" aria-label="行为分析摘要">
+          <p>
+            {$t("{{projects}} projects, {{raw}} raw behaviors, {{semantic}} semantic events.", {
+              projects: dashboard.projects.length,
+              raw: dashboard.rawCount,
+              semantic: dashboard.semanticCount,
+            })}
+          </p>
+          <div class="metrics" aria-label="Behavior analytics summary">
             <div>
-              <span>用户数</span>
+              <span>{$t("Users")}</span>
               <strong>{summary?.uniqueUsers || 0}</strong>
             </div>
             <div>
-              <span>DAU</span>
+              <span>{$t("DAU")}</span>
               <strong>{latestDau}</strong>
             </div>
             <div>
-              <span>设备数</span>
+              <span>{$t("Devices")}</span>
               <strong>{summary?.uniqueDevices || 0}</strong>
             </div>
           </div>
-          <label>
-            新建项目
-            <input bind:value={projectName} placeholder="生产环境 Web App" />
+          <label class="field-label">
+            <span>{$t("New project")}</span>
+            <input id="project-name" name="projectName" bind:value={projectName} placeholder={$t("Production Web App")} />
           </label>
-          <button on:click={createProject} disabled={loading || !projectName.trim()}>创建项目</button>
-        </aside>
+          <button type="button" onclick={createProject} disabled={loading || !projectName.trim()}>
+            {$t("Create project")}
+          </button>
+        </div>
 
-        <div class="setup-panel">
+        <div class="setup-panel card-panel">
           {#if primaryProject}
             <div class="project-title">
-              <span>项目</span>
+              <span>{$t("Project")}</span>
               <strong>{primaryProject.name}</strong>
             </div>
-            <label>
-              项目 key
-              <input readonly value={primaryProject.projectKey} />
+            <label class="field-label">
+              <span>{$t("Project key")}</span>
+              <input id="project-key" name="projectKey" readonly value={primaryProject.projectKey} />
             </label>
-            <label>
-              一行 Auto Capture 代码
-              <textarea readonly rows="3">{captureSnippet}</textarea>
+            <label class="field-label">
+              <span>{$t("One-line Auto Capture code")}</span>
+              <textarea id="capture-snippet" name="captureSnippet" readonly rows={3} value={captureSnippet}></textarea>
             </label>
-            <label>
-              默认远程 MCP 地址
-              <input readonly value={mcpUrl} />
+            <label class="field-label">
+              <span>{$t("Default remote MCP URL")}</span>
+              <input id="mcp-url" name="mcpUrl" readonly value={mcpUrl} />
             </label>
+
             <div class="source-panel">
               <div class="source-header">
                 <div>
-                  <span>来源统计</span>
-                  <strong>查看最近写入这个项目 key 的来源</strong>
+                  <span>{$t("Source statistics")}</span>
+                  <strong>{$t("See recent sources writing to this project key")}</strong>
                 </div>
               </div>
               {#if sourceSummary.length}
@@ -445,72 +525,83 @@
                         <span>{source.sourceType} / {source.sourceKey}</span>
                       </div>
                       <div>
-                        <span>事件数</span>
+                        <span>{$t("Events")}</span>
                         <strong>{source.count}</strong>
                       </div>
                       <div>
-                        <span>最近出现</span>
-                        <strong>{source.lastSeenAt ? new Date(source.lastSeenAt).toLocaleString() : "未知"}</strong>
+                        <span>{$t("Last seen")}</span>
+                        <strong>{formatDate(source.lastSeenAt)}</strong>
                       </div>
                       {#if source.blocked}
-                        <button class="ghost" on:click={() => unblockSource(source)} disabled={loading}>解除屏蔽</button>
+                        <button class="ghost" type="button" onclick={() => unblockSource(source)} disabled={loading}>
+                          {$t("Unblock")}
+                        </button>
                       {:else}
-                        <button class="ghost danger" on:click={() => blockSource(source)} disabled={loading}>屏蔽</button>
+                        <button class="ghost danger" type="button" onclick={() => blockSource(source)} disabled={loading}>
+                          {$t("Block")}
+                        </button>
                       {/if}
                     </div>
                   {/each}
                 </div>
               {:else}
-                <p class="empty">暂时没有来源数据。采集到事件后会显示来源统计。</p>
+                <p class="empty">{$t("No source data yet. Source statistics will appear after events are captured.")}</p>
               {/if}
             </div>
+
             <div class="mcp-token-panel">
               <div class="mcp-token-header">
                 <div>
-                  <span>MCP Tokens</span>
-                  <strong>为不同成员或 Agent 分配独立只读访问凭证</strong>
+                  <span>{$t("MCP Tokens")}</span>
+                  <strong>{$t("Assign independent read-only credentials to members or agents")}</strong>
                 </div>
                 <div class="mcp-token-create">
-                  <input bind:value={mcpTokenName} placeholder="例如 Cursor / Claude / teammate" />
-                  <button on:click={createMcpToken} disabled={loading}>新增</button>
+                  <input id="mcp-token-name" name="mcpTokenName" bind:value={mcpTokenName} placeholder={$t("Cursor / Claude / teammate")} />
+                  <button type="button" onclick={createMcpToken} disabled={loading}>{$t("Add")}</button>
                 </div>
               </div>
               {#if primaryProject.mcpTokens.length}
                 <div class="mcp-token-list">
                   {#each primaryProject.mcpTokens as token (token.id)}
                     <div class="mcp-token-row">
-                      <label>
-                        名称
-                        <input bind:value={token.name} />
+                      <label class="field-label">
+                        <span>{$t("Name")}</span>
+                        <input id={`mcp-token-name-${token._id}`} name={`mcpTokenName-${token._id}`} bind:value={token.name} />
                       </label>
-                      <label>
-                        Token
-                        <input readonly value={token.token} />
+                      <label class="field-label">
+                        <span>{$t("Token")}</span>
+                        <input id={`mcp-token-value-${token._id}`} name={`mcpTokenValue-${token._id}`} readonly value={token.token} />
                       </label>
-                      <label>
-                        MCP 地址
-                        <input readonly value={`${location.origin}/mcp?mcpToken=${token.token}`} />
+                      <label class="field-label">
+                        <span>{$t("MCP URL")}</span>
+                        <input id={`mcp-token-url-${token._id}`} name={`mcpTokenUrl-${token._id}`} readonly value={`${currentOrigin()}/mcp?mcpToken=${token.token}`} />
                       </label>
                       <div class="mcp-token-actions">
-                        <button class="ghost" on:click={() => renameMcpToken(token)} disabled={loading}>保存名称</button>
-                        <button class="ghost" on:click={() => refreshMcpToken(token)} disabled={loading}>刷新</button>
-                        <button class="ghost danger" on:click={() => removeMcpToken(token)} disabled={loading}>删除</button>
+                        <button class="ghost" type="button" onclick={() => renameMcpToken(token)} disabled={loading}>
+                          {$t("Save name")}
+                        </button>
+                        <button class="ghost" type="button" onclick={() => refreshMcpToken(token)} disabled={loading}>
+                          {$t("Refresh")}
+                        </button>
+                        <button class="ghost danger" type="button" onclick={() => removeMcpToken(token)} disabled={loading}>
+                          {$t("Delete")}
+                        </button>
                       </div>
                     </div>
                   {/each}
                 </div>
               {:else}
-                <p class="empty">当前项目没有 MCP Token。新增后才能通过远程 MCP 查询数据。</p>
+                <p class="empty">{$t("This project has no MCP token. Add one before querying data through remote MCP.")}</p>
               {/if}
             </div>
           {/if}
         </div>
       </div>
 
-      <div class="events">
+      <div class="events card-panel">
         <div class="events-header">
-          <h3>最近的语义事件</h3>
-          <button class="ghost" on:click={loadDashboard}>刷新</button>
+          <h3>{$t("Recent semantic events")}</h3>
+          <button class="ghost" type="button" onclick={loadDashboard}>{$t("Refresh")}</button>
         </div>
         {#if dashboard.recentEvents.length}
           <ul>
@@ -522,13 +613,13 @@
             {/each}
           </ul>
         {:else}
-          <p class="empty">暂时没有语义事件。把脚本添加到 Web 产品后，产生行为并刷新即可查看。</p>
+          <p class="empty">{$t("No semantic events yet. Add the script to a web product, generate behavior, then refresh.")}</p>
         {/if}
       </div>
     {/if}
 
     {#if status}
-      <p class="status">{status}</p>
+      <p class="status-alert">{status}</p>
     {/if}
   </section>
 </main>

@@ -13,8 +13,49 @@ import {
   normalizeEmail,
   summarizeBehaviorSources,
 } from '../imports/api/tracemind';
+import enMessages from '../imports/ui/i18n/locales/en';
+import zhMessages from '../imports/ui/i18n/locales/zh';
+import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n';
 
 describe('TraceMind', function () {
+  describe('UI i18n', function () {
+    const requiredKeys = [
+      'Language',
+      'AI-native behavior intelligence',
+      'Understand real user behavior without writing complex tracking code.',
+      'Email',
+      'Send code',
+      'Create project',
+      'Project created.',
+    ];
+
+    it('normalizes supported UI locales and falls back to English', function () {
+      assert.strictEqual(normalizeLocaleValue('zh-CN'), 'zh');
+      assert.strictEqual(normalizeLocaleValue('en-US'), 'en');
+      assert.strictEqual(normalizeLocaleValue('fr-FR'), 'en');
+    });
+
+    it('keeps English messages compact by relying on source-text fallback', function () {
+      assert.deepStrictEqual(enMessages, {});
+      assert.strictEqual(translateMessage(enMessages, 'Create project'), 'Create project');
+    });
+
+    it('ships required Chinese UI message overrides', function () {
+      requiredKeys.forEach((key) => {
+        assert.ok(zhMessages[key], `missing Chinese message: ${key}`);
+      });
+    });
+
+    it('translates messages with fallback and interpolation', function () {
+      const messages = {
+        greeting: 'Hello {{name}}',
+      };
+
+      assert.strictEqual(translateMessage(messages, 'greeting', { name: 'TraceMind' }), 'Hello TraceMind');
+      assert.strictEqual(translateMessage(messages, 'missing.key'), 'missing.key');
+    });
+  });
+
   it('normalizes developer emails', function () {
     assert.strictEqual(normalizeEmail('  Founder@Example.COM  '), 'founder@example.com');
   });
