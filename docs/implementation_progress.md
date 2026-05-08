@@ -72,6 +72,7 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added native manual capture parity with Web: `TraceMind.identify(...)`, primitive string/number/boolean properties and context, user identity persistence, and React Native bridge forwarding.
 - Updated the developer console setup panel to switch between Web, iOS, Android, and React Native setup snippets without exposing MCP tokens.
 - Updated Auto Capture, semantic event, MCP, README, and coding-agent documentation for cross-platform capture and native manual capture guidance.
+- Extended TraceMind setup planning to third-party MCP server and Agent Skill instrumentation with new `mcp_node`, `mcp_python`, and `agent_skill` setup surfaces, safe MCP runtime event types, and SDK test coverage for MCP tool/resource/prompt metadata capture.
 
 ### Not Yet Included
 

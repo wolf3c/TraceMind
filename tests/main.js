@@ -116,9 +116,12 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.08.3'));
+      assert.ok(skill.includes('version: 2026.05.08.4'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
+      assert.ok(skill.includes('## Instrumenting MCP Servers'));
+      assert.ok(skill.includes('## Instrumenting Agent Skills'));
+      assert.ok(skill.includes('static Skill file cannot auto-capture'));
       assert.ok(skill.includes('installCommands'));
       assert.ok(skill.includes('idempotencyChecks'));
       assert.ok(skill.includes('manualCaptureExamples'));
@@ -129,13 +132,18 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('installCommands'));
       assert.ok(snippet.includes('manualCaptureWorkflow'));
       assert.ok(snippet.includes('supported primitives'));
+      assert.ok(snippet.includes('mcp_node'));
+      assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.08.3');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.08.4');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
       assert.ok(manifest.mcp.tools.includes('tracemind.project_info'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
+      assert.ok(manifest.platforms.includes('mcp_node'));
+      assert.ok(manifest.platforms.includes('mcp_python'));
+      assert.ok(manifest.platforms.includes('agent_skill'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_info'));
       [skill, snippet, JSON.stringify(manifest)].forEach((content) => {
         assert.ok(!content.includes('tm_mcp_'));
@@ -191,11 +199,11 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.08.3');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.08.4');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
-      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, android, or react_native before installing Auto Capture or adding manual events.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, or agent_skill before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_proj_'));
@@ -224,11 +232,18 @@ describe('TraceMind', function () {
       assert.ok(missingEventNameValidation.structuredContent.findings.some((finding) => finding.code === 'missing_custom_event_name'));
 
       const diffValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
-        diff: "+ capture({ eventType: 'custom', eventName: 'new_checkout_event', properties: { prompt: userPrompt, userEmail: user.email, access_token: token } })",
+        diff: "+ TraceMindMCP.capture('custom', { eventName: 'new_checkout_event', properties: { raw_prompt: userPrompt, raw_args: args, raw_result: result, resource_content: content, userEmail: user.email, access_token: token } })",
       });
       assert.strictEqual(diffValidation.structuredContent.ok, false);
       assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.code === 'new_event_requires_review'));
-      assert.ok(diffValidation.structuredContent.findings.filter((finding) => finding.code === 'forbidden_property').length >= 3);
+      assert.ok(diffValidation.structuredContent.findings.filter((finding) => finding.code === 'forbidden_property').length >= 6);
+
+      const mcpAutoDiffValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
+        diff: "+ capture({ type: 'prompt_request', eventName: 'mcp_prompt_request', properties: { promptName: 'summarize', status: 'success', durationMs: 12 } })\n+ capture({ type: 'tool_call', eventName: 'mcp_tool_call', properties: { toolName: 'sync_docs', status: 'success' } })\n+ capture({ type: 'resource_read', eventName: 'mcp_resource_read', properties: { resourceName: 'docs', uriScheme: 'file' } })\n+ capture({ type: 'skill_lifecycle', eventName: 'agent_skill_lifecycle', properties: { skillName: 'docs-indexer', phase: 'completed' } })",
+      });
+      assert.strictEqual(mcpAutoDiffValidation.structuredContent.ok, true);
+      assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.path === 'eventName'));
+      assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.message.includes('promptName')));
     });
 
     it('returns the current project web auto capture setup through MCP', async function () {
@@ -328,6 +343,68 @@ describe('TraceMind', function () {
         assert.ok(result.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
         assert.ok(!JSON.stringify(result.structuredContent).includes('tm_mcp_'));
       });
+    });
+
+    it('returns third-party MCP and agent skill setup snippets through MCP', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const project = {
+        _id: `project-mcp-sdk-setup-${Date.now()}`,
+        name: 'MCP SDK Setup Project',
+        projectKey: 'tm_proj_mcp_sdk',
+      };
+
+      const setupTool = mcpTools(project).find((tool) => tool.name === 'tracemind.capture_setup');
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('mcp_node'));
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('mcp_python'));
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('agent_skill'));
+
+      const node = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'mcp_node' });
+      const python = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'mcp_python' });
+      const skill = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'agent_skill' });
+
+      assert.strictEqual(node.structuredContent.platform, 'mcp_node');
+      assert.strictEqual(node.structuredContent.eventPlatform, 'server');
+      assert.ok(node.structuredContent.initSnippet.includes('TraceMindMCP.start(server'));
+      assert.ok(node.structuredContent.initSnippet.includes('projectKey: "tm_proj_mcp_sdk"'));
+      assert.ok(node.structuredContent.installCommands.some((step) => step.includes('@tracemind/mcp-node')));
+      assert.ok(node.structuredContent.autoCapturedSignals.includes('MCP tool call completed'));
+      assert.ok(node.structuredContent.privacyConstraints.some((constraint) => constraint.includes('tool arguments')));
+      assert.ok(node.structuredContent.manualCaptureExample.includes('TraceMindMCP.capture'));
+      assert.ok(node.structuredContent.sourceModel.includes('sourceType is mcp_server'));
+
+      assert.strictEqual(python.structuredContent.platform, 'mcp_python');
+      assert.strictEqual(python.structuredContent.eventPlatform, 'server');
+      assert.ok(python.structuredContent.initSnippet.includes('TraceMindMCP.start(server'));
+      assert.ok(python.structuredContent.initSnippet.includes('project_key="tm_proj_mcp_sdk"'));
+      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('tracemind-mcp')));
+      assert.ok(python.structuredContent.manualCaptureExample.includes('TraceMindMCP.capture'));
+
+      assert.strictEqual(skill.structuredContent.platform, 'agent_skill');
+      assert.strictEqual(skill.structuredContent.eventPlatform, 'server');
+      assert.ok(skill.structuredContent.initSnippet.includes('TraceMindMCP.captureSkillLifecycle'));
+      assert.ok(skill.structuredContent.installCommands.some((step) => step.includes('host agent runtime')));
+      assert.ok(skill.structuredContent.autoCapturedSignals.includes('skill lifecycle started/completed/failed when the host exposes lifecycle hooks'));
+      assert.ok(skill.structuredContent.manualCaptureWarnings.some((warning) => warning.includes('Static Skill files cannot auto-capture')));
+      assert.ok(skill.structuredContent.sourceModel.includes('sourceType is agent_skill'));
+
+      [node, python, skill].forEach((result) => {
+        assert.strictEqual(result.structuredContent.tokenType, 'public_auto_capture_project_key');
+        assert.deepStrictEqual(result.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
+        assert.ok(result.structuredContent.manualCaptureWorkflow.some((step) => step.includes('tracemind.validate_event_payload')));
+        assert.ok(result.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
+        assert.ok(!JSON.stringify(result.structuredContent).includes('tm_mcp_'));
+      });
+    });
+
+    it('exposes MCP and skill event definitions through MCP', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const definitions = await callMcpTool({ _id: 'project-definitions' }, 'tracemind.event_definitions', {});
+      const byType = new Map(definitions.structuredContent.eventDefinitions.map((definition) => [definition.eventType, definition]));
+
+      assert.ok(byType.get('tool_call').platforms.includes('server'));
+      assert.ok(byType.get('resource_read').typicalProperties.includes('uriScheme'));
+      assert.ok(byType.get('prompt_request').typicalProperties.includes('promptName'));
+      assert.ok(byType.get('skill_lifecycle').meaning.includes('Skill'));
     });
 
     it('exposes project identity through MCP initialize and tools/list metadata', async function () {
@@ -676,6 +753,42 @@ describe('TraceMind', function () {
         sourceKey: 'com.example.app',
         sourceLabel: 'Example iOS',
         sourceDetails: {},
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'server',
+        source: {
+          type: 'mcp_server',
+          key: 'docs-mcp',
+          label: 'Docs MCP',
+          details: { language: 'javascript', runtime: 'node', sdkVersion: '0.1.0' },
+        },
+      }),
+      {
+        sourceType: 'mcp_server',
+        sourceKey: 'docs-mcp',
+        sourceLabel: 'Docs MCP',
+        sourceDetails: { language: 'javascript', runtime: 'node', sdkVersion: '0.1.0' },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'server',
+        source: {
+          type: 'agent_skill',
+          key: 'docs-indexer',
+          label: 'Docs Indexer Skill',
+          details: { version: '1.2.0' },
+        },
+      }),
+      {
+        sourceType: 'agent_skill',
+        sourceKey: 'docs-indexer',
+        sourceLabel: 'Docs Indexer Skill',
+        sourceDetails: { version: '1.2.0' },
       },
     );
   });
@@ -1129,6 +1242,91 @@ describe('TraceMind', function () {
         && behavior.sourceKey === 'com.example.android'
         && behavior.sessionId === 'tm_sess_batch'
         && behavior.anonymousId === 'tm_anon_batch'
+      )));
+    });
+
+    it('accepts MCP server and agent skill capture sources', async function () {
+      const projectId = `project-mcp-source-capture-${Date.now()}`;
+      const projectKey = `tm_proj_mcp_source_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-mcp-source-capture',
+        name: 'MCP Source Capture Project',
+        projectKey,
+        blockedSources: [{ sourceType: 'agent_skill', sourceKey: 'blocked-skill', blockedAt: new Date() }],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        sessionId: 'tm_sess_mcp',
+        anonymousId: 'tm_anon_mcp',
+        events: [
+          {
+            type: 'tool_call',
+            eventName: 'mcp_tool_call',
+            platform: 'server',
+            path: 'mcp://tool/sync_docs',
+            target: { type: 'mcp_tool', name: 'sync_docs', sourceKey: 'docs-mcp' },
+            targetHash: 'tm_target_tool_sync_docs',
+            source: {
+              type: 'mcp_server',
+              key: 'docs-mcp',
+              label: 'Docs MCP',
+              details: { language: 'javascript', runtime: 'node', sdkVersion: '0.1.0' },
+            },
+            properties: {
+              toolName: 'sync_docs',
+              status: 'success',
+              durationMs: 12,
+              resultSizeBucket: 'small',
+            },
+          },
+          {
+            type: 'skill_lifecycle',
+            eventName: 'agent_skill_lifecycle',
+            platform: 'server',
+            source: {
+              type: 'agent_skill',
+              key: 'docs-indexer',
+              label: 'Docs Indexer Skill',
+              details: { version: '1.2.0' },
+            },
+            properties: { phase: 'completed', success: true },
+          },
+          {
+            type: 'skill_lifecycle',
+            eventName: 'agent_skill_lifecycle',
+            platform: 'server',
+            source: {
+              type: 'agent_skill',
+              key: 'blocked-skill',
+            },
+          },
+        ],
+      }, { headers: {} });
+
+      const behaviors = await RawBehaviors.find({ projectId }, { sort: { sourceType: 1 } }).fetchAsync();
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 2);
+      assert.strictEqual(result.ignored, 1);
+      assert.strictEqual(behaviors.length, 2);
+      assert.ok(behaviors.some((behavior) => (
+        behavior.sourceType === 'mcp_server'
+        && behavior.sourceKey === 'docs-mcp'
+        && behavior.platform === 'server'
+        && behavior.type === 'tool_call'
+        && behavior.eventName === 'mcp_tool_call'
+        && behavior.properties.durationMs === 12
+        && behavior.target.name === 'sync_docs'
+      )));
+      assert.ok(behaviors.some((behavior) => (
+        behavior.sourceType === 'agent_skill'
+        && behavior.sourceKey === 'docs-indexer'
+        && behavior.type === 'skill_lifecycle'
+        && behavior.properties.success === true
       )));
     });
 

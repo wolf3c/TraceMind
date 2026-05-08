@@ -26,7 +26,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 - 修改前必须列出文件和命令、只合并追加、不覆盖已有配置、安装后验证的要求。
 - 项目级 skill 只在当前 agent 明确支持官方项目级 skill 目录时安装；否则回退到项目级 rules/instructions，不创建自定义目录。
 - MCP URL 和 token 只写入 agent 的 MCP 配置，不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件。
-- Auto Capture 的当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`android` 或 `react_native`。agent 应使用返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks`、`initSnippet`、`identifySnippet`、`manualCaptureExamples`、`supportedPropertyTypes` 和 `manualCaptureWorkflow`，不要从静态文档复制 project key。
+- Auto Capture 的当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`android` 或 `react_native`，第三方 MCP server 传 `mcp_node` 或 `mcp_python`，Agent Skill 传 `agent_skill`。agent 应使用返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks`、`initSnippet`、`identifySnippet`、`manualCaptureExamples`、`supportedPropertyTypes` 和 `manualCaptureWorkflow`，不要从静态文档复制 project key。
 - 如果 MCP 只能写入全局配置，agent 直接使用全局 MCP 配置，并继续避免把 MCP URL 或 token 写入仓库文件。
 - 如果已经存在 TraceMind Skill 或 rules，agent 只检查版本和补充缺失内容，不重复追加完整区块。
 - 如果已经存在同名 MCP server，agent 更新 URL/token；如果存在其他 `tracemind-*` TraceMind server，必须保留；如果存在旧的 `tracemind` server，先通过 MCP 自描述或 `tracemind.project_info` 确认项目归属。
@@ -42,7 +42,7 @@ Agent 后续修改 TraceMind 埋点时应按顺序使用 MCP：
 
 1. `tracemind.project_info`：多项目或不确定时先确认当前 MCP 对应的 TraceMind 项目。
 2. `tracemind.agent_guidance`：检查 guidance 版本和公开资源。
-3. `tracemind.capture_setup`：先获取当前项目 Auto Capture 接入代码；Web 验证 `/capture.js` 和脚本上的公开项目 key 属性，Native 使用返回的安装步骤、入口文件、幂等检查、初始化位置、SDK 初始化代码、identify 示例和手动埋点示例。
+3. `tracemind.capture_setup`：先获取当前项目 Auto Capture 接入代码；Web 验证 `/capture.js` 和脚本上的公开项目 key 属性，Native 使用返回的安装步骤、入口文件、幂等检查、初始化位置、SDK 初始化代码、identify 示例和手动埋点示例；MCP server 使用返回的 Node/Python SDK 初始化和 wrapper 指南；Agent Skill 只在宿主 runtime hook 可执行时接入 lifecycle capture。
 4. `tracemind.search_event_names`：搜索已有事件，避免随意创建 event name。
 5. `tracemind.suggest_instrumentation`：判断复用事件、跳过手动埋点或创建 draft custom event。
 6. `tracemind.validate_event_payload` / `tracemind.privacy_check`：检查单个 payload。
@@ -63,6 +63,12 @@ MCP 只返回建议和 findings，不写入用户项目，也不把 draft event 
 - `properties` 和 `context` 只使用 `supportedPropertyTypes` 返回的 string、number、boolean，不传 null、嵌套对象、数组、PII、credential values、raw prompt/content、input value 或完整 query URL。
 - React Native 不新增 `platform: "react_native"`；事件保持 `ios` 或 `android`，并通过 framework metadata 标记来源。
 - 完成后运行适用的 `verificationCommands`，再用 TraceMind MCP 查询 raw behaviors 或 semantic events。
+
+## MCP Server And Skill Guidance
+
+第三方 MCP server 使用 `mcp_node` 或 `mcp_python`。Auto Capture 只记录 tool/resource/prompt 安全元数据，例如名称、状态、耗时、错误类型和结果大小分桶。禁止采集 raw prompt、tool arguments、tool result、resource content、源码 diff、secret、token 或完整 query URL。
+
+Agent Skill 使用 `agent_skill`。静态 Skill 文件不能 auto-capture；只有宿主 agent runtime 暴露 started/completed/failed lifecycle hook 时，才能把 lifecycle hook 作为可执行 runtime 接入。没有 hook 时，Skill 只作为教程，实际埋点应放到 MCP server 或执行任务的 runtime。
 
 ## 更新机制
 

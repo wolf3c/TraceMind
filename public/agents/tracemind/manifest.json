@@ -1,6 +1,15 @@
 {
   "name": "tracemind-instrumentation",
-  "guidanceVersion": "2026.05.08.3",
+  "guidanceVersion": "2026.05.08.4",
+  "platforms": [
+    "web",
+    "ios",
+    "android",
+    "react_native",
+    "mcp_node",
+    "mcp_python",
+    "agent_skill"
+  ],
   "resources": {
     "skill": "/agents/tracemind/SKILL.md",
     "agentSnippet": "/agents/tracemind/AGENTS_SNIPPET.md",

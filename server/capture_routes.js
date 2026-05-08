@@ -18,7 +18,7 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.08.3';
+const AGENT_GUIDANCE_VERSION = '2026.05.08.4';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -33,10 +33,21 @@ const FORBIDDEN_ANALYTICS_KEYS = [
   'accessToken',
   'apiKey',
   'rawPrompt',
-  'prompt',
+  'rawArgs',
+  'rawArguments',
+  'toolArguments',
+  'rawResult',
+  'toolResult',
+  'resourceContent',
   'rawUserContent',
-  'userContent',
 ];
+const APPROVED_AUTO_EVENT_NAMES = new Set([
+  'identify',
+  'mcp_tool_call',
+  'mcp_resource_read',
+  'mcp_prompt_request',
+  'agent_skill_lifecycle',
+]);
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -167,7 +178,7 @@ export function mcpTools(project) {
         properties: {
           platform: {
             type: 'string',
-            enum: ['web', 'ios', 'android', 'react_native'],
+            enum: ['web', 'ios', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill'],
             description: '要接入的平台；省略时返回 Web 脚本。',
           },
         },
@@ -194,7 +205,7 @@ export function mcpTools(project) {
         properties: {
           intent: { type: 'string', description: '准备记录的用户行为或业务结果。' },
           context: { type: 'string', description: '相关代码或产品流程摘要。' },
-          platform: { type: 'string', description: 'web、ios、android 或 server。' },
+          platform: { type: 'string', description: 'web、ios、android、react_native、mcp_node、mcp_python、agent_skill 或 server。' },
         },
       },
     },
@@ -359,7 +370,7 @@ function guidanceResult(extra = {}) {
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
-      'Call tracemind.capture_setup with platform web, ios, android, or react_native before installing Auto Capture or adding manual events.',
+      'Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, or agent_skill before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
@@ -387,11 +398,28 @@ const AUTO_CAPTURE_SIGNALS = [
   'submit through form or keyboard done/search/send',
 ];
 
+const MCP_AUTO_CAPTURE_SIGNALS = [
+  'MCP server/session start',
+  'MCP tool call completed',
+  'MCP resource read completed',
+  'MCP prompt request completed',
+];
+
+const AGENT_SKILL_AUTO_CAPTURE_SIGNALS = [
+  'skill lifecycle started/completed/failed when the host exposes lifecycle hooks',
+];
+
 const PRIVACY_CONSTRAINTS = [
   'Do not capture input values.',
   'Do not capture screenshots, DOM snapshots, native snapshots, or session replay.',
   'Do not capture secrets, tokens, raw prompts, raw user content, or full query URLs.',
   'Use the returned public projectKey only for capture writes; never use an MCP token in app code.',
+];
+
+const MCP_PRIVACY_CONSTRAINTS = [
+  'Do not capture raw prompts, tool arguments, tool results, resource content, source code, diffs, secrets, tokens, or full query URLs.',
+  'Capture only safe MCP metadata such as tool/resource/prompt names, status, duration, error type, size buckets, and sanitized primitive custom fields.',
+  'Use the returned public projectKey only for capture writes; never use an MCP token in MCP server or Skill runtime code.',
 ];
 
 const SUPPORTED_MANUAL_PROPERTY_TYPES = ['string', 'number', 'boolean'];
@@ -433,6 +461,134 @@ function commonSetup(project, platform) {
 
 function platformSetup(project, platform) {
   const common = commonSetup(project, platform);
+
+  if (platform === 'mcp_node') {
+    return {
+      ...common,
+      platform: 'mcp_node',
+      eventPlatform: 'server',
+      install: 'Install @tracemind/mcp-node and initialize it around the MCP server instance.',
+      installCommands: [
+        'Install @tracemind/mcp-node from the TraceMind SDK distribution; in this repo the package is sdk/mcp-node.',
+        'Import TraceMindMCP in the MCP server entrypoint.',
+      ],
+      filesToEdit: [
+        'package.json',
+        'MCP server entrypoint such as src/server.ts, src/index.ts, or server.js',
+        'tool/resource/prompt registration modules when fallback wrappers are needed',
+      ],
+      initLocation: 'Run once after creating the MCP server object and before registering or serving tools.',
+      idempotencyChecks: [
+        'Search the MCP server for TraceMindMCP.start(',
+        'Check package.json for an existing @tracemind/mcp-node dependency.',
+        'Search tool/resource/prompt registration code for existing TraceMindMCP.wrapTool, wrapResource, or wrapPrompt calls.',
+      ],
+      initSnippet: `import { TraceMindMCP } from "@tracemind/mcp-node";\n\nTraceMindMCP.start(server, {\n  projectKey: "${project.projectKey}",\n  sourceKey: "docs-mcp"\n});`,
+      source: {
+        type: 'mcp_server',
+        key: 'Developer configured MCP server/package name, for example docs-mcp',
+      },
+      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, and mcpFramework.',
+      autoCapturedSignals: MCP_AUTO_CAPTURE_SIGNALS,
+      privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
+      verificationCommands: [
+        'npm test --prefix sdk/mcp-node',
+        'Run the MCP server, trigger a tool/resource/prompt request, then query TraceMind raw behaviors or semantic events.',
+      ],
+      identifySnippet: 'Use identityResolver(request) to return { userId, anonymousId, sessionId } when the MCP server can safely identify the actor.',
+      manualCaptureExamples: [
+        'TraceMindMCP.capture("custom", { eventName: approvedEventName, userId: "user_123", properties: { documentCount: 12, success: true }, context: { toolName: "sync_docs" } })',
+      ],
+      manualCaptureExample: 'TraceMindMCP.capture("custom", { eventName: approvedEventName, userId: "user_123", properties: { documentCount: 12, success: true }, context: { toolName: "sync_docs" } })',
+    };
+  }
+
+  if (platform === 'mcp_python') {
+    return {
+      ...common,
+      platform: 'mcp_python',
+      eventPlatform: 'server',
+      install: 'Install tracemind-mcp and initialize it around the Python MCP server instance.',
+      installCommands: [
+        'Install tracemind-mcp from the TraceMind SDK distribution; in this repo the package is sdk/mcp-python.',
+        'Import TraceMindMCP in the MCP server entrypoint.',
+      ],
+      filesToEdit: [
+        'pyproject.toml, requirements.txt, or equivalent dependency file',
+        'MCP server entrypoint such as server.py, main.py, or app.py',
+        'tool/resource/prompt registration modules when fallback decorators are needed',
+      ],
+      initLocation: 'Run once after creating the MCP server object and before registering or serving tools.',
+      idempotencyChecks: [
+        'Search the MCP server for TraceMindMCP.start(',
+        'Check Python dependency files for an existing tracemind-mcp dependency.',
+        'Search tool/resource/prompt registration code for existing TraceMindMCP.wrap_tool, wrap_resource, or wrap_prompt calls.',
+      ],
+      initSnippet: `from tracemind_mcp import TraceMindMCP\n\nTraceMindMCP.start(server, project_key="${project.projectKey}", source_key="docs-mcp")`,
+      source: {
+        type: 'mcp_server',
+        key: 'Developer configured MCP server/package name, for example docs-mcp',
+      },
+      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, and mcpFramework.',
+      autoCapturedSignals: MCP_AUTO_CAPTURE_SIGNALS,
+      privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
+      verificationCommands: [
+        'python3 -m unittest discover -s sdk/mcp-python/tests',
+        'Run the MCP server, trigger a tool/resource/prompt request, then query TraceMind raw behaviors or semantic events.',
+      ],
+      identifySnippet: 'Use identity_resolver(request) to return { "userId": "...", "anonymousId": "...", "sessionId": "..." } when the MCP server can safely identify the actor.',
+      manualCaptureExamples: [
+        'TraceMindMCP.capture("custom", event_name=approved_event_name, user_id="user_123", properties={"documentCount": 12, "success": True}, context={"toolName": "sync_docs"})',
+      ],
+      manualCaptureExample: 'TraceMindMCP.capture("custom", event_name=approved_event_name, user_id="user_123", properties={"documentCount": 12, "success": True}, context={"toolName": "sync_docs"})',
+    };
+  }
+
+  if (platform === 'agent_skill') {
+    return {
+      ...common,
+      platform: 'agent_skill',
+      eventPlatform: 'server',
+      install: 'Use TraceMind MCP guidance to instrument the host agent runtime; static Skill files cannot auto-capture by themselves.',
+      installCommands: [
+        'Confirm the host agent runtime exposes Skill lifecycle hooks before adding auto-capture.',
+        'If lifecycle hooks exist, initialize the TraceMind MCP SDK in the host runtime and call the lifecycle helper from started/completed/failed hooks.',
+        'If lifecycle hooks do not exist, keep the Skill as an instrumentation tutorial and add manual capture in the MCP server or host runtime instead.',
+      ],
+      filesToEdit: [
+        'Host agent runtime plugin/extension entrypoint if lifecycle hooks are available',
+        'Skill README or SKILL.md tutorial section for manual capture guidance',
+        'MCP server or tool runtime code that owns actual execution when no Skill hook exists',
+      ],
+      initLocation: 'Only in the executable host agent runtime. Do not put runtime secrets or capture code in a static Skill file.',
+      idempotencyChecks: [
+        'Search host runtime code for TraceMindMCP.start(',
+        'Search Skill docs for existing TraceMind instrumentation guidance.',
+        'Confirm the hook is executable runtime code, not only a static SKILL.md instruction file.',
+      ],
+      initSnippet: `TraceMindMCP.captureSkillLifecycle({\n  skillName: "docs-indexer",\n  version: "1.2.0",\n  phase: "completed",\n  success: true\n});`,
+      source: {
+        type: 'agent_skill',
+        key: 'Skill name or stable host runtime skill id, for example docs-indexer',
+      },
+      sourceModel: 'platform is server; sourceType is agent_skill; sourceKey is the stable Skill name or host runtime skill id; sourceDetails records skill version and host runtime.',
+      autoCapturedSignals: AGENT_SKILL_AUTO_CAPTURE_SIGNALS,
+      privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
+      verificationCommands: [
+        'Run the host agent runtime hook test if available.',
+        'Trigger a Skill started/completed/failed lifecycle event, then query TraceMind raw behaviors or semantic events.',
+      ],
+      identifySnippet: 'Only pass userId from a host runtime identity resolver when it is a stable internal user id and not an email or other PII.',
+      manualCaptureExamples: [
+        'TraceMindMCP.captureSkillLifecycle({ skillName: "docs-indexer", version: "1.2.0", phase: "completed", success: true })',
+      ],
+      manualCaptureExample: 'TraceMindMCP.captureSkillLifecycle({ skillName: "docs-indexer", version: "1.2.0", phase: "completed", success: true })',
+      manualCaptureWarnings: [
+        ...MANUAL_CAPTURE_WARNINGS,
+        'Static Skill files cannot auto-capture. Auto Capture requires executable host agent lifecycle hooks or MCP/runtime code.',
+      ],
+    };
+  }
 
   if (platform === 'ios') {
     return {
@@ -604,7 +760,7 @@ function captureSetupResult(project, args = {}) {
   }
 
   const requestedPlatform = String(args.platform || '').toLowerCase().replace('-', '_');
-  const platform = ['ios', 'android', 'react_native', 'web'].includes(requestedPlatform)
+  const platform = ['ios', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'web'].includes(requestedPlatform)
     ? requestedPlatform
     : 'web';
 
@@ -734,7 +890,7 @@ async function diffFindings(project, diff = '') {
   const knownNames = new Set(knownEvents.flatMap((event) => [event.eventType, event.eventName]).filter(Boolean));
   eventNameMatches.forEach((match) => {
     validateEventIdentity('custom', match[1]).forEach((finding) => findings.push(finding));
-    if (!knownNames.has(match[1])) {
+    if (!knownNames.has(match[1]) && !APPROVED_AUTO_EVENT_NAMES.has(match[1])) {
       addFinding(
         findings,
         'warning',
@@ -835,7 +991,13 @@ export async function callMcpTool(project, name, args = {}) {
 
   if (name === 'tracemind.suggest_instrumentation') {
     const events = await projectEventNames(project, args.intent, 8);
-    const recommendations = events.length
+    const normalizedPlatform = String(args.platform || '').toLowerCase().replace('-', '_');
+    const intentText = String(args.intent || '').toLowerCase();
+    const isMcpRuntimePlatform = ['mcp_node', 'mcp_python', 'agent_skill'].includes(normalizedPlatform);
+    const automaticMcpMatch = isMcpRuntimePlatform && /(tool|resource|prompt|skill|lifecycle|call|read|request|started|completed|failed)/.test(intentText);
+    const recommendations = automaticMcpMatch
+      ? ['Use TraceMind MCP/Skill Auto Capture for lifecycle facts; add manual custom capture only for stable business outcomes.']
+      : events.length
       ? ['Reuse an existing event if the business meaning matches.']
       : ['Create a draft custom event proposal and ask the user for review before treating it as approved.'];
     return textResult(
@@ -845,7 +1007,7 @@ export async function callMcpTool(project, name, args = {}) {
         platform: args.platform || '',
         events,
         recommendations,
-        requiresUserReview: events.length === 0,
+        requiresUserReview: !automaticMcpMatch && events.length === 0,
       }),
     );
   }

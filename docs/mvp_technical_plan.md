@@ -23,7 +23,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 | --- | --- | --- |
 | Landing + console | `imports/ui/App.svelte`, `client/main.css` | Explain product, handle passwordless login, show project key/platform setup snippets/recent events |
 | Auth + projects | `server/tracemind_methods.js`, `imports/api/tracemind.js` | Configure passwordless email, map `Meteor.userId()` to developer record and project key |
-| Auto capture | `server/capture_routes.js`, `sdk/ios`, `sdk/android`, `sdk/react-native` | Serve `/capture.js`, provide Native SDKs, and ingest `/api/capture` raw behavior with identity, device, source, IP/geo, custom fields |
+| Auto capture | `server/capture_routes.js`, `sdk/ios`, `sdk/android`, `sdk/react-native`, `sdk/mcp-node`, `sdk/mcp-python` | Serve `/capture.js`, provide Web/Native/MCP SDKs, and ingest `/api/capture` raw behavior with identity, device, source, IP/geo, custom fields |
 | Semantic extraction | `server/semantic_jobs.js`, `imports/api/semantic.js` | Periodically convert raw behavior into semantic events |
 | Remote MCP | `server/capture_routes.js` | Serve `/mcp?mcpToken=...` or Bearer MCP tokens with event definitions, filtered semantic event queries, raw log queries, summaries, and a GET preview |
 | Tests | `tests/main.js` | Cover email normalization, semantic extraction, summary logic, and login/project creation |
@@ -35,6 +35,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - Capture requests include cross-platform source fields. Project owners can block suspicious `sourceType + sourceKey` values after seeing them in the console; blocked events return ok but are not stored.
 - `/api/capture` accepts both single-event payloads and SDK batch payloads in `{ projectKey, events: [...] }` form.
 - Native SDK v1 targets stable Auto Capture basics: app/screen view, click/tap, input changed, submit, local queue, and batch flush. Automatic network hook, crash reporting, session replay, screenshots, and native snapshots are out of scope.
+- MCP SDK v1 targets safe tool/resource/prompt metadata and optional Agent Skill lifecycle hooks. Raw prompts, arguments, results, resource content, source code, diffs, secrets, tokens, and full query URLs are out of scope.
 - Remote MCP uses a minimal Streamable HTTP JSON-RPC surface with `initialize`, `tools/list`, `tools/call`, and `ping`.
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.
@@ -51,6 +52,8 @@ This deployment shape keeps `/capture.js`, `/api/capture`, and `/mcp` owned by T
 - `npm test` runs the Meteor Mocha suite once.
 - `npm run test:sdk:ios` runs the Swift SDK tests.
 - `npm run test:sdk:react-native` runs the React Native wrapper tests.
+- `npm run test:sdk:mcp-node` runs the Node MCP SDK tests.
+- `npm run test:sdk:mcp-python` runs the Python MCP SDK tests.
 - Install snippet after login:
 
 ```html

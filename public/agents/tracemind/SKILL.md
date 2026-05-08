@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.08.3
+version: 2026.05.08.4
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -12,7 +12,7 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 1. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
 2. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-3. Identify the app platform: `web`, `ios`, `android`, or `react_native`.
+3. Identify the target platform: `web`, `ios`, `android`, `react_native`, `mcp_node`, `mcp_python`, or `agent_skill`.
 4. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
 5. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
 6. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
@@ -28,6 +28,9 @@ For product apps, first check whether TraceMind Auto Capture is already initiali
 - iOS: call `tracemind.capture_setup` with `{ "platform": "ios" }`; add the Swift package and initialize once from `App.swift`, `AppDelegate.swift`, or the startup file named by the app.
 - Android: call `tracemind.capture_setup` with `{ "platform": "android" }`; add the Gradle module/dependency and initialize once from `Application.onCreate()`.
 - React Native: call `tracemind.capture_setup` with `{ "platform": "react_native" }`; install the JS package and native bridge, then initialize once in `index.js`, `App.js`, `App.tsx`, or the app bootstrap module.
+- MCP Node: call `tracemind.capture_setup` with `{ "platform": "mcp_node" }`; install the Node MCP SDK and initialize it around the MCP server object before serving tools.
+- MCP Python: call `tracemind.capture_setup` with `{ "platform": "mcp_python" }`; install the Python MCP SDK and initialize it around the MCP server object before serving tools.
+- Agent Skill: call `tracemind.capture_setup` with `{ "platform": "agent_skill" }`; only instrument executable host agent runtime hooks. A static Skill file cannot auto-capture by itself.
 - The returned public project key is only for capture writes. Never use an MCP token in frontend or app code.
 - Manual `custom` events are only for business outcomes that Auto Capture cannot infer reliably.
 
@@ -42,9 +45,31 @@ Use `capture_setup` as the source of truth for current setup details instead of 
 - Native Auto Capture should cover app/session start, screen/page view, tap/click, input changed without values, and submit signals.
 - Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
 
+## Instrumenting MCP Servers
+
+For third-party MCP servers, TraceMind Auto Capture records safe MCP runtime metadata rather than DOM or native UI behavior. Use `capture_setup` as the source of truth:
+
+- Node MCP servers use `{ "platform": "mcp_node" }` and initialize with `TraceMindMCP.start(server, { projectKey, sourceKey })`.
+- Python MCP servers use `{ "platform": "mcp_python" }` and initialize with `TraceMindMCP.start(server, project_key=..., source_key=...)`.
+- Keep `platform` as `server`; MCP source identity is represented as `sourceType: "mcp_server"` and a stable `sourceKey` such as the package or server name.
+- Auto Capture should record MCP server/session start, tool call completed, resource read completed, and prompt request completed.
+- Tool/resource/prompt events may include names, status, duration, error type, URI scheme, target hash, and result-size buckets. They must not include raw prompts, tool arguments, tool results, resource content, source code, diffs, secrets, tokens, or full query URLs.
+- If the MCP server can identify the actor, use the SDK `identityResolver(request)` / `identity_resolver(request)` hook to return stable internal IDs only.
+- Manual MCP `custom` events are for stable business outcomes such as `document_indexed`, `repository_synced`, or `deployment_created`; search and validate event names before coding.
+
+## Instrumenting Agent Skills
+
+A static Skill file is guidance, not executable runtime, so a static Skill file cannot auto-capture by itself.
+
+- Use `{ "platform": "agent_skill" }` to get guidance for host runtime lifecycle hooks.
+- Only add Skill Auto Capture when the host agent runtime exposes executable started/completed/failed hooks.
+- Record Skill lifecycle with `sourceType: "agent_skill"` and a stable source key such as the Skill name or host runtime Skill ID.
+- If no lifecycle hook exists, keep the Skill as a tutorial and add manual capture in the MCP server or agent runtime that actually executes the work.
+- Never store raw user prompts, raw tool inputs/outputs, generated code, diffs, secrets, or token values from Skill workflows.
+
 ## Manual Capture And Identify
 
-Manual capture follows the same mental model on Web, iOS, Android, and React Native: initialize TraceMind once, optionally identify the logged-in user, then capture approved business outcomes with `TraceMind.capture("custom", ...)` or `window.TraceMind.capture("custom", ...)`.
+Manual capture follows the same mental model on Web, iOS, Android, React Native, MCP servers, and executable Agent Skill runtimes: initialize TraceMind once, optionally identify the actor with a stable internal user ID, then capture approved business outcomes with the platform SDK.
 
 - Use the returned `identifySnippet` after login when the app has a stable internal `userId`. Traits are optional and must use only `string`, `number`, or `boolean` values.
 - Use `manualCaptureExamples` only after `tracemind.search_event_names` finds an approved event name or the user approves a draft event proposal.

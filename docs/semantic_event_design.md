@@ -2,7 +2,7 @@
 
 ## 目标
 
-把 Web、iOS、Android 和服务端上报的原始行为统一抽取为稳定的语义事件，让 LLM/MCP 能直接按业务含义、时间、用户、设备、路径等维度查询分析。
+把 Web、iOS、Android、MCP server、Agent Skill hook 和服务端上报的原始行为统一抽取为稳定的语义事件，让 LLM/MCP 能直接按业务含义、时间、用户、设备、路径等维度查询分析。
 
 ## 当前链路
 
@@ -93,7 +93,7 @@
 - `eventName` 表达具体业务事件名，例如 `checkout_started`、`plan_selected`、`invite_sent`。
 - `properties` 保存事件自身属性，例如金额、套餐、按钮位置、实验分组。
 - `context` 保存上报上下文，例如 `source: "server"`、trace id、feature flag、入口渠道。
-- Web、Native、React Native 和服务端埋点都使用同一字段，后续扩展不用修改表结构。SDK 只保留 string、number、boolean 类型，省略 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value 和带 query 的完整 URL。
+- Web、Native、React Native、MCP server、Agent Skill runtime 和服务端埋点都使用同一字段，后续扩展不用修改表结构。SDK 只保留 string、number、boolean 类型，省略 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value、tool arguments/result、resource content 和带 query 的完整 URL。
 
 ## 手动埋点与 Coding Agent 规则
 
@@ -122,6 +122,10 @@
 | `submit` | 表单提交 | 用户提交表单、点击确认或触发 Native keyboard done/search/send，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
 | `route_change` | 页面跳转 | 用户在 Web SPA 或 Native app 内发生页面切换，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, Android |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` | Web, iOS, Android, Server |
+| `tool_call` | MCP 工具调用 | MCP server 记录工具调用完成情况，用于分析工具使用量、失败率和耗时。 | `toolName`, `status`, `durationMs`, `errorType`, `resultSizeBucket` | Server |
+| `resource_read` | MCP 资源读取 | MCP server 记录资源读取完成情况，用于分析资源访问、失败率和耗时。 | `resourceName`, `uriScheme`, `uriTemplateHash`, `status`, `durationMs` | Server |
+| `prompt_request` | MCP Prompt 请求 | MCP server 记录 prompt 请求完成情况，用于分析 prompt 使用、失败率和耗时。 | `promptName`, `status`, `durationMs` | Server |
+| `skill_lifecycle` | Agent Skill 生命周期 | 宿主 agent runtime 记录 Skill started/completed/failed 等生命周期信号。 | `skillName`, `version`, `phase`, `success`, `durationMs` | Server |
 | `custom` | 自定义事件 | 开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。 | `eventName`, `properties`, `context` | Web, iOS, Android, Server |
 
 这张表同时暴露给 MCP 的 `tracemind.event_definitions`，用于帮助 LLM 判断应该查询哪个事件。
@@ -129,10 +133,12 @@
 ## 跨平台扩展原则
 
 - 表结构保持平台无关：`platform` 区分 `web`、`ios`、`android`、`server`，平台差异写入 `deviceInfo`、`sourceDetails`、`properties` 和 `context`。
-- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源；iOS 使用 bundle id；Android 使用 package name。
+- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源；iOS 使用 bundle id；Android 使用 package name；MCP server 使用 server/package 名；Agent Skill 使用 Skill 名或宿主 runtime skill id。
 - 自动采集字段和手动埋点字段共用同一事件模型，避免未来增加移动端 SDK 时迁移 Mongo 集合。
 - 移动端可复用 `sessionId`、`anonymousId`、`userId`、`deviceId`、`deviceFingerprint`、`sourceType`、`sourceKey`、`eventType`、`eventName`、`properties`、`context`。
 - 移动端 `target` 统一保存 class/type、accessibility id、resource id、test id、label 摘要、screen 和短层级 path；`targetHash` 仍使用 `tm_target_` 前缀。
+- MCP server 自动事件使用 `platform: "server"`、`sourceType: "mcp_server"`，自动记录 tool/resource/prompt 名称、状态、耗时、错误类型和结果大小分桶，不记录 raw prompt、tool arguments/result 或 resource content。
+- Agent Skill hook 使用 `platform: "server"`、`sourceType: "agent_skill"`，只在宿主 agent runtime 提供可执行 lifecycle hook 时记录 Skill started/completed/failed；静态 Skill 文件不能独立 auto-capture。
 - 服务端埋点可使用 `platform: "server"`，通常上报 `userId`、`eventName`、`properties`、`context.traceId` 和 `occurredAt`。
 
 ## MVP 决策

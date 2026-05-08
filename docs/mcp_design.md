@@ -2,7 +2,7 @@
 
 ## 目标
 
-让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义。MCP 不是采集目标，而是让开发者在 Codex、Claude Code、Cursor 等工具里直接追问用户流失、功能使用和转化问题的只读入口：默认查询语义事件，需要复核时再查询原始日志。
+让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义。TraceMind 自己的远程 MCP 端点不是采集目标，而是只读分析入口；第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问用户流失、功能使用和转化问题：默认查询语义事件，需要复核时再查询原始日志。
 
 ## Endpoint
 
@@ -162,7 +162,7 @@ Input:
 }
 ```
 
-`platform` 可省略，默认 `web`；也可传 `ios`、`android` 或 `react_native`。
+`platform` 可省略，默认 `web`；也可传 `ios`、`android`、`react_native`、`mcp_node`、`mcp_python` 或 `agent_skill`。
 
 Output:
 
@@ -247,6 +247,34 @@ Native 和 React Native 返回还包含：
 - `manualCaptureExamples`: 自动采集无法稳定表达业务结果时才使用的 `custom` 示例。
 - `supportedPropertyTypes`: 手动 `properties` / `context` 支持的值类型，目前为 string、number、boolean。
 - `manualCaptureWorkflow`: agent 添加手动埋点前必须执行的搜索、校验和 diff validation 流程。
+
+MCP server 示例：
+
+```json
+{
+  "ok": true,
+  "projectKey": "tm_proj_xxx",
+  "platform": "mcp_node",
+  "eventPlatform": "server",
+  "installCommands": [
+    "Install @tracemind/mcp-node from the TraceMind SDK distribution; in this repo the package is sdk/mcp-node.",
+    "Import TraceMindMCP in the MCP server entrypoint."
+  ],
+  "initSnippet": "import { TraceMindMCP } from \"@tracemind/mcp-node\";\n\nTraceMindMCP.start(server, {\n  projectKey: \"tm_proj_xxx\",\n  sourceKey: \"docs-mcp\"\n});",
+  "autoCapturedSignals": [
+    "MCP server/session start",
+    "MCP tool call completed",
+    "MCP resource read completed",
+    "MCP prompt request completed"
+  ],
+  "sourceModel": "platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name.",
+  "privacyConstraints": [
+    "Do not capture raw prompts, tool arguments, tool results, resource content, source code, diffs, secrets, tokens, or full query URLs."
+  ]
+}
+```
+
+Agent Skill setup 返回 host runtime hook 指南。静态 Skill 文件不能 auto-capture；只有宿主 agent runtime 提供可执行 lifecycle hook 时，才能记录 `skill_lifecycle`。
 
 ### `tracemind.search_event_names`
 
@@ -333,10 +361,11 @@ Input:
 ## 推荐 Coding Agent 埋点顺序
 
 1. 调用 `tracemind.agent_guidance` 检查 guidance 版本。
-2. 调用 `tracemind.search_event_names` 搜索可复用事件。
-3. 必要时调用 `tracemind.suggest_instrumentation` 获取复用或 draft 建议。
-4. 修改代码前后使用 `tracemind.validate_event_payload` 或 `tracemind.privacy_check` 复核字段。
-5. 完成前调用 `tracemind.validate_instrumentation_diff` 校验本次 diff。
+2. 调用 `tracemind.capture_setup` 获取目标平台接入方式；MCP server 使用 `mcp_node` 或 `mcp_python`，Agent Skill 使用 `agent_skill`。
+3. 调用 `tracemind.search_event_names` 搜索可复用事件。
+4. 必要时调用 `tracemind.suggest_instrumentation` 获取复用、Auto Capture 或 draft 建议。
+5. 修改代码前后使用 `tracemind.validate_event_payload` 或 `tracemind.privacy_check` 复核字段。
+6. 完成前调用 `tracemind.validate_instrumentation_diff` 校验本次 diff。
 
 ## GET Preview Response
 

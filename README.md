@@ -1,6 +1,6 @@
 # TraceMind
 
-TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、Android 和 React Native 应用里的真实用户行为自动整理成可分析的产品线索，并通过只读 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题。
+TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、Android、React Native、MCP server 和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过只读 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题。
 
 ## 1 分钟接入
 
@@ -101,6 +101,46 @@ TraceMind.start({ projectKey: "tm_proj_xxx" });
 ```
 
 React Native 复用原生 iOS/Android SDK，上报时保持 `platform: "ios"` 或 `platform: "android"`，并在 `deviceInfo.framework` 标记 `react_native`。
+
+## MCP Server 接入方式
+
+第三方 MCP server 可以像 Web/Native 一样接入 TraceMind。区别是 Auto Capture 记录的是 MCP 运行时事实，而不是页面点击：tool call、resource read、prompt request、status、duration、error type 和结果大小分桶。
+
+Node MCP:
+
+```ts
+import { TraceMindMCP } from "@tracemind/mcp-node";
+
+TraceMindMCP.start(server, {
+  projectKey: "tm_proj_xxx",
+  sourceKey: "docs-mcp"
+});
+```
+
+Python MCP:
+
+```py
+from tracemind_mcp import TraceMindMCP
+
+TraceMindMCP.start(server, project_key="tm_proj_xxx", source_key="docs-mcp")
+```
+
+MCP server 事件使用 `platform: "server"`、`sourceType: "mcp_server"`。SDK 只记录安全元数据，不记录 raw prompt、tool arguments、tool result、resource content、源码 diff、token 或完整 URL。
+
+## Agent Skill 接入方式
+
+静态 `SKILL.md` 是说明书，不是运行时，所以静态 Skill 文件本身不能 auto-capture。只有宿主 agent runtime 暴露 started/completed/failed 等生命周期 hook 时，才能接入：
+
+```js
+TraceMindMCP.captureSkillLifecycle({
+  skillName: "docs-indexer",
+  version: "1.2.0",
+  phase: "completed",
+  success: true
+});
+```
+
+Agent Skill 事件使用 `platform: "server"`、`sourceType: "agent_skill"`。如果宿主没有生命周期 hook，就把 Skill 作为教程，实际埋点放到 MCP server 或真正执行任务的 runtime 中。
 
 ## 记录登录用户 UID
 
@@ -232,6 +272,32 @@ TraceMind.capture("custom", {
 });
 ```
 
+MCP server 手动埋点适合记录自动生命周期无法稳定表达的业务结果，例如文档索引完成、仓库同步成功或部署创建：
+
+```ts
+TraceMindMCP.capture("custom", {
+  eventName: approvedEventName,
+  userId: "user-123",
+  properties: {
+    documentCount: 12,
+    success: true
+  },
+  context: {
+    toolName: "sync_docs"
+  }
+});
+```
+
+```py
+TraceMindMCP.capture(
+    "custom",
+    event_name=approved_event_name,
+    user_id="user-123",
+    properties={"documentCount": 12, "success": True},
+    context={"toolName": "sync_docs"},
+)
+```
+
 服务端或 SDK 队列也可以向同一个 `/api/capture` 上报事件。单事件格式继续兼容；批量格式使用 `{ "projectKey": "...", "events": [...] }`。服务端埋点建议设置 `platform: "server"`：
 
 ```json
@@ -263,6 +329,10 @@ TraceMind 会先保存原始行为日志，再抽取为语义事件，方便 LLM
 | `submit` | 表单提交 | 用户提交表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` |
 | `route_change` | 页面跳转 | 用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` |
+| `tool_call` | MCP 工具调用 | MCP server 记录工具调用完成情况，用于分析工具使用量、失败率和耗时。 | `toolName`, `status`, `durationMs`, `errorType`, `resultSizeBucket` |
+| `resource_read` | MCP 资源读取 | MCP server 记录资源读取完成情况，用于分析资源访问、失败率和耗时。 | `resourceName`, `uriScheme`, `uriTemplateHash`, `status`, `durationMs` |
+| `prompt_request` | MCP Prompt 请求 | MCP server 记录 prompt 请求完成情况，用于分析 prompt 使用、失败率和耗时。 | `promptName`, `status`, `durationMs` |
+| `skill_lifecycle` | Agent Skill 生命周期 | 宿主 agent runtime 记录 Skill started/completed/failed 等生命周期信号。 | `skillName`, `version`, `phase`, `success`, `durationMs` |
 | `custom` | 自定义事件 | 开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。 | `eventName`, `properties`, `context` |
 
 每条语义事件会尽量保留这些分析字段：
@@ -384,6 +454,6 @@ connect-src https://tracemind.sandbox.galaxycloud.app
 
 `data-tracemind-token` 是公开项目 token，不是开发者密钥。但它会暴露在前端，因此服务端必须把它当作公开标识处理，不能把它当作私密凭证。
 
-TraceMind 会记录采集来源并在控制台展示来源统计。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
+TraceMind 会记录采集来源并在控制台展示来源统计。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；MCP server 使用 `sourceType: "mcp_server"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
 
 MCP Token 是查询凭证，不要放到前端页面里。为不同成员或 Agent 使用不同 MCP Token，泄露时只刷新或删除对应 token。

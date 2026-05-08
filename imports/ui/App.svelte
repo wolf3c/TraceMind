@@ -24,6 +24,9 @@
     { value: "ios", label: "iOS" },
     { value: "android", label: "Android" },
     { value: "react_native", label: "React Native" },
+    { value: "mcp_node", label: "MCP Node" },
+    { value: "mcp_python", label: "MCP Python" },
+    { value: "agent_skill", label: "Agent Skill" },
   ];
 
   function buildCaptureSetup(project, platform, origin) {
@@ -55,6 +58,33 @@
         install: "Install @tracemind/react-native and run the native iOS and Android install steps.",
         title: "React Native one-line initialization",
         note: "React Native reuses native iOS/Android platform events and marks deviceInfo.framework as react_native.",
+      };
+    }
+
+    if (platform === "mcp_node") {
+      return {
+        code: `import { TraceMindMCP } from "@tracemind/mcp-node";\nTraceMindMCP.start(server, { projectKey: "${project.projectKey}", sourceKey: "docs-mcp" });`,
+        install: "Install @tracemind/mcp-node and initialize it around your MCP server.",
+        title: "MCP Node one-line initialization",
+        note: "MCP Node events use sourceType mcp_server and record tool/resource/prompt metadata only.",
+      };
+    }
+
+    if (platform === "mcp_python") {
+      return {
+        code: `from tracemind_mcp import TraceMindMCP\nTraceMindMCP.start(server, project_key="${project.projectKey}", source_key="docs-mcp")`,
+        install: "Install tracemind-mcp and initialize it around your Python MCP server.",
+        title: "MCP Python one-line initialization",
+        note: "MCP Python events use sourceType mcp_server and record tool/resource/prompt metadata only.",
+      };
+    }
+
+    if (platform === "agent_skill") {
+      return {
+        code: `TraceMindMCP.captureSkillLifecycle({ skillName: "docs-indexer", phase: "completed", success: true });`,
+        install: "Instrument executable host agent runtime hooks; static Skill files cannot auto-capture by themselves.",
+        title: "Agent Skill lifecycle hook",
+        note: "Agent Skill events use sourceType agent_skill and require host runtime lifecycle hooks.",
       };
     }
 

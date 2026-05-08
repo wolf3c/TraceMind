@@ -99,6 +99,46 @@ export function buildSemanticEvent(behavior) {
     };
   }
 
+  if (eventType === 'tool_call') {
+    const toolName = cleanText(behavior.properties?.toolName || behavior.target?.name || eventName, 'MCP tool');
+    const status = cleanText(behavior.properties?.status);
+    return {
+      ...base,
+      title: `MCP 工具 ${toolName}`,
+      meaning: `MCP server 完成了 ${toolName} 工具调用${status ? `，状态 ${status}` : ''}。`,
+    };
+  }
+
+  if (eventType === 'resource_read') {
+    const resourceName = cleanText(behavior.properties?.resourceName || behavior.target?.name || eventName, 'MCP resource');
+    const status = cleanText(behavior.properties?.status);
+    return {
+      ...base,
+      title: `MCP 资源 ${resourceName}`,
+      meaning: `MCP server 完成了 ${resourceName} 资源读取${status ? `，状态 ${status}` : ''}。`,
+    };
+  }
+
+  if (eventType === 'prompt_request') {
+    const promptName = cleanText(behavior.properties?.promptName || behavior.target?.name || eventName, 'MCP prompt');
+    const status = cleanText(behavior.properties?.status);
+    return {
+      ...base,
+      title: `MCP Prompt ${promptName}`,
+      meaning: `MCP server 完成了 ${promptName} prompt 请求${status ? `，状态 ${status}` : ''}。`,
+    };
+  }
+
+  if (eventType === 'skill_lifecycle') {
+    const skillName = cleanText(behavior.properties?.skillName || behavior.target?.name || eventName, 'Agent Skill');
+    const phase = cleanText(behavior.properties?.phase);
+    return {
+      ...base,
+      title: `Skill ${skillName}`,
+      meaning: `Agent Skill ${skillName}${phase ? ` 进入 ${phase} 阶段` : ' 发生生命周期事件'}。`,
+    };
+  }
+
   return {
     ...base,
     title: eventName || EVENT_TYPES[eventType] || EVENT_TYPES.custom,

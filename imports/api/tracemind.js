@@ -12,6 +12,10 @@ export const EVENT_TYPES = {
   submit: '提交表单',
   route_change: '页面跳转',
   api_call: '调用接口',
+  tool_call: '调用 MCP 工具',
+  resource_read: '读取 MCP 资源',
+  prompt_request: '请求 MCP Prompt',
+  skill_lifecycle: 'Agent Skill 生命周期',
   custom: '自定义行为',
 };
 
@@ -57,6 +61,34 @@ export const EVENT_DEFINITIONS = [
     meaning: '客户端或服务端记录了一次接口调用，用于分析接口失败、关键后端流程和服务端埋点。',
     typicalProperties: ['method', 'status', 'path'],
     platforms: ['web', 'ios', 'android', 'server'],
+  },
+  {
+    eventType: 'tool_call',
+    name: 'MCP 工具调用',
+    meaning: 'MCP server 记录了一次工具调用完成情况，用于分析工具使用量、失败率和耗时。',
+    typicalProperties: ['toolName', 'status', 'durationMs', 'errorType', 'resultSizeBucket'],
+    platforms: ['server'],
+  },
+  {
+    eventType: 'resource_read',
+    name: 'MCP 资源读取',
+    meaning: 'MCP server 记录了一次资源读取完成情况，用于分析资源访问、失败率和耗时。',
+    typicalProperties: ['resourceName', 'uriScheme', 'uriTemplateHash', 'status', 'durationMs'],
+    platforms: ['server'],
+  },
+  {
+    eventType: 'prompt_request',
+    name: 'MCP Prompt 请求',
+    meaning: 'MCP server 记录了一次 prompt 请求完成情况，用于分析 prompt 使用、失败率和耗时。',
+    typicalProperties: ['promptName', 'status', 'durationMs'],
+    platforms: ['server'],
+  },
+  {
+    eventType: 'skill_lifecycle',
+    name: 'Agent Skill 生命周期',
+    meaning: '宿主 agent runtime 记录了 Skill started/completed/failed 等生命周期信号。',
+    typicalProperties: ['skillName', 'version', 'phase', 'success', 'durationMs'],
+    platforms: ['server'],
   },
   {
     eventType: 'custom',
@@ -114,7 +146,7 @@ function parseUrl(value) {
 
 function normalizeSourceType(value) {
   const sourceType = cleanString(value, 40).toLowerCase();
-  return ['web', 'ios', 'android', 'server'].includes(sourceType) ? sourceType : 'unknown';
+  return ['web', 'ios', 'android', 'server', 'mcp_server', 'agent_skill'].includes(sourceType) ? sourceType : 'unknown';
 }
 
 export function normalizeCaptureSource(payload = {}, headers = {}) {
