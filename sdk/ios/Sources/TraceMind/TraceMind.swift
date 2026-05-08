@@ -22,6 +22,60 @@ public struct TraceMindConfiguration {
   }
 }
 
+public enum TraceMindValue: Codable, Equatable,
+  ExpressibleByStringLiteral,
+  ExpressibleByIntegerLiteral,
+  ExpressibleByFloatLiteral,
+  ExpressibleByBooleanLiteral
+{
+  case string(String)
+  case number(Double)
+  case bool(Bool)
+
+  public init(stringLiteral value: String) {
+    self = .string(value)
+  }
+
+  public init(integerLiteral value: Int) {
+    self = .number(Double(value))
+  }
+
+  public init(floatLiteral value: Double) {
+    self = .number(value)
+  }
+
+  public init(booleanLiteral value: Bool) {
+    self = .bool(value)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .string(let value):
+      try container.encode(value)
+    case .number(let value):
+      try container.encode(value)
+    case .bool(let value):
+      try container.encode(value)
+    }
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if let value = try? container.decode(Bool.self) {
+      self = .bool(value)
+      return
+    }
+    if let value = try? container.decode(Double.self) {
+      self = .number(value)
+      return
+    }
+    self = .string(try container.decode(String.self))
+  }
+}
+
+public typealias TraceMindFields = [String: TraceMindValue]
+
 public struct TraceMindTarget: Codable {
   public let className: String?
   public let type: String?
@@ -66,6 +120,7 @@ public struct TraceMindPayload: Codable {
   public let sessionId: String
   public let anonymousId: String
   public let deviceId: String
+  public let userId: String?
   public let deviceFingerprint: String
   public let platform: String
   public let deviceInfo: [String: String]
@@ -76,8 +131,8 @@ public struct TraceMindPayload: Codable {
   public let title: String?
   public let target: TraceMindTarget?
   public let targetHash: String?
-  public let properties: [String: String]
-  public let context: [String: String]
+  public let properties: TraceMindFields
+  public let context: TraceMindFields
   public let occurredAt: String
 }
 
@@ -90,21 +145,31 @@ public protocol TraceMindIdentityStore {
   var sessionId: String { get }
   var anonymousId: String { get }
   var deviceId: String { get }
+  var userId: String? { get }
+
+  func identify(userId: String)
 }
 
 public final class InMemoryIdentityStore: TraceMindIdentityStore {
   public let sessionId: String
   public let anonymousId: String
   public let deviceId: String
+  public private(set) var userId: String?
 
   public init(
     sessionId: String = "tm_sess_test",
     anonymousId: String = "tm_anon_test",
-    deviceId: String = "tm_dev_test"
+    deviceId: String = "tm_dev_test",
+    userId: String? = nil
   ) {
     self.sessionId = sessionId
     self.anonymousId = anonymousId
     self.deviceId = deviceId
+    self.userId = userId
+  }
+
+  public func identify(userId: String) {
+    self.userId = userId
   }
 }
 
@@ -112,11 +177,21 @@ public final class UserDefaultsIdentityStore: TraceMindIdentityStore {
   public let sessionId: String
   public let anonymousId: String
   public let deviceId: String
+  private let defaults: UserDefaults
+
+  public var userId: String? {
+    defaults.string(forKey: "tracemind_user_id")
+  }
 
   public init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
     self.sessionId = Self.value(defaults: defaults, key: "tracemind_session_id", prefix: "tm_sess_")
     self.anonymousId = Self.value(defaults: defaults, key: "tracemind_anonymous_id", prefix: "tm_anon_")
     self.deviceId = Self.value(defaults: defaults, key: "tracemind_device_id", prefix: "tm_dev_")
+  }
+
+  public func identify(userId: String) {
+    defaults.set(userId, forKey: "tracemind_user_id")
   }
 
   private static func value(defaults: UserDefaults, key: String, prefix: String) -> String {
@@ -170,8 +245,8 @@ public final class TraceMindClient {
     path: String,
     title: String? = nil,
     target: TraceMindTarget? = nil,
-    properties: [String: String] = [:],
-    context: [String: String] = [:]
+    properties: TraceMindFields = [:],
+    context: TraceMindFields = [:]
   ) throws -> TraceMindPayload {
     let targetHash = try target.map { try Self.hashTarget($0) }
     return TraceMindPayload(
@@ -179,6 +254,7 @@ public final class TraceMindClient {
       sessionId: identityStore.sessionId,
       anonymousId: identityStore.anonymousId,
       deviceId: identityStore.deviceId,
+      userId: identityStore.userId,
       deviceFingerprint: Self.hash("ios:\(configuration.sourceKey):\(identityStore.deviceId)", prefix: "tm_fp_"),
       platform: "ios",
       deviceInfo: [
@@ -210,8 +286,8 @@ public final class TraceMindClient {
     path: String,
     title: String? = nil,
     target: TraceMindTarget? = nil,
-    properties: [String: String] = [:],
-    context: [String: String] = [:]
+    properties: TraceMindFields = [:],
+    context: TraceMindFields = [:]
   ) throws {
     queue.append(try makePayload(
       type: type,
@@ -225,6 +301,17 @@ public final class TraceMindClient {
     if queue.count > maxQueueSize {
       queue.removeFirst(queue.count - maxQueueSize)
     }
+  }
+
+  public func identify(_ userId: String, traits: TraceMindFields = [:]) throws {
+    identityStore.identify(userId: userId)
+    let identifyEventName = "identify"
+    try capture(
+      type: "custom",
+      eventName: identifyEventName,
+      path: "Identity",
+      properties: traits
+    )
   }
 
   public func flush() async throws {
@@ -250,9 +337,9 @@ public final class TraceMindClient {
     return "\(prefix)\(String(h, radix: 36))"
   }
 
-  static func sanitize(_ fields: [String: String]) -> [String: String] {
+  static func sanitize(_ fields: TraceMindFields) -> TraceMindFields {
     fields.filter { key, value in
-      let normalized = key.lowercased()
+      let normalized = normalizeFieldKey(key)
       if normalized.contains("rawprompt")
         || normalized.contains("rawusercontent")
         || normalized.contains("token")
@@ -264,8 +351,18 @@ public final class TraceMindClient {
         || normalized.contains("enteredtext") {
         return false
       }
-      return value.range(of: #"^https?://\S+\?\S+"#, options: .regularExpression) == nil
+      if case .string(let stringValue) = value {
+        return stringValue.range(of: #"^https?://\S+\?\S+"#, options: .regularExpression) == nil
+      }
+      if case .number(let numberValue) = value {
+        return numberValue.isFinite
+      }
+      return true
     }
+  }
+
+  private static func normalizeFieldKey(_ key: String) -> String {
+    key.lowercased().replacingOccurrences(of: #"[_\-\s]+"#, with: "", options: .regularExpression)
   }
 }
 
@@ -285,10 +382,14 @@ public enum TraceMind {
     _ type: String,
     eventName: String? = nil,
     path: String,
-    properties: [String: String] = [:],
-    context: [String: String] = [:]
+    properties: TraceMindFields = [:],
+    context: TraceMindFields = [:]
   ) throws {
     try client?.capture(type: type, eventName: eventName, path: path, properties: properties, context: context)
+  }
+
+  public static func identify(_ userId: String, traits: TraceMindFields = [:]) throws {
+    try client?.identify(userId, traits: traits)
   }
 }
 

@@ -86,6 +86,8 @@ window.TraceMind.identify("user-123", {
 
 TraceMind 会把 `userId` 保存到浏览器本地，并随之后的事件自动上报。DAU 和常见产品分析指标使用 `userId || anonymousId` 去重。
 
+Native 和 React Native 使用同一语义：应用启动只调用一次 `TraceMind.start(...)`，登录成功后可调用 `TraceMind.identify(...)` 持久化业务 `userId`。iOS 存入 `UserDefaults`，Android 存入 `SharedPreferences`，React Native 代理到对应原生 SDK。`identify` 会产生一个经过清洗的 `custom` / `identify` 行为事实，traits 只保留 string、number、boolean。
+
 ## 手动埋点
 
 自动采集无法表达的业务语义使用 `custom` + `eventName`：
@@ -103,7 +105,38 @@ window.TraceMind.capture("custom", {
 });
 ```
 
-`properties` 放事件属性，`context` 放上报上下文。服务端埋点可以向同一个 `/api/capture` 写入相同字段，并设置 `platform: "server"`。
+`properties` 放事件属性，`context` 放上报上下文。iOS、Android 和 React Native 手动埋点保持同样字段：只保留 string、number、boolean，省略 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value 和带 query 的完整 URL。服务端埋点可以向同一个 `/api/capture` 写入相同字段，并设置 `platform: "server"`。
+
+Native 手动埋点示例：
+
+```swift
+try? TraceMind.capture(
+  "custom",
+  eventName: approvedEventName,
+  path: "CheckoutViewController",
+  properties: ["plan": "pro", "amount": 29, "trial": true],
+  context: ["source": "pricing_page"]
+)
+```
+
+```kotlin
+TraceMind.capture(
+  type = "custom",
+  eventName = approvedEventName,
+  path = "CheckoutActivity",
+  properties = mapOf("plan" to "pro", "amount" to 29, "trial" to true),
+  context = mapOf("source" to "pricing_page")
+)
+```
+
+```js
+TraceMind.capture("custom", {
+  eventName: approvedEventName,
+  path: "Checkout",
+  properties: { plan: "pro", amount: 29, trial: true },
+  context: { source: "pricing_page" }
+});
+```
 
 ## Ingestion API
 

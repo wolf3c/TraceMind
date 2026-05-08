@@ -2,6 +2,7 @@ package com.tracemind
 
 import android.app.Activity
 import android.app.Application
+import android.content.Context
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -25,14 +26,28 @@ object TraceMind {
       projectKey = projectKey,
       endpoint = endpoint,
       packageName = application.packageName,
-      appLabel = application.applicationInfo.loadLabel(application.packageManager).toString()
+      appLabel = application.applicationInfo.loadLabel(application.packageManager).toString(),
+      identityStore = SharedPreferencesIdentityStore(
+        application.getSharedPreferences("tracemind_identity", Context.MODE_PRIVATE)
+      )
     )
     application.registerActivityLifecycleCallbacks(TraceMindLifecycleCallbacks(client!!))
   }
 
   @JvmStatic
-  fun capture(type: String, eventName: String? = null, path: String, properties: Map<String, String> = emptyMap()) {
-    client?.capture(type = type, eventName = eventName, path = path, properties = properties)
+  fun identify(userId: String, traits: Map<String, Any?> = emptyMap()) {
+    client?.identify(userId = userId, traits = traits)
+  }
+
+  @JvmStatic
+  fun capture(
+    type: String,
+    eventName: String? = null,
+    path: String,
+    properties: Map<String, Any?> = emptyMap(),
+    context: Map<String, Any?> = emptyMap()
+  ) {
+    client?.capture(type = type, eventName = eventName, path = path, properties = properties, context = context)
   }
 }
 
@@ -41,6 +56,7 @@ class TraceMindClient(
   private val endpoint: String,
   packageName: String,
   appLabel: String,
+  identityStore: TraceMindIdentityStore? = null,
   private val maxQueueSize: Int = 100
 ) {
   private val queue = ArrayDeque<TraceMindPayload>()
@@ -49,7 +65,7 @@ class TraceMindClient(
     projectKey = projectKey,
     packageName = packageName,
     appLabel = appLabel,
-    identityStore = InMemoryIdentityStore(
+    identityStore = identityStore ?: InMemoryIdentityStore(
       sessionId = "tm_sess_${uuid()}",
       anonymousId = "tm_anon_${uuid()}",
       deviceId = "tm_dev_${uuid()}"
@@ -62,11 +78,17 @@ class TraceMindClient(
     path: String,
     title: String? = null,
     target: TraceMindTarget? = null,
-    properties: Map<String, String> = emptyMap(),
-    context: Map<String, String> = emptyMap()
+    properties: Map<String, Any?> = emptyMap(),
+    context: Map<String, Any?> = emptyMap()
   ) {
     queue.addLast(builder.payload(type, eventName, path, title, target, properties, context))
     while (queue.size > maxQueueSize) queue.removeFirst()
+  }
+
+  fun identify(userId: String, traits: Map<String, Any?> = emptyMap()) {
+    builder.identify(userId)
+    val identifyEventName = "identify"
+    capture(type = "custom", eventName = identifyEventName, path = "Identity", properties = traits)
   }
 
   fun flushPayload(): TraceMindBatch {
@@ -178,7 +200,7 @@ private class TraceMindHttpTransport(private val endpoint: String) {
   }
 }
 
-private fun TraceMindBatch.toJson(): String {
+internal fun TraceMindBatch.toJson(): String {
   return """{"projectKey":"${projectKey.escapeJson()}","events":[${events.joinToString(",") { it.toJson() }}]}"""
 }
 
@@ -199,6 +221,7 @@ private fun TraceMindPayload.toJson(): String {
     """"context":${context.toJson()}"""
   )
   eventName?.let { fields.add(""""eventName":"${it.escapeJson()}"""") }
+  userId?.let { fields.add(""""userId":"${it.escapeJson()}"""") }
   title?.let { fields.add(""""title":"${it.escapeJson()}"""") }
   target?.let { fields.add(""""target":${it.toJson()}""") }
   targetHash?.let { fields.add(""""targetHash":"${it.escapeJson()}"""") }
@@ -229,8 +252,17 @@ private fun TraceMindTarget.toJson(): String {
   return "{${fields.joinToString(",")}}"
 }
 
-private fun Map<String, String>.toJson(): String {
-  return "{${entries.joinToString(",") { """"${it.key.escapeJson()}":"${it.value.escapeJson()}"""" }}}"
+private fun Map<String, *>.toJson(): String {
+  return "{${entries.joinToString(",") { """"${it.key.escapeJson()}":${it.value.toJsonValue()}""" }}}"
+}
+
+private fun Any?.toJsonValue(): String {
+  return when (this) {
+    is String -> """"${escapeJson()}""""
+    is Number -> toString()
+    is Boolean -> if (this) "true" else "false"
+    else -> "null"
+  }
 }
 
 private fun String.escapeJson(): String {

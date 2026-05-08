@@ -18,7 +18,7 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.08.2';
+const AGENT_GUIDANCE_VERSION = '2026.05.08.3';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -394,6 +394,23 @@ const PRIVACY_CONSTRAINTS = [
   'Use the returned public projectKey only for capture writes; never use an MCP token in app code.',
 ];
 
+const SUPPORTED_MANUAL_PROPERTY_TYPES = ['string', 'number', 'boolean'];
+
+const MANUAL_CAPTURE_WORKFLOW = [
+  'Use Auto Capture for behavior facts; use manual capture only for stable business outcomes Auto Capture cannot infer.',
+  'Call tracemind.search_event_names before adding a custom event name.',
+  'If no approved event exists, create or request a draft custom event proposal instead of inventing an event name.',
+  'Call tracemind.validate_event_payload with the approved event name and sanitized primitive properties before coding.',
+  'Implement TraceMind.identify after login when a stable userId is available, then TraceMind.capture("custom", ...) for the business outcome.',
+  'Run tracemind.validate_instrumentation_diff before finishing instrumentation changes.',
+];
+
+const MANUAL_CAPTURE_WARNINGS = [
+  'Manual events are for stable business outcomes, not raw input values or screen contents.',
+  'Only string, number, and boolean properties/context values are preserved.',
+  'Nested objects, arrays, null values, PII-like keys, credential values, raw prompts/content, input values, and full query URLs are omitted by SDK sanitization.',
+];
+
 function commonSetup(project, platform) {
   const captureApiUrl = Meteor.absoluteUrl('/api/capture');
   const notes = [
@@ -407,6 +424,9 @@ function commonSetup(project, platform) {
     captureApiUrl,
     autoCapturedSignals: AUTO_CAPTURE_SIGNALS,
     privacyConstraints: PRIVACY_CONSTRAINTS,
+    supportedPropertyTypes: SUPPORTED_MANUAL_PROPERTY_TYPES,
+    manualCaptureWorkflow: MANUAL_CAPTURE_WORKFLOW,
+    manualCaptureWarnings: MANUAL_CAPTURE_WARNINGS,
     notes,
   };
 }
@@ -445,7 +465,11 @@ function platformSetup(project, platform) {
         'swift test --package-path sdk/ios',
         'Run the app, trigger launch/screen/tap/input/submit, then query TraceMind raw behaviors or semantic events.',
       ],
-      manualCaptureExample: 'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutViewController", properties: ["plan": "pro"])',
+      identifySnippet: 'try? TraceMind.identify("user_123", traits: ["plan": "pro"])',
+      manualCaptureExamples: [
+        'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutViewController", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "pricing"])',
+      ],
+      manualCaptureExample: 'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutViewController", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "pricing"])',
     };
   }
 
@@ -481,7 +505,11 @@ function platformSetup(project, platform) {
         'npm run test:sdk:android',
         'Run the app, trigger launch/screen/tap/input/submit, then query TraceMind raw behaviors or semantic events.',
       ],
-      manualCaptureExample: 'TraceMind.capture(type = "custom", eventName = approvedEventName, path = "CheckoutActivity", properties = mapOf("plan" to "pro"))',
+      identifySnippet: 'TraceMind.identify(userId = "user_123", traits = mapOf("plan" to "pro"))',
+      manualCaptureExamples: [
+        'TraceMind.capture(type = "custom", eventName = approvedEventName, path = "CheckoutActivity", properties = mapOf("plan" to "pro", "amount" to 29, "trial" to true), context = mapOf("source" to "pricing"))',
+      ],
+      manualCaptureExample: 'TraceMind.capture(type = "custom", eventName = approvedEventName, path = "CheckoutActivity", properties = mapOf("plan" to "pro", "amount" to 29, "trial" to true), context = mapOf("source" to "pricing"))',
     };
   }
 
@@ -519,7 +547,11 @@ function platformSetup(project, platform) {
         'npm test --prefix sdk/react-native',
         'Run the iOS and Android app variants, then query TraceMind raw behaviors or semantic events.',
       ],
-      manualCaptureExample: 'TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro" } })',
+      identifySnippet: 'TraceMind.identify("user_123", { plan: "pro" })',
+      manualCaptureExamples: [
+        'TraceMind.capture("custom", { eventName: approvedEventName, path: "Checkout", properties: { plan: "pro", amount: 29, trial: true }, context: { source: "pricing" } })',
+      ],
+      manualCaptureExample: 'TraceMind.capture("custom", { eventName: approvedEventName, path: "Checkout", properties: { plan: "pro", amount: 29, trial: true }, context: { source: "pricing" } })',
     };
   }
 
@@ -551,7 +583,11 @@ function platformSetup(project, platform) {
     verificationCommands: [
       'Run the web app, trigger a page load/click/input/submit, then query TraceMind raw behaviors or semantic events.',
     ],
-    manualCaptureExample: 'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro" } })',
+    identifySnippet: 'window.TraceMind.identify("user_123", { plan: "pro" })',
+    manualCaptureExamples: [
+      'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro", amount: 29, trial: true }, context: { source: "pricing" } })',
+    ],
+    manualCaptureExample: 'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro", amount: 29, trial: true }, context: { source: "pricing" } })',
   };
 }
 

@@ -1,11 +1,22 @@
-const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|token|secret|password|email|phone|input)/i;
+const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|token|secret|password|email|phone|input|enteredtext)/i;
+
+function isPrimitiveValue(value) {
+  return typeof value === 'string'
+    || (typeof value === 'number' && Number.isFinite(value))
+    || typeof value === 'boolean';
+}
+
+function normalizeFieldKey(key) {
+  return String(key).toLowerCase().replace(/[_\-\s]+/g, '');
+}
 
 function sanitizeFields(fields) {
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return {};
   return Object.fromEntries(
     Object.entries(fields)
       .filter(([key, value]) => {
-        if (FORBIDDEN_FIELD_PATTERN.test(key)) return false;
+        if (FORBIDDEN_FIELD_PATTERN.test(normalizeFieldKey(key))) return false;
+        if (!isPrimitiveValue(value)) return false;
         if (typeof value === 'string' && /^https?:\/\/\S+\?\S+/.test(value)) return false;
         return true;
       }),
@@ -42,6 +53,14 @@ function createTraceMindClient({ nativeModule, platform } = {}) {
         endpoint,
         deviceInfo: { framework: 'react_native' },
       });
+    },
+
+    identify(userId, traits = {}) {
+      if (!userId) {
+        throw new Error('TraceMind.identify requires userId.');
+      }
+      assertNativeModule();
+      resolvedNativeModule.identify(userId, sanitizeFields(traits));
     },
 
     capture(type, payload = {}) {

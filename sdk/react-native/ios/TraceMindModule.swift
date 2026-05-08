@@ -21,9 +21,33 @@ final class TraceMindModule: NSObject {
   @objc func capture(_ type: String, payload: NSDictionary) {
     let eventName = payload["eventName"] as? String
     let path = payload["path"] as? String ?? "ReactNative"
-    let properties = payload["properties"] as? [String: String] ?? [:]
-    let context = payload["context"] as? [String: String] ?? [:]
+    let properties = Self.traceMindFields(payload["properties"])
+    let context = Self.traceMindFields(payload["context"])
     try? TraceMind.capture(type, eventName: eventName, path: path, properties: properties, context: context)
+  }
+
+  @objc func identify(_ userId: String, traits: NSDictionary) {
+    try? TraceMind.identify(userId, traits: Self.traceMindFields(traits))
+  }
+
+  private static func traceMindFields(_ value: Any?) -> TraceMindFields {
+    guard let fields = value as? NSDictionary else { return [:] }
+    var next: TraceMindFields = [:]
+    fields.forEach { key, value in
+      guard let key = key as? String else { return }
+      if let stringValue = value as? String {
+        next[key] = .string(stringValue)
+        return
+      }
+      if let numberValue = value as? NSNumber {
+        if CFGetTypeID(numberValue) == CFBooleanGetTypeID() {
+          next[key] = .bool(numberValue.boolValue)
+        } else {
+          next[key] = .number(numberValue.doubleValue)
+        }
+      }
+    }
+    return next
   }
 }
 #endif

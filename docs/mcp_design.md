@@ -189,6 +189,16 @@ Output:
   "verificationCommands": [
     "Run the web app, trigger a page load/click/input/submit, then query TraceMind raw behaviors or semantic events."
   ],
+  "identifySnippet": "window.TraceMind.identify(\"user_123\", { plan: \"pro\" })",
+  "manualCaptureExamples": [
+    "window.TraceMind.capture(\"custom\", { eventName: approvedEventName, properties: { plan: \"pro\", amount: 29, trial: true }, context: { source: \"pricing\" } })"
+  ],
+  "supportedPropertyTypes": ["string", "number", "boolean"],
+  "manualCaptureWorkflow": [
+    "Call tracemind.search_event_names before adding a custom event name.",
+    "Call tracemind.validate_event_payload with the approved event name and sanitized primitive properties before coding.",
+    "Run tracemind.validate_instrumentation_diff before finishing instrumentation changes."
+  ],
   "tokenType": "public_auto_capture_project_key"
 }
 ```
@@ -216,6 +226,11 @@ Native 示例：
     "Search the app for TraceMind.start("
   ],
   "initSnippet": "TraceMind.start(projectKey: \"tm_proj_xxx\")",
+  "identifySnippet": "try? TraceMind.identify(\"user_123\", traits: [\"plan\": \"pro\"])",
+  "manualCaptureExamples": [
+    "try? TraceMind.capture(\"custom\", eventName: approvedEventName, path: \"CheckoutViewController\", properties: [\"plan\": \"pro\", \"amount\": 29, \"trial\": true], context: [\"source\": \"pricing\"])"
+  ],
+  "supportedPropertyTypes": ["string", "number", "boolean"],
   "verificationCommands": [
     "swift test --package-path sdk/ios"
   ],
@@ -228,7 +243,10 @@ Native 和 React Native 返回还包含：
 - `autoCapturedSignals`: app/session start、screen/page view、tap/click、input changed、submit 等自动采集口径。
 - `privacyConstraints`: 不采集输入值、截图、DOM/native snapshot、session replay、secret、token、raw prompt、raw user content 或完整 query URL。
 - `sourceModel`: iOS 使用 bundle id，Android 使用 package name，React Native 保持 `platform` 为 `ios` 或 `android` 并标记 `react_native` framework。
-- `manualCaptureExample`: 自动采集无法稳定表达业务结果时才使用的 `custom` 示例。
+- `identifySnippet`: 登录成功后绑定稳定业务 `userId` 的示例。
+- `manualCaptureExamples`: 自动采集无法稳定表达业务结果时才使用的 `custom` 示例。
+- `supportedPropertyTypes`: 手动 `properties` / `context` 支持的值类型，目前为 string、number、boolean。
+- `manualCaptureWorkflow`: agent 添加手动埋点前必须执行的搜索、校验和 diff validation 流程。
 
 ### `tracemind.search_event_names`
 

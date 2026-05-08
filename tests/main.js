@@ -116,17 +116,21 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.08.2'));
+      assert.ok(skill.includes('version: 2026.05.08.3'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('installCommands'));
       assert.ok(skill.includes('idempotencyChecks'));
+      assert.ok(skill.includes('manualCaptureExamples'));
+      assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
       assert.ok(snippet.includes('installCommands'));
+      assert.ok(snippet.includes('manualCaptureWorkflow'));
+      assert.ok(snippet.includes('supported primitives'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.08.2');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.08.3');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -187,7 +191,7 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.08.2');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.08.3');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
@@ -248,6 +252,11 @@ describe('TraceMind', function () {
       assert.ok(setup.structuredContent.idempotencyChecks.some((check) => check.includes('data-tracemind-token')));
       assert.ok(setup.structuredContent.verificationCommands.some((command) => command.includes('query TraceMind')));
       assert.ok(setup.structuredContent.privacyConstraints.some((constraint) => constraint.includes('Do not capture input values')));
+      assert.deepStrictEqual(setup.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
+      assert.ok(setup.structuredContent.identifySnippet.includes('window.TraceMind.identify'));
+      assert.ok(setup.structuredContent.manualCaptureWorkflow.some((step) => step.includes('tracemind.search_event_names')));
+      assert.ok(setup.structuredContent.manualCaptureWarnings.some((warning) => warning.includes('stable business outcomes')));
+      assert.ok(setup.structuredContent.manualCaptureExamples.some((example) => example.includes('amount: 29')));
       assert.ok(setup.structuredContent.manualCaptureExample.includes('window.TraceMind.capture'));
       assert.ok(setup.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
       assert.ok(!JSON.stringify(setup.structuredContent).includes('tm_mcp_'));
@@ -278,6 +287,8 @@ describe('TraceMind', function () {
       assert.ok(ios.structuredContent.source.key.includes('bundle id'));
       assert.ok(ios.structuredContent.sourceModel.includes('bundle id'));
       assert.ok(ios.structuredContent.verificationCommands.includes('swift test --package-path sdk/ios'));
+      assert.ok(ios.structuredContent.identifySnippet.includes('TraceMind.identify'));
+      assert.ok(ios.structuredContent.manualCaptureExamples.some((example) => example.includes('"amount": 29')));
       assert.ok(ios.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
 
       assert.strictEqual(android.structuredContent.platform, 'android');
@@ -290,6 +301,8 @@ describe('TraceMind', function () {
       assert.ok(android.structuredContent.source.key.includes('package name'));
       assert.ok(android.structuredContent.sourceModel.includes('package name'));
       assert.ok(android.structuredContent.verificationCommands.includes('npm run test:sdk:android'));
+      assert.ok(android.structuredContent.identifySnippet.includes('TraceMind.identify'));
+      assert.ok(android.structuredContent.manualCaptureExamples.some((example) => example.includes('"amount" to 29')));
       assert.ok(android.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
 
       assert.strictEqual(reactNative.structuredContent.platform, 'react_native');
@@ -302,11 +315,15 @@ describe('TraceMind', function () {
       assert.strictEqual(reactNative.structuredContent.eventPlatform, 'ios_or_android');
       assert.ok(reactNative.structuredContent.sourceModel.includes('Do not create a react_native platform value'));
       assert.ok(reactNative.structuredContent.verificationCommands.includes('npm test --prefix sdk/react-native'));
+      assert.ok(reactNative.structuredContent.identifySnippet.includes('TraceMind.identify'));
+      assert.ok(reactNative.structuredContent.manualCaptureExamples.some((example) => example.includes('amount: 29')));
       assert.ok(reactNative.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
 
       [ios, android, reactNative].forEach((result) => {
         assert.strictEqual(result.structuredContent.tokenType, 'public_auto_capture_project_key');
         assert.ok(result.structuredContent.autoCapturedSignals.includes('input changed without input values'));
+        assert.deepStrictEqual(result.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
+        assert.ok(result.structuredContent.manualCaptureWorkflow.some((step) => step.includes('tracemind.validate_event_payload')));
         assert.ok(result.structuredContent.privacyConstraints.some((constraint) => constraint.includes('Do not capture input values')));
         assert.ok(result.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
         assert.ok(!JSON.stringify(result.structuredContent).includes('tm_mcp_'));
@@ -996,6 +1013,50 @@ describe('TraceMind', function () {
         path: '/docs',
         referrer: '',
       });
+    });
+
+    it('preserves numeric and boolean manual capture fields from SDK payloads', async function () {
+      const projectId = `project-primitive-capture-${Date.now()}`;
+      const projectKey = `tm_proj_primitive_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-primitive-capture',
+        name: 'Primitive Capture Project',
+        projectKey,
+        blockedSources: [],
+        ['mcp' + 'Tokens']: [],
+        createdAt: new Date(),
+      });
+
+      const eventName = 'purchase_completed';
+      const result = await ingestCapturePayload({
+        projectKey,
+        type: 'custom',
+        eventName,
+        platform: 'android',
+        path: 'CheckoutActivity',
+        source: {
+          type: 'android',
+          packageName: 'com.example.android',
+        },
+        properties: {
+          plan: 'pro',
+          amount: 29,
+          trial: false,
+        },
+        context: {
+          retry: true,
+          source: 'pricing',
+        },
+      }, { headers: {} });
+      const behavior = await RawBehaviors.findOneAsync({ projectId });
+
+      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.strictEqual(behavior.properties.plan, 'pro');
+      assert.strictEqual(behavior.properties.amount, 29);
+      assert.strictEqual(behavior.properties.trial, false);
+      assert.strictEqual(behavior.context.retry, true);
+      assert.strictEqual(behavior.context.source, 'pricing');
     });
 
     it('accepts batched native capture payloads with per-event sources', async function () {

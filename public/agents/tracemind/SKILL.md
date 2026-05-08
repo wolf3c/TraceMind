@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.08.2
+version: 2026.05.08.3
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -14,7 +14,7 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 2. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
 3. Identify the app platform: `web`, `ios`, `android`, or `react_native`.
 4. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
-5. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, and `initSnippet` to install or verify setup.
+5. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
 6. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
 7. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
 8. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
@@ -41,6 +41,16 @@ Use `capture_setup` as the source of truth for current setup details instead of 
 - For React Native, do not create a new platform value. Events remain `ios` or `android`; React Native is marked through `deviceInfo.framework` or `sourceDetails.framework`.
 - Native Auto Capture should cover app/session start, screen/page view, tap/click, input changed without values, and submit signals.
 - Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
+
+## Manual Capture And Identify
+
+Manual capture follows the same mental model on Web, iOS, Android, and React Native: initialize TraceMind once, optionally identify the logged-in user, then capture approved business outcomes with `TraceMind.capture("custom", ...)` or `window.TraceMind.capture("custom", ...)`.
+
+- Use the returned `identifySnippet` after login when the app has a stable internal `userId`. Traits are optional and must use only `string`, `number`, or `boolean` values.
+- Use `manualCaptureExamples` only after `tracemind.search_event_names` finds an approved event name or the user approves a draft event proposal.
+- Put stable business facts in `properties`; put route, source, experiment, or UI context in `context`.
+- Native and React Native SDKs omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
+- Manual events are for outcomes such as purchase completed, subscription changed, invite sent, or onboarding completed. Do not use manual capture for raw input values or screen contents.
 
 ## Event Rules
 

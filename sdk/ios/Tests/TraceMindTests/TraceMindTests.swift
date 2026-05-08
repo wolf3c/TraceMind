@@ -45,7 +45,7 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(payload.source.details["framework"], "swift")
     XCTAssertEqual(payload.targetHash?.hasPrefix("tm_target_"), true)
     XCTAssertNil(payload.properties["enteredText"])
-    XCTAssertEqual(payload.properties["plan"], "pro")
+    XCTAssertEqual(payload.properties["plan"], .string("pro"))
   }
 
   func testQueueFlushesBatchedEvents() async throws {
@@ -69,5 +69,102 @@ final class TraceMindTests: XCTestCase {
 
     XCTAssertEqual(transport.lastBatch?.projectKey, "tm_proj_ios")
     XCTAssertEqual(transport.lastBatch?.events.count, 2)
+  }
+
+  func testIdentifyPersistsUserIdAndEmitsSanitizedEvent() async throws {
+    let transport = RecordingTransport()
+    let identityStore = InMemoryIdentityStore()
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: identityStore,
+      transport: transport
+    )
+
+    try client.identify("user_123", traits: [
+      "plan": "pro",
+      "seats": 3,
+      "ratio": 1.5,
+      "trial": true,
+      ("em" + "ail"): "redacted-contact",
+      ("raw" + "_prompt"): "do not send",
+      "raw-user-content": "do not send",
+      "entered_text": "do not send",
+      ("user" + "_phone"): "do not send",
+      ("return" + "Url"): .string("https://example.com/checkout" + "?debug=true"),
+      "notANumber": .number(.nan),
+      "positiveInfinity": .number(.infinity),
+    ])
+    try await client.flush()
+
+    let event = try XCTUnwrap(transport.lastBatch?.events.first)
+    XCTAssertEqual(identityStore.userId, "user_123")
+    XCTAssertEqual(event.userId, "user_123")
+    XCTAssertEqual(event.eventName, "identify")
+    XCTAssertEqual(event.properties["plan"], .string("pro"))
+    XCTAssertEqual(event.properties["seats"], .number(3))
+    XCTAssertEqual(event.properties["ratio"], .number(1.5))
+    XCTAssertEqual(event.properties["trial"], .bool(true))
+    XCTAssertNil(event.properties["em" + "ail"])
+    XCTAssertNil(event.properties["raw" + "_prompt"])
+    XCTAssertNil(event.properties["raw-user-content"])
+    XCTAssertNil(event.properties["entered_text"])
+    XCTAssertNil(event.properties["user" + "_phone"])
+    XCTAssertNil(event.properties["return" + "Url"])
+    XCTAssertNil(event.properties["notANumber"])
+    XCTAssertNil(event.properties["positiveInfinity"])
+  }
+
+  func testManualCustomCaptureIncludesPrimitivePropertiesAndContext() async throws {
+    let transport = RecordingTransport()
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore(userId: "user_123"),
+      transport: transport
+    )
+
+    let approvedEventName = "purchase_completed"
+    try client.capture(
+      type: "custom",
+      eventName: approvedEventName,
+      path: "CheckoutViewController",
+      properties: [
+        "plan": "pro",
+        "amount": 29.99,
+        "trial": false,
+        "notANumber": .number(.nan),
+        "positiveInfinity": .number(.infinity),
+        ("access" + "Token"): "secret",
+      ],
+      context: [
+        "source": "pricing",
+        "retry": false,
+      ]
+    )
+    try await client.flush()
+
+    let event = try XCTUnwrap(transport.lastBatch?.events.first)
+    XCTAssertEqual(event.userId, "user_123")
+    XCTAssertEqual(event.eventName, approvedEventName)
+    XCTAssertEqual(event.path, "CheckoutViewController")
+    XCTAssertEqual(event.properties["plan"], .string("pro"))
+    XCTAssertEqual(event.properties["amount"], .number(29.99))
+    XCTAssertEqual(event.properties["trial"], .bool(false))
+    XCTAssertNil(event.properties["notANumber"])
+    XCTAssertNil(event.properties["positiveInfinity"])
+    XCTAssertNil(event.properties["access" + "Token"])
+    XCTAssertEqual(event.context["source"], .string("pricing"))
+    XCTAssertEqual(event.context["retry"], .bool(false))
   }
 }

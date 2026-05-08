@@ -26,7 +26,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 - 修改前必须列出文件和命令、只合并追加、不覆盖已有配置、安装后验证的要求。
 - 项目级 skill 只在当前 agent 明确支持官方项目级 skill 目录时安装；否则回退到项目级 rules/instructions，不创建自定义目录。
 - MCP URL 和 token 只写入 agent 的 MCP 配置，不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件。
-- Auto Capture 的当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`android` 或 `react_native`。agent 应使用返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks` 和 `initSnippet`，不要从静态文档复制 project key。
+- Auto Capture 的当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`android` 或 `react_native`。agent 应使用返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks`、`initSnippet`、`identifySnippet`、`manualCaptureExamples`、`supportedPropertyTypes` 和 `manualCaptureWorkflow`，不要从静态文档复制 project key。
 - 如果 MCP 只能写入全局配置，agent 直接使用全局 MCP 配置，并继续避免把 MCP URL 或 token 写入仓库文件。
 - 如果已经存在 TraceMind Skill 或 rules，agent 只检查版本和补充缺失内容，不重复追加完整区块。
 - 如果已经存在同名 MCP server，agent 更新 URL/token；如果存在其他 `tracemind-*` TraceMind server，必须保留；如果存在旧的 `tracemind` server，先通过 MCP 自描述或 `tracemind.project_info` 确认项目归属。
@@ -42,7 +42,7 @@ Agent 后续修改 TraceMind 埋点时应按顺序使用 MCP：
 
 1. `tracemind.project_info`：多项目或不确定时先确认当前 MCP 对应的 TraceMind 项目。
 2. `tracemind.agent_guidance`：检查 guidance 版本和公开资源。
-3. `tracemind.capture_setup`：先获取当前项目 Auto Capture 接入代码；Web 验证 `/capture.js` + `data-tracemind-token`，Native 使用返回的安装步骤、入口文件、幂等检查、初始化位置和 SDK 初始化代码。
+3. `tracemind.capture_setup`：先获取当前项目 Auto Capture 接入代码；Web 验证 `/capture.js` 和脚本上的公开项目 key 属性，Native 使用返回的安装步骤、入口文件、幂等检查、初始化位置、SDK 初始化代码、identify 示例和手动埋点示例。
 4. `tracemind.search_event_names`：搜索已有事件，避免随意创建 event name。
 5. `tracemind.suggest_instrumentation`：判断复用事件、跳过手动埋点或创建 draft custom event。
 6. `tracemind.validate_event_payload` / `tracemind.privacy_check`：检查单个 payload。
@@ -59,6 +59,8 @@ MCP 只返回建议和 findings，不写入用户项目，也不把 draft event 
 - Android 常见入口是 `Application.onCreate()`，必要时检查 `AndroidManifest.xml` 是否注册了自定义 `Application`。
 - React Native 常见入口是 `index.js`、`App.js`、`App.tsx` 或 app bootstrap，并检查 native bridge 是否已连接。
 - 修改前执行 `idempotencyChecks`，避免重复添加 SDK 依赖或 `TraceMind.start(...)`。
+- 手动业务事件前使用 `manualCaptureWorkflow`：先搜索已有事件，再校验 payload，最后写入 `TraceMind.identify(...)` 和 `TraceMind.capture("custom", ...)`。
+- `properties` 和 `context` 只使用 `supportedPropertyTypes` 返回的 string、number、boolean，不传 null、嵌套对象、数组、PII、credential values、raw prompt/content、input value 或完整 query URL。
 - React Native 不新增 `platform: "react_native"`；事件保持 `ios` 或 `android`，并通过 framework metadata 标记来源。
 - 完成后运行适用的 `verificationCommands`，再用 TraceMind MCP 查询 raw behaviors 或 semantic events。
 

@@ -136,6 +136,29 @@ window.TraceMind.identify("user-123", {
 
 TraceMind 会把 `userId` 保存到浏览器本地，并随之后的事件自动上报。DAU 口径使用 `userId || anonymousId` 按自然日去重。
 
+Native 和 React Native 使用同一个模型，在登录成功后调用：
+
+```swift
+try? TraceMind.identify("user-123", traits: [
+  "plan": "pro",
+  "trial": true
+])
+```
+
+```kotlin
+TraceMind.identify(
+  userId = "user-123",
+  traits = mapOf("plan" to "pro", "trial" to true)
+)
+```
+
+```js
+TraceMind.identify("user-123", {
+  plan: "pro",
+  trial: true
+});
+```
+
 ## 手动埋点
 
 自动采集适合快速覆盖通用行为。关键业务动作建议使用手动埋点，提供稳定、明确的事件名。
@@ -161,6 +184,53 @@ window.TraceMind.capture("custom", {
 - `properties`: 事件自身属性，例如套餐、金额、按钮位置、订单 ID。
 - `context`: 上报上下文，例如来源、实验分组、trace id、feature flag。
 - `userId`: 业务用户 ID。前端已调用 `identify()` 时可省略。
+
+Native 手动埋点保持同样字段。`properties` 和 `context` 只保留 string、number、boolean；SDK 会丢弃 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value 和带 query 的完整 URL。
+
+```swift
+try? TraceMind.capture(
+  "custom",
+  eventName: approvedEventName,
+  path: "PricingViewController",
+  properties: [
+    "plan": "pro",
+    "amount": 29,
+    "trial": true
+  ],
+  context: [
+    "source": "pricing_page"
+  ]
+)
+```
+
+```kotlin
+TraceMind.capture(
+  type = "custom",
+  eventName = approvedEventName,
+  path = "PricingActivity",
+  properties = mapOf(
+    "plan" to "pro",
+    "amount" to 29,
+    "trial" to true
+  ),
+  context = mapOf("source" to "pricing_page")
+)
+```
+
+```js
+TraceMind.capture("custom", {
+  eventName: approvedEventName,
+  path: "Pricing",
+  properties: {
+    plan: "pro",
+    amount: 29,
+    trial: true
+  },
+  context: {
+    source: "pricing_page"
+  }
+});
+```
 
 服务端或 SDK 队列也可以向同一个 `/api/capture` 上报事件。单事件格式继续兼容；批量格式使用 `{ "projectKey": "...", "events": [...] }`。服务端埋点建议设置 `platform: "server"`：
 
