@@ -746,7 +746,6 @@ code {
 
 .disclosure-panel {
   display: grid;
-  gap: 12px;
   border: 1px solid #d9e3de;
   border-radius: 8px;
   padding: 0;
