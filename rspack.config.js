@@ -12,9 +12,10 @@ const sveltePreprocess = require("svelte-preprocess");
  * Use these flags to adjust your build settings based on environment.
  */
 module.exports = defineConfig((env) => {
-  const isClient = env.isClient || env.Meteor?.isClient;
-  const isServer = env.isServer || env.Meteor?.isServer;
-  const isProduction = env.isProduction || env.Meteor?.isProduction;
+  const isTrue = (value) => value === true || value === "true";
+  const isClient = isTrue(env.isClient) || isTrue(env.Meteor?.isClient);
+  const isServer = isTrue(env.isServer) || isTrue(env.Meteor?.isServer);
+  const isProduction = isTrue(env.isProduction) || isTrue(env.Meteor?.isProduction);
 
   return {
     ...(isServer && {
