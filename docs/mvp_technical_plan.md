@@ -14,7 +14,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - Meteor Accounts owns passwordless email login. TraceMind server owns project keys, capture ingestion, semantic extraction, and MCP responses.
 - Svelte client provides a landing page plus a small developer console.
 - MongoDB stores all MVP data in simple collections under `imports/api/tracemind.js`.
-- The event model keeps identity, session, device, platform, IP/geo, custom properties, and context fields stable so Web, iOS, Android, and server events can share one schema.
+- The event model keeps identity, session, device, platform, IP/geo, custom properties, and context fields stable so Web, iOS, Android, MCP, Agent Skill, and ordinary server manual events can share one schema.
 - Semantic extraction starts with deterministic rules in `imports/api/semantic.js`. LLM enrichment can be added later without changing capture ingestion.
 
 ## Modules
@@ -23,7 +23,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 | --- | --- | --- |
 | Landing + console | `imports/ui/App.svelte`, `client/main.css` | Explain product, handle passwordless login, show project key/platform setup snippets/recent events |
 | Auth + projects | `server/tracemind_methods.js`, `imports/api/tracemind.js` | Configure passwordless email, map `Meteor.userId()` to developer record and project key |
-| Auto capture | `server/capture_routes.js`, `sdk/ios`, `sdk/android`, `sdk/react-native`, `sdk/mcp-node`, `sdk/mcp-python` | Serve `/capture.js`, provide Web/Native/MCP SDKs, and ingest `/api/capture` raw behavior with identity, device, source, IP/geo, custom fields |
+| Capture SDKs | `server/capture_routes.js`, `sdk/ios`, `sdk/android`, `sdk/react-native`, `sdk/mcp-node`, `sdk/mcp-python`, `sdk/server-node`, `sdk/server-python` | Serve `/capture.js`, provide Web/Native/MCP/server SDKs, and ingest `/api/capture` raw behavior with identity, device, source, IP/geo, custom fields |
 | Semantic extraction | `server/semantic_jobs.js`, `imports/api/semantic.js` | Periodically convert raw behavior into semantic events |
 | Remote MCP | `server/capture_routes.js` | Serve `/mcp?mcpToken=...` or Bearer MCP tokens with event definitions, filtered semantic event queries, raw log queries, summaries, and a GET preview |
 | Tests | `tests/main.js` | Cover email normalization, semantic extraction, summary logic, and login/project creation |
@@ -36,6 +36,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - `/api/capture` accepts both single-event payloads and SDK batch payloads in `{ projectKey, events: [...] }` form.
 - Native SDK v1 targets stable Auto Capture basics: app/screen view, click/tap, input changed, submit, local queue, and batch flush. Automatic network hook, crash reporting, session replay, screenshots, and native snapshots are out of scope.
 - MCP SDK v1 targets safe tool/resource/prompt metadata and optional Agent Skill lifecycle hooks. Raw prompts, arguments, results, resource content, source code, diffs, secrets, tokens, and full query URLs are out of scope.
+- Ordinary server app v1 targets manual business outcome capture only through `server_node`, `server_python`, or `server_http`; request Auto Capture, logs, request/response bodies, headers, cookies, database hooks, crash reporting, and global HTTP hooks are out of scope.
 - Remote MCP uses a minimal Streamable HTTP JSON-RPC surface with `initialize`, `tools/list`, `tools/call`, and `ping`.
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.
@@ -54,6 +55,8 @@ This deployment shape keeps `/capture.js`, `/api/capture`, and `/mcp` owned by T
 - `npm run test:sdk:react-native` runs the React Native wrapper tests.
 - `npm run test:sdk:mcp-node` runs the Node MCP SDK tests.
 - `npm run test:sdk:mcp-python` runs the Python MCP SDK tests.
+- `npm run test:sdk:server-node` runs the Node server manual capture SDK tests.
+- `npm run test:sdk:server-python` runs the Python server manual capture SDK tests.
 - Install snippet after login:
 
 ```html

@@ -1,6 +1,6 @@
 # TraceMind
 
-TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、Android、React Native、MCP server 和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过只读 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题。
+TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、Android、React Native、MCP server、普通后端服务和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过只读 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题。
 
 ## 1 分钟接入
 
@@ -141,6 +141,46 @@ TraceMindMCP.captureSkillLifecycle({
 ```
 
 Agent Skill 事件使用 `platform: "server"`、`sourceType: "agent_skill"`。如果宿主没有生命周期 hook，就把 Skill 作为教程，实际埋点放到 MCP server 或真正执行任务的 runtime 中。
+
+## Server 手动埋点接入方式
+
+普通后端服务第一版先提供手动埋点能力，不做 request Auto Capture，避免把每个 HTTP 请求、日志或中间件细节变成低价值噪音。coding agent 应通过 `tracemind.capture_setup({ platform: "server_node" })`、`server_python` 或 `server_http` 获取当前项目的一行初始化、payload 模板和隐私规则。
+
+Node server:
+
+```ts
+import { TraceMindServer } from "@tracemind/server-node";
+
+TraceMindServer.start({
+  projectKey: "tm_proj_xxx",
+  sourceKey: "billing-api"
+});
+
+TraceMindServer.capture("custom", {
+  eventName: approvedEventName,
+  userId: "user-123",
+  properties: { amount: 2900, success: true },
+  context: { source: "stripe_webhook" }
+});
+```
+
+Python server:
+
+```py
+from tracemind_server import TraceMindServer
+
+TraceMindServer.start(project_key="tm_proj_xxx", source_key="billing-api")
+
+TraceMindServer.capture(
+    "custom",
+    event_name=approved_event_name,
+    user_id="user-123",
+    properties={"amount": 2900, "success": True},
+    context={"source": "stripe_webhook"},
+)
+```
+
+其它后端语言使用 `server_http` 返回的 `/api/capture` payload 模板。普通服务端事件使用 `platform: "server"`、`sourceType: "server_app"`。只记录稳定业务结果，例如支付成功、账单已付、工作区创建、任务完成或同步完成；不要采集 request body、response body、headers、cookies、authorization、raw logs、secret、token、prompt、源码或完整 query URL。
 
 ## 记录登录用户 UID
 
@@ -298,7 +338,7 @@ TraceMindMCP.capture(
 )
 ```
 
-服务端或 SDK 队列也可以向同一个 `/api/capture` 上报事件。单事件格式继续兼容；批量格式使用 `{ "projectKey": "...", "events": [...] }`。服务端埋点建议设置 `platform: "server"`：
+普通服务端或 SDK 队列也可以向同一个 `/api/capture` 上报事件。单事件格式继续兼容；批量格式使用 `{ "projectKey": "...", "events": [...] }`。普通服务端埋点建议设置 `platform: "server"` 和 `sourceType: "server_app"`：
 
 ```json
 {
@@ -307,6 +347,10 @@ TraceMindMCP.capture(
   "type": "custom",
   "eventName": "invoice_paid",
   "userId": "user-123",
+  "source": {
+    "type": "server_app",
+    "key": "billing-api"
+  },
   "properties": {
     "invoiceId": "inv_123",
     "amount": 2900
@@ -454,6 +498,6 @@ connect-src https://tracemind.sandbox.galaxycloud.app
 
 `data-tracemind-token` 是公开项目 token，不是开发者密钥。但它会暴露在前端，因此服务端必须把它当作公开标识处理，不能把它当作私密凭证。
 
-TraceMind 会记录采集来源并在控制台展示来源统计。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；MCP server 使用 `sourceType: "mcp_server"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
+TraceMind 会记录采集来源并在控制台展示来源统计。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；MCP server 使用 `sourceType: "mcp_server"`；普通后端服务使用 `sourceType: "server_app"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
 
 MCP Token 是查询凭证，不要放到前端页面里。为不同成员或 Agent 使用不同 MCP Token，泄露时只刷新或删除对应 token。

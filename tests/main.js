@@ -116,11 +116,13 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.08.4'));
+      assert.ok(skill.includes('version: 2026.05.08.5'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Instrumenting MCP Servers'));
       assert.ok(skill.includes('## Instrumenting Agent Skills'));
+      assert.ok(skill.includes('## Instrumenting Server Applications'));
+      assert.ok(skill.includes('ordinary server applications use manual capture first'));
       assert.ok(skill.includes('static Skill file cannot auto-capture'));
       assert.ok(skill.includes('installCommands'));
       assert.ok(skill.includes('idempotencyChecks'));
@@ -134,8 +136,9 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('supported primitives'));
       assert.ok(snippet.includes('mcp_node'));
       assert.ok(snippet.includes('agent_skill'));
+      assert.ok(snippet.includes('server_node'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.08.4');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.08.5');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -144,6 +147,9 @@ describe('TraceMind', function () {
       assert.ok(manifest.platforms.includes('mcp_node'));
       assert.ok(manifest.platforms.includes('mcp_python'));
       assert.ok(manifest.platforms.includes('agent_skill'));
+      assert.ok(manifest.platforms.includes('server_node'));
+      assert.ok(manifest.platforms.includes('server_python'));
+      assert.ok(manifest.platforms.includes('server_http'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_info'));
       [skill, snippet, JSON.stringify(manifest)].forEach((content) => {
         assert.ok(!content.includes('tm_mcp_'));
@@ -199,11 +205,11 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.08.4');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.08.5');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
-      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, or agent_skill before installing Auto Capture or adding manual events.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_proj_'));
@@ -222,6 +228,22 @@ describe('TraceMind', function () {
       assert.strictEqual(validation.structuredContent.ok, false);
       assert.ok(validation.structuredContent.findings.some((finding) => finding.code === 'forbidden_property'));
 
+      const dottedValidation = await callMcpTool(project, 'tracemind.validate_event_payload', {
+        eventType: 'custom',
+        eventName: 'invoice_paid',
+        properties: {
+          'request.body': 'raw request',
+          amount: 2900,
+        },
+        context: {
+          'headers.authorization': 'Bearer secret',
+          source: 'stripe_webhook',
+        },
+      });
+      assert.strictEqual(dottedValidation.structuredContent.ok, false);
+      assert.ok(dottedValidation.structuredContent.findings.some((finding) => finding.path === 'properties.request.body'));
+      assert.ok(dottedValidation.structuredContent.findings.some((finding) => finding.path === 'context.headers.authorization'));
+
       const missingEventNameValidation = await callMcpTool(project, 'tracemind.validate_event_payload', {
         eventType: 'custom',
         properties: {
@@ -232,11 +254,13 @@ describe('TraceMind', function () {
       assert.ok(missingEventNameValidation.structuredContent.findings.some((finding) => finding.code === 'missing_custom_event_name'));
 
       const diffValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
-        diff: "+ TraceMindMCP.capture('custom', { eventName: 'new_checkout_event', properties: { raw_prompt: userPrompt, raw_args: args, raw_result: result, resource_content: content, userEmail: user.email, access_token: token } })",
+        diff: "+ TraceMindMCP.capture('custom', { eventName: 'new_checkout_event', sourceDetails: { requestBody: req.body }, properties: { 'request.body': req.body, \"headers.authorization\": token, raw_prompt: userPrompt, raw_args: args, raw_result: result, resource_content: content, raw_request_body: req.body, raw_response_body: body, headers: req.headers, cookies: req.cookies, authorization: req.headers.authorization, userEmail: user.email, access_token: token } })",
       });
       assert.strictEqual(diffValidation.structuredContent.ok, false);
       assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.code === 'new_event_requires_review'));
-      assert.ok(diffValidation.structuredContent.findings.filter((finding) => finding.code === 'forbidden_property').length >= 6);
+      assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.message.includes('request.body')));
+      assert.ok(diffValidation.structuredContent.findings.some((finding) => finding.message.includes('headers.authorization')));
+      assert.ok(diffValidation.structuredContent.findings.filter((finding) => finding.code === 'forbidden_property').length >= 13);
 
       const mcpAutoDiffValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
         diff: "+ capture({ type: 'prompt_request', eventName: 'mcp_prompt_request', properties: { promptName: 'summarize', status: 'success', durationMs: 12 } })\n+ capture({ type: 'tool_call', eventName: 'mcp_tool_call', properties: { toolName: 'sync_docs', status: 'success' } })\n+ capture({ type: 'resource_read', eventName: 'mcp_resource_read', properties: { resourceName: 'docs', uriScheme: 'file' } })\n+ capture({ type: 'skill_lifecycle', eventName: 'agent_skill_lifecycle', properties: { skillName: 'docs-indexer', phase: 'completed' } })",
@@ -392,6 +416,56 @@ describe('TraceMind', function () {
         assert.deepStrictEqual(result.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
         assert.ok(result.structuredContent.manualCaptureWorkflow.some((step) => step.includes('tracemind.validate_event_payload')));
         assert.ok(result.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
+        assert.ok(!JSON.stringify(result.structuredContent).includes('tm_mcp_'));
+      });
+    });
+
+    it('returns server manual capture setup snippets through MCP', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const project = {
+        _id: `project-server-sdk-setup-${Date.now()}`,
+        name: 'Server Manual Capture Project',
+        projectKey: 'tm_proj_server_sdk',
+      };
+
+      const setupTool = mcpTools(project).find((tool) => tool.name === 'tracemind.capture_setup');
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('server_node'));
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('server_python'));
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('server_http'));
+
+      const node = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'server_node' });
+      const python = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'server_python' });
+      const http = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'server_http' });
+
+      assert.strictEqual(node.structuredContent.platform, 'server_node');
+      assert.strictEqual(node.structuredContent.eventPlatform, 'server');
+      assert.ok(node.structuredContent.initSnippet.includes('TraceMindServer.start'));
+      assert.ok(node.structuredContent.initSnippet.includes('projectKey: "tm_proj_server_sdk"'));
+      assert.ok(node.structuredContent.manualCaptureExample.includes('TraceMindServer.capture'));
+      assert.ok(node.structuredContent.sourceModel.includes('sourceType is server_app'));
+      assert.deepStrictEqual(node.structuredContent.autoCapturedSignals, []);
+      assert.ok(node.structuredContent.manualCaptureWarnings.some((warning) => warning.includes('manual capture only')));
+
+      assert.strictEqual(python.structuredContent.platform, 'server_python');
+      assert.strictEqual(python.structuredContent.eventPlatform, 'server');
+      assert.ok(python.structuredContent.initSnippet.includes('TraceMindServer.start'));
+      assert.ok(python.structuredContent.initSnippet.includes('project_key="tm_proj_server_sdk"'));
+      assert.ok(python.structuredContent.manualCaptureExample.includes('TraceMindServer.capture'));
+
+      assert.strictEqual(http.structuredContent.platform, 'server_http');
+      assert.strictEqual(http.structuredContent.eventPlatform, 'server');
+      assert.ok(http.structuredContent.payloadTemplate.projectKey === 'tm_proj_server_sdk');
+      assert.strictEqual(http.structuredContent.payloadTemplate.source.type, 'server_app');
+      assert.ok(http.structuredContent.manualCaptureExample.includes('/api/capture'));
+
+      [node, python, http].forEach((result) => {
+        assert.strictEqual(result.structuredContent.tokenType, 'public_auto_capture_project_key');
+        assert.deepStrictEqual(result.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
+        assert.ok(result.structuredContent.installCommands.length > 0);
+        assert.ok(result.structuredContent.filesToEdit.length > 0);
+        assert.ok(result.structuredContent.idempotencyChecks.length > 0);
+        assert.ok(result.structuredContent.manualCaptureWorkflow.some((step) => step.includes('tracemind.search_event_names')));
+        assert.ok(result.structuredContent.privacyConstraints.some((constraint) => constraint.includes('request body')));
         assert.ok(!JSON.stringify(result.structuredContent).includes('tm_mcp_'));
       });
     });
@@ -1328,6 +1402,87 @@ describe('TraceMind', function () {
         && behavior.type === 'skill_lifecycle'
         && behavior.properties.success === true
       )));
+    });
+
+    it('accepts server app capture sources and applies source blocking', async function () {
+      const projectId = `project-server-source-capture-${Date.now()}`;
+      const projectKey = `tm_proj_server_source_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-server-source-capture',
+        name: 'Server Source Capture Project',
+        projectKey,
+        blockedSources: [{ sourceType: 'server_app', sourceKey: 'blocked-api', blockedAt: new Date() }],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        sessionId: 'tm_sess_server',
+        anonymousId: 'tm_anon_server',
+        events: [
+          {
+            type: 'custom',
+            eventName: 'invoice_paid',
+            platform: 'server',
+            source: {
+              type: 'server_app',
+              key: 'billing-api',
+              label: 'Billing API',
+              details: {
+                language: 'javascript',
+                runtime: 'node',
+                sdkVersion: '0.1.0',
+                framework: 'express',
+                requestBody: 'do not store',
+                headers: { authorization: 'do not store' },
+                'headers.authorization': 'do not store',
+              },
+            },
+            properties: {
+              amount: 2900,
+              success: true,
+              'request.body': 'do not store',
+              'response.body': 'do not store',
+            },
+            context: {
+              source: 'stripe_webhook',
+              'headers.authorization': 'do not store',
+              'cookies.session': 'do not store',
+            },
+          },
+          {
+            type: 'custom',
+            eventName: 'invoice_paid',
+            platform: 'server',
+            source: {
+              type: 'server_app',
+              key: 'blocked-api',
+            },
+          },
+        ],
+      }, { headers: {} });
+
+      const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 1);
+      assert.strictEqual(result.ignored, 1);
+      assert.strictEqual(behaviors.length, 1);
+      assert.strictEqual(behaviors[0].sourceType, 'server_app');
+      assert.strictEqual(behaviors[0].sourceKey, 'billing-api');
+      assert.strictEqual(behaviors[0].platform, 'server');
+      assert.strictEqual(behaviors[0].eventName, 'invoice_paid');
+      assert.strictEqual(behaviors[0].properties.amount, 2900);
+      assert.strictEqual(behaviors[0].properties.success, true);
+      assert.strictEqual(behaviors[0].properties['request.body'], undefined);
+      assert.strictEqual(behaviors[0].context.source, 'stripe_webhook');
+      assert.strictEqual(behaviors[0].context['headers.authorization'], undefined);
+      assert.strictEqual(behaviors[0].sourceDetails.framework, 'express');
+      assert.strictEqual(behaviors[0].sourceDetails.requestBody, undefined);
+      assert.strictEqual(behaviors[0].sourceDetails.headers, undefined);
+      assert.strictEqual(JSON.stringify(behaviors[0]).includes('do not store'), false);
     });
 
     it('requires a Meteor Accounts session for the dashboard', async function () {

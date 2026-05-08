@@ -146,7 +146,7 @@ function parseUrl(value) {
 
 function normalizeSourceType(value) {
   const sourceType = cleanString(value, 40).toLowerCase();
-  return ['web', 'ios', 'android', 'server', 'mcp_server', 'agent_skill'].includes(sourceType) ? sourceType : 'unknown';
+  return ['web', 'ios', 'android', 'server', 'mcp_server', 'agent_skill', 'server_app'].includes(sourceType) ? sourceType : 'unknown';
 }
 
 export function normalizeCaptureSource(payload = {}, headers = {}) {

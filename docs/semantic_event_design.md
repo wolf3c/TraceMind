@@ -2,7 +2,7 @@
 
 ## 目标
 
-把 Web、iOS、Android、MCP server、Agent Skill hook 和服务端上报的原始行为统一抽取为稳定的语义事件，让 LLM/MCP 能直接按业务含义、时间、用户、设备、路径等维度查询分析。
+把 Web、iOS、Android、MCP server、Agent Skill hook 和普通服务端手动埋点统一抽取为稳定的语义事件，让 LLM/MCP 能直接按业务含义、时间、用户、设备、路径等维度查询分析。
 
 ## 当前链路
 
@@ -93,17 +93,17 @@
 - `eventName` 表达具体业务事件名，例如 `checkout_started`、`plan_selected`、`invite_sent`。
 - `properties` 保存事件自身属性，例如金额、套餐、按钮位置、实验分组。
 - `context` 保存上报上下文，例如 `source: "server"`、trace id、feature flag、入口渠道。
-- Web、Native、React Native、MCP server、Agent Skill runtime 和服务端埋点都使用同一字段，后续扩展不用修改表结构。SDK 只保留 string、number、boolean 类型，省略 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value、tool arguments/result、resource content 和带 query 的完整 URL。
+- Web、Native、React Native、MCP server、Agent Skill runtime 和服务端埋点都使用同一字段，后续扩展不用修改表结构。SDK 只保留 string、number、boolean 类型，省略 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value、request/response body、headers、cookies、authorization、tool arguments/result、resource content 和带 query 的完整 URL。
 
 ## 手动埋点与 Coding Agent 规则
 
 - Coding agent 添加或修改手动埋点前，应通过 MCP 搜索当前项目已有事件，优先复用业务含义匹配的 `eventName`。
 - 自动采集已经能稳定覆盖的页面浏览、点击、输入、表单提交和路由跳转，不需要重复添加手动埋点。
-- 手动 `custom` 事件适合表达自动采集无法稳定推断的业务结果，例如 `checkout_started`、`subscription_created`、`invite_sent`。
+- 手动 `custom` 事件适合表达自动采集无法稳定推断的业务结果，例如 `checkout_started`、`subscription_created`、`invite_sent`、`invoice_paid` 或 `job_completed`。普通服务端应用第一版只做这类手动业务事件，不做 request Auto Capture。
 - 对 Native 和 React Native，agent 应优先使用 `capture_setup` 返回的 `identifySnippet` 和 `manualCaptureExamples`，并确认 `supportedPropertyTypes` 后再写代码。
 - 如果没有匹配事件，agent 只能生成 draft custom event proposal，并让用户确认后再当作正式事件使用。
 - `eventName` 使用 lower snake_case，例如 `checkout_started`。
-- 禁止在 `properties` 或 `context` 中上报 email、phone、secret、access token、API key、raw prompt、raw user content 或带 query string 的完整 URL。
+- 禁止在 `properties` 或 `context` 中上报 email、phone、secret、access token、API key、raw prompt、raw user content、request/response body、headers、cookies、authorization 或带 query string 的完整 URL。
 
 ## 元素定位
 
@@ -133,13 +133,13 @@
 ## 跨平台扩展原则
 
 - 表结构保持平台无关：`platform` 区分 `web`、`ios`、`android`、`server`，平台差异写入 `deviceInfo`、`sourceDetails`、`properties` 和 `context`。
-- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源；iOS 使用 bundle id；Android 使用 package name；MCP server 使用 server/package 名；Agent Skill 使用 Skill 名或宿主 runtime skill id。
+- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源；iOS 使用 bundle id；Android 使用 package name；MCP server 使用 server/package 名；普通后端服务使用 `server_app` + service name；Agent Skill 使用 Skill 名或宿主 runtime skill id。
 - 自动采集字段和手动埋点字段共用同一事件模型，避免未来增加移动端 SDK 时迁移 Mongo 集合。
 - 移动端可复用 `sessionId`、`anonymousId`、`userId`、`deviceId`、`deviceFingerprint`、`sourceType`、`sourceKey`、`eventType`、`eventName`、`properties`、`context`。
 - 移动端 `target` 统一保存 class/type、accessibility id、resource id、test id、label 摘要、screen 和短层级 path；`targetHash` 仍使用 `tm_target_` 前缀。
 - MCP server 自动事件使用 `platform: "server"`、`sourceType: "mcp_server"`，自动记录 tool/resource/prompt 名称、状态、耗时、错误类型和结果大小分桶，不记录 raw prompt、tool arguments/result 或 resource content。
 - Agent Skill hook 使用 `platform: "server"`、`sourceType: "agent_skill"`，只在宿主 agent runtime 提供可执行 lifecycle hook 时记录 Skill started/completed/failed；静态 Skill 文件不能独立 auto-capture。
-- 服务端埋点可使用 `platform: "server"`，通常上报 `userId`、`eventName`、`properties`、`context.traceId` 和 `occurredAt`。
+- 普通服务端手动埋点使用 `platform: "server"`、`sourceType: "server_app"`，通常上报 `userId`、`eventName`、`properties`、`context.traceId` 和 `occurredAt`；不自动采集每个 HTTP request。
 
 ## MVP 决策
 

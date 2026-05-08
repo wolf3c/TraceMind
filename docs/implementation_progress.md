@@ -73,9 +73,11 @@ Then add the capture snippet to a small test web page, generate several interact
 - Updated the developer console setup panel to switch between Web, iOS, Android, and React Native setup snippets without exposing MCP tokens.
 - Updated Auto Capture, semantic event, MCP, README, and coding-agent documentation for cross-platform capture and native manual capture guidance.
 - Extended TraceMind setup planning to third-party MCP server and Agent Skill instrumentation with new `mcp_node`, `mcp_python`, and `agent_skill` setup surfaces, safe MCP runtime event types, and SDK test coverage for MCP tool/resource/prompt metadata capture.
+- Added ordinary server application manual capture planning with `server_node`, `server_python`, and `server_http` setup surfaces, `server_app` source identity, and SDK coverage for safe primitive business events without request Auto Capture.
 
 ### Not Yet Included
 
 - Automatic network hook, crash reporting, session replay, screenshots, or native view snapshots.
 - Published package manager distribution for SwiftPM, Gradle, or npm.
+- Generic server request Auto Capture, request/response logging, HTTP hooks, database hooks, crash reporting, and log capture.
 - Device-lab integration smoke tests against real iOS/Android/React Native sample apps.

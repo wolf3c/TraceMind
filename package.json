@@ -9,6 +9,8 @@
     "test:sdk:mcp-node": "npm test --prefix sdk/mcp-node",
     "test:sdk:mcp-python": "PYTHONPATH=sdk/mcp-python python3 -m unittest discover -s sdk/mcp-python/tests",
     "test:sdk:react-native": "npm test --prefix sdk/react-native",
+    "test:sdk:server-node": "npm test --prefix sdk/server-node",
+    "test:sdk:server-python": "PYTHONPATH=sdk/server-python python3 -m unittest discover -s sdk/server-python/tests",
     "test-app": "TEST_WATCH=1 meteor test --full-app --driver-package meteortesting:mocha",
     "visualize": "meteor --production --extra-packages bundle-visualizer",
     "deploy": "meteor deploy tracemind.sandbox.galaxycloud.app --settings .deploy/settings.json",

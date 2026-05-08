@@ -18,7 +18,7 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.08.4';
+const AGENT_GUIDANCE_VERSION = '2026.05.08.5';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -40,6 +40,13 @@ const FORBIDDEN_ANALYTICS_KEYS = [
   'toolResult',
   'resourceContent',
   'rawUserContent',
+  'rawRequestBody',
+  'requestBody',
+  'rawResponseBody',
+  'responseBody',
+  'headers',
+  'cookies',
+  'authorization',
 ];
 const APPROVED_AUTO_EVENT_NAMES = new Set([
   'identify',
@@ -178,7 +185,7 @@ export function mcpTools(project) {
         properties: {
           platform: {
             type: 'string',
-            enum: ['web', 'ios', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill'],
+            enum: ['web', 'ios', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'],
             description: '要接入的平台；省略时返回 Web 脚本。',
           },
         },
@@ -205,7 +212,7 @@ export function mcpTools(project) {
         properties: {
           intent: { type: 'string', description: '准备记录的用户行为或业务结果。' },
           context: { type: 'string', description: '相关代码或产品流程摘要。' },
-          platform: { type: 'string', description: 'web、ios、android、react_native、mcp_node、mcp_python、agent_skill 或 server。' },
+          platform: { type: 'string', description: 'web、ios、android、react_native、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
         },
       },
     },
@@ -370,7 +377,7 @@ function guidanceResult(extra = {}) {
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
-      'Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, or agent_skill before installing Auto Capture or adding manual events.',
+      'Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
@@ -422,6 +429,12 @@ const MCP_PRIVACY_CONSTRAINTS = [
   'Use the returned public projectKey only for capture writes; never use an MCP token in MCP server or Skill runtime code.',
 ];
 
+const SERVER_PRIVACY_CONSTRAINTS = [
+  'Do not capture request body, response body, headers, cookies, authorization values, secrets, tokens, raw prompts, raw user content, or full query URLs.',
+  'Capture only stable business outcomes with sanitized primitive properties and context.',
+  'Use the returned public projectKey only for capture writes; never use an MCP token in server application code.',
+];
+
 const SUPPORTED_MANUAL_PROPERTY_TYPES = ['string', 'number', 'boolean'];
 
 const MANUAL_CAPTURE_WORKFLOW = [
@@ -437,6 +450,12 @@ const MANUAL_CAPTURE_WARNINGS = [
   'Manual events are for stable business outcomes, not raw input values or screen contents.',
   'Only string, number, and boolean properties/context values are preserved.',
   'Nested objects, arrays, null values, PII-like keys, credential values, raw prompts/content, input values, and full query URLs are omitted by SDK sanitization.',
+];
+
+const SERVER_MANUAL_CAPTURE_WARNINGS = [
+  ...MANUAL_CAPTURE_WARNINGS,
+  'Ordinary server applications use manual capture only in this first version; TraceMind does not auto-capture every request.',
+  'Pass a stable internal userId on each server capture when the backend can safely identify the actor.',
 ];
 
 function commonSetup(project, platform) {
@@ -461,6 +480,154 @@ function commonSetup(project, platform) {
 
 function platformSetup(project, platform) {
   const common = commonSetup(project, platform);
+
+  if (platform === 'server_node') {
+    return {
+      ...common,
+      platform: 'server_node',
+      eventPlatform: 'server',
+      install: 'Install @tracemind/server-node and add manual capture at stable server-side business outcomes.',
+      installCommands: [
+        'Install @tracemind/server-node from the TraceMind SDK distribution; in this repo the package is sdk/server-node.',
+        'Import TraceMindServer in the backend entrypoint or instrumentation module.',
+      ],
+      filesToEdit: [
+        'package.json',
+        'Server entrypoint such as src/server.ts, src/index.ts, app.js, or server.js',
+        'Business outcome handlers such as payment, webhook, job, sync, or workspace creation modules',
+      ],
+      initLocation: 'Run once during server startup before business handlers call TraceMindServer.capture.',
+      idempotencyChecks: [
+        'Search the backend for TraceMindServer.start(',
+        'Check package.json for an existing @tracemind/server-node dependency.',
+        'Search server-side business handlers for existing TraceMindServer.capture calls.',
+      ],
+      initSnippet: `import { TraceMindServer } from "@tracemind/server-node";\n\nTraceMindServer.start({\n  projectKey: "${project.projectKey}",\n  sourceKey: "billing-api"\n});`,
+      source: {
+        type: 'server_app',
+        key: 'Developer configured server/service name, for example billing-api',
+      },
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      autoCapturedSignals: [],
+      privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
+      verificationCommands: [
+        'npm test --prefix sdk/server-node',
+        'Run the backend test or integration path that triggers the manual capture, then query TraceMind raw behaviors or semantic events.',
+      ],
+      identifySnippet: 'Do not rely on global server identify by default. Pass a stable internal userId on each TraceMindServer.capture call when available.',
+      manualCaptureWarnings: SERVER_MANUAL_CAPTURE_WARNINGS,
+      manualCaptureExamples: [
+        'TraceMindServer.capture("custom", { eventName: approvedEventName, userId: "user_123", properties: { amount: 2900, success: true }, context: { source: "stripe_webhook" } })',
+      ],
+      manualCaptureExample: 'TraceMindServer.capture("custom", { eventName: approvedEventName, userId: "user_123", properties: { amount: 2900, success: true }, context: { source: "stripe_webhook" } })',
+    };
+  }
+
+  if (platform === 'server_python') {
+    return {
+      ...common,
+      platform: 'server_python',
+      eventPlatform: 'server',
+      install: 'Install tracemind-server and add manual capture at stable server-side business outcomes.',
+      installCommands: [
+        'Install tracemind-server from the TraceMind SDK distribution; in this repo the package is sdk/server-python.',
+        'Import TraceMindServer in the backend entrypoint or instrumentation module.',
+      ],
+      filesToEdit: [
+        'pyproject.toml, requirements.txt, or equivalent dependency file',
+        'Server entrypoint such as app.py, main.py, or server.py',
+        'Business outcome handlers such as payment, webhook, job, sync, or workspace creation modules',
+      ],
+      initLocation: 'Run once during server startup before business handlers call TraceMindServer.capture.',
+      idempotencyChecks: [
+        'Search the backend for TraceMindServer.start(',
+        'Check Python dependency files for an existing tracemind-server dependency.',
+        'Search server-side business handlers for existing TraceMindServer.capture calls.',
+      ],
+      initSnippet: `from tracemind_server import TraceMindServer\n\nTraceMindServer.start(project_key="${project.projectKey}", source_key="billing-api")`,
+      source: {
+        type: 'server_app',
+        key: 'Developer configured server/service name, for example billing-api',
+      },
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      autoCapturedSignals: [],
+      privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
+      verificationCommands: [
+        'python3 -m unittest discover -s sdk/server-python/tests',
+        'Run the backend test or integration path that triggers the manual capture, then query TraceMind raw behaviors or semantic events.',
+      ],
+      identifySnippet: 'Do not rely on global server identify by default. Pass a stable internal userId on each TraceMindServer.capture call when available.',
+      manualCaptureWarnings: SERVER_MANUAL_CAPTURE_WARNINGS,
+      manualCaptureExamples: [
+        'TraceMindServer.capture("custom", event_name=approved_event_name, user_id="user_123", properties={"amount": 2900, "success": True}, context={"source": "stripe_webhook"})',
+      ],
+      manualCaptureExample: 'TraceMindServer.capture("custom", event_name=approved_event_name, user_id="user_123", properties={"amount": 2900, "success": True}, context={"source": "stripe_webhook"})',
+    };
+  }
+
+  if (platform === 'server_http') {
+    const payloadTemplate = {
+      projectKey: project.projectKey,
+      platform: 'server',
+      type: 'custom',
+      eventName: 'approved_event_name',
+      userId: 'user_123',
+      source: {
+        type: 'server_app',
+        key: 'billing-api',
+        label: 'Billing API',
+        details: {
+          language: 'your_server_language',
+          runtime: 'your_runtime',
+          environment: 'production',
+        },
+      },
+      properties: {
+        amount: 2900,
+        success: true,
+      },
+      context: {
+        source: 'stripe_webhook',
+      },
+    };
+    return {
+      ...common,
+      platform: 'server_http',
+      eventPlatform: 'server',
+      install: 'Use the HTTPS /api/capture endpoint directly when a first-party SDK is not available for the backend language.',
+      installCommands: [
+        'Use the backend HTTP client already present in the project.',
+        'POST sanitized JSON to the returned captureApiUrl with content-type application/json.',
+      ],
+      filesToEdit: [
+        'Backend instrumentation helper or analytics module',
+        'Business outcome handlers such as payment, webhook, job, sync, or workspace creation modules',
+      ],
+      initLocation: 'Create a small server-side helper around /api/capture, then call it only from approved business outcome handlers.',
+      idempotencyChecks: [
+        'Search the backend for /api/capture and projectKey usage.',
+        'Search server-side business handlers for existing TraceMind capture helper calls.',
+      ],
+      initSnippet: `POST ${common.captureApiUrl}\nContent-Type: application/json\n\n${JSON.stringify(payloadTemplate, null, 2)}`,
+      payloadTemplate,
+      source: {
+        type: 'server_app',
+        key: 'Developer configured server/service name, for example billing-api',
+      },
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      autoCapturedSignals: [],
+      privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
+      verificationCommands: [
+        'Run the backend test or integration path that triggers the manual capture, then query TraceMind raw behaviors or semantic events.',
+      ],
+      identifySnippet: 'Do not rely on global server identify by default. Include a stable internal userId in each approved server capture payload when available.',
+      manualCaptureWarnings: SERVER_MANUAL_CAPTURE_WARNINGS,
+      manualCaptureExamples: [
+        `POST ${common.captureApiUrl} with the returned payloadTemplate after replacing eventName with an approved event name.`,
+      ],
+      manualCaptureExample: `POST ${common.captureApiUrl} with the returned payloadTemplate after replacing eventName with an approved event name.`,
+    };
+  }
 
   if (platform === 'mcp_node') {
     return {
@@ -760,7 +927,7 @@ function captureSetupResult(project, args = {}) {
   }
 
   const requestedPlatform = String(args.platform || '').toLowerCase().replace('-', '_');
-  const platform = ['ios', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'web'].includes(requestedPlatform)
+  const platform = ['ios', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http', 'web'].includes(requestedPlatform)
     ? requestedPlatform
     : 'web';
 
@@ -805,7 +972,7 @@ function privacyFindings(fields = {}) {
 }
 
 function normalizePrivacyKey(key) {
-  return String(key || '').replace(/[_\-\s]/g, '').toLowerCase();
+  return String(key || '').replace(/[^a-z0-9]+/gi, '').toLowerCase();
 }
 
 function isForbiddenAnalyticsKey(key) {
@@ -813,6 +980,24 @@ function isForbiddenAnalyticsKey(key) {
   return FORBIDDEN_ANALYTICS_KEYS.some((forbiddenKey) => (
     normalized.includes(normalizePrivacyKey(forbiddenKey))
   ));
+}
+
+function isSafeServerPrimitive(value) {
+  return typeof value === 'string'
+    || typeof value === 'boolean'
+    || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function sanitizeServerCaptureFields(fields = {}) {
+  const object = safeObject(fields);
+  return Object.fromEntries(
+    Object.entries(object).filter(([key, value]) => {
+      if (isForbiddenAnalyticsKey(key)) return false;
+      if (!isSafeServerPrimitive(value)) return false;
+      if (typeof value === 'string' && /^https?:\/\/\S+\?\S+/.test(value)) return false;
+      return true;
+    }),
+  );
 }
 
 function validateEventName(eventName) {
@@ -853,16 +1038,23 @@ function validationResult(findings, recommendations = []) {
 
 function extractSensitiveKeysFromDiff(addedText) {
   const findings = [];
-  const keyPattern = /([A-Za-z_$][\w$-]*)\s*:/g;
-  [...String(addedText || '').matchAll(keyPattern)].forEach((match) => {
-    if (isForbiddenAnalyticsKey(match[1])) {
+  const seenKeys = new Set();
+  const keyPatterns = [
+    /([A-Za-z_$][\w$.-]*)\s*:/g,
+    /['"]([^'"]+)['"]\s*:/g,
+  ];
+  keyPatterns.forEach((keyPattern) => {
+    [...String(addedText || '').matchAll(keyPattern)].forEach((match) => {
+      const key = match[1];
+      if (!key || seenKeys.has(key) || !isForbiddenAnalyticsKey(key)) return;
+      seenKeys.add(key);
       addFinding(
         findings,
         'error',
         'forbidden_property',
-        `Do not send sensitive analytics property: ${match[1]}.`,
+        `Do not send sensitive analytics property: ${key}.`,
       );
-    }
+    });
   });
   return findings;
 }
@@ -994,11 +1186,12 @@ export async function callMcpTool(project, name, args = {}) {
     const normalizedPlatform = String(args.platform || '').toLowerCase().replace('-', '_');
     const intentText = String(args.intent || '').toLowerCase();
     const isMcpRuntimePlatform = ['mcp_node', 'mcp_python', 'agent_skill'].includes(normalizedPlatform);
+    const isServerManualPlatform = ['server_node', 'server_python', 'server_http', 'server'].includes(normalizedPlatform);
     const automaticMcpMatch = isMcpRuntimePlatform && /(tool|resource|prompt|skill|lifecycle|call|read|request|started|completed|failed)/.test(intentText);
     const recommendations = automaticMcpMatch
       ? ['Use TraceMind MCP/Skill Auto Capture for lifecycle facts; add manual custom capture only for stable business outcomes.']
       : events.length
-      ? ['Reuse an existing event if the business meaning matches.']
+      ? [isServerManualPlatform ? 'Use server manual capture only for stable backend business outcomes; do not add request Auto Capture in this version.' : 'Reuse an existing event if the business meaning matches.']
       : ['Create a draft custom event proposal and ask the user for review before treating it as approved.'];
     return textResult(
       recommendations.join(' '),
@@ -1294,6 +1487,12 @@ function clientScript(host) {
 
 async function insertCaptureEvent(project, payload = {}, req = {}) {
   const source = normalizeCaptureSource(payload, req.headers || {});
+  const isServerAppSource = source.sourceType === 'server_app';
+  const sourceDetails = isServerAppSource
+    ? sanitizeServerCaptureFields(source.sourceDetails)
+    : source.sourceDetails;
+  const properties = safeObject(payload.properties || payload.custom || payload.data);
+  const context = safeObject(payload.context);
 
   if (isSourceBlocked(project, source)) {
     return { ok: true, ignored: true };
@@ -1314,7 +1513,7 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     sourceType: source.sourceType,
     sourceKey: source.sourceKey,
     sourceLabel: source.sourceLabel,
-    sourceDetails: source.sourceDetails,
+    sourceDetails,
     type: safeString(payload.type, 40, 'custom'),
     eventName: safeString(payload.eventName || payload.name || payload.type, 120),
     path: safeString(payload.path, 500, '/'),
@@ -1325,8 +1524,8 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     targetHash: safeString(payload.targetHash, 160),
     method: safeString(payload.method, 20),
     status: safeString(payload.status, 20),
-    properties: safeObject(payload.properties || payload.custom || payload.data),
-    context: safeObject(payload.context),
+    properties: isServerAppSource ? sanitizeServerCaptureFields(properties) : properties,
+    context: isServerAppSource ? sanitizeServerCaptureFields(context) : context,
     occurredAt: payload.occurredAt ? new Date(payload.occurredAt) : new Date(),
     semanticStatus: 'pending',
     createdAt: new Date(),

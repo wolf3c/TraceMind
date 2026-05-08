@@ -2,7 +2,7 @@
 
 ## 目标
 
-让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义。TraceMind 自己的远程 MCP 端点不是采集目标，而是只读分析入口；第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问用户流失、功能使用和转化问题：默认查询语义事件，需要复核时再查询原始日志。
+让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义。TraceMind 自己的远程 MCP 端点不是采集目标，而是只读分析入口；第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问用户流失、功能使用和转化问题：默认查询语义事件，需要复核时再查询原始日志。
 
 ## Endpoint
 
@@ -162,7 +162,7 @@ Input:
 }
 ```
 
-`platform` 可省略，默认 `web`；也可传 `ios`、`android`、`react_native`、`mcp_node`、`mcp_python` 或 `agent_skill`。
+`platform` 可省略，默认 `web`；也可传 `ios`、`android`、`react_native`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。
 
 Output:
 
@@ -275,6 +275,32 @@ MCP server 示例：
 ```
 
 Agent Skill setup 返回 host runtime hook 指南。静态 Skill 文件不能 auto-capture；只有宿主 agent runtime 提供可执行 lifecycle hook 时，才能记录 `skill_lifecycle`。
+
+普通服务端应用示例：
+
+```json
+{
+  "ok": true,
+  "projectKey": "tm_proj_xxx",
+  "platform": "server_node",
+  "eventPlatform": "server",
+  "installCommands": [
+    "Install @tracemind/server-node from the TraceMind SDK distribution; in this repo the package is sdk/server-node.",
+    "Import TraceMindServer in the backend entrypoint or instrumentation module."
+  ],
+  "initSnippet": "import { TraceMindServer } from \"@tracemind/server-node\";\n\nTraceMindServer.start({\n  projectKey: \"tm_proj_xxx\",\n  sourceKey: \"billing-api\"\n});",
+  "autoCapturedSignals": [],
+  "sourceModel": "platform is server; sourceType is server_app; sourceKey is the configured backend service name.",
+  "manualCaptureExamples": [
+    "TraceMindServer.capture(\"custom\", { eventName: approvedEventName, userId: \"user_123\", properties: { amount: 2900, success: true }, context: { source: \"stripe_webhook\" } })"
+  ],
+  "privacyConstraints": [
+    "Do not capture request body, response body, headers, cookies, authorization values, secrets, tokens, raw prompts, raw user content, or full query URLs."
+  ]
+}
+```
+
+`server_http` 返回同样语义的 `payloadTemplate`，供 Java、Go、Ruby、PHP 等没有一方 SDK 的后端通过 HTTPS 直接写入 `/api/capture`。这些服务端平台是 manual capture only：coding agent 必须先搜索和校验 event name，再把埋点放在支付成功、账单已付、工作区创建、任务完成、同步完成等稳定业务结果处。
 
 ### `tracemind.search_event_names`
 

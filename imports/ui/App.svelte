@@ -27,6 +27,9 @@
     { value: "mcp_node", label: "MCP Node" },
     { value: "mcp_python", label: "MCP Python" },
     { value: "agent_skill", label: "Agent Skill" },
+    { value: "server_node", label: "Server Node" },
+    { value: "server_python", label: "Server Python" },
+    { value: "server_http", label: "Server HTTP" },
   ];
 
   function buildCaptureSetup(project, platform, origin) {
@@ -85,6 +88,33 @@
         install: "Instrument executable host agent runtime hooks; static Skill files cannot auto-capture by themselves.",
         title: "Agent Skill lifecycle hook",
         note: "Agent Skill events use sourceType agent_skill and require host runtime lifecycle hooks.",
+      };
+    }
+
+    if (platform === "server_node") {
+      return {
+        code: `import { TraceMindServer } from "@tracemind/server-node";\nTraceMindServer.start({ projectKey: "${project.projectKey}", sourceKey: "billing-api" });`,
+        install: "Install @tracemind/server-node and add manual capture only at stable server-side business outcomes.",
+        title: "Server Node manual capture setup",
+        note: "Server Node events use sourceType server_app. This v1 does not auto-capture every request.",
+      };
+    }
+
+    if (platform === "server_python") {
+      return {
+        code: `from tracemind_server import TraceMindServer\nTraceMindServer.start(project_key="${project.projectKey}", source_key="billing-api")`,
+        install: "Install tracemind-server and add manual capture only at stable server-side business outcomes.",
+        title: "Server Python manual capture setup",
+        note: "Server Python events use sourceType server_app. This v1 does not auto-capture every request.",
+      };
+    }
+
+    if (platform === "server_http") {
+      return {
+        code: `POST ${origin}/api/capture\nContent-Type: application/json\n\n{\n  "projectKey": "${project.projectKey}",\n  "platform": "server",\n  "type": "custom",\n  "eventName": "approved_event_name",\n  "source": { "type": "server_app", "key": "billing-api" }\n}`,
+        install: "Use your backend HTTP client to POST sanitized manual events to /api/capture.",
+        title: "Server HTTP manual capture payload",
+        note: "Server HTTP is the fallback for backend languages without a first-party SDK.",
       };
     }
 
@@ -857,7 +887,7 @@
             <label class="field-label">
               <span>{$t(captureSetup.title)}</span>
               <div class="field-copy-group multiline">
-                <textarea id="capture-snippet" name="captureSnippet" readonly rows={selectedCapturePlatform === "react_native" ? 3 : 2} value={captureSnippet}></textarea>
+                <textarea id="capture-snippet" name="captureSnippet" readonly rows={selectedCapturePlatform === "server_http" ? 9 : selectedCapturePlatform === "react_native" ? 3 : 2} value={captureSnippet}></textarea>
                 <button class:copied={copiedTarget === "capture-snippet"} class="ghost compact-copy" type="button" onclick={() => copyText("capture-snippet", captureSnippet, "Capture setup copied.")}>
                   {copiedLabel("capture-snippet")}
                 </button>
