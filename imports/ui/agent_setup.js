@@ -39,7 +39,7 @@ MCP server:
 
 Add this server according to the current coding agent's MCP configuration method. Prefer project-level MCP configuration. If only global configuration is available, tell me first and wait for confirmation.
 Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md, Skill, README, source code, or any other rules file that may be committed to the repository; only write it into the agent MCP configuration.
-After MCP is configured, Call \`tracemind.capture_setup\` to retrieve the Web Auto Capture script for the current project. Use the returned public projectKey only as \`data-tracemind-token\`; never use the MCP token in frontend code.
+After MCP is configured, Call \`tracemind.capture_setup\` to retrieve the Web Auto Capture script for the current project. For iOS, Android, or React Native projects, pass the matching \`platform\` argument and use the returned one-line initialization code. Use the returned public projectKey only for capture writes; never use the MCP token in frontend code.
 
 Existing configuration handling:
 - If TraceMind Skill or TraceMind rules already exist, do not append a duplicate full block. Check the existing version and content, then add only missing guidance.
@@ -85,7 +85,7 @@ MCP server:
 
 请根据当前 coding agent 的 MCP 配置方式添加这个 server。优先使用项目级 MCP 配置。如果只能使用全局配置，请先告诉我并等待确认。
 不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md、Skill、README、源码或其他会进入仓库的规则文件；只能写入 agent 的 MCP 配置。
-MCP 配好后，通过 \`tracemind.capture_setup\` 获取 Web Auto Capture 接入脚本。只把返回的公开 projectKey 用作 \`data-tracemind-token\`，不要把 MCP token 写进前端代码。
+MCP 配好后，通过 \`tracemind.capture_setup\` 获取 Web Auto Capture 接入脚本。对于 iOS、Android 或 React Native 项目，传入对应 \`platform\` 并使用返回的一行初始化代码。只把返回的公开 projectKey 用于采集写入，不要把 MCP token 写进前端代码。
 
 已有配置处理：
 - 如果已经安装过 TraceMind Skill 或已经追加过 TraceMind rules，不要重复追加完整内容；只检查版本和规则内容，缺什么补什么。

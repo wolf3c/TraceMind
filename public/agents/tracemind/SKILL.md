@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.07.2
+version: 2026.05.08.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -12,20 +12,21 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 1. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
-3. For web apps, call `tracemind.capture_setup` and verify Web Auto Capture is installed before adding manual custom events.
+3. For web apps, call `tracemind.capture_setup` and verify Web Auto Capture is installed before adding manual custom events. For iOS, Android, or React Native apps, pass the matching `platform` and verify the returned SDK initialization code.
 4. Search for an existing event with `tracemind.search_event_names`.
 5. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
 6. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
 7. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
 
-## Web Auto Capture Setup
+## Auto Capture Setup
 
-For web apps, check whether the app already loads TraceMind Auto Capture before adding manual events.
+For product apps, check whether the app already initializes TraceMind Auto Capture before adding manual events.
 
-- Look for a script that loads `/capture.js` and includes `data-tracemind-token`.
-- If it is missing, call `tracemind.capture_setup` and install the returned `captureSnippet` in the app HTML head, root layout, or equivalent global document entry.
-- `data-tracemind-token` must use the returned public Auto Capture project key.
-- Never use an MCP token in frontend code.
+- Web: look for a script that loads `/capture.js` and includes `data-tracemind-token`; if missing, call `tracemind.capture_setup` and install the returned `captureSnippet`.
+- iOS: call `tracemind.capture_setup` with `{ "platform": "ios" }` and initialize with the returned `TraceMind.start(projectKey: "...")` snippet.
+- Android: call `tracemind.capture_setup` with `{ "platform": "android" }` and initialize with the returned `TraceMind.start(application, projectKey = "...")` snippet.
+- React Native: call `tracemind.capture_setup` with `{ "platform": "react_native" }` and initialize with the returned `TraceMind.start({ projectKey: "..." })` snippet.
+- The returned public project key is only for capture writes. Never use an MCP token in frontend or app code.
 - Manual `custom` events are only for business outcomes that Auto Capture cannot infer reliably.
 
 ## Event Rules

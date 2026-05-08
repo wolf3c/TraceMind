@@ -1,6 +1,6 @@
 {
   "name": "tracemind-instrumentation",
-  "guidanceVersion": "2026.05.07.2",
+  "guidanceVersion": "2026.05.08.1",
   "resources": {
     "skill": "/agents/tracemind/SKILL.md",
     "agentSnippet": "/agents/tracemind/AGENTS_SNIPPET.md",

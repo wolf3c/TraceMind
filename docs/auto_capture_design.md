@@ -2,26 +2,46 @@
 
 ## 目标
 
-让 Web 产品只用一行脚本就能启用 TraceMind 行为采集，并且同时支持自动采集、手动埋点、用户识别、设备信息和未来服务端埋点。
+让 Web、iOS、Android 和 React Native 产品只用一行初始化代码就能启用 TraceMind 行为采集，并且同时支持自动采集、手动埋点、用户识别、设备信息和服务端埋点。
 
 ## 一行接入
+
+Web:
 
 ```html
 <script src="https://tracemind.example.com/capture.js" data-tracemind-token="PROJECT_KEY" async></script>
 ```
 
-本地开发时，控制台会显示当前 `localhost` 对应的一行代码。
+iOS:
 
-Coding agent 接入时不应从静态 skill 或 rules 文件读取项目 key。应先配置 TraceMind MCP，再调用 `tracemind.capture_setup` 获取当前项目的一行 Auto Capture 脚本。
+```swift
+TraceMind.start(projectKey: "PROJECT_KEY")
+```
+
+Android:
+
+```kotlin
+TraceMind.start(application, projectKey = "PROJECT_KEY")
+```
+
+React Native:
+
+```js
+TraceMind.start({ projectKey: "PROJECT_KEY" });
+```
+
+Native 和 React Native 的包安装、Gradle/Swift Package 配置不计入“一行代码”；真正进入业务代码的接入点保持一行初始化。本地开发时，控制台会显示当前项目和平台对应的一行代码。
+
+Coding agent 接入时不应从静态 skill 或 rules 文件读取项目 key。应先配置 TraceMind MCP，再调用 `tracemind.capture_setup` 获取当前项目和平台的一行 Auto Capture 代码。
 
 ## 自动采集信号
 
-- `page_view`: 页面首次打开。
-- `click`: 文档级点击事件，包含元素定位信息。
-- `input`: 表单字段变化，包含元素定位信息，不采集输入值。
-- `submit`: 表单提交，包含表单定位信息。
-- `route_change`: `history.pushState` 和浏览器前进/后退。
-- `custom`: 通过 `window.TraceMind.capture(type, data)` 手动上报。
+- `page_view`: Web 页面首次打开，或 Native app/screen 进入。
+- `click`: Web 文档级点击，或 Native tap/click 控件行为，包含元素定位信息。
+- `input`: Web 表单字段或 Native text input 发生变化，包含元素定位信息，不采集输入值。
+- `submit`: Web 表单提交，或 Native 键盘 done/search/send 与确认类提交。
+- `route_change`: Web `history.pushState` / 前进后退，或 Native screen/controller/activity 切换。
+- `custom`: 通过 Web `window.TraceMind.capture(type, data)` 或 Native `TraceMind.capture(...)` 手动上报。
 
 ## 用户识别
 
@@ -89,6 +109,8 @@ window.TraceMind.capture("custom", {
 
 `POST /api/capture`
 
+单事件：
+
 ```json
 {
   "projectKey": "tm_proj_xxx",
@@ -133,11 +155,36 @@ window.TraceMind.capture("custom", {
 }
 ```
 
+批量事件：
+
+```json
+{
+  "projectKey": "tm_proj_xxx",
+  "sessionId": "tm_sess_xxx",
+  "anonymousId": "tm_anon_xxx",
+  "events": [
+    {
+      "platform": "ios",
+      "type": "page_view",
+      "path": "CheckoutViewController",
+      "source": {
+        "type": "ios",
+        "bundleId": "com.example.app",
+        "label": "Example iOS",
+        "details": {
+          "framework": "swift"
+        }
+      }
+    }
+  ]
+}
+```
+
 服务端会补充：
 
 - `ip`: 从 `x-forwarded-for`、`cf-connecting-ip`、`x-real-ip` 或 socket 地址读取。
 - `geo`: 从 Cloudflare、Vercel、CloudFront、App Engine 等代理/CDN 请求头读取国家、地区、城市。
-- `sourceType` / `sourceKey` / `sourceLabel` / `sourceDetails`: 从 SDK payload 和请求头归一化得到的来源字段。Web 的 `sourceKey` 优先使用请求 `Origin`，其次使用请求 `Referer`，最后才回退到 SDK payload URL；iOS/Android 后续可使用 bundle id 或 package name。
+- `sourceType` / `sourceKey` / `sourceLabel` / `sourceDetails`: 从 SDK payload 和请求头归一化得到的来源字段。Web 的 `sourceKey` 优先使用请求 `Origin`，其次使用请求 `Referer`，最后才回退到 SDK payload URL；iOS 使用 bundle id；Android 使用 package name；React Native 复用原生来源并在 `deviceInfo.framework` 或 `sourceDetails.framework` 标记 `react_native`。
 - `semanticStatus: "pending"`: 等待语义抽取任务处理。
 
 ## 来源治理
@@ -158,13 +205,22 @@ window.TraceMind.capture("custom", {
 ## 跨平台字段
 
 - `platform`: 当前约定为 `web`、`ios`、`android`、`server`，但不强制封闭，方便未来 SDK 扩展。
-- `sourceType` 和 `sourceKey`: 表达采集来源，避免使用 `hostname` 这种 Web-only 字段名。Web 使用页面 hostname；Native SDK 后续使用应用标识。
+- `sourceType` 和 `sourceKey`: 表达采集来源，避免使用 `hostname` 这种 Web-only 字段名。Web 使用页面 hostname；iOS 使用 bundle id；Android 使用 package name。
 - `deviceInfo`: 平台差异字段放这里，例如 iOS/Android 的 OS version、app version、model、network。
 - `properties` 和 `context`: 所有业务扩展字段都放这里，避免为每个业务事件改表。
+
+## Native SDK v1 边界
+
+- iOS SDK 位于 `sdk/ios`，公开入口为 `TraceMind.start(projectKey: "PROJECT_KEY")`。
+- Android SDK 位于 `sdk/android`，公开入口为 `TraceMind.start(application, projectKey = "PROJECT_KEY")`。
+- React Native SDK 位于 `sdk/react-native`，公开入口为 `TraceMind.start({ projectKey: "PROJECT_KEY" })`，内部复用原生 SDK。
+- 第一阶段不自动 hook 网络请求、崩溃、session replay 或截图；这些能力后续独立设计。
+- Native SDK 使用本地队列批量写入 `/api/capture`，前后台切换或网络恢复时 flush。
+- SDK 过滤明显敏感字段，不采集输入值、截图、secret、token、raw prompt、raw user content 或完整 query URL。
 
 ## MVP 决策
 
 - 项目 key 是公开采集 key，只允许写入行为数据。
 - 项目 key 不做默认白名单；先提供来源统计和项目级来源屏蔽。
 - 脚本优先使用 `navigator.sendBeacon`，失败时回退到 `fetch(..., keepalive: true)`。
-- 暂不做 session replay、DOM snapshot、脱敏规则或批量压缩。
+- 暂不做 session replay、DOM/native snapshot、截图录制、自动网络 hook 或崩溃采集。

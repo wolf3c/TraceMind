@@ -181,6 +181,15 @@ TraceMind 自动采集：
 
 开发者无需先设计复杂埋点体系。
 
+第一阶段接入形态必须同时覆盖 Web 和 App：
+
+- Web 使用一行 `<script>`。
+- iOS 使用一行 `TraceMind.start(projectKey: ...)`。
+- Android 使用一行 `TraceMind.start(application, projectKey = ...)`。
+- React Native 使用一行 `TraceMind.start({ projectKey })`，底层复用 iOS/Android 原生采集。
+
+包安装、Gradle/Swift Package 配置属于平台依赖接入；进入业务代码的 TraceMind 初始化保持一行。
+
 ---
 
 # 4.2 行为语义理解（Semantic Understanding）
@@ -583,4 +592,3 @@ TraceMind 最终希望成为：
 最终实现：
 
 # 从“记录行为”到“理解行为”的跃迁。
-

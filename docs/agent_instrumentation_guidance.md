@@ -26,7 +26,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 - 修改前必须列出文件和命令、只合并追加、不覆盖已有配置、安装后验证的要求。
 - 项目级 skill 只在当前 agent 明确支持官方项目级 skill 目录时安装；否则回退到项目级 rules/instructions，不创建自定义目录。
 - MCP URL 和 token 只写入 agent 的 MCP 配置，不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件。
-- Web Auto Capture 的当前项目脚本由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词。
+- Auto Capture 的当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`android` 或 `react_native`。
 - 如果 MCP 只能写入全局配置，agent 必须先等待用户确认，并把结果标记为 partially installed，而不是声称三项全部完成。
 - 如果已经存在 TraceMind Skill 或 rules，agent 只检查版本和补充缺失内容，不重复追加完整区块。
 - 如果已经存在同名 MCP server，agent 更新 URL/token；如果存在其他 `tm-*` TraceMind server，必须保留；如果存在旧的 `tracemind` server，先通过 MCP 自描述或 `tracemind.project_info` 确认项目归属。
@@ -42,7 +42,7 @@ Agent 后续修改 TraceMind 埋点时应按顺序使用 MCP：
 
 1. `tracemind.project_info`：多项目或不确定时先确认当前 MCP 对应的 TraceMind 项目。
 2. `tracemind.agent_guidance`：检查 guidance 版本和公开资源。
-3. `tracemind.capture_setup`：Web 项目先获取当前项目 Auto Capture 脚本并验证 `/capture.js` + `data-tracemind-token` 已安装。
+3. `tracemind.capture_setup`：先获取当前项目 Auto Capture 接入代码；Web 验证 `/capture.js` + `data-tracemind-token`，Native 验证对应 SDK 初始化代码。
 4. `tracemind.search_event_names`：搜索已有事件，避免随意创建 event name。
 5. `tracemind.suggest_instrumentation`：判断复用事件、跳过手动埋点或创建 draft custom event。
 6. `tracemind.validate_event_payload` / `tracemind.privacy_check`：检查单个 payload。

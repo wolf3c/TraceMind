@@ -568,6 +568,37 @@ button.copied {
   min-height: 44px;
 }
 
+.capture-platform-group {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
+  background: #f8faf7;
+}
+
+.platform-tab {
+  min-height: 40px;
+  padding: 8px 10px;
+  border-color: transparent;
+  color: #496158;
+  background: transparent;
+  box-shadow: none;
+}
+
+.platform-tab.selected {
+  border-color: rgba(24, 167, 122, 0.42);
+  color: #fffdf8;
+  background: var(--signal);
+}
+
+.setup-note {
+  color: #708179;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
 .language-label {
   min-width: 116px;
 }
@@ -985,7 +1016,8 @@ code {
   .event-metrics,
   .mcp-token-header,
   .mcp-token-row,
-  .source-row {
+  .source-row,
+  .capture-platform-group {
     grid-template-columns: 1fr;
   }
 

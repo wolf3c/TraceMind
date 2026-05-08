@@ -114,13 +114,13 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.07.2'));
-      assert.ok(skill.includes('## Web Auto Capture Setup'));
+      assert.ok(skill.includes('version: 2026.05.08.1'));
+      assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.07.2');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.08.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tm-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -181,7 +181,7 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.07.2');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.08.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
@@ -238,6 +238,43 @@ describe('TraceMind', function () {
       assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
       assert.ok(setup.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
       assert.ok(!JSON.stringify(setup.structuredContent).includes('tm_mcp_'));
+    });
+
+    it('returns native auto capture setup snippets through MCP', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const project = {
+        _id: `project-native-capture-setup-${Date.now()}`,
+        name: 'Native Capture Setup Project',
+        projectKey: 'tm_proj_native',
+      };
+
+      const setupTool = mcpTools(project).find((tool) => tool.name === 'tracemind.capture_setup');
+      assert.strictEqual(setupTool.inputSchema.properties.platform.type, 'string');
+
+      const ios = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'ios' });
+      const android = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'android' });
+      const reactNative = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'react_native' });
+
+      assert.strictEqual(ios.structuredContent.platform, 'ios');
+      assert.ok(ios.structuredContent.install.includes('Swift Package'));
+      assert.ok(ios.structuredContent.initSnippet.includes('TraceMind.start(projectKey: "tm_proj_native")'));
+      assert.ok(ios.structuredContent.source.key.includes('bundle id'));
+
+      assert.strictEqual(android.structuredContent.platform, 'android');
+      assert.ok(android.structuredContent.install.includes('Gradle'));
+      assert.ok(android.structuredContent.initSnippet.includes('TraceMind.start(application, projectKey = "tm_proj_native")'));
+      assert.ok(android.structuredContent.source.key.includes('package name'));
+
+      assert.strictEqual(reactNative.structuredContent.platform, 'react_native');
+      assert.ok(reactNative.structuredContent.install.includes('@tracemind/react-native'));
+      assert.ok(reactNative.structuredContent.initSnippet.includes('TraceMind.start({ projectKey: "tm_proj_native" })'));
+      assert.strictEqual(reactNative.structuredContent.eventPlatform, 'ios_or_android');
+
+      [ios, android, reactNative].forEach((result) => {
+        assert.strictEqual(result.structuredContent.tokenType, 'public_auto_capture_project_key');
+        assert.ok(result.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
+        assert.ok(!JSON.stringify(result.structuredContent).includes('tm_mcp_'));
+      });
     });
 
     it('exposes project identity through MCP initialize and tools/list metadata', async function () {
@@ -923,6 +960,79 @@ describe('TraceMind', function () {
         path: '/docs',
         referrer: '',
       });
+    });
+
+    it('accepts batched native capture payloads with per-event sources', async function () {
+      const projectId = `project-batch-capture-${Date.now()}`;
+      const projectKey = `tm_proj_batch_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-batch-capture',
+        name: 'Batch Capture Project',
+        projectKey,
+        blockedSources: [{ sourceType: 'android', sourceKey: 'com.blocked.app', blockedAt: new Date() }],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        sessionId: 'tm_sess_batch',
+        anonymousId: 'tm_anon_batch',
+        events: [
+          {
+            type: 'page_view',
+            platform: 'ios',
+            path: 'CheckoutView',
+            source: {
+              type: 'ios',
+              bundleId: 'com.example.ios',
+              label: 'Example iOS',
+              details: { framework: 'swift' },
+            },
+          },
+          {
+            type: 'click',
+            platform: 'android',
+            path: 'CheckoutActivity',
+            targetHash: 'tm_target_android',
+            source: {
+              type: 'android',
+              packageName: 'com.example.android',
+              label: 'Example Android',
+            },
+          },
+          {
+            type: 'click',
+            platform: 'android',
+            path: 'BlockedActivity',
+            source: {
+              type: 'android',
+              packageName: 'com.blocked.app',
+            },
+          },
+        ],
+      }, { headers: {} });
+
+      const behaviors = await RawBehaviors.find({ projectId }, { sort: { platform: 1 } }).fetchAsync();
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 2);
+      assert.strictEqual(result.ignored, 1);
+      assert.strictEqual(behaviors.length, 2);
+      assert.deepStrictEqual(behaviors.map((behavior) => behavior.platform).sort(), ['android', 'ios']);
+      assert.ok(behaviors.some((behavior) => (
+        behavior.platform === 'ios'
+        && behavior.sourceType === 'ios'
+        && behavior.sourceKey === 'com.example.ios'
+        && behavior.sourceDetails.framework === 'swift'
+      )));
+      assert.ok(behaviors.some((behavior) => (
+        behavior.platform === 'android'
+        && behavior.sourceType === 'android'
+        && behavior.sourceKey === 'com.example.android'
+        && behavior.sessionId === 'tm_sess_batch'
+        && behavior.anonymousId === 'tm_anon_batch'
+      )));
     });
 
     it('requires a Meteor Accounts session for the dashboard', async function () {

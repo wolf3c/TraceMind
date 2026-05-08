@@ -18,7 +18,7 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.07.2';
+const AGENT_GUIDANCE_VERSION = '2026.05.08.1';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -161,10 +161,16 @@ export function mcpTools(project) {
     {
       name: 'tracemind.capture_setup',
       title: projectScopedTitle('TraceMind Capture Setup', project),
-      description: projectScopedDescription('返回当前项目的 Web Auto Capture 项目 key 和一行接入脚本。', project),
+      description: projectScopedDescription('返回当前项目的 Auto Capture 项目 key 和指定平台的一行接入代码。', project),
       inputSchema: {
         type: 'object',
-        properties: {},
+        properties: {
+          platform: {
+            type: 'string',
+            enum: ['web', 'ios', 'android', 'react_native'],
+            description: '要接入的平台；省略时返回 Web 脚本。',
+          },
+        },
       },
     },
     {
@@ -354,6 +360,7 @@ function guidanceResult(extra = {}) {
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
       'For web apps, call tracemind.capture_setup before adding manual custom events.',
+      'For iOS, Android, or React Native apps, pass the matching platform to tracemind.capture_setup before adding manual custom events.',
       'Verify /capture.js and data-tracemind-token are installed before custom instrumentation.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
@@ -372,7 +379,76 @@ function addFinding(findings, severity, code, message, path) {
   });
 }
 
-function captureSetupResult(project) {
+function platformSetup(project, platform) {
+  const captureApiUrl = Meteor.absoluteUrl('/api/capture');
+  const notes = [
+    'Use projectKey only for Auto Capture writes.',
+    'Do not use the MCP token as data-tracemind-token.',
+    'Do not put MCP tokens in frontend code.',
+    'Do not capture input values, screenshots, secrets, raw prompts, raw user content, or full query URLs.',
+  ];
+
+  if (platform === 'ios') {
+    return {
+      platform: 'ios',
+      eventPlatform: 'ios',
+      install: 'Add the TraceMind Swift Package from sdk/ios, then import TraceMind in your App entrypoint.',
+      initSnippet: `TraceMind.start(projectKey: "${project.projectKey}")`,
+      captureApiUrl,
+      source: {
+        type: 'ios',
+        key: 'iOS bundle id, for example com.example.app',
+      },
+      notes,
+    };
+  }
+
+  if (platform === 'android') {
+    return {
+      platform: 'android',
+      eventPlatform: 'android',
+      install: 'Add the sdk/android Gradle module and initialize TraceMind from Application.onCreate().',
+      initSnippet: `TraceMind.start(application, projectKey = "${project.projectKey}")`,
+      captureApiUrl,
+      source: {
+        type: 'android',
+        key: 'Android package name, for example com.example.app',
+      },
+      notes,
+    };
+  }
+
+  if (platform === 'react_native') {
+    return {
+      platform: 'react_native',
+      eventPlatform: 'ios_or_android',
+      install: 'Install @tracemind/react-native from sdk/react-native and run the native package install step for iOS and Android.',
+      initSnippet: `TraceMind.start({ projectKey: "${project.projectKey}" })`,
+      captureApiUrl,
+      source: {
+        type: 'ios_or_android',
+        key: 'Native bundle id or package name; React Native is marked in deviceInfo.framework.',
+      },
+      notes,
+    };
+  }
+
+  const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
+  return {
+    platform: 'web',
+    eventPlatform: 'web',
+    captureScriptUrl,
+    captureSnippet: `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" async></script>`,
+    initSnippet: `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" async></script>`,
+    source: {
+      type: 'web',
+      key: 'Request Origin or Referer hostname.',
+    },
+    notes,
+  };
+}
+
+function captureSetupResult(project, args = {}) {
   if (!project?.projectKey) {
     return {
       ok: false,
@@ -384,18 +460,16 @@ function captureSetupResult(project) {
     };
   }
 
-  const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
+  const requestedPlatform = String(args.platform || '').toLowerCase().replace('-', '_');
+  const platform = ['ios', 'android', 'react_native', 'web'].includes(requestedPlatform)
+    ? requestedPlatform
+    : 'web';
+
   return {
     ok: true,
     projectKey: project.projectKey,
-    captureScriptUrl,
-    captureSnippet: `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" async></script>`,
     tokenType: 'public_auto_capture_project_key',
-    notes: [
-      'Use projectKey only for Auto Capture writes.',
-      'Do not use the MCP token as data-tracemind-token.',
-      'Do not put MCP tokens in frontend code.',
-    ],
+    ...platformSetup(project, platform),
   };
 }
 
@@ -599,11 +673,11 @@ export async function callMcpTool(project, name, args = {}) {
   }
 
   if (name === 'tracemind.capture_setup') {
-    const setup = captureSetupResult(project);
+    const setup = captureSetupResult(project, args);
     return textResult(
       setup.ok
-        ? 'TraceMind Web Auto Capture setup is available for this project.'
-        : 'TraceMind Web Auto Capture setup is unavailable for this project.',
+        ? `TraceMind ${setup.platform || 'web'} Auto Capture setup is available for this project.`
+        : 'TraceMind Auto Capture setup is unavailable for this project.',
       setup,
     );
   }
@@ -913,12 +987,7 @@ function clientScript(host) {
 })();`;
 }
 
-export async function ingestCapturePayload(payload = {}, req = {}) {
-  payload = payload || {};
-  const project = await resolveProjectByKey(payload.projectKey);
-  if (!project) {
-    return { ok: false, statusCode: 401, error: 'invalid_project_key' };
-  }
+async function insertCaptureEvent(project, payload = {}, req = {}) {
   const source = normalizeCaptureSource(payload, req.headers || {});
 
   if (isSourceBlocked(project, source)) {
@@ -959,6 +1028,35 @@ export async function ingestCapturePayload(payload = {}, req = {}) {
   });
 
   return { ok: true, ignored: false };
+}
+
+export async function ingestCapturePayload(payload = {}, req = {}) {
+  payload = payload || {};
+  const project = await resolveProjectByKey(payload.projectKey);
+  if (!project) {
+    return { ok: false, statusCode: 401, error: 'invalid_project_key' };
+  }
+
+  if (Array.isArray(payload.events)) {
+    let accepted = 0;
+    let ignored = 0;
+    const sharedPayload = { ...payload };
+    delete sharedPayload.events;
+
+    for (const eventPayload of payload.events.slice(0, 100)) {
+      const result = await insertCaptureEvent(project, {
+        ...sharedPayload,
+        ...safeObject(eventPayload),
+        projectKey: project.projectKey,
+      }, req);
+      if (result.ignored) ignored += 1;
+      else accepted += 1;
+    }
+
+    return { ok: true, accepted, ignored };
+  }
+
+  return insertCaptureEvent(project, payload, req);
 }
 
 async function handleCapture(req, res) {

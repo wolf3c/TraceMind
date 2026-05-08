@@ -7,3 +7,6 @@ _build
 */build-assets
 */build-chunks
 .rsdoctor
+.swiftpm-cache/
+sdk/ios/.build/
+sdk/ios/.swiftpm-cache/

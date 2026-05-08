@@ -1,0 +1,13 @@
+{
+  "name": "@tracemind/react-native",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "react-native": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.72"
+  }
+}

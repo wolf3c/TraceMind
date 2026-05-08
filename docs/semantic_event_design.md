@@ -82,6 +82,7 @@
 ## 设备、IP 与地理信息
 
 - Web 自动采集会发送 `deviceInfo`，包括 UA、语言、平台、时区、屏幕、viewport、硬件并发、内存和 referrer。
+- iOS/Android 自动采集会发送平台、系统、框架、bundle id/package name、app label 和 SDK 框架来源；React Native 保持原生 `platform`，并用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记 `react_native`。
 - 设备指纹只使用较稳定字段，避免 viewport/referrer 变化导致同一设备被频繁重算。
 - 服务端通过请求头采集 IP，包括 `x-forwarded-for`、`cf-connecting-ip`、`x-real-ip` 和 socket 地址。
 - 地理信息使用无感请求头来源，例如 Cloudflare、Vercel、CloudFront、App Engine 注入的国家、地区、城市字段；后续可接入 IP geo 数据库，但不需要改变事件表结构。
@@ -113,11 +114,11 @@
 
 | eventType | 名称 | 含义 | 常见字段 | 平台 |
 | --- | --- | --- | --- | --- |
-| `page_view` | 页面浏览 | 用户打开或刷新页面，用于分析访问量、落地页、路径入口和页面级留存。 | `title`, `path`, `referrer` | Web, iOS, Android, Server |
-| `click` | 元素点击 | 用户点击界面元素，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `submit` | 表单提交 | 用户提交表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `route_change` | 页面跳转 | 用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, Android |
+| `page_view` | 页面浏览 | 用户打开或刷新页面，或进入 Native screen/activity/controller，用于分析访问量、落地页、路径入口和页面级留存。 | `title`, `path`, `referrer` | Web, iOS, Android, Server |
+| `click` | 元素点击 | 用户点击 Web 元素或 Native 控件，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度；不保存输入值。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `submit` | 表单提交 | 用户提交表单、点击确认或触发 Native keyboard done/search/send，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `route_change` | 页面跳转 | 用户在 Web SPA 或 Native app 内发生页面切换，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, Android |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` | Web, iOS, Android, Server |
 | `custom` | 自定义事件 | 开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。 | `eventName`, `properties`, `context` | Web, iOS, Android, Server |
 
@@ -126,9 +127,10 @@
 ## 跨平台扩展原则
 
 - 表结构保持平台无关：`platform` 区分 `web`、`ios`、`android`、`server`，平台差异写入 `deviceInfo`、`sourceDetails`、`properties` 和 `context`。
-- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源，Native SDK 后续使用应用标识。
+- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源；iOS 使用 bundle id；Android 使用 package name。
 - 自动采集字段和手动埋点字段共用同一事件模型，避免未来增加移动端 SDK 时迁移 Mongo 集合。
 - 移动端可复用 `sessionId`、`anonymousId`、`userId`、`deviceId`、`deviceFingerprint`、`sourceType`、`sourceKey`、`eventType`、`eventName`、`properties`、`context`。
+- 移动端 `target` 统一保存 class/type、accessibility id、resource id、test id、label 摘要、screen 和短层级 path；`targetHash` 仍使用 `tm_target_` 前缀。
 - 服务端埋点可使用 `platform: "server"`，通常上报 `userId`、`eventName`、`properties`、`context.traceId` 和 `occurredAt`。
 
 ## MVP 决策
