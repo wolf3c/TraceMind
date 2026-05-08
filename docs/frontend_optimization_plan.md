@@ -216,3 +216,22 @@
 - Run `npx svelte-check --compiler-warnings error`.
 - Run `npm test` if the local Meteor environment is available.
 - Start the app and visually verify desktop and mobile hierarchy, event rows, copy states, and disclosure panels.
+
+## 2026-05-08 Product Feature Section Simplification
+
+### Current Behavior
+
+- The second landing section presents TraceMind as a four-step setup flow.
+- It includes routine account setup details such as email login, which makes the mobile page long and weakens the product differentiators.
+- Numbered steps make one-line setup, automatic capture, semantic events, and AI analysis look like equal procedural steps instead of core advantages.
+
+### Target Behavior
+
+- Present this section as two core capabilities: one-script Auto Capture and AI-driven analysis/instrumentation.
+- Keep the script example visible because one-line code is a product advantage.
+- Remove routine login/setup details from the feature grid and keep mobile copy compact.
+
+### Verification Plan
+
+- Run `npx svelte-check --compiler-warnings error`.
+- Inspect the Chinese mobile layout and confirm the section shows only two concise feature cards.

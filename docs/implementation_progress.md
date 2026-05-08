@@ -75,6 +75,7 @@ Then add the capture snippet to a small test web page, generate several interact
 - Updated Auto Capture, semantic event, MCP, README, and coding-agent documentation for cross-platform capture and native manual capture guidance.
 - Extended TraceMind setup planning to third-party MCP server and Agent Skill instrumentation with new `mcp_node`, `mcp_python`, and `agent_skill` setup surfaces, safe MCP runtime event types, and SDK test coverage for MCP tool/resource/prompt metadata capture.
 - Added ordinary server application manual capture planning with `server_node`, `server_python`, and `server_http` setup surfaces, `server_app` source identity, and SDK coverage for safe primitive business events without request Auto Capture.
+- Simplified the second landing section from a four-step checklist into two product capabilities: one-script Auto Capture and AI-driven analysis/instrumentation, removing routine login steps from the mobile feature surface.
 
 ### Not Yet Included
 

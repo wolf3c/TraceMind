@@ -657,7 +657,7 @@
 
   <section id="how" class="workflow">
     <div>
-      <p class="section-label">{$t("1-minute setup flow")}</p>
+      <p class="section-label">{$t("Two core capabilities")}</p>
       <h2>{$t("Turn real user behavior into AI-readable product data with one line of code.")}</h2>
     </div>
     <div class="one-line-example">
@@ -667,26 +667,16 @@
       </div>
       <code>&lt;script src="{currentOrigin()}/capture.js" data-tracemind-token="tm_proj_xxx" async&gt;&lt;/script&gt;</code>
     </div>
-    <div class="steps">
+    <div class="feature-grid">
       <article>
-        <span class="tm-badge tm-badge-signal">01</span>
-        <h3>{$t("Email login")}</h3>
-        <p>{$t("Use an email verification code to get your project key and snippet.")}</p>
-      </article>
-      <article>
-        <span class="tm-badge tm-badge-signal">02</span>
+        <span class="tm-badge tm-badge-signal">{$t("One script")}</span>
         <h3>{$t("Auto capture")}</h3>
         <p>{$t("Copy one script to automatically record page views, clicks, inputs, form submits, and path changes.")}</p>
       </article>
       <article>
-        <span class="tm-badge tm-badge-amber">03</span>
-        <h3>{$t("Behavior semantics")}</h3>
-        <p>{$t("TraceMind turns raw clicks and visits into readable events like viewed pricing page and submitted signup form.")}</p>
-      </article>
-      <article>
-        <span class="tm-badge tm-badge-amber">04</span>
-        <h3>{$t("AI analysis")}</h3>
-        <p>{$t("Add the read-only MCP URL to Codex, Claude Code, or Cursor so AI can analyze product usage directly.")}</p>
+        <span class="tm-badge tm-badge-amber">{$t("AI-driven")}</span>
+        <h3>{$t("AI analysis and instrumentation")}</h3>
+        <p>{$t("TraceMind turns raw behavior into semantic events and exposes read-only MCP evidence so Codex, Claude Code, or Cursor can analyze product usage directly.")}</p>
       </article>
     </div>
   </section>

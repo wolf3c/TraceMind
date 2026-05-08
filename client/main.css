@@ -189,7 +189,7 @@ button:disabled {
   background: #eef5f1;
 }
 
-.steps .tm-badge,
+.feature-grid .tm-badge,
 .account-panel .tm-badge {
   color: var(--deep);
 }
@@ -388,14 +388,10 @@ button:disabled {
   line-height: 1.05;
 }
 
-.steps {
+.feature-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  border: 1px solid #d9e3de;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--paper);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .one-line-example {
@@ -432,23 +428,22 @@ button:disabled {
   box-shadow: inset 0 0 0 1px rgba(24, 167, 122, 0.12);
 }
 
-.steps article {
-  min-height: 168px;
-  padding: 18px;
-  border-right: 1px solid #d9e3de;
+.feature-grid article {
+  min-height: 176px;
+  padding: 22px;
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
   background: var(--paper);
 }
 
-.steps article:last-child {
-  border-right: 0;
-}
-
-.steps h3 {
+.feature-grid h3 {
   margin: 18px 0 8px;
   color: var(--deep);
+  font-size: clamp(1.28rem, 2vw, 1.65rem);
+  line-height: 1.12;
 }
 
-.steps p,
+.feature-grid p,
 .account-panel p,
 .empty,
 .status {
@@ -1093,7 +1088,7 @@ code {
 @media (max-width: 860px) {
   .hero-grid,
   .dashboard-grid,
-  .steps,
+  .feature-grid,
   .one-line-example,
   .agent-setup-header,
   .field-copy-group,
@@ -1144,13 +1139,8 @@ code {
   }
 
   .signal-metrics div,
-  .steps article {
+  .feature-grid article {
     border-right: 0;
-    border-bottom: 1px solid #d9e3de;
-  }
-
-  .steps article:last-child {
-    border-bottom: 0;
   }
 }
 
@@ -1180,6 +1170,33 @@ code {
 
   .lede {
     font-size: 1rem;
+  }
+
+  .workflow,
+  .console {
+    padding: 42px clamp(18px, 5vw, 32px);
+  }
+
+  .workflow h2,
+  .console h2 {
+    font-size: clamp(28px, 8.6vw, 36px);
+  }
+
+  .one-line-example,
+  .feature-grid article {
+    padding: 16px;
+  }
+
+  .feature-grid article {
+    min-height: 0;
+  }
+
+  .feature-grid h3 {
+    margin: 14px 0 6px;
+  }
+
+  .feature-grid p {
+    margin: 0;
   }
 
   .signal-panel {
