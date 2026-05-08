@@ -764,7 +764,6 @@ code {
 }
 
 .disclosure-panel > .field-label,
-.disclosure-panel > .agent-links,
 .disclosure-panel > .mcp-token-panel {
   margin: 0 12px;
 }
@@ -788,23 +787,6 @@ code {
 
 .mcp-url-copy .compact-copy {
   min-height: 44px;
-}
-
-.agent-links {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.agent-links a {
-  border: 1px solid #bacbc4;
-  border-radius: 999px;
-  padding: 7px 11px;
-  color: var(--deep);
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-decoration: none;
-  background: #f8faf7;
 }
 
 .source-header span,

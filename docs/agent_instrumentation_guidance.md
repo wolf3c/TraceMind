@@ -34,7 +34,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 
 如果项目没有 MCP token，控制台不生成安装提示词，先引导用户创建 token。
 
-控制台默认只展示复制入口，不展开完整安装提示词。MCP URL 跟随具体 MCP token，只在 token 管理区域提供对应复制入口。需要人工复核提示词、打开公开 guidance 链接或管理额外 MCP token 时，再展开对应的高级区域。
+控制台默认只展示复制入口，不展开完整安装提示词或 guidance 链接。公开 guidance 链接随复制的安装提示词交给 coding agent 使用；MCP URL 跟随具体 MCP token，只在 token 管理区域提供对应复制入口。
 
 ## MCP 工作流
 

@@ -78,8 +78,6 @@ export default {
   "Copy the install prompt and send it to your coding agent.": "复制安装提示词并发送给你的 coding agent。",
   "Copy install prompt": "复制安装提示词",
   "Copied install prompt": "已复制安装提示词",
-  "Agent install prompt": "Agent 安装提示词",
-  "View install prompt and guidance links": "查看安装提示词和指南链接",
   "Skill": "Skill",
   "Agent rules": "Agent 规则",
   "Manifest": "Manifest",

@@ -777,20 +777,7 @@
                   {copiedTarget === "agent-install-prompt" ? $t("Copied install prompt") : $t("Copy install prompt")}
                 </button>
               </div>
-              {#if agentInstallPrompt}
-                <details class="disclosure-panel">
-                  <summary>{$t("View install prompt and guidance links")}</summary>
-                  <label class="field-label">
-                    <span>{$t("Agent install prompt")}</span>
-                    <textarea id="agent-install-prompt" name="agentInstallPrompt" readonly rows={8} value={agentInstallPrompt}></textarea>
-                  </label>
-                  <div class="agent-links">
-                    <a href={agentSkillUrl} target="_blank" rel="noreferrer">{$t("Skill")}</a>
-                    <a href={agentSnippetUrl} target="_blank" rel="noreferrer">{$t("Agent rules")}</a>
-                    <a href={agentManifestUrl} target="_blank" rel="noreferrer">{$t("Manifest")}</a>
-                  </div>
-                </details>
-              {:else}
+              {#if !agentInstallPrompt}
                 <p class="empty">{$t("Create an MCP token before generating the coding agent setup prompt.")}</p>
               {/if}
 
