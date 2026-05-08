@@ -601,7 +601,6 @@
         <p class="lede">{$t("TraceMind turns real user behavior into product signals you can analyze. With remote MCP, you can ask Codex, Claude Code, or Cursor about drop-off, feature usage, and conversion issues directly.")}</p>
         <div class="hero-actions">
           <a href="#console" class="button">{$t("Start setup")}</a>
-          <a href="#how" class="button secondary">{$t("View workflow")}</a>
           <a href={setupDocsUrl} class="button secondary" target="_blank" rel="noreferrer">{$t("Open docs")}</a>
         </div>
       </div>

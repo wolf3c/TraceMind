@@ -8,7 +8,6 @@ export default {
   "See how users actually use your product with one line of code.": "一行代码，看清用户如何使用你的产品。",
   "TraceMind turns real user behavior into product signals you can analyze. With remote MCP, you can ask Codex, Claude Code, or Cursor about drop-off, feature usage, and conversion issues directly.": "TraceMind 把真实用户行为自动整理成可分析的产品线索。接入远程 MCP 后，你可以在 Codex、Claude Code、Cursor 里直接追问用户流失、功能使用和转化问题。",
   "Start setup": "开始接入",
-  "View workflow": "查看流程",
   "Raw behavior": "原始行为",
   "Live behavior stream": "实时行为流",
   "Raw events": "原始事件",
