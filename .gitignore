@@ -8,5 +8,8 @@ _build
 */build-chunks
 .rsdoctor
 .swiftpm-cache/
+sdk/android/.gradle/
+sdk/android/.kotlin/
+sdk/android/build/
 sdk/ios/.build/
 sdk/ios/.swiftpm-cache/

@@ -4,6 +4,7 @@
   "scripts": {
     "start": "meteor run",
     "test": "meteor test --once --driver-package meteortesting:mocha",
+    "test:sdk:android": "sh sdk/android/test.sh",
     "test:sdk:ios": "CLANG_MODULE_CACHE_PATH=.swiftpm-cache/clang swift test --disable-sandbox --package-path sdk/ios",
     "test:sdk:react-native": "npm test --prefix sdk/react-native",
     "test-app": "TEST_WATCH=1 meteor test --full-app --driver-package meteortesting:mocha",
