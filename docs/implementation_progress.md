@@ -65,6 +65,7 @@ Then add the capture snippet to a small test web page, generate several interact
 
 ### Completed
 
+- Aligned the developer console UI more closely with `DESIGN.md`: compacted the hero status treatment, moved MCP readiness into the live-data panel, added a selected-project console header, and changed recent project events from a loose text list into dense behavior-evidence rows with event type, time, path, source, and actor metadata.
 - Extended `tracemind.capture_setup` with platform-specific setup output for Web, iOS, Android, and React Native while keeping Web as the default.
 - Expanded TraceMind coding-agent guidance so native setup uses structured MCP fields for install commands, files to edit, initialization location, idempotency checks, verification commands, source model, and privacy constraints.
 - Added `/api/capture` batch ingestion for SDK queues using `{ projectKey, events: [...] }`, with per-event source normalization and source blocking.

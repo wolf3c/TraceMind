@@ -186,3 +186,33 @@
 - Add tests for `summaryWindow` and UI helper predicates before implementation.
 - Run `meteor test --once --driver-package meteortesting:mocha --port <free-port>`.
 - Run `npx svelte-check`.
+
+## 2026-05-08 DESIGN.md Console Alignment Pass
+
+### Current Behavior
+
+- The page already uses TraceMind's deep green, warm canvas, signal teal, and amber palette.
+- The hero still reads like a marketing page because status badges compete with the product-console preview.
+- The authenticated console shows project setup, MCP token management, source statistics, metrics, and recent events, but the hierarchy is uneven.
+- Recent project events render as a long text list, which makes behavior evidence hard to scan.
+
+### Target Behavior
+
+- Keep the existing product semantics and server method contracts unchanged.
+- Align the first viewport with `DESIGN.md`: a compact hero, clear live-data panel, and visible MCP readiness inside the product preview.
+- Make the selected project the console anchor, with compact signal chips for the dominant event type and path.
+- Render recent events as dense operator evidence rows with event type, meaning, time, path, source, and actor fields when available.
+- Limit the visible recent-event list in the console so the page remains scannable while preserving the backend sample.
+
+### Risks
+
+- Svelte runes-derived values must update correctly when a user switches projects or a summary response arrives.
+- Long event paths, anonymous IDs, source keys, or localized strings must not overflow on mobile.
+- UI polish must not change project selection, project creation, copy actions, MCP token management, source blocking, or dashboard refresh behavior.
+
+### Verification Plan
+
+- Run Svelte autofixer against `App.svelte`.
+- Run `npx svelte-check --compiler-warnings error`.
+- Run `npm test` if the local Meteor environment is available.
+- Start the app and visually verify desktop and mobile hierarchy, event rows, copy states, and disclosure panels.

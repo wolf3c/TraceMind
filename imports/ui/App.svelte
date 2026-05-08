@@ -56,7 +56,11 @@
   let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
   let sourceSummary = $derived(selectedProjectSummary?.sources || []);
   let summary = $derived(selectedProjectSummary?.summary);
+  let displayedRecentEvents = $derived((selectedProjectSummary?.recentEvents || []).slice(0, 15));
+  let hiddenRecentEventCount = $derived(Math.max(0, (selectedProjectSummary?.recentEvents || []).length - displayedRecentEvents.length));
   let latestDau = $derived(summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0);
+  let topEventType = $derived(summary?.topEvents?.[0]?.eventType || "none");
+  let topPath = $derived(summary?.topPaths?.[0]?.path || "/");
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
   let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
   let agentSnippetUrl = $derived(`${currentOrigin()}/agents/tracemind/AGENTS_SNIPPET.md`);
@@ -495,6 +499,28 @@
     return new Date(value).toLocaleString(selectedLocale === "zh" ? "zh-CN" : "en-US");
   }
 
+  function compactDate(value) {
+    if (!value) return translateNow("Unknown");
+    return new Date(value).toLocaleString(selectedLocale === "zh" ? "zh-CN" : "en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function eventTypeLabel(event) {
+    return event?.eventName || event?.eventType || translateNow("Unknown event");
+  }
+
+  function eventSourceLabel(event) {
+    return event?.sourceLabel || event?.sourceKey || event?.platform || translateNow("Unknown source");
+  }
+
+  function eventActorLabel(event) {
+    return event?.userId || event?.anonymousId || event?.deviceId || event?.deviceFingerprint || translateNow("Anonymous user");
+  }
+
   function copiedLabel(target) {
     return copiedTarget === target ? translateNow("Copied") : translateNow("Copy");
   }
@@ -571,22 +597,20 @@
 
     <div class="hero-grid">
       <div class="hero-copy">
-        <div class="hero-badges">
-          <span class="tm-badge tm-badge-signal">{$t("AI-native behavior intelligence")}</span>
-          <span class="tm-badge tm-badge-amber">{$t("Remote MCP ready")}</span>
-        </div>
         <h1>{$t("See how users actually use your product with one line of code.")}</h1>
         <p class="lede">{$t("TraceMind turns real user behavior into product signals you can analyze. With remote MCP, you can ask Codex, Claude Code, or Cursor about drop-off, feature usage, and conversion issues directly.")}</p>
         <div class="hero-actions">
           <a href="#console" class="button">{$t("Start setup")}</a>
           <a href="#how" class="button secondary">{$t("View workflow")}</a>
+          <a href={setupDocsUrl} class="button secondary" target="_blank" rel="noreferrer">{$t("Open docs")}</a>
         </div>
       </div>
 
       <div class="signal-panel card-panel" aria-label="TraceMind data flow">
         <div class="signal-panel-header">
           <span class="tm-badge tm-badge-signal">{$t("Live behavior stream")}</span>
-          <span>tm_proj_xxx</span>
+          <span class="tm-badge tm-badge-amber">{$t("Remote MCP ready")}</span>
+          <code>tm_proj_xxx</code>
         </div>
 
         <div class="signal-metrics">
@@ -724,9 +748,19 @@
 
         <div class="setup-panel card-panel">
           {#if primaryProject}
+            <div class="project-console-header">
+              <div class="project-title">
+                <span>{$t("Current project")}</span>
+                <strong>{primaryProject.name}</strong>
+              </div>
+              <div class="project-console-signals" aria-label="Current project signal summary">
+                <span>{topEventType}</span>
+                <span>{topPath}</span>
+              </div>
+            </div>
             <div class="project-toolbar">
               <label class="field-label project-selector" for="selected-project">
-                <span>{$t("Current project")}</span>
+                <span>{$t("Switch project")}</span>
                 <select id="selected-project" name="selectedProject" bind:value={selectedProjectId} onchange={changeSelectedProject}>
                   {#each dashboard.projects as project}
                     <option value={project._id}>{project.name}</option>
@@ -757,16 +791,6 @@
                 </button>
               </div>
             </label>
-            <div class="setup-docs-row">
-              <div>
-                <span>{$t("Setup documentation")}</span>
-                <strong>{$t("Web, mobile, MCP, Agent Skill, and server setup live in the docs.")}</strong>
-              </div>
-              <a class="button secondary docs-button" href={setupDocsUrl} target="_blank" rel="noreferrer">
-                {$t("Open docs")}
-              </a>
-            </div>
-
             <div class="agent-setup-panel">
               <div class="agent-setup-header">
                 <div>
@@ -780,98 +804,100 @@
               {#if !agentInstallPrompt}
                 <p class="empty">{$t("Create an MCP token before generating the coding agent setup prompt.")}</p>
               {/if}
+            </div>
 
-              <details class="disclosure-panel">
-                <summary>{$t("Manage MCP tokens")}</summary>
-                <div class="mcp-token-panel">
-                  <div class="mcp-token-header">
-                    <div>
-                      <span>{$t("MCP Tokens")}</span>
-                      <strong>{$t("Assign independent read-only credentials to members or agents")}</strong>
-                    </div>
-                    <div class="mcp-token-create">
-                      <input id="mcp-token-name" name="mcpTokenName" bind:value={mcpTokenName} placeholder={$t("Cursor / Claude / teammate")} />
-                      <button type="button" onclick={createMcpToken} disabled={loading}>{$t("Add")}</button>
-                    </div>
+            <details class="disclosure-panel">
+              <summary>
+                <span>{$t("Manage MCP tokens")}</span>
+              </summary>
+              <div class="mcp-token-panel">
+                <div class="mcp-token-header">
+                  <div>
+                    <span>{$t("MCP Tokens")}</span>
+                    <strong>{$t("Assign independent read-only credentials to members or agents")}</strong>
                   </div>
-                  {#if primaryProject.mcpTokens.length}
-                    <div class="mcp-token-list">
-                      {#each primaryProject.mcpTokens as token (token.id)}
-                        <div class="mcp-token-row">
-                          <label class="field-label">
-                            <span>{$t("Name")}</span>
-                            <input id={`mcp-token-name-${token._id}`} name={`mcpTokenName-${token._id}`} bind:value={token.name} />
-                          </label>
-                          <label class="field-label">
-                            <span>{$t("Token")}</span>
-                            <input id={`mcp-token-value-${token._id}`} name={`mcpTokenValue-${token._id}`} readonly value={token.token} />
-                          </label>
-                          <div class="mcp-url-copy">
-                            <span>{$t("MCP URL")}</span>
-                            <button class:copied={copiedTarget === `mcp-url-${token.id}`} class="ghost compact-copy" type="button" onclick={() => copyText(`mcp-url-${token.id}`, `${currentOrigin()}/mcp?mcpToken=${token.token}`, "MCP URL copied.")}>
-                              {copiedLabel(`mcp-url-${token.id}`)}
-                            </button>
-                          </div>
-                          <div class="mcp-token-actions">
-                            <button class="ghost" type="button" onclick={() => renameMcpToken(token)} disabled={loading}>
-                              {$t("Save name")}
-                            </button>
-                            <button class="ghost" type="button" onclick={() => refreshMcpToken(token)} disabled={loading}>
-                              {$t("Refresh")}
-                            </button>
-                            <button class="ghost danger" type="button" onclick={() => removeMcpToken(token)} disabled={loading}>
-                              {$t("Delete")}
-                            </button>
-                          </div>
+                  <div class="mcp-token-create">
+                    <input id="mcp-token-name" name="mcpTokenName" bind:value={mcpTokenName} placeholder={$t("Cursor / Claude / teammate")} />
+                    <button type="button" onclick={createMcpToken} disabled={loading}>{$t("Add")}</button>
+                  </div>
+                </div>
+                {#if primaryProject.mcpTokens.length}
+                  <div class="mcp-token-list">
+                    {#each primaryProject.mcpTokens as token (token.id)}
+                      <div class="mcp-token-row">
+                        <label class="field-label">
+                          <span>{$t("Name")}</span>
+                          <input id={`mcp-token-name-${token._id}`} name={`mcpTokenName-${token._id}`} bind:value={token.name} />
+                        </label>
+                        <label class="field-label">
+                          <span>{$t("Token")}</span>
+                          <input id={`mcp-token-value-${token._id}`} name={`mcpTokenValue-${token._id}`} readonly value={token.token} />
+                        </label>
+                        <div class="mcp-url-copy">
+                          <span>{$t("MCP URL")}</span>
+                          <button class:copied={copiedTarget === `mcp-url-${token.id}`} class="ghost compact-copy" type="button" onclick={() => copyText(`mcp-url-${token.id}`, `${currentOrigin()}/mcp?mcpToken=${token.token}`, "MCP URL copied.")}>
+                            {copiedLabel(`mcp-url-${token.id}`)}
+                          </button>
                         </div>
-                      {/each}
-                    </div>
-                  {:else}
-                    <p class="empty">{$t("This project has no MCP token. Add one so AI agents can read semantic events with read-only access.")}</p>
-                  {/if}
-                </div>
-              </details>
-            </div>
-
-            <div class="source-panel">
-              <div class="source-header">
-                <div>
-                  <span>{$t("Source statistics")}</span>
-                  <strong>{$t("See recent sources writing to this project key")}</strong>
-                </div>
+                        <div class="mcp-token-actions">
+                          <button class="ghost" type="button" onclick={() => renameMcpToken(token)} disabled={loading}>
+                            {$t("Save name")}
+                          </button>
+                          <button class="ghost" type="button" onclick={() => refreshMcpToken(token)} disabled={loading}>
+                            {$t("Refresh")}
+                          </button>
+                          <button class="ghost danger" type="button" onclick={() => removeMcpToken(token)} disabled={loading}>
+                            {$t("Delete")}
+                          </button>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="empty">{$t("This project has no MCP token. Add one so AI agents can read semantic events with read-only access.")}</p>
+                {/if}
               </div>
-              {#if sourceSummary.length}
-                <div class="source-list">
-                  {#each sourceSummary as source (`${source.sourceType}:${source.sourceKey}`)}
-                    <div class:blocked={source.blocked} class="source-row">
-                      <div>
-                        <strong>{source.sourceLabel || source.sourceKey}</strong>
-                        <span>{source.sourceType} / {source.sourceKey}</span>
+            </details>
+
+            <details class="disclosure-panel source-disclosure">
+              <summary>
+                <span>{$t("Source statistics")}</span>
+              </summary>
+              <div class="source-panel">
+                <p class="disclosure-description">{$t("See recent sources writing to this project key")}</p>
+                {#if sourceSummary.length}
+                  <div class="source-list">
+                    {#each sourceSummary as source (`${source.sourceType}:${source.sourceKey}`)}
+                      <div class:blocked={source.blocked} class="source-row">
+                        <div>
+                          <strong>{source.sourceLabel || source.sourceKey}</strong>
+                          <span>{source.sourceType} / {source.sourceKey}</span>
+                        </div>
+                        <div>
+                          <span>{$t("Events")}</span>
+                          <strong>{source.count}</strong>
+                        </div>
+                        <div>
+                          <span>{$t("Last seen")}</span>
+                          <strong>{formatDate(source.lastSeenAt)}</strong>
+                        </div>
+                        {#if source.blocked}
+                          <button class="ghost" type="button" onclick={() => unblockSource(source)} disabled={loading}>
+                            {$t("Unblock")}
+                          </button>
+                        {:else}
+                          <button class="ghost danger" type="button" onclick={() => blockSource(source)} disabled={loading}>
+                            {$t("Block")}
+                          </button>
+                        {/if}
                       </div>
-                      <div>
-                        <span>{$t("Events")}</span>
-                        <strong>{source.count}</strong>
-                      </div>
-                      <div>
-                        <span>{$t("Last seen")}</span>
-                        <strong>{formatDate(source.lastSeenAt)}</strong>
-                      </div>
-                      {#if source.blocked}
-                        <button class="ghost" type="button" onclick={() => unblockSource(source)} disabled={loading}>
-                          {$t("Unblock")}
-                        </button>
-                      {:else}
-                        <button class="ghost danger" type="button" onclick={() => blockSource(source)} disabled={loading}>
-                          {$t("Block")}
-                        </button>
-                      {/if}
-                    </div>
-                  {/each}
-                </div>
-              {:else}
-                <p class="empty">{$t("No source data yet. Source statistics will appear after events are captured.")}</p>
-              {/if}
-            </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="empty">{$t("No source data yet. Source statistics will appear after events are captured.")}</p>
+                {/if}
+              </div>
+            </details>
 
           {/if}
         </div>
@@ -882,6 +908,7 @@
           <div>
             <span>{$t("Current project events")}</span>
             <h3>{primaryProject?.name || $t("Project")}</h3>
+            <p>{$t("Recent behavior evidence from the selected project.")}</p>
           </div>
           <button class="ghost" type="button" onclick={retryProjectSummary} disabled={projectSummaryLoading || !primaryProject}>
             {projectSummaryLoading ? $t("Loading project events...") : $t("Refresh")}
@@ -916,15 +943,32 @@
           </div>
         {:else if projectSummaryLoading && !selectedProjectSummary}
           <p class="empty">{$t("Loading project events...")}</p>
-        {:else if selectedProjectSummary?.recentEvents?.length}
-          <ul>
-            {#each selectedProjectSummary.recentEvents as event (event._id)}
-              <li>
-                <strong>{event.title}</strong>
-                <span>{event.meaning}</span>
-              </li>
+        {:else if displayedRecentEvents.length}
+          <div class="event-list" role="list">
+            {#each displayedRecentEvents as event (event._id)}
+              <article class="event-row" role="listitem">
+                <div class="event-row-main">
+                  <div class="event-row-title">
+                    <span class="tm-badge event-type-badge">{eventTypeLabel(event)}</span>
+                    <strong>{event.title}</strong>
+                  </div>
+                  <p>{event.meaning}</p>
+                </div>
+                <div class="event-row-meta">
+                  <span>{compactDate(event.occurredAt)}</span>
+                  <span>{event.path || "/"}</span>
+                  <span>{eventSourceLabel(event)}</span>
+                  <span>{eventActorLabel(event)}</span>
+                </div>
+              </article>
             {/each}
-          </ul>
+          </div>
+          {#if hiddenRecentEventCount}
+            <p class="event-list-note">{$t("Showing the latest {{shown}} events. {{hidden}} older events are hidden in this console view.", {
+              shown: displayedRecentEvents.length,
+              hidden: hiddenRecentEventCount,
+            })}</p>
+          {/if}
         {:else}
           <p class="empty">{$t("No current project events yet. Add the script to this project, generate behavior, then refresh.")}</p>
         {/if}
