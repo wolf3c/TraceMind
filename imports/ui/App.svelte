@@ -19,119 +19,12 @@
     en: "English",
     zh: "Chinese",
   };
-  const capturePlatformOptions = [
-    { value: "web", label: "Web" },
-    { value: "ios", label: "iOS" },
-    { value: "android", label: "Android" },
-    { value: "react_native", label: "React Native" },
-    { value: "mcp_node", label: "MCP Node" },
-    { value: "mcp_python", label: "MCP Python" },
-    { value: "agent_skill", label: "Agent Skill" },
-    { value: "server_node", label: "Server Node" },
-    { value: "server_python", label: "Server Python" },
-    { value: "server_http", label: "Server HTTP" },
-  ];
-
-  function buildCaptureSetup(project, platform, origin) {
-    if (!project) {
-      return { code: "", install: "", title: "One-line setup code", note: "" };
-    }
-
-    if (platform === "ios") {
-      return {
-        code: `TraceMind.start(projectKey: "${project.projectKey}")`,
-        install: "Add sdk/ios as a Swift Package dependency and import TraceMind.",
-        title: "iOS one-line initialization",
-        note: "iOS events use the app bundle id as sourceKey.",
-      };
-    }
-
-    if (platform === "android") {
-      return {
-        code: `TraceMind.start(application, projectKey = "${project.projectKey}")`,
-        install: "Add sdk/android as a Gradle module and initialize from Application.onCreate().",
-        title: "Android one-line initialization",
-        note: "Android events use the package name as sourceKey.",
-      };
-    }
-
-    if (platform === "react_native") {
-      return {
-        code: `import { TraceMind } from "@tracemind/react-native";\nTraceMind.start({ projectKey: "${project.projectKey}" });`,
-        install: "Install @tracemind/react-native and run the native iOS and Android install steps.",
-        title: "React Native one-line initialization",
-        note: "React Native reuses native iOS/Android platform events and marks deviceInfo.framework as react_native.",
-      };
-    }
-
-    if (platform === "mcp_node") {
-      return {
-        code: `import { TraceMindMCP } from "@tracemind/mcp-node";\nTraceMindMCP.start(server, { projectKey: "${project.projectKey}", sourceKey: "docs-mcp" });`,
-        install: "Install @tracemind/mcp-node and initialize it around your MCP server.",
-        title: "MCP Node one-line initialization",
-        note: "MCP Node events use sourceType mcp_server and record tool/resource/prompt metadata only.",
-      };
-    }
-
-    if (platform === "mcp_python") {
-      return {
-        code: `from tracemind_mcp import TraceMindMCP\nTraceMindMCP.start(server, project_key="${project.projectKey}", source_key="docs-mcp")`,
-        install: "Install tracemind-mcp and initialize it around your Python MCP server.",
-        title: "MCP Python one-line initialization",
-        note: "MCP Python events use sourceType mcp_server and record tool/resource/prompt metadata only.",
-      };
-    }
-
-    if (platform === "agent_skill") {
-      return {
-        code: `TraceMindMCP.captureSkillLifecycle({ skillName: "docs-indexer", phase: "completed", success: true });`,
-        install: "Instrument executable host agent runtime hooks; static Skill files cannot auto-capture by themselves.",
-        title: "Agent Skill lifecycle hook",
-        note: "Agent Skill events use sourceType agent_skill and require host runtime lifecycle hooks.",
-      };
-    }
-
-    if (platform === "server_node") {
-      return {
-        code: `import { TraceMindServer } from "@tracemind/server-node";\nTraceMindServer.start({ projectKey: "${project.projectKey}", sourceKey: "billing-api" });`,
-        install: "Install @tracemind/server-node and add manual capture only at stable server-side business outcomes.",
-        title: "Server Node manual capture setup",
-        note: "Server Node events use sourceType server_app. This v1 does not auto-capture every request.",
-      };
-    }
-
-    if (platform === "server_python") {
-      return {
-        code: `from tracemind_server import TraceMindServer\nTraceMindServer.start(project_key="${project.projectKey}", source_key="billing-api")`,
-        install: "Install tracemind-server and add manual capture only at stable server-side business outcomes.",
-        title: "Server Python manual capture setup",
-        note: "Server Python events use sourceType server_app. This v1 does not auto-capture every request.",
-      };
-    }
-
-    if (platform === "server_http") {
-      return {
-        code: `POST ${origin}/api/capture\nContent-Type: application/json\n\n{\n  "projectKey": "${project.projectKey}",\n  "platform": "server",\n  "type": "custom",\n  "eventName": "approved_event_name",\n  "source": { "type": "server_app", "key": "billing-api" }\n}`,
-        install: "Use your backend HTTP client to POST sanitized manual events to /api/capture.",
-        title: "Server HTTP manual capture payload",
-        note: "Server HTTP is the fallback for backend languages without a first-party SDK.",
-      };
-    }
-
-    const script = `<script src="${origin}/capture.js" data-tracemind-token="${project.projectKey}" async><\/script>`;
-    return {
-      code: script,
-      install: "",
-      title: "One-line capture script",
-      note: "Web events use Origin or Referer hostname as sourceKey.",
-    };
-  }
+  const setupDocsUrl = "https://github.com/wolf3c/TraceMind#1-%E5%88%86%E9%92%9F%E6%8E%A5%E5%85%A5";
 
   let email = $state("");
   let code = $state("");
   let projectName = $state("");
   let mcpTokenName = $state("");
-  let selectedCapturePlatform = $state("web");
   let selectedLocale = $state("en");
   let userId = $state(Meteor.userId());
   let loggingIn = $state(!Meteor.userId() || Meteor.loggingIn());
@@ -164,8 +57,6 @@
   let sourceSummary = $derived(selectedProjectSummary?.sources || []);
   let summary = $derived(selectedProjectSummary?.summary);
   let latestDau = $derived(summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0);
-  let captureSetup = $derived(buildCaptureSetup(primaryProject, selectedCapturePlatform, currentOrigin()));
-  let captureSnippet = $derived(captureSetup.code);
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
   let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
   let agentSnippetUrl = $derived(`${currentOrigin()}/agents/tracemind/AGENTS_SNIPPET.md`);
@@ -866,34 +757,15 @@
                 </button>
               </div>
             </label>
-            <div class="capture-platform-group" role="group" aria-label={$t("Setup platform")}>
-              {#each capturePlatformOptions as option}
-                <button
-                  class:selected={selectedCapturePlatform === option.value}
-                  class="platform-tab"
-                  type="button"
-                  onclick={() => { selectedCapturePlatform = option.value; }}
-                >
-                  {$t(option.label)}
-                </button>
-              {/each}
-            </div>
-            {#if captureSetup.install}
-              <label class="field-label">
-                <span>{$t("Install step")}</span>
-                <input id="capture-install" name="captureInstall" readonly value={$t(captureSetup.install)} />
-              </label>
-            {/if}
-            <label class="field-label">
-              <span>{$t(captureSetup.title)}</span>
-              <div class="field-copy-group multiline">
-                <textarea id="capture-snippet" name="captureSnippet" readonly rows={selectedCapturePlatform === "server_http" ? 9 : selectedCapturePlatform === "react_native" ? 3 : 2} value={captureSnippet}></textarea>
-                <button class:copied={copiedTarget === "capture-snippet"} class="ghost compact-copy" type="button" onclick={() => copyText("capture-snippet", captureSnippet, "Capture setup copied.")}>
-                  {copiedLabel("capture-snippet")}
-                </button>
+            <div class="setup-docs-row">
+              <div>
+                <span>{$t("Setup documentation")}</span>
+                <strong>{$t("Web, mobile, MCP, Agent Skill, and server setup live in the docs.")}</strong>
               </div>
-              <small class="setup-note">{$t(captureSetup.note)}</small>
-            </label>
+              <a class="button secondary docs-button" href={setupDocsUrl} target="_blank" rel="noreferrer">
+                {$t("Open docs")}
+              </a>
+            </div>
 
             <div class="agent-setup-panel">
               <div class="agent-setup-header">
