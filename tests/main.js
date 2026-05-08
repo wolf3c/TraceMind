@@ -40,7 +40,7 @@ describe('TraceMind', function () {
       });
 
       assert.ok(prompt.includes('https://local.example/mcp?mcpToken=tm_mcp_current'));
-      assert.ok(prompt.includes('- Name: tm-abc123'));
+      assert.ok(prompt.includes('- Name: tracemind-abc123'));
       assert.ok(prompt.includes('- Project label: 我的 Web App'));
       assert.ok(!prompt.includes('tracemind-my-web-app'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/SKILL.md'));
@@ -49,13 +49,14 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('不要覆盖已有配置，只能合并或追加'));
       assert.ok(prompt.includes('请不要创建自定义 skill 目录'));
       assert.ok(prompt.includes('如果已经安装过 TraceMind Skill 或已经追加过 TraceMind rules'));
-      assert.ok(prompt.includes('如果已有同名 MCP server `tm-abc123`'));
-      assert.ok(prompt.includes('如果已有其他 `tm-*` TraceMind MCP server'));
+      assert.ok(prompt.includes('如果已有同名 MCP server `tracemind-abc123`'));
+      assert.ok(prompt.includes('如果已有其他 `tracemind-*` TraceMind MCP server'));
       assert.ok(prompt.includes('如果已有旧的 `tracemind` MCP server'));
       assert.ok(prompt.includes('优先读取 MCP tools/list 的描述或调用 `tracemind.project_info`'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
       assert.ok(prompt.includes('通过 `tracemind.capture_setup` 获取 Web Auto Capture 接入脚本'));
-      assert.ok(prompt.includes('pending-global-confirmation'));
+      assert.ok(!prompt.includes('如果只能使用全局配置，请先告诉我并等待确认'));
+      assert.ok(!prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
     });
 
@@ -79,18 +80,19 @@ describe('TraceMind', function () {
       });
 
       assert.ok(prompt.includes('Install TraceMind coding agent support in the current project.'));
-      assert.ok(prompt.includes('- Name: tm-xyz789'));
+      assert.ok(prompt.includes('- Name: tracemind-xyz789'));
       assert.ok(prompt.includes('- Project label: Customer Portal'));
       assert.ok(!prompt.includes('tracemind-customer-portal'));
       assert.ok(prompt.includes('Do not create a custom skill directory'));
       assert.ok(prompt.includes('If TraceMind Skill or TraceMind rules already exist'));
-      assert.ok(prompt.includes('If an MCP server named `tm-xyz789` already exists'));
-      assert.ok(prompt.includes('If other `tm-*` TraceMind MCP servers exist'));
+      assert.ok(prompt.includes('If an MCP server named `tracemind-xyz789` already exists'));
+      assert.ok(prompt.includes('If other `tracemind-*` TraceMind MCP servers exist'));
       assert.ok(prompt.includes('If an old `tracemind` MCP server exists'));
       assert.ok(prompt.includes('Prefer MCP tools/list descriptions or call `tracemind.project_info`'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
       assert.ok(prompt.includes('Call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
-      assert.ok(prompt.includes('pending-global-confirmation'));
+      assert.ok(!prompt.includes('If only global configuration is available, tell me first and wait for confirmation'));
+      assert.ok(!prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
       assert.ok(prompt.includes('https://local.example/mcp?mcpToken=tm_mcp_current'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/SKILL.md'));
@@ -101,9 +103,9 @@ describe('TraceMind', function () {
     });
 
     it('builds stable short MCP server names from project ids', function () {
-      assert.strictEqual(mcpServerNameForProject({ _id: 'project-中文-ABC123', name: '中文项目' }), 'tm-abc123');
-      assert.strictEqual(mcpServerNameForProject({ _id: 'tiny' }), 'tm-tiny');
-      assert.strictEqual(mcpServerNameForProject({ name: 'No id' }), 'tm-project');
+      assert.strictEqual(mcpServerNameForProject({ _id: 'project-中文-ABC123', name: '中文项目' }), 'tracemind-abc123');
+      assert.strictEqual(mcpServerNameForProject({ _id: 'tiny' }), 'tracemind-tiny');
+      assert.strictEqual(mcpServerNameForProject({ name: 'No id' }), 'tracemind-project');
     });
 
     it('ships static public guidance without project tokens or hard-coded deployment URLs', async function () {
@@ -122,7 +124,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.strictEqual(manifest.guidanceVersion, '2026.05.08.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
-      assert.strictEqual(manifest.mcp.serverNamePattern, 'tm-<project-code>');
+      assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
       assert.ok(manifest.mcp.tools.includes('tracemind.project_info'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));

@@ -7,7 +7,7 @@
     "manifest": "/agents/tracemind/manifest.json"
   },
   "mcp": {
-    "serverNamePattern": "tm-<project-code>",
+    "serverNamePattern": "tracemind-<project-code>",
     "tools": [
       "tracemind.project_info",
       "tracemind.agent_guidance",

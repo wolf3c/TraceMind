@@ -21,7 +21,7 @@ Authorization: Bearer MCP_TOKEN
 
 ## 多项目识别
 
-一个 MCP token 只绑定一个 TraceMind 项目。多项目使用同一个 coding agent 时，MCP server 配置名使用短稳定 ASCII 名称，例如 `tm-a8f3k2`，由项目 `_id` 归一化后取后 6 位生成，不从项目显示名生成。项目名可以是中文或包含空格，但只出现在 MCP metadata 和安装提示词里。
+一个 MCP token 只绑定一个 TraceMind 项目。多项目使用同一个 coding agent 时，MCP server 配置名使用短稳定 ASCII 名称，例如 `tracemind-a8f3k2`，由项目 `_id` 归一化后取后 6 位生成，不从项目显示名生成。项目名可以是中文或包含空格，但只出现在 MCP metadata 和安装提示词里。
 
 项目归属由 MCP 自描述提供，而不是依赖 agent rules 中的静态映射：
 
@@ -29,7 +29,7 @@ Authorization: Bearer MCP_TOKEN
 - `tools/list` 的每个 tool `title` / `description` 都包含当前项目显示名。
 - `tracemind.project_info` 返回当前 MCP 绑定的 `{ projectId, projectName, mcpServerName }`，不返回 MCP token 或项目 key。
 
-Agent 看到多个 `tm-*` TraceMind MCP server 时，应先读取 tools 描述或调用 `tracemind.project_info` 确认项目，不要只凭 server name 猜。
+Agent 看到多个 `tracemind-*` TraceMind MCP server 时，应先读取 tools 描述或调用 `tracemind.project_info` 确认项目，不要只凭 server name 猜。
 
 ## Transport
 
@@ -146,7 +146,7 @@ Output:
 {
   "projectId": "abc123",
   "projectName": "我的 Web App",
-  "mcpServerName": "tm-abc123"
+  "mcpServerName": "tracemind-abc123"
 }
 ```
 
