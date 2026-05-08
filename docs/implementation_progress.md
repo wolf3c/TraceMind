@@ -66,6 +66,7 @@ Then add the capture snippet to a small test web page, generate several interact
 ### Completed
 
 - Extended `tracemind.capture_setup` with platform-specific setup output for Web, iOS, Android, and React Native while keeping Web as the default.
+- Expanded TraceMind coding-agent guidance so native setup uses structured MCP fields for install commands, files to edit, initialization location, idempotency checks, verification commands, source model, and privacy constraints.
 - Added `/api/capture` batch ingestion for SDK queues using `{ projectKey, events: [...] }`, with per-event source normalization and source blocking.
 - Added initial native SDK packages under `sdk/ios`, `sdk/android`, and `sdk/react-native`, including one-line `TraceMind.start(...)` entrypoints, target hashing, sensitive-field filtering, local queueing, and batch flush paths.
 - Updated the developer console setup panel to switch between Web, iOS, Android, and React Native setup snippets without exposing MCP tokens.

@@ -32,7 +32,7 @@ TraceMind.start({ projectKey: "PROJECT_KEY" });
 
 Native 和 React Native 的包安装、Gradle/Swift Package 配置不计入“一行代码”；真正进入业务代码的接入点保持一行初始化。本地开发时，控制台会显示当前项目和平台对应的一行代码。
 
-Coding agent 接入时不应从静态 skill 或 rules 文件读取项目 key。应先配置 TraceMind MCP，再调用 `tracemind.capture_setup` 获取当前项目和平台的一行 Auto Capture 代码。
+Coding agent 接入时不应从静态 skill 或 rules 文件读取项目 key。应先配置 TraceMind MCP，再调用 `tracemind.capture_setup` 获取当前项目和平台的一行 Auto Capture 代码。Native 和 React Native 接入还应使用 MCP 返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks` 和 `verificationCommands`，先确认没有现有 SDK 依赖或 `TraceMind.start(...)` 后再修改项目。
 
 ## 自动采集信号
 
@@ -214,6 +214,7 @@ window.TraceMind.capture("custom", {
 - iOS SDK 位于 `sdk/ios`，公开入口为 `TraceMind.start(projectKey: "PROJECT_KEY")`。
 - Android SDK 位于 `sdk/android`，公开入口为 `TraceMind.start(application, projectKey = "PROJECT_KEY")`。
 - React Native SDK 位于 `sdk/react-native`，公开入口为 `TraceMind.start({ projectKey: "PROJECT_KEY" })`，内部复用原生 SDK。
+- Coding agent 使用 `tracemind.capture_setup({ platform: "ios" | "android" | "react_native" })` 获取当前项目的安装步骤、入口文件、幂等检查和验证命令。静态文档只描述流程，不承载具体 project key。
 - 第一阶段不自动 hook 网络请求、崩溃、session replay 或截图；这些能力后续独立设计。
 - Native SDK 使用本地队列批量写入 `/api/capture`，前后台切换或网络恢复时 flush。
 - SDK 过滤明显敏感字段，不采集输入值、截图、secret、token、raw prompt、raw user content 或完整 query URL。

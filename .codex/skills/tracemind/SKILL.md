@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.07.2
+version: 2026.05.08.2
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -10,23 +10,37 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 ## Required Workflow
 
-1. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
-3. For web apps, call `tracemind.capture_setup` and verify Web Auto Capture is installed before adding manual custom events.
-4. Search for an existing event with `tracemind.search_event_names`.
-5. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
-6. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
-7. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+1. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
+2. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
+3. Identify the app platform: `web`, `ios`, `android`, or `react_native`.
+4. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
+5. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, and `initSnippet` to install or verify setup.
+6. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
+7. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
+8. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
+9. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
 
-## Web Auto Capture Setup
+## Auto Capture Setup Workflow
 
-For web apps, check whether the app already loads TraceMind Auto Capture before adding manual events.
+For product apps, first check whether TraceMind Auto Capture is already initialized. Do not add duplicate scripts, package dependencies, native modules, or `TraceMind.start(...)` calls.
 
-- Look for a script that loads `/capture.js` and includes `data-tracemind-token`.
-- If it is missing, call `tracemind.capture_setup` and install the returned `captureSnippet` in the app HTML head, root layout, or equivalent global document entry.
-- `data-tracemind-token` must use the returned public Auto Capture project key.
-- Never use an MCP token in frontend code.
+- Web: call `tracemind.capture_setup` with no platform or `{ "platform": "web" }`; install the returned `captureSnippet` in the global document head or root layout.
+- iOS: call `tracemind.capture_setup` with `{ "platform": "ios" }`; add the Swift package and initialize once from `App.swift`, `AppDelegate.swift`, or the startup file named by the app.
+- Android: call `tracemind.capture_setup` with `{ "platform": "android" }`; add the Gradle module/dependency and initialize once from `Application.onCreate()`.
+- React Native: call `tracemind.capture_setup` with `{ "platform": "react_native" }`; install the JS package and native bridge, then initialize once in `index.js`, `App.js`, `App.tsx`, or the app bootstrap module.
+- The returned public project key is only for capture writes. Never use an MCP token in frontend or app code.
 - Manual `custom` events are only for business outcomes that Auto Capture cannot infer reliably.
+
+## Native SDK Setup Details
+
+Use `capture_setup` as the source of truth for current setup details instead of copying project keys or install snippets from static docs.
+
+- Read `filesToEdit` before changing files. Typical iOS files are `Package.swift`, Xcode package settings, `App.swift`, `AppDelegate.swift`, and sometimes `SceneDelegate.swift`. Typical Android files are `settings.gradle`, app Gradle files, `AndroidManifest.xml`, and the custom `Application` class. Typical React Native files are `package.json`, `index.js`, `App.js` or `App.tsx`, plus native iOS/Android linking files when needed.
+- Run every returned `idempotencyChecks` item before editing. If an equivalent dependency and `TraceMind.start(...)` already exist for the same project, report that setup is already present instead of adding another one.
+- Place the returned `initSnippet` at the returned `initLocation`; keep it as the only business-code line needed for Auto Capture.
+- For React Native, do not create a new platform value. Events remain `ios` or `android`; React Native is marked through `deviceInfo.framework` or `sourceDetails.framework`.
+- Native Auto Capture should cover app/session start, screen/page view, tap/click, input changed without values, and submit signals.
+- Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
 
 ## Event Rules
 

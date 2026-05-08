@@ -152,7 +152,7 @@ Output:
 
 ### `tracemind.capture_setup`
 
-返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 初始化代码。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
+返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
 
 Input:
 
@@ -175,6 +175,20 @@ Output:
   "captureScriptUrl": "https://tracemind.example.com/capture.js",
   "captureSnippet": "<script src=\"https://tracemind.example.com/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
   "initSnippet": "<script src=\"https://tracemind.example.com/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
+  "installCommands": [
+    "No package install is required. Add captureSnippet to the global HTML head or root document layout."
+  ],
+  "filesToEdit": [
+    "main HTML file, root layout, app.html, _document, or equivalent global document entry"
+  ],
+  "initLocation": "Global document head or root layout loaded on every page.",
+  "idempotencyChecks": [
+    "Search for /capture.js",
+    "Search for data-tracemind-token"
+  ],
+  "verificationCommands": [
+    "Run the web app, trigger a page load/click/input/submit, then query TraceMind raw behaviors or semantic events."
+  ],
   "tokenType": "public_auto_capture_project_key"
 }
 ```
@@ -188,10 +202,33 @@ Native 示例：
   "platform": "ios",
   "eventPlatform": "ios",
   "install": "Add the TraceMind Swift Package from sdk/ios, then import TraceMind in your App entrypoint.",
+  "installCommands": [
+    "Add the TraceMind Swift Package from the TraceMind SDK distribution; in this repo the package is sdk/ios.",
+    "Import TraceMind in App.swift, AppDelegate.swift, or the app startup file that owns launch."
+  ],
+  "filesToEdit": [
+    "Package.swift or the Xcode Swift Package dependency list",
+    "App.swift",
+    "AppDelegate.swift"
+  ],
+  "initLocation": "Run once during app startup, before the first user screen is shown.",
+  "idempotencyChecks": [
+    "Search the app for TraceMind.start("
+  ],
   "initSnippet": "TraceMind.start(projectKey: \"tm_proj_xxx\")",
+  "verificationCommands": [
+    "swift test --package-path sdk/ios"
+  ],
   "tokenType": "public_auto_capture_project_key"
 }
 ```
+
+Native 和 React Native 返回还包含：
+
+- `autoCapturedSignals`: app/session start、screen/page view、tap/click、input changed、submit 等自动采集口径。
+- `privacyConstraints`: 不采集输入值、截图、DOM/native snapshot、session replay、secret、token、raw prompt、raw user content 或完整 query URL。
+- `sourceModel`: iOS 使用 bundle id，Android 使用 package name，React Native 保持 `platform` 为 `ios` 或 `android` 并标记 `react_native` framework。
+- `manualCaptureExample`: 自动采集无法稳定表达业务结果时才使用的 `custom` 示例。
 
 ### `tracemind.search_event_names`
 

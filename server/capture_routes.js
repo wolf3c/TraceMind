@@ -18,7 +18,7 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.08.1';
+const AGENT_GUIDANCE_VERSION = '2026.05.08.2';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -359,9 +359,9 @@ function guidanceResult(extra = {}) {
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
-      'For web apps, call tracemind.capture_setup before adding manual custom events.',
-      'For iOS, Android, or React Native apps, pass the matching platform to tracemind.capture_setup before adding manual custom events.',
-      'Verify /capture.js and data-tracemind-token are installed before custom instrumentation.',
+      'Call tracemind.capture_setup with platform web, ios, android, or react_native before installing Auto Capture or adding manual events.',
+      'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
+      'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
       'Ask the user before updating local skill or instruction files.',
@@ -379,7 +379,22 @@ function addFinding(findings, severity, code, message, path) {
   });
 }
 
-function platformSetup(project, platform) {
+const AUTO_CAPTURE_SIGNALS = [
+  'app/session start',
+  'screen or page view',
+  'tap or click',
+  'input changed without input values',
+  'submit through form or keyboard done/search/send',
+];
+
+const PRIVACY_CONSTRAINTS = [
+  'Do not capture input values.',
+  'Do not capture screenshots, DOM snapshots, native snapshots, or session replay.',
+  'Do not capture secrets, tokens, raw prompts, raw user content, or full query URLs.',
+  'Use the returned public projectKey only for capture writes; never use an MCP token in app code.',
+];
+
+function commonSetup(project, platform) {
   const captureApiUrl = Meteor.absoluteUrl('/api/capture');
   const notes = [
     'Use projectKey only for Auto Capture writes.',
@@ -387,64 +402,156 @@ function platformSetup(project, platform) {
     'Do not put MCP tokens in frontend code.',
     'Do not capture input values, screenshots, secrets, raw prompts, raw user content, or full query URLs.',
   ];
+  return {
+    platform,
+    captureApiUrl,
+    autoCapturedSignals: AUTO_CAPTURE_SIGNALS,
+    privacyConstraints: PRIVACY_CONSTRAINTS,
+    notes,
+  };
+}
+
+function platformSetup(project, platform) {
+  const common = commonSetup(project, platform);
 
   if (platform === 'ios') {
     return {
+      ...common,
       platform: 'ios',
       eventPlatform: 'ios',
       install: 'Add the TraceMind Swift Package from sdk/ios, then import TraceMind in your App entrypoint.',
+      installCommands: [
+        'Add the TraceMind Swift Package from the TraceMind SDK distribution; in this repo the package is sdk/ios.',
+        'Import TraceMind in App.swift, AppDelegate.swift, or the app startup file that owns launch.',
+      ],
+      filesToEdit: [
+        'Package.swift or the Xcode Swift Package dependency list',
+        'App.swift',
+        'AppDelegate.swift',
+        'SceneDelegate.swift if it owns startup in an older UIKit app',
+      ],
+      initLocation: 'Run once during app startup, before the first user screen is shown.',
+      idempotencyChecks: [
+        'Search the app for TraceMind.start(',
+        'Check Package.swift or the Xcode project for an existing TraceMind package dependency.',
+      ],
       initSnippet: `TraceMind.start(projectKey: "${project.projectKey}")`,
-      captureApiUrl,
       source: {
         type: 'ios',
         key: 'iOS bundle id, for example com.example.app',
       },
-      notes,
+      sourceModel: 'platform remains ios; sourceKey is the iOS bundle id; sourceDetails.framework is swift.',
+      verificationCommands: [
+        'swift test --package-path sdk/ios',
+        'Run the app, trigger launch/screen/tap/input/submit, then query TraceMind raw behaviors or semantic events.',
+      ],
+      manualCaptureExample: 'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutViewController", properties: ["plan": "pro"])',
     };
   }
 
   if (platform === 'android') {
     return {
+      ...common,
       platform: 'android',
       eventPlatform: 'android',
       install: 'Add the sdk/android Gradle module and initialize TraceMind from Application.onCreate().',
+      installCommands: [
+        'Add the TraceMind Android SDK module or dependency; in this repo the Gradle module is sdk/android.',
+        'Import com.tracemind.TraceMind in the Application class.',
+      ],
+      filesToEdit: [
+        'settings.gradle or settings.gradle.kts',
+        'app/build.gradle or app/build.gradle.kts',
+        'AndroidManifest.xml if a custom Application class must be registered',
+        'Application.kt or Application.java',
+      ],
+      initLocation: 'Run once from Application.onCreate() before user activities are shown.',
+      idempotencyChecks: [
+        'Search the app for TraceMind.start(',
+        'Check AndroidManifest.xml for the Application class that owns startup.',
+        'Check Gradle settings/build files for an existing TraceMind SDK dependency or module include.',
+      ],
       initSnippet: `TraceMind.start(application, projectKey = "${project.projectKey}")`,
-      captureApiUrl,
       source: {
         type: 'android',
         key: 'Android package name, for example com.example.app',
       },
-      notes,
+      sourceModel: 'platform remains android; sourceKey is the Android package name; sourceDetails.framework is kotlin.',
+      verificationCommands: [
+        'npm run test:sdk:android',
+        'Run the app, trigger launch/screen/tap/input/submit, then query TraceMind raw behaviors or semantic events.',
+      ],
+      manualCaptureExample: 'TraceMind.capture(type = "custom", eventName = approvedEventName, path = "CheckoutActivity", properties = mapOf("plan" to "pro"))',
     };
   }
 
   if (platform === 'react_native') {
     return {
+      ...common,
       platform: 'react_native',
       eventPlatform: 'ios_or_android',
       install: 'Install @tracemind/react-native from sdk/react-native and run the native package install step for iOS and Android.',
+      installCommands: [
+        'Install @tracemind/react-native from the TraceMind SDK distribution; in this repo the package is sdk/react-native.',
+        'Run the native dependency install step required by the target React Native app, such as pod install for iOS.',
+        'Ensure the underlying iOS and Android TraceMind native modules are linked.',
+      ],
+      filesToEdit: [
+        'package.json',
+        'index.js',
+        'App.js, App.tsx, or the app bootstrap module',
+        'ios/Podfile or native iOS project files when manual linking is required',
+        'android/settings.gradle and android/app/build.gradle when manual linking is required',
+      ],
+      initLocation: 'Run once in the React Native bootstrap path before the first product screen is rendered.',
+      idempotencyChecks: [
+        'Search JavaScript and TypeScript files for TraceMind.start(',
+        'Check package.json for an existing @tracemind/react-native dependency.',
+        'Check native iOS and Android projects for an existing TraceMind native module link.',
+      ],
       initSnippet: `TraceMind.start({ projectKey: "${project.projectKey}" })`,
-      captureApiUrl,
       source: {
         type: 'ios_or_android',
         key: 'Native bundle id or package name; React Native is marked in deviceInfo.framework.',
       },
-      notes,
+      sourceModel: 'Do not create a react_native platform value. Events keep platform ios or android and mark deviceInfo.framework/sourceDetails.framework as react_native.',
+      verificationCommands: [
+        'npm test --prefix sdk/react-native',
+        'Run the iOS and Android app variants, then query TraceMind raw behaviors or semantic events.',
+      ],
+      manualCaptureExample: 'TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro" } })',
     };
   }
 
   const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
   return {
+    ...common,
     platform: 'web',
     eventPlatform: 'web',
     captureScriptUrl,
     captureSnippet: `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" async></script>`,
     initSnippet: `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" async></script>`,
+    installCommands: [
+      'No package install is required. Add captureSnippet to the global HTML head or root document layout.',
+    ],
+    filesToEdit: [
+      'main HTML file, root layout, app.html, _document, or equivalent global document entry',
+    ],
+    initLocation: 'Global document head or root layout loaded on every page.',
+    idempotencyChecks: [
+      'Search for /capture.js',
+      'Search for data-tracemind-token',
+      'Do not add a second script if Auto Capture is already initialized for this project.',
+    ],
     source: {
       type: 'web',
       key: 'Request Origin or Referer hostname.',
     },
-    notes,
+    sourceModel: 'platform is web; sourceKey is normalized from request Origin or Referer hostname.',
+    verificationCommands: [
+      'Run the web app, trigger a page load/click/input/submit, then query TraceMind raw behaviors or semantic events.',
+    ],
+    manualCaptureExample: 'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro" } })',
   };
 }
 
