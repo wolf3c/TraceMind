@@ -9,6 +9,7 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
 import android.widget.EditText
 import java.net.HttpURLConnection
@@ -207,7 +208,7 @@ private class TraceMindWindowCallback(
 ) : Window.Callback by delegate {
   override fun dispatchTouchEvent(event: MotionEvent): Boolean {
     if (event.action == MotionEvent.ACTION_UP) {
-      val target = activity.currentFocus
+      val target = activity.window.decorView.findDeepestViewAt(event.rawX.toInt(), event.rawY.toInt()) ?: activity.currentFocus
       if (target != null) {
         client.capture(
           type = if (target is EditText) "input" else "click",
@@ -311,6 +312,10 @@ private fun TraceMindPayload.toJson(): String {
   title?.let { fields.add(""""title":"${it.escapeJson()}"""") }
   target?.let { fields.add(""""target":${it.toJson()}""") }
   targetHash?.let { fields.add(""""targetHash":"${it.escapeJson()}"""") }
+  targetIdentity?.let { fields.add(""""targetIdentity":${it.toJson()}""") }
+  identitySource?.let { fields.add(""""identitySource":"${it.escapeJson()}"""") }
+  identityConfidence?.let { fields.add(""""identityConfidence":"${it.escapeJson()}"""") }
+  actionKey?.let { fields.add(""""actionKey":"${it.escapeJson()}"""") }
   return "{${fields.joinToString(",")}}"
 }
 
@@ -358,6 +363,29 @@ private fun TraceMindTarget.toJson(): String {
   screen?.let { fields.add(""""screen":"${it.escapeJson()}"""") }
   path?.let { fields.add(""""path":"${it.escapeJson()}"""") }
   return "{${fields.joinToString(",")}}"
+}
+
+private fun TraceMindTargetIdentity.toJson(): String {
+  return """{"key":"${key.escapeJson()}","source":"${source.escapeJson()}","confidence":"${confidence.escapeJson()}"}"""
+}
+
+private fun View.findDeepestViewAt(rawX: Int, rawY: Int): View? {
+  if (visibility != View.VISIBLE) return null
+  val location = IntArray(2)
+  getLocationOnScreen(location)
+  val left = location[0]
+  val top = location[1]
+  val right = left + width
+  val bottom = top + height
+  if (rawX !in left..right || rawY !in top..bottom) return null
+
+  if (this is ViewGroup) {
+    for (index in childCount - 1 downTo 0) {
+      val childTarget = getChildAt(index).findDeepestViewAt(rawX, rawY)
+      if (childTarget != null) return childTarget
+    }
+  }
+  return this
 }
 
 private fun Map<String, *>.toJson(): String {

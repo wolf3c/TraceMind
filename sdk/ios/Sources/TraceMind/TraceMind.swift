@@ -110,6 +110,18 @@ public struct TraceMindTarget: Codable {
   }
 }
 
+public struct TraceMindTargetIdentity: Codable, Equatable {
+  public let key: String
+  public let source: String
+  public let confidence: String
+
+  public init(key: String, source: String, confidence: String) {
+    self.key = key
+    self.source = source
+    self.confidence = confidence
+  }
+}
+
 public struct TraceMindSource: Codable {
   public let type: String
   public let bundleId: String?
@@ -134,6 +146,10 @@ public struct TraceMindPayload: Codable {
   public let title: String?
   public let target: TraceMindTarget?
   public let targetHash: String?
+  public let targetIdentity: TraceMindTargetIdentity?
+  public let identitySource: String?
+  public let identityConfidence: String?
+  public let actionKey: String?
   public let properties: TraceMindFields
   public let context: TraceMindFields
   public let occurredAt: String
@@ -284,7 +300,9 @@ public final class TraceMindClient {
     properties: TraceMindFields = [:],
     context: TraceMindFields = [:]
   ) throws -> TraceMindPayload {
-    let targetHash = try target.map { try Self.hashTarget($0) }
+    let targetIdentity = target.map { Self.targetIdentity($0) }
+    let targetHash = try target.map { try Self.hashTarget($0, identity: targetIdentity) }
+    let actionKey = targetIdentity.map { Self.actionKey(platform: "ios", path: path, type: type, identity: $0) }
     return TraceMindPayload(
       projectKey: configuration.projectKey,
       sessionId: identityStore.sessionId,
@@ -310,6 +328,10 @@ public final class TraceMindClient {
       title: title,
       target: target,
       targetHash: targetHash,
+      targetIdentity: targetIdentity,
+      identitySource: targetIdentity?.source,
+      identityConfidence: targetIdentity?.confidence,
+      actionKey: actionKey,
       properties: Self.sanitize(properties),
       context: Self.sanitize(context),
       occurredAt: ISO8601DateFormatter.traceMind.string(from: Date())
@@ -419,9 +441,40 @@ public final class TraceMindClient {
     )
   }
 
-  private static func hashTarget(_ target: TraceMindTarget) throws -> String {
+  private static func hashTarget(_ target: TraceMindTarget, identity: TraceMindTargetIdentity?) throws -> String {
+    if let identity {
+      return hash(identity.key, prefix: "tm_target_")
+    }
     let data = try JSONEncoder.traceMind.encode(target)
     return hash(String(decoding: data, as: UTF8.self), prefix: "tm_target_")
+  }
+
+  private static func targetIdentity(_ target: TraceMindTarget) -> TraceMindTargetIdentity {
+    if let testId = nonEmpty(target.testId) {
+      return TraceMindTargetIdentity(key: "target:testId:\(testId)", source: "testId", confidence: "high")
+    }
+    if let accessibilityId = nonEmpty(target.accessibilityId) {
+      return TraceMindTargetIdentity(key: "target:accessibilityId:\(accessibilityId)", source: "accessibilityId", confidence: "high")
+    }
+    if let resourceId = nonEmpty(target.resourceId) {
+      return TraceMindTargetIdentity(key: "target:resourceId:\(resourceId)", source: "resourceId", confidence: "high")
+    }
+    if let label = nonEmpty(target.label) {
+      return TraceMindTargetIdentity(key: "target:label:\(target.screen ?? ""):\(label)", source: "label", confidence: "medium")
+    }
+    if let path = nonEmpty(target.path) {
+      return TraceMindTargetIdentity(key: "target:path:\(target.screen ?? ""):\(path)", source: "path", confidence: "low")
+    }
+    return TraceMindTargetIdentity(key: "target:class:\(target.screen ?? ""):\(target.className ?? "")", source: "className", confidence: "low")
+  }
+
+  private static func nonEmpty(_ value: String?) -> String? {
+    guard let value, !value.isEmpty else { return nil }
+    return value
+  }
+
+  private static func actionKey(platform: String, path: String, type: String, identity: TraceMindTargetIdentity) -> String {
+    "\(platform):\(path):\(type):\(identity.key)"
   }
 
   static func hash(_ value: String, prefix: String) -> String {
@@ -518,15 +571,18 @@ private extension ISO8601DateFormatter {
 
 #if canImport(UIKit)
 import UIKit
+import ObjectiveC.runtime
 
 final class TraceMindAutoCapture {
   private static weak var client: TraceMindClient?
   private static var heartbeatTimer: Timer?
   private static var currentScreen = "Application"
   private static var isPresenceActive = false
+  private static var didInstallTapHook = false
 
   static func start(client: TraceMindClient) {
     self.client = client
+    installTapAutoCapture()
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(appDidBecomeActive),
@@ -625,6 +681,18 @@ final class TraceMindAutoCapture {
     )
   }
 
+  private static func installTapAutoCapture() {
+    if didInstallTapHook { return }
+    didInstallTapHook = true
+    guard
+      let original = class_getInstanceMethod(UIControl.self, #selector(UIControl.sendAction(_:to:for:))),
+      let replacement = class_getInstanceMethod(UIControl.self, #selector(UIControl.tracemind_sendAction(_:to:for:)))
+    else {
+      return
+    }
+    method_exchangeImplementations(original, replacement)
+  }
+
   private static func target(for view: UIView) -> TraceMindTarget {
     TraceMindTarget(
       className: String(describing: type(of: view)),
@@ -655,6 +723,13 @@ final class TraceMindAutoCapture {
       current = item.superview
     }
     return parts.joined(separator: ">")
+  }
+}
+
+private extension UIControl {
+  @objc func tracemind_sendAction(_ action: Selector, to target: Any?, for event: UIEvent?) {
+    TraceMindAutoCapture.recordTap(view: self)
+    tracemind_sendAction(action, to: target, for: event)
   }
 }
 #else

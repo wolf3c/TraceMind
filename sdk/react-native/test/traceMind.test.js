@@ -64,6 +64,31 @@ test('sends custom events through the native SDK without raw user content', () =
   assert.deepEqual(calls[0][2].deviceInfo, { framework: 'react_native' });
 });
 
+test('passes action correlation fields through to the native SDK', () => {
+  const calls = [];
+  const client = createTraceMindClient({
+    nativeModule: {
+      capture(type, payload) {
+        calls.push(['capture', type, payload]);
+      },
+    },
+    platform: 'android',
+  });
+
+  client.capture('custom', {
+    eventName: 'project_created',
+    relatedActionKey: 'android:ProjectScreen:submit:target:resourceId:create_project',
+    relatedTargetHash: 'tm_target_create_project',
+    correlationId: 'corr_123',
+    properties: { success: true },
+  });
+
+  assert.equal(calls[0][2].relatedActionKey, 'android:ProjectScreen:submit:target:resourceId:create_project');
+  assert.equal(calls[0][2].relatedTargetHash, 'tm_target_create_project');
+  assert.equal(calls[0][2].correlationId, 'corr_123');
+  assert.deepEqual(calls[0][2].deviceInfo, { framework: 'react_native' });
+});
+
 test('identifies users through the native SDK with sanitized primitive traits', () => {
   const calls = [];
   const client = createTraceMindClient({

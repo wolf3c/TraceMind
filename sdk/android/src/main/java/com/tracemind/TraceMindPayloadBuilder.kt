@@ -15,6 +15,12 @@ data class TraceMindTarget(
   val path: String? = null
 )
 
+data class TraceMindTargetIdentity(
+  val key: String,
+  val source: String,
+  val confidence: String
+)
+
 data class TraceMindSource(
   val type: String,
   val bundleId: String? = null,
@@ -39,6 +45,10 @@ data class TraceMindPayload(
   val title: String? = null,
   val target: TraceMindTarget? = null,
   val targetHash: String? = null,
+  val targetIdentity: TraceMindTargetIdentity? = null,
+  val identitySource: String? = null,
+  val identityConfidence: String? = null,
+  val actionKey: String? = null,
   val properties: Map<String, Any> = emptyMap(),
   val context: Map<String, Any> = emptyMap(),
   val occurredAt: String = Instant.now().toString()
@@ -130,6 +140,8 @@ class TraceMindPayloadBuilder(
     properties: Map<String, Any?> = emptyMap(),
     context: Map<String, Any?> = emptyMap()
   ): TraceMindPayload {
+    val targetIdentity = target?.let { targetIdentity(it) }
+    val actionKey = targetIdentity?.let { actionKey(path, type, it) }
     return TraceMindPayload(
       projectKey = projectKey,
       sessionId = identityStore.sessionId,
@@ -150,7 +162,11 @@ class TraceMindPayloadBuilder(
       path = path,
       title = title,
       target = target,
-      targetHash = target?.let { hash(targetHashSource(it), "tm_target_") },
+      targetHash = target?.let { hash(targetIdentity?.key ?: targetHashSource(it), "tm_target_") },
+      targetIdentity = targetIdentity,
+      identitySource = targetIdentity?.source,
+      identityConfidence = targetIdentity?.confidence,
+      actionKey = actionKey,
       properties = sanitize(properties),
       context = sanitize(context)
     )
@@ -230,6 +246,21 @@ class TraceMindPayloadBuilder(
       target.screen,
       target.path
     ).joinToString("|") { it ?: "" }
+  }
+
+  private fun targetIdentity(target: TraceMindTarget): TraceMindTargetIdentity {
+    return when {
+      !target.testId.isNullOrBlank() -> TraceMindTargetIdentity("target:testId:${target.testId}", "testId", "high")
+      !target.accessibilityId.isNullOrBlank() -> TraceMindTargetIdentity("target:accessibilityId:${target.accessibilityId}", "accessibilityId", "high")
+      !target.resourceId.isNullOrBlank() -> TraceMindTargetIdentity("target:resourceId:${target.resourceId}", "resourceId", "high")
+      !target.label.isNullOrBlank() -> TraceMindTargetIdentity("target:label:${target.screen.orEmpty()}:${target.label}", "label", "medium")
+      !target.path.isNullOrBlank() -> TraceMindTargetIdentity("target:path:${target.screen.orEmpty()}:${target.path}", "path", "low")
+      else -> TraceMindTargetIdentity("target:class:${target.screen.orEmpty()}:${target.className.orEmpty()}", "className", "low")
+    }
+  }
+
+  private fun actionKey(path: String, type: String, identity: TraceMindTargetIdentity): String {
+    return listOf("android", path, type, identity.key).joinToString(":")
   }
 
   private fun hash(value: String, prefix: String): String {

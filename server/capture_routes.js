@@ -274,6 +274,7 @@ export function mcpTools(project) {
           sessionId: { type: 'string', description: 'Session ID。' },
           deviceId: { type: 'string', description: '设备 ID。' },
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
+          actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
         },
       },
     },
@@ -297,6 +298,7 @@ export function mcpTools(project) {
           sessionId: { type: 'string', description: 'Session ID。' },
           deviceId: { type: 'string', description: '设备 ID。' },
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
+          actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
           path: { type: 'string', description: '页面或接口路径。' },
         },
       },
@@ -321,6 +323,7 @@ export function mcpTools(project) {
           sessionId: { type: 'string', description: 'Session ID。' },
           deviceId: { type: 'string', description: '设备 ID。' },
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
+          actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
           path: { type: 'string', description: '页面或接口路径。' },
         },
       },
@@ -1369,11 +1372,24 @@ export function clientScript(host) {
     });
   }
 
+  function safePageUrl(value) {
+    try {
+      var url = new URL(value, location.origin);
+      return url.origin + url.pathname + url.hash;
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function currentPath() {
+    return (location.pathname || '/') + (location.hash || '');
+  }
+
   function currentSource() {
     return {
       type: 'web',
-      url: location.href,
-      referrer: document.referrer
+      url: safePageUrl(location.href),
+      referrer: document.referrer ? safePageUrl(document.referrer) : ''
     };
   }
 
@@ -1422,6 +1438,85 @@ export function clientScript(host) {
       node = node.parentElement;
     }
     return parts.filter(Boolean).join('>');
+  }
+
+  function isInteractive(element) {
+    if (!element || !element.tagName) return false;
+    var tag = element.tagName.toLowerCase();
+    var role = attr(element, 'role');
+    return tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select'
+      || tag === 'textarea' || tag === 'form' || role === 'button' || role === 'link'
+      || element.isContentEditable || attr(element, 'contenteditable') === 'true';
+  }
+
+  function interactiveTarget(event) {
+    var path = event && typeof event.composedPath === 'function' ? event.composedPath() : [];
+    for (var i = 0; i < path.length; i += 1) {
+      if (isInteractive(path[i])) return path[i];
+    }
+    var node = event && event.target;
+    while (node && node !== document && node.nodeType === 1) {
+      if (isInteractive(node)) return node;
+      node = node.parentElement;
+    }
+    return event && event.target;
+  }
+
+  function identityValue(source, value, confidence) {
+    return {
+      key: 'target:' + source + ':' + String(value).slice(0, 160),
+      source: source,
+      confidence: confidence
+    };
+  }
+
+  function formIdentity(element) {
+    var form = element && (element.form || (element.closest && element.closest('form')));
+    if (!form) return null;
+    var formKey = attr(form, 'data-testid') || attr(form, 'data-test') || attr(form, 'data-cy') || form.id || form.name;
+    var controlKey = element.name || element.id || attr(element, 'aria-label') || element.type || element.tagName;
+    if (!formKey || !controlKey) return null;
+    return identityValue('form', formKey + ':' + controlKey, 'medium');
+  }
+
+  function targetIdentity(element, eventType, pagePath) {
+    if (!element) return identityValue('missing', pagePath + ':' + eventType, 'low');
+    var testId = attr(element, 'data-testid') || attr(element, 'data-test') || attr(element, 'data-cy');
+    if (testId) return identityValue('data-testid', testId, 'high');
+    if (element.id) return identityValue('id', element.id, 'high');
+    if (element.name) return identityValue('name', element.name, 'high');
+    var aria = attr(element, 'aria-label');
+    var role = attr(element, 'role');
+    if (aria && role) return identityValue('aria', role + ':' + aria, 'medium');
+    var formBased = formIdentity(element);
+    if (formBased) return formBased;
+    var text = textOf(element);
+    if (text) return identityValue('text', pagePath + ':' + (element.tagName || '').toLowerCase() + ':' + text, 'medium');
+    return identityValue('path', pagePath + ':' + elementPath(element), 'low');
+  }
+
+  function actionKeyFor(eventType, identity, pagePath) {
+    return ['web', pagePath, eventType, identity.key].join(':');
+  }
+
+  function isSubmitElement(element) {
+    if (!element || !element.tagName) return false;
+    var tag = element.tagName.toLowerCase();
+    return (tag === 'button' || tag === 'input') && element.type === 'submit' && !!element.form;
+  }
+
+  function eventTargetDetails(event, eventType) {
+    var pagePath = currentPath();
+    var target = interactiveTarget(event);
+    var targetDetails = targetInfo(target);
+    var identity = targetIdentity(target, eventType, pagePath);
+    return {
+      pagePath: pagePath,
+      element: target,
+      target: targetDetails,
+      identity: identity,
+      identityKey: identity.key
+    };
   }
 
   function targetInfo(element) {
@@ -1487,7 +1582,7 @@ export function clientScript(host) {
       source: currentSource(),
       type: type,
       eventName: data && data.eventName,
-      path: location.pathname + location.search,
+      path: currentPath(),
       title: document.title,
       occurredAt: new Date().toISOString()
     }, data || {});
@@ -1544,51 +1639,92 @@ export function clientScript(host) {
     }, heartbeatIntervalMs);
   }
 
+  var inputDebounceTimers = {};
+
+  function sendTargetEvent(eventType, event) {
+    var targetDetails = eventTargetDetails(event, eventType);
+    send(eventType, {
+      targetText: textOf(targetDetails.element),
+      targetTag: targetDetails.element && targetDetails.element.tagName,
+      target: targetDetails.target,
+      targetIdentity: targetDetails.identity,
+      identitySource: targetDetails.identity.source,
+      identityConfidence: targetDetails.identity.confidence,
+      actionKey: actionKeyFor(eventType, targetDetails.identity, targetDetails.pagePath),
+      path: targetDetails.pagePath,
+      targetHash: hash(targetDetails.identityKey || JSON.stringify(targetDetails.target), 'tm_target_')
+    });
+  }
+
   send('page_view');
   startPresence('start');
   document.addEventListener('click', function (event) {
-    var target = event.target;
-    var targetDetails = targetInfo(target);
-    send('click', {
-      targetText: textOf(target),
-      targetTag: target && target.tagName,
-      target: targetDetails,
-      targetHash: hash(JSON.stringify(targetDetails), 'tm_target_')
-    });
+    var target = interactiveTarget(event);
+    sendTargetEvent(isSubmitElement(target) ? 'submit' : 'click', event);
+  }, true);
+
+  document.addEventListener('input', function (event) {
+    var targetDetails = eventTargetDetails(event, 'input');
+    var key = targetDetails.identity.key;
+    clearTimeout(inputDebounceTimers[key]);
+    inputDebounceTimers[key] = setTimeout(function () {
+      send('input', {
+        targetText: textOf(targetDetails.element),
+        targetTag: targetDetails.element && targetDetails.element.tagName,
+        target: targetDetails.target,
+        targetIdentity: targetDetails.identity,
+        identitySource: targetDetails.identity.source,
+        identityConfidence: targetDetails.identity.confidence,
+        actionKey: actionKeyFor('input', targetDetails.identity, targetDetails.pagePath),
+        path: targetDetails.pagePath,
+        targetHash: hash(targetDetails.identityKey || JSON.stringify(targetDetails.target), 'tm_target_')
+      });
+    }, 600);
   }, true);
 
   document.addEventListener('change', function (event) {
-    var target = event.target;
-    var targetDetails = targetInfo(target);
-    send('input', {
-      targetText: textOf(target),
-      targetTag: target && target.tagName,
-      target: targetDetails,
-      targetHash: hash(JSON.stringify(targetDetails), 'tm_target_')
-    });
+    sendTargetEvent('input', event);
   }, true);
 
   document.addEventListener('submit', function (event) {
-    var target = event.target;
-    var targetDetails = targetInfo(target);
-    send('submit', {
-      targetText: textOf(target),
-      targetTag: target && target.tagName,
-      target: targetDetails,
-      targetHash: hash(JSON.stringify(targetDetails), 'tm_target_')
-    });
+    sendTargetEvent('submit', event);
   }, true);
 
-  var pushState = history.pushState;
-  history.pushState = function () {
+  document.addEventListener('keydown', function (event) {
+    var key = event.key || event.code;
+    if (key === 'Enter' || key === 'Search') {
+      var target = interactiveTarget(event);
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        sendTargetEvent('submit', event);
+      }
+    }
+  }, true);
+
+  function captureRouteChange(callback) {
     stopPresence('end');
-    pushState.apply(history, arguments);
+    callback();
     setTimeout(function () {
       send('route_change');
       startPresence('start');
     }, 0);
+  }
+
+  var pushState = history.pushState;
+  history.pushState = function () {
+    var args = arguments;
+    captureRouteChange(function () { pushState.apply(history, args); });
+  };
+  var replaceState = history.replaceState;
+  history.replaceState = function () {
+    var args = arguments;
+    captureRouteChange(function () { replaceState.apply(history, args); });
   };
   window.addEventListener('popstate', function () {
+    stopPresence('end');
+    send('route_change');
+    startPresence('start');
+  });
+  window.addEventListener('hashchange', function () {
     stopPresence('end');
     send('route_change');
     startPresence('start');
@@ -1654,6 +1790,13 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     targetTag: safeString(payload.targetTag, 40),
     target: safeObject(payload.target, 4096),
     targetHash: safeString(payload.targetHash, 160),
+    targetIdentity: safeObject(payload.targetIdentity, 2048),
+    identitySource: safeString(payload.identitySource || payload.targetIdentity?.source, 80),
+    identityConfidence: safeString(payload.identityConfidence || payload.targetIdentity?.confidence, 20),
+    actionKey: safeString(payload.actionKey, 500),
+    relatedActionKey: safeString(payload.relatedActionKey || context.relatedActionKey, 500),
+    relatedTargetHash: safeString(payload.relatedTargetHash || context.relatedTargetHash, 160),
+    correlationId: safeString(payload.correlationId || context.correlationId, 160),
     method: safeString(payload.method, 20),
     status: safeString(payload.status, 20),
     properties: isServerAppSource ? sanitizeServerCaptureFields(properties) : properties,

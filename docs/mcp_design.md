@@ -91,12 +91,13 @@ Input:
   "anonymousId": "tm_anon_xxx",
   "sessionId": "tm_sess_xxx",
   "deviceId": "tm_dev_xxx",
-  "targetHash": "tm_fp_xxx",
+  "targetHash": "tm_target_xxx",
+  "actionKey": "web:/pricing:click:target:data-testid:start-trial",
   "path": "/pricing"
 }
 ```
 
-返回字段包含 `userId`、`anonymousId`、`sessionId`、`deviceId`、`deviceFingerprint`、`platform`、`deviceInfo`、`ip`、`geo`、`sourceType`、`sourceKey`、`sourceLabel`、`sourceDetails`、`eventType`、`eventName`、`meaning`、`target`、`targetHash`、`properties`、`context` 和 `rawBehaviorId`。
+返回字段包含 `userId`、`anonymousId`、`sessionId`、`deviceId`、`deviceFingerprint`、`platform`、`deviceInfo`、`ip`、`geo`、`sourceType`、`sourceKey`、`sourceLabel`、`sourceDetails`、`eventType`、`eventName`、`meaning`、`target`、`targetIdentity`、`identitySource`、`identityConfidence`、`targetHash`、`actionKey`、`relatedActionKey`、`relatedTargetHash`、`correlationId`、`properties`、`context` 和 `rawBehaviorId`。
 
 ### `tracemind.query_raw_behaviors`
 
@@ -115,7 +116,8 @@ Input:
   "anonymousId": "tm_anon_xxx",
   "sessionId": "tm_sess_xxx",
   "deviceId": "tm_dev_xxx",
-  "targetHash": "tm_fp_xxx",
+  "targetHash": "tm_target_xxx",
+  "actionKey": "web:/pricing:click:target:data-testid:start-trial",
   "path": "/pricing"
 }
 ```
@@ -379,10 +381,10 @@ Input:
 
 1. 调用 `tracemind.event_definitions` 理解事件含义和字段。
 2. 调用 `tracemind.summary` 获取时间窗口内的概览、DAU/设备数和 presence 在线时长。
-3. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`targetHash` 等维度下钻。
+3. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
 4. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。
 
-当同一页面存在多个相同文案的按钮或输入框时，不要只按 `targetText` 判断。先查看事件里的 `target.path`、`target.id`、`target.name`、`target.testId`，再用 `targetHash` 精确查询同一元素。
+当同一页面存在多个相同文案的按钮或输入框时，不要只按 `targetText` 判断。先查看事件里的 `targetIdentity`、`identityConfidence`、`target.path`、`target.id`、`target.name`、`target.testId`，优先用 `actionKey` 聚合同一动作，再用 `targetHash` 精确查询同一元素。低置信度 identity 适合 session 复核，不适合直接作为长期漏斗节点。
 
 ## 推荐 Coding Agent 埋点顺序
 

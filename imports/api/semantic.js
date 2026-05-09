@@ -39,6 +39,13 @@ export function buildSemanticEvent(behavior) {
     targetTag: cleanText(behavior.targetTag),
     target: behavior.target || {},
     targetHash: behavior.targetHash,
+    targetIdentity: behavior.targetIdentity || null,
+    identitySource: behavior.identitySource || behavior.targetIdentity?.source || '',
+    identityConfidence: behavior.identityConfidence || behavior.targetIdentity?.confidence || '',
+    actionKey: behavior.actionKey || '',
+    relatedActionKey: behavior.relatedActionKey || behavior.context?.relatedActionKey || '',
+    relatedTargetHash: behavior.relatedTargetHash || behavior.context?.relatedTargetHash || '',
+    correlationId: behavior.correlationId || behavior.context?.correlationId || '',
     properties: behavior.properties || {},
     context: behavior.context || {},
     occurredAt: behavior.occurredAt || behavior.createdAt || new Date(),
@@ -149,6 +156,7 @@ export function buildSemanticEvent(behavior) {
 export function summarizeSemanticEvents(events) {
   const counts = {};
   const paths = {};
+  const actions = {};
   const activeUsersByDay = {};
   const uniqueUsers = new Set();
   const uniqueDevices = new Set();
@@ -156,6 +164,9 @@ export function summarizeSemanticEvents(events) {
   events.forEach((event) => {
     counts[event.eventType] = (counts[event.eventType] || 0) + 1;
     paths[event.path] = (paths[event.path] || 0) + 1;
+    if (event.actionKey) {
+      actions[event.actionKey] = (actions[event.actionKey] || 0) + 1;
+    }
     const actorId = event.userId || event.anonymousId;
     if (actorId) {
       uniqueUsers.add(actorId);
@@ -175,6 +186,9 @@ export function summarizeSemanticEvents(events) {
   const topPaths = Object.entries(paths)
     .sort((a, b) => b[1] - a[1])
     .map(([path, count]) => ({ path, count }));
+  const topActions = Object.entries(actions)
+    .sort((a, b) => b[1] - a[1])
+    .map(([actionKey, count]) => ({ actionKey, count }));
 
   return {
     totalEvents: events.length,
@@ -185,5 +199,6 @@ export function summarizeSemanticEvents(events) {
       .map(([date, users]) => ({ date, count: users.size })),
     topEvents,
     topPaths,
+    topActions,
   };
 }

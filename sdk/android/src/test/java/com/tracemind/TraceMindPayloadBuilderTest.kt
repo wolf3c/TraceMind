@@ -36,8 +36,49 @@ class TraceMindPayloadBuilderTest {
     assertEquals("com.example.android", payload.source.packageName)
     assertEquals("kotlin", payload.source.details["framework"])
     assertTrue(payload.targetHash!!.startsWith("tm_target_"))
+    assertEquals("target:resourceId:checkout_primary", payload.targetIdentity!!.key)
+    assertEquals("resourceId", payload.identitySource)
+    assertEquals("high", payload.identityConfidence)
+    assertEquals("android:CheckoutActivity:click:target:resourceId:checkout_primary", payload.actionKey)
     assertFalse(payload.properties.containsKey("inputValue"))
     assertEquals("pro", payload.properties["plan"])
+  }
+
+  @Test
+  fun targetHashPrefersStableEngineeringIdentifiersOverTextAndPath() {
+    val builder = TraceMindPayloadBuilder(
+      projectKey = "tm_proj_android",
+      packageName = "com.example.android",
+      appLabel = "Example Android",
+      framework = "kotlin",
+      identityStore = InMemoryIdentityStore()
+    )
+
+    val first = builder.payload(
+      type = "click",
+      path = "CheckoutActivity",
+      target = TraceMindTarget(
+        className = "Button",
+        resourceId = "checkout_primary",
+        label = "Pay now",
+        screen = "CheckoutActivity",
+        path = "Root>Button[0]"
+      )
+    )
+    val second = builder.payload(
+      type = "click",
+      path = "CheckoutActivity",
+      target = TraceMindTarget(
+        className = "MaterialButton",
+        resourceId = "checkout_primary",
+        label = "Complete payment",
+        screen = "CheckoutActivity",
+        path = "Root>Container>Button[2]"
+      )
+    )
+
+    assertEquals(first.targetHash, second.targetHash)
+    assertEquals(first.actionKey, second.actionKey)
   }
 
   @Test

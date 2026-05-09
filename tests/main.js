@@ -193,6 +193,27 @@ describe('TraceMind', function () {
       assert.ok(!presenceScript.includes('location.search'));
     });
 
+    it('serves Web Auto Capture with stable target identity and core SPA signals', async function () {
+      const { clientScript } = await import('../server/capture_routes');
+      const script = clientScript('https://tracemind.example.com');
+
+      assert.ok(script.includes('function interactiveTarget(event)'));
+      assert.ok(script.includes('event.composedPath'));
+      assert.ok(script.includes('function targetIdentity(element, eventType, pagePath)'));
+      assert.ok(script.includes("data-testid"));
+      assert.ok(script.includes('identityConfidence'));
+      assert.ok(script.includes('identitySource'));
+      assert.ok(script.includes('actionKey'));
+      assert.ok(script.includes("targetHash: hash(targetDetails.identityKey || JSON.stringify(targetDetails.target), 'tm_target_')"));
+      assert.ok(script.includes("document.addEventListener('input'"));
+      assert.ok(script.includes('inputDebounceTimers'));
+      assert.ok(script.includes('history.replaceState = function ()'));
+      assert.ok(script.includes("window.addEventListener('hashchange'"));
+      assert.ok(script.includes("document.addEventListener('keydown'"));
+      assert.ok(script.includes('location.pathname,'));
+      assert.ok(!script.includes('path: location.pathname + location.search'));
+    });
+
     it('exposes MCP guidance and privacy validation tools', async function () {
       const { callMcpTool, mcpTools } = await import('../server/capture_routes');
       const projectId = `project-agent-guidance-${Date.now()}`;
@@ -737,6 +758,14 @@ describe('TraceMind', function () {
         path: 'main:nth-of-type(1)>section:nth-of-type(2)>button:nth-of-type(1)',
       },
       targetHash: 'tm_target_abc123',
+      targetIdentity: {
+        key: 'target:data-testid:pricing-more',
+        source: 'data-testid',
+        confidence: 'high',
+      },
+      identitySource: 'data-testid',
+      identityConfidence: 'high',
+      actionKey: 'web:/pricing:click:target:data-testid:pricing-more',
       properties: { plan: 'pro', amount: 29 },
       context: { source: 'manual' },
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -756,6 +785,14 @@ describe('TraceMind', function () {
       path: 'main:nth-of-type(1)>section:nth-of-type(2)>button:nth-of-type(1)',
     });
     assert.strictEqual(event.targetHash, 'tm_target_abc123');
+    assert.deepStrictEqual(event.targetIdentity, {
+      key: 'target:data-testid:pricing-more',
+      source: 'data-testid',
+      confidence: 'high',
+    });
+    assert.strictEqual(event.identitySource, 'data-testid');
+    assert.strictEqual(event.identityConfidence, 'high');
+    assert.strictEqual(event.actionKey, 'web:/pricing:click:target:data-testid:pricing-more');
     assert.deepStrictEqual(event.properties, { plan: 'pro', amount: 29 });
     assert.deepStrictEqual(event.context, { source: 'manual' });
   });
@@ -766,12 +803,14 @@ describe('TraceMind', function () {
         path: '/settings',
         eventType: 'click',
         targetHash: 'tm_target_more_footer',
+        actionKey: 'web:/settings:click:target:data-testid:footer-more',
       }),
       {
         projectId: 'project-1',
         eventType: 'click',
         path: '/settings',
         targetHash: 'tm_target_more_footer',
+        actionKey: 'web:/settings:click:target:data-testid:footer-more',
       },
     );
 
@@ -780,25 +819,28 @@ describe('TraceMind', function () {
         path: '/settings',
         eventType: 'click',
         targetHash: 'tm_target_more_footer',
+        actionKey: 'web:/settings:click:target:data-testid:footer-more',
       }),
       {
         projectId: 'project-1',
         type: 'click',
         path: '/settings',
         targetHash: 'tm_target_more_footer',
+        actionKey: 'web:/settings:click:target:data-testid:footer-more',
       },
     );
   });
 
-  it('summarizes semantic event counts and paths', function () {
+  it('summarizes semantic event counts, paths, and action keys', function () {
     const summary = summarizeSemanticEvents([
-      { eventType: 'click', path: '/pricing', userId: 'user-1', deviceId: 'device-1', occurredAt: new Date('2026-05-06T01:00:00.000Z') },
-      { eventType: 'click', path: '/pricing', userId: 'user-1', deviceId: 'device-1', occurredAt: new Date('2026-05-06T02:00:00.000Z') },
+      { eventType: 'click', path: '/pricing', actionKey: 'web:/pricing:click:target:data-testid:start-trial', userId: 'user-1', deviceId: 'device-1', occurredAt: new Date('2026-05-06T01:00:00.000Z') },
+      { eventType: 'click', path: '/pricing', actionKey: 'web:/pricing:click:target:data-testid:start-trial', userId: 'user-1', deviceId: 'device-1', occurredAt: new Date('2026-05-06T02:00:00.000Z') },
       { eventType: 'page_view', path: '/', anonymousId: 'anon-1', deviceFingerprint: 'fp-1', occurredAt: new Date('2026-05-06T03:00:00.000Z') },
     ]);
 
     assert.deepStrictEqual(summary.topEvents[0], { eventType: 'click', count: 2 });
     assert.deepStrictEqual(summary.topPaths[0], { path: '/pricing', count: 2 });
+    assert.deepStrictEqual(summary.topActions[0], { actionKey: 'web:/pricing:click:target:data-testid:start-trial', count: 2 });
     assert.strictEqual(summary.uniqueUsers, 2);
     assert.strictEqual(summary.uniqueDevices, 2);
     assert.deepStrictEqual(summary.dailyActiveUsers[0], { date: '2026-05-06', count: 2 });

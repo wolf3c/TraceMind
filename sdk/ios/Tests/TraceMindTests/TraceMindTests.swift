@@ -53,8 +53,51 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(payload.source.bundleId, "com.example.ios")
     XCTAssertEqual(payload.source.details["framework"], "swift")
     XCTAssertEqual(payload.targetHash?.hasPrefix("tm_target_"), true)
+    XCTAssertEqual(payload.targetIdentity?.key, "target:accessibilityId:checkout-primary")
+    XCTAssertEqual(payload.identitySource, "accessibilityId")
+    XCTAssertEqual(payload.identityConfidence, "high")
+    XCTAssertEqual(payload.actionKey, "ios:CheckoutViewController:click:target:accessibilityId:checkout-primary")
     XCTAssertNil(payload.properties["enteredText"])
     XCTAssertEqual(payload.properties["plan"], .string("pro"))
+  }
+
+  func testTargetHashPrefersStableEngineeringIdentifiersOverTextAndPath() throws {
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore()
+    )
+
+    let first = try client.makePayload(
+      type: "click",
+      path: "CheckoutViewController",
+      target: TraceMindTarget(
+        className: "UIButton",
+        accessibilityId: "checkout-primary",
+        label: "Pay now",
+        screen: "CheckoutViewController",
+        path: "UIWindow>UIButton[0]"
+      )
+    )
+    let second = try client.makePayload(
+      type: "click",
+      path: "CheckoutViewController",
+      target: TraceMindTarget(
+        className: "PrimaryButton",
+        accessibilityId: "checkout-primary",
+        label: "Complete payment",
+        screen: "CheckoutViewController",
+        path: "UIWindow>Stack>UIButton[2]"
+      )
+    )
+
+    XCTAssertEqual(first.targetHash, second.targetHash)
+    XCTAssertEqual(first.actionKey, second.actionKey)
   }
 
   func testQueueFlushesBatchedEvents() async throws {

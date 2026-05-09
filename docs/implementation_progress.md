@@ -93,3 +93,7 @@ Then add the capture snippet to a small test web page, generate several interact
 - Reworked the selected-project analytics area into a developer-facing project health overview for the rolling last 24 hours compared with the previous 24 hours.
 - Added health summary aggregation for active users, new users, cohort retention, active sessions, clipped active duration, event totals, top regions/devices/pages/events, and high-confidence attention items.
 - Moved raw behavior and semantic event counts out of the primary cards so the console emphasizes project operating state instead of TraceMind pipeline internals.
+- Added stable Auto Capture target identity and action aggregation: Web now resolves interactive ancestors, prefers existing engineering identifiers, emits `targetIdentity`, `identityConfidence`, `actionKey`, and keeps raw `target` details for investigation.
+- Completed core Web signal coverage for product analysis: debounced input edits, change events, submit intent, `replaceState`, `hashchange`, and query-free event paths.
+- Added manual capture compatibility fields (`relatedActionKey`, `relatedTargetHash`, `correlationId`) so business-result events can be correlated with auto-captured actions without overriding manual `eventName`.
+- Aligned native SDK payloads with the Web action model and improved capture targets: iOS now hooks `UIControl` actions, Android resolves the touched view instead of relying only on focus, and React Native preserves native platform behavior while marking framework metadata.

@@ -319,6 +319,7 @@ export function buildEventQuery(projectId, filters = {}) {
   if (filters.sessionId) query.sessionId = String(filters.sessionId);
   if (filters.deviceId) query.deviceId = String(filters.deviceId);
   if (filters.targetHash) query.targetHash = String(filters.targetHash);
+  if (filters.actionKey) query.actionKey = String(filters.actionKey);
   if (filters.path) query.path = String(filters.path);
   if (startAt || endAt) {
     query.occurredAt = {};
@@ -342,6 +343,7 @@ export function buildRawBehaviorQuery(projectId, filters = {}) {
   if (filters.sessionId) query.sessionId = String(filters.sessionId);
   if (filters.deviceId) query.deviceId = String(filters.deviceId);
   if (filters.targetHash) query.targetHash = String(filters.targetHash);
+  if (filters.actionKey) query.actionKey = String(filters.actionKey);
   if (filters.path) query.path = String(filters.path);
   if (startAt || endAt) {
     query.occurredAt = {};
@@ -391,6 +393,13 @@ export function publicSemanticEvent(event) {
     targetTag: event.targetTag,
     target: event.target,
     targetHash: event.targetHash,
+    targetIdentity: event.targetIdentity,
+    identitySource: event.identitySource,
+    identityConfidence: event.identityConfidence,
+    actionKey: event.actionKey,
+    relatedActionKey: event.relatedActionKey,
+    relatedTargetHash: event.relatedTargetHash,
+    correlationId: event.correlationId,
     properties: event.properties,
     context: event.context,
     occurredAt: event.occurredAt,
@@ -423,6 +432,13 @@ export function publicRawBehavior(behavior) {
     targetTag: behavior.targetTag,
     target: behavior.target,
     targetHash: behavior.targetHash,
+    targetIdentity: behavior.targetIdentity,
+    identitySource: behavior.identitySource,
+    identityConfidence: behavior.identityConfidence,
+    actionKey: behavior.actionKey,
+    relatedActionKey: behavior.relatedActionKey,
+    relatedTargetHash: behavior.relatedTargetHash,
+    correlationId: behavior.correlationId,
     method: behavior.method,
     status: behavior.status,
     properties: behavior.properties,

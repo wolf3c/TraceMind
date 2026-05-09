@@ -60,7 +60,18 @@
     "role": "button",
     "path": "main:nth-of-type(1)>section:nth-of-type(2)>button#start-trial"
   },
-  "targetHash": "tm_fp_xxx",
+  "targetHash": "tm_target_xxx",
+  "targetIdentity": {
+    "key": "target:data-testid:start-trial",
+    "source": "data-testid",
+    "confidence": "high"
+  },
+  "identitySource": "data-testid",
+  "identityConfidence": "high",
+  "actionKey": "web:/pricing:click:target:data-testid:start-trial",
+  "relatedActionKey": "web:/pricing:click:target:data-testid:start-trial",
+  "relatedTargetHash": "tm_target_xxx",
+  "correlationId": "corr_123",
   "properties": {
     "plan": "pro",
     "amount": 29
@@ -110,18 +121,21 @@
 ## 元素定位
 
 - `targetText` 和 `targetTag` 只适合做人类阅读摘要，不能作为唯一定位依据。
-- `target` 保存元素摘要，包括 tag、id、class、name、type、role、aria-label、placeholder、testId 和短 DOM path。
-- `targetHash` 基于 `target` 计算，用于区分同一个页面上的相同文案按钮、多个输入框或重复列表项操作。
-- 对于长期稳定的关键漏斗，优先推荐开发者手动上报明确 `eventName`，自动 `targetHash` 主要用于自动采集和问题复核。
+- `target` 保存元素摘要，包括 tag、id、class、name、type、role、aria-label、placeholder、testId 和短 DOM path。它保留 raw 工程线索，用于 UI 或代码变化后的问题追踪。
+- `targetIdentity` 复用已有工程标识生成稳定身份，不要求开发者额外标注。优先级为测试标识、id/name、aria/form 标识、route + text、route + DOM path。
+- `targetHash` 优先基于 `targetIdentity.key` 计算，降低 UI 文案、class 和 DOM 层级变化导致的匹配漂移。
+- `actionKey` 基于 platform、path、event type 和 `targetIdentity.key` 生成，用于 MCP 和汇总接口按可分析动作聚合。
+- `identityConfidence` 标记长期分析可靠度。低置信度 action 可以用于 session 复核，但不应直接当作稳定漏斗节点。
+- 手动 `custom` 事件可以通过 `relatedActionKey`、`relatedTargetHash` 或 `correlationId` 关联自动采集动作；语义层保留手动事件的业务 `eventName`，不把结果事件改写成 click/input/submit。
 
 ## 事件含义说明表
 
 | eventType | 名称 | 含义 | 常见字段 | 平台 |
 | --- | --- | --- | --- | --- |
 | `page_view` | 页面浏览 | 用户打开或刷新页面，或进入 Native screen/activity/controller，用于分析访问量、落地页、路径入口和页面级留存。 | `title`, `path`, `referrer` | Web, iOS, Android, Server |
-| `click` | 元素点击 | 用户点击 Web 元素或 Native 控件，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度；不保存输入值。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `submit` | 表单提交 | 用户提交表单、点击确认或触发 Native keyboard done/search/send，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `click` | 元素点击 | 用户点击 Web 元素或 Native 控件，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度；不保存输入值。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
+| `submit` | 表单提交 | 用户提交表单、点击确认或触发 Native keyboard done/search/send，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
 | `route_change` | 页面跳转 | 用户在 Web SPA 或 Native app 内发生页面切换，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, Android |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` | Web, iOS, Android, Server |
 | `tool_call` | MCP 工具调用 | MCP server 记录工具调用完成情况，用于分析工具使用量、失败率和耗时。 | `toolName`, `status`, `durationMs`, `errorType`, `resultSizeBucket` | Server |
@@ -138,7 +152,7 @@
 - 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源；iOS 使用 bundle id；Android 使用 package name；MCP server 使用 server/package 名；普通后端服务使用 `server_app` + service name；Agent Skill 使用 Skill 名或宿主 runtime skill id。
 - 自动采集字段和手动埋点字段共用同一事件模型，避免未来增加移动端 SDK 时迁移 Mongo 集合。
 - 移动端可复用 `sessionId`、`anonymousId`、`userId`、`deviceId`、`deviceFingerprint`、`sourceType`、`sourceKey`、`eventType`、`eventName`、`properties`、`context`。
-- 移动端 `target` 统一保存 class/type、accessibility id、resource id、test id、label 摘要、screen 和短层级 path；`targetHash` 仍使用 `tm_target_` 前缀。
+- 移动端 `target` 统一保存 class/type、accessibility id、resource id、test id、label 摘要、screen 和短层级 path；`targetIdentity` 优先复用 test id、accessibility id、resource id，再回退到 label/path/class；`targetHash` 仍使用 `tm_target_` 前缀。
 - MCP server 自动事件使用 `platform: "server"`、`sourceType: "mcp_server"`，自动记录 tool/resource/prompt 名称、状态、耗时、错误类型和结果大小分桶，不记录 raw prompt、tool arguments/result 或 resource content。
 - Agent Skill hook 使用 `platform: "server"`、`sourceType: "agent_skill"`，只在宿主 agent runtime 提供可执行 lifecycle hook 时记录 Skill started/completed/failed；静态 Skill 文件不能独立 auto-capture。
 - 普通服务端手动埋点使用 `platform: "server"`、`sourceType: "server_app"`，通常上报 `userId`、`eventName`、`properties`、`context.traceId` 和 `occurredAt`；不自动采集每个 HTTP request。
@@ -147,4 +161,4 @@
 
 - v1.0 不调用 LLM，语义抽取先使用确定性规则，便于本地开发和测试。
 - Raw Behavior 和 Semantic Event 一对一生成，保证可追溯。
-- 汇总在读取时通过 `summarizeSemanticEvents()` 计算，包括事件分布、路径分布、去重用户、去重设备和 DAU。
+- 汇总在读取时通过 `summarizeSemanticEvents()` 计算，包括事件分布、路径分布、action 分布、去重用户、去重设备和 DAU。
