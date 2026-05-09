@@ -18,6 +18,7 @@ Keep reusable code under `imports/` so Meteor imports it explicitly instead of r
 
 - Work only on files required for the current task. Do not modify, revert, reformat, stage, or otherwise clean up files changed by other people or unrelated work.
 - Before editing production code for behavior changes or optimizations, state the current behavior, target behavior, affected modules, risks, verification plan, and concise implementation plan.
+- For any behavior change, optimization, analytics change, SDK change, or public contract change, explicitly check every supported runtime before editing: Web, iOS, Android, React Native, server SDKs, MCP, Agent Skill, and dashboard/API surfaces. If a runtime is intentionally out of scope, state that boundary and document why. The same product concept should behave consistently across supported environments unless the product requirements explicitly define a platform-specific difference.
 - Keep changes minimal and aligned with existing product semantics. Avoid opportunistic refactors, broad cleanup, or expanding scope beyond the requested task.
 - After finishing any task, provide one or more suggested git commit messages that accurately describe the completed change.
 - If the user explicitly points out an agent mistake, update this file with the underlying lesson: summarize why the mistake happened, the deeper rule that should have prevented it, and how future agents should apply that rule.
@@ -29,12 +30,14 @@ Add entries here when an agent mistake reveals a reusable rule for future work. 
 - `YYYY-MM-DD`: What went wrong. Root cause. Future rule to prevent recurrence.
 - `2026-05-07`: UI feedback was implemented too weakly and a duplicated MCP URL field stayed in the primary setup area after MCP token management was moved below Coding Agent setup. Root cause: screenshot annotations were mapped mechanically without rechecking the intended information hierarchy and visible success state. Future rule: for annotated UI fixes, verify each numbered note against the final hierarchy and make state changes visually obvious, especially copy actions that otherwise look inert.
 - `2026-05-07`: Parallel-task guidance omitted git worktrees and focused only on file ownership inside one checkout. Root cause: concurrency was treated as a coordination problem without first considering filesystem isolation. Future rule: for multi-agent or truly parallel coding, evaluate worktrees first, then balance their dependency/build cost against task size and merge risk.
+- `2026-05-09`: Presence work initially fixed the Web/server path but missed equivalent Native/RN behavior details, such as `setScreen` segment boundaries and iOS active-start behavior. Root cause: the task was treated as one implementation surface plus follow-up SDK edits instead of a cross-runtime product contract. Future rule: before implementing any optimization or behavior change, build a runtime matrix covering Web, iOS, Android, React Native, server SDKs, MCP/Agent Skill, dashboard/API, docs, and tests; either make behavior consistent across all applicable runtimes or explicitly mark a runtime out of scope with rationale.
 
 ## Optimization Workflow Requirements
 
 For every optimization or behavior-changing improvement, do the design work before editing production code:
 
 - First identify the current behavior, the target behavior, affected modules, risks, and verification plan.
+- Include a cross-runtime impact matrix in the design step. For each supported runtime or surface, mark `change`, `no change`, or `out of scope`, and keep tests/docs aligned with that matrix.
 - Write a concise implementation plan before making code changes.
 - Reflect on whether the plan preserves existing product semantics and avoids unnecessary scope.
 - Update all relevant documentation under `docs/` in the same change, including product, technical design, implementation progress, and user-facing usage docs when affected.
@@ -55,6 +58,8 @@ Use modern JavaScript modules and Svelte 5 component syntax. Match the existing 
 ## Testing Guidelines
 
 Tests use Node `assert` with Meteor Mocha. Add new tests in `tests/main.js` or split larger suites into imported files under `tests/`. Use behavior-focused names such as `it("publishes seeded links", ...)`. Run `npm test` before handing off changes. For client/server-specific assertions, guard with `Meteor.isClient` or `Meteor.isServer` as shown in the existing tests.
+
+For cross-runtime behavior, add or update tests at the layer that owns each runtime: Meteor tests for server/Web script behavior, Swift tests for iOS SDK behavior, Android SDK tests for Android behavior, React Native tests for JS/native bridge behavior, and server SDK/MCP tests when those surfaces are affected. Do not use one passing platform as evidence that the product behavior is correct everywhere.
 
 ## Commit & Pull Request Guidelines
 
