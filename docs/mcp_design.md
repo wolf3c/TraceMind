@@ -29,7 +29,7 @@ Authorization: Bearer MCP_TOKEN
 - `tools/list` 的每个 tool `title` / `description` 都包含当前项目显示名。
 - `tracemind.project_info` 返回当前 MCP 绑定的 `{ projectId, projectName, mcpServerName }`，不返回 MCP token 或项目 key。
 
-Agent 看到多个 `tracemind-*` TraceMind MCP server 时，应先读取 tools 描述或调用 `tracemind.project_info` 确认项目，不要只凭 server name 猜。
+安装到用户项目时，动态 install prompt 会把非敏感绑定信息写入项目级 `AGENTS.md`、`CLAUDE.md` 或 rules 文件：项目显示名、`projectId` 和 expected MCP server name。Agent 看到多个 `tracemind-*` TraceMind MCP server 时，必须先使用 expected server 调用 `tracemind.project_info`，并只在返回的 `projectId` 与项目级规则匹配时继续；不匹配时停止并要求用户配置正确 MCP，不要只凭 server name 猜。
 
 ## Transport
 
@@ -423,6 +423,6 @@ Input:
 - LLM 默认从语义事件开始分析，但可以显式查询原始行为日志。
 - MCP 使用独立 token，可以在控制台新增、重命名、刷新或删除；刷新/删除后旧 token 立即失效。
 - MCP token 可以通过 `mcpToken` URL 参数或 `Authorization: Bearer` 传入，推荐 Bearer。
-- 多项目 MCP 配置使用短稳定 server name，项目名通过 MCP metadata 和 `tracemind.project_info` 暴露。
+- 多项目 MCP 配置使用短稳定 server name，项目名通过 MCP metadata 和 `tracemind.project_info` 暴露；项目级 agent rules 记录 expected `projectId` 和 MCP server name 作为使用前校验契约。
 - Auto Capture 的项目 key 只用于采集写入，不能访问 MCP。
 - 暂不实现 resources、prompts、SSE streaming、OAuth discovery 或多成员项目权限。

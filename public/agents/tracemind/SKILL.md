@@ -10,15 +10,16 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 ## Required Workflow
 
-1. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
-2. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-3. Identify the target platform: `web`, `ios`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
-4. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
-5. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
-6. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
-7. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
-8. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
-9. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+1. If the project instruction file contains a TraceMind Project Binding, use the expected MCP server and call `tracemind.project_info`; continue only if the returned `projectId` matches the bound Project ID.
+2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
+3. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
+4. Identify the target platform: `web`, `ios`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
+5. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
+6. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
+7. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
+8. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
+9. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
+10. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
 
 ## Auto Capture Setup Workflow
 

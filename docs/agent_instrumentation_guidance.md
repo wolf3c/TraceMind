@@ -23,9 +23,10 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 - Manifest URL。
 - 当前项目 MCP URL。
 - 当前项目的短稳定 MCP server name，例如 `tracemind-a8f3k2`，以及项目显示名。server name 只用于配置兼容和区分多个 MCP，不从项目名生成。
+- 当前项目的非敏感绑定信息：项目显示名、`projectId` 和 expected MCP server name。安装时必须把这些值写入项目级 `AGENTS.md`、`CLAUDE.md` 或 rules 文件，并要求 agent 使用 TraceMind MCP 前先调用 `tracemind.project_info` 比对返回的 `projectId`。不匹配时停止，不得继续使用其他 `tracemind-*` server，除非用户明确确认切换项目。
 - 修改前必须列出文件和命令、只合并追加、不覆盖已有配置、安装后验证的要求。
 - 项目级 skill 只在当前 agent 明确支持官方项目级 skill 目录时安装；否则回退到项目级 rules/instructions，不创建自定义目录。
-- MCP URL 和 token 只写入 agent 的 MCP 配置，不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件。
+- MCP URL、token、Bearer token 和 Auto Capture `projectKey` 不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件；项目级规则只保存可提交的 `projectId`、项目显示名和 expected MCP server name。
 - 当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`android` 或 `react_native`，第三方 MCP server 传 `mcp_node` 或 `mcp_python`，Agent Skill 传 `agent_skill`，普通后端服务传 `server_node`、`server_python` 或 `server_http`。agent 应使用返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks`、`initSnippet`、`identifySnippet`、`manualCaptureExamples`、`supportedPropertyTypes` 和 `manualCaptureWorkflow`，不要从静态文档复制 project key。
 - 如果 MCP 只能写入全局配置，agent 直接使用全局 MCP 配置，并继续避免把 MCP URL 或 token 写入仓库文件。
 - 如果已经存在 TraceMind Skill 或 rules，agent 只检查版本和补充缺失内容，不重复追加完整区块。
@@ -40,7 +41,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 
 Agent 后续修改 TraceMind 埋点时应按顺序使用 MCP：
 
-1. `tracemind.project_info`：多项目或不确定时先确认当前 MCP 对应的 TraceMind 项目。
+1. `tracemind.project_info`：先确认当前 MCP 对应的 TraceMind 项目，并与项目级 instruction 中的 expected `projectId` 比对；不匹配时停止。
 2. `tracemind.agent_guidance`：检查 guidance 版本和公开资源。
 3. `tracemind.capture_setup`：先获取当前项目接入代码；Web 验证 `/capture.js` 和脚本上的公开项目 key 属性，Native 使用返回的安装步骤、入口文件、幂等检查、初始化位置、SDK 初始化代码、identify 示例和手动埋点示例；MCP server 使用返回的 Node/Python SDK 初始化和 wrapper 指南；Agent Skill 只在宿主 runtime hook 可执行时接入 lifecycle capture；普通后端服务使用 `server_node`、`server_python` 或 `server_http`，只添加手动业务埋点。
 4. `tracemind.search_event_names`：搜索已有事件，避免随意创建 event name。

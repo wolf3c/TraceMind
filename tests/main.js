@@ -45,6 +45,8 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('https://local.example/mcp?mcpToken=tm_mcp_current'));
       assert.ok(prompt.includes('- Name: tracemind-abc123'));
       assert.ok(prompt.includes('- Project label: 我的 Web App'));
+      assert.ok(prompt.includes('- Project ID: project-中文-ABC123'));
+      assert.ok(prompt.includes('- Expected MCP server: tracemind-abc123'));
       assert.ok(!prompt.includes('tracemind-my-web-app'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/SKILL.md'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/AGENTS_SNIPPET.md'));
@@ -56,6 +58,8 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('如果已有其他 `tracemind-*` TraceMind MCP server'));
       assert.ok(prompt.includes('如果已有旧的 `tracemind` MCP server'));
       assert.ok(prompt.includes('优先读取 MCP tools/list 的描述或调用 `tracemind.project_info`'));
+      assert.ok(prompt.includes('必须使用 MCP server `tracemind-abc123`'));
+      assert.ok(prompt.includes('返回的 `projectId` 等于 `project-中文-ABC123`'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
       assert.ok(prompt.includes('通过 `tracemind.capture_setup` 获取 Web Auto Capture 接入脚本'));
       assert.ok(!prompt.includes('如果只能使用全局配置，请先告诉我并等待确认'));
@@ -85,6 +89,8 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('Install TraceMind coding agent support in the current project.'));
       assert.ok(prompt.includes('- Name: tracemind-xyz789'));
       assert.ok(prompt.includes('- Project label: Customer Portal'));
+      assert.ok(prompt.includes('- Project ID: project-XYZ789'));
+      assert.ok(prompt.includes('- Expected MCP server: tracemind-xyz789'));
       assert.ok(!prompt.includes('tracemind-customer-portal'));
       assert.ok(prompt.includes('Do not create a custom skill directory'));
       assert.ok(prompt.includes('If TraceMind Skill or TraceMind rules already exist'));
@@ -92,6 +98,8 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('If other `tracemind-*` TraceMind MCP servers exist'));
       assert.ok(prompt.includes('If an old `tracemind` MCP server exists'));
       assert.ok(prompt.includes('Prefer MCP tools/list descriptions or call `tracemind.project_info`'));
+      assert.ok(prompt.includes('use MCP server `tracemind-xyz789`'));
+      assert.ok(prompt.includes('returned `projectId` is `project-XYZ789`'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
       assert.ok(prompt.includes('Call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
       assert.ok(!prompt.includes('If only global configuration is available, tell me first and wait for confirmation'));
@@ -138,6 +146,9 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
+      assert.ok(snippet.includes('TraceMind Project Binding'));
+      assert.ok(snippet.includes('Expected MCP server'));
+      assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
       assert.ok(snippet.includes('installCommands'));
       assert.ok(snippet.includes('manualCaptureWorkflow'));

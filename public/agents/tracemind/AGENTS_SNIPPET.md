@@ -1,5 +1,15 @@
 ## TraceMind Instrumentation Rules
 
+## TraceMind Project Binding
+
+When this snippet is installed from the TraceMind console, add the repository-specific binding values from the install prompt to this project instruction file:
+
+- Project name: `<TraceMind project name>`
+- Project ID: `<TraceMind project id>`
+- Expected MCP server: `<tracemind-project-code>`
+
+Before using any TraceMind MCP tool in this repository, use the expected MCP server, call `tracemind.project_info`, and continue only if the returned `projectId` matches the Project ID above. If it does not match, stop and ask the user to configure the correct TraceMind MCP server. Do not use another `tracemind-*` MCP server for this repository unless the user explicitly confirms the project switch.
+
 When adding or modifying TraceMind analytics instrumentation in this project:
 
 1. Use the TraceMind MCP before writing analytics code.
