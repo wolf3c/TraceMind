@@ -950,6 +950,21 @@ code {
   margin-bottom: 10px;
 }
 
+.refresh-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.refresh-age {
+  color: #60756c !important;
+  font-size: 0.82rem !important;
+  font-weight: 650 !important;
+  white-space: nowrap;
+}
+
 .events h3 {
   margin: 0;
 }

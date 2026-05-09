@@ -45,6 +45,8 @@
   let projectSummaryLoading = $state(false);
   let projectSummaryError = $state("");
   let projectSummaryRequestId = $state(0);
+  let projectSummaryLastLoadedAt = $state(null);
+  let refreshAgeTick = $state(Date.now());
   let dashboardLoadPromise = null;
   let copiedTargetTimer = null;
 
@@ -64,6 +66,7 @@
   let healthCurrent = $derived(health?.current || {});
   let displayedRecentEvents = $derived((selectedProjectSummary?.recentEvents || []).slice(0, 15));
   let hiddenRecentEventCount = $derived(Math.max(0, (selectedProjectSummary?.recentEvents || []).length - displayedRecentEvents.length));
+  let projectSummaryRefreshAge = $derived(formatRefreshAge(projectSummaryLastLoadedAt, refreshAgeTick, selectedLocale));
   let topEventType = $derived(summary?.topEvents?.[0]?.eventType || "none");
   let topPath = $derived(summary?.topPaths?.[0]?.path || "/");
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
@@ -117,8 +120,10 @@
     if (!nextSelectedProjectId) {
       selectedProjectId = "";
       ({ selectedProjectSummary, projectSummaryLoading, projectSummaryError } = resolveInitialProjectSummaryState());
+      projectSummaryLastLoadedAt = null;
     } else if (nextSelectedProjectId !== selectedProjectId) {
       selectedProjectId = nextSelectedProjectId;
+      projectSummaryLastLoadedAt = null;
     }
   }
 
@@ -126,6 +131,7 @@
     const requestUserId = Meteor.userId();
     if (!requestUserId || !projectId) {
       selectedProjectSummary = null;
+      projectSummaryLastLoadedAt = null;
       return null;
     }
 
@@ -147,6 +153,8 @@
         return null;
       }
       selectedProjectSummary = nextSummary;
+      projectSummaryLastLoadedAt = new Date();
+      refreshAgeTick = Date.now();
       if (nextSummary?.project) replaceProject(nextSummary.project);
       return nextSummary;
     } catch (error) {
@@ -295,6 +303,7 @@
 
     selectedProjectId = nextProjectId;
     selectedProjectSummary = null;
+    projectSummaryLastLoadedAt = null;
     showProjectCreate = false;
     showProjectActions = false;
     showProjectRename = false;
@@ -379,6 +388,7 @@
       projectSummaryRequestId += 1;
       projectSummaryLoading = false;
       projectSummaryError = "";
+      projectSummaryLastLoadedAt = null;
       selectedProjectId = "";
       showProjectActions = false;
       showProjectRename = false;
@@ -560,6 +570,7 @@
     projectSummaryLoading = false;
     projectSummaryError = "";
     selectedProjectSummary = null;
+    projectSummaryLastLoadedAt = null;
     selectedProjectId = "";
     showProjectCreate = false;
     showProjectActions = false;
@@ -600,6 +611,20 @@
     if (hours) return `${hours}h ${minutes}m`;
     if (minutes) return `${minutes}m ${seconds}s`;
     return `${seconds}s`;
+  }
+
+  function formatRefreshAge(value, nowValue = Date.now(), localeValue = selectedLocale) {
+    if (!value) return translateNow("Not refreshed yet");
+    const elapsedMs = Math.max(0, Number(nowValue) - new Date(value).getTime());
+    const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+    if (elapsedMinutes < 1) return translateNow("Last refreshed just now");
+    if (elapsedMinutes < 60) {
+      return translateNow("Last refreshed {{count}} min ago", { count: elapsedMinutes });
+    }
+
+    const elapsedHours = Math.floor(elapsedMinutes / 60);
+    return translateNow("Last refreshed {{count}} hr ago", { count: elapsedHours });
   }
 
   function formatNumber(value) {
@@ -688,6 +713,7 @@
             projectSummaryLoading = false;
             projectSummaryError = "";
             selectedProjectSummary = null;
+            projectSummaryLastLoadedAt = null;
             selectedProjectId = "";
             showProjectCreate = false;
             showProjectActions = false;
@@ -704,6 +730,14 @@
     });
 
     return () => computation.stop();
+  });
+
+  $effect(() => {
+    const timer = window.setInterval(() => {
+      refreshAgeTick = Date.now();
+    }, 30000);
+
+    return () => window.clearInterval(timer);
   });
 </script>
 
@@ -1070,9 +1104,12 @@
               <p class="health-attention">{$t("Needs attention")}: {health.attentionSummary}</p>
             {/if}
           </div>
-          <button class="ghost" type="button" onclick={retryProjectSummary} disabled={projectSummaryLoading || !primaryProject}>
-            {projectSummaryLoading ? $t("Loading project events...") : $t("Refresh")}
-          </button>
+          <div class="refresh-control">
+            <span class="refresh-age">{projectSummaryRefreshAge}</span>
+            <button class="ghost" type="button" onclick={retryProjectSummary} disabled={projectSummaryLoading || !primaryProject}>
+              {projectSummaryLoading ? $t("Loading project events...") : $t("Refresh")}
+            </button>
+          </div>
         </div>
         <div class="event-metrics health-metrics" aria-label="Current project health summary">
           <details class="health-card">
