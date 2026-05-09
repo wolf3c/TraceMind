@@ -1006,6 +1006,10 @@ code {
   margin-bottom: 12px;
 }
 
+.health-metrics {
+  align-items: start;
+}
+
 .event-metrics > div {
   min-width: 0;
   padding: 12px;
