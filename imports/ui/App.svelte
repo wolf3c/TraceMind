@@ -1174,8 +1174,18 @@
           <p class="empty">{$t("Loading project events...")}</p>
         {:else if displayedRecentEvents.length}
           <div class="event-stream-header">
-            <span>{$t("Detailed event stream")}</span>
-            <p>{$t("Recent behavior evidence from the selected project.")}</p>
+            <div class="event-stream-title">
+              <span>{$t("Detailed event stream")}</span>
+              <p>{$t("Recent behavior evidence from the selected project. Showing the latest {{count}} rows.", {
+                count: displayedRecentEvents.length,
+              })}</p>
+            </div>
+            <div class="event-stream-total" aria-label={$t("Past 24 hours")}>
+              <span>{$t("Past 24 hours")}</span>
+              <strong>{$t("{{count}} events", {
+                count: formatNumber(healthCurrent.eventCount),
+              })}</strong>
+            </div>
           </div>
           <div class="event-list" role="list">
             {#each displayedRecentEvents as event (event._id)}

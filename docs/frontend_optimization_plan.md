@@ -202,6 +202,7 @@
 - Align the first viewport with `DESIGN.md`: a compact hero, clear live-data panel, and visible MCP readiness inside the product preview.
 - Make the selected project the console anchor, with compact signal chips for the dominant event type and path.
 - Render recent events as dense operator evidence rows with event type, meaning, time, path, source, and actor fields when available.
+- Show the selected project's rolling 24-hour event total beside the detailed event stream so the recent sample has volume context.
 - Limit the visible recent-event list in the console so the page remains scannable while preserving the backend sample.
 
 ### Risks

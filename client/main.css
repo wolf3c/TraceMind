@@ -1159,18 +1159,56 @@ code {
 }
 
 .event-stream-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-end;
   margin: 14px 0 8px;
 }
 
-.event-stream-header span {
+.event-stream-title {
+  min-width: 0;
+}
+
+.event-stream-title span {
   color: var(--deep);
   font-weight: 750;
 }
 
-.event-stream-header p {
+.event-stream-title p {
   margin: 3px 0 0;
   color: #60756c;
   font-size: 0.88rem;
+}
+
+.event-stream-total {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  min-width: 132px;
+  border: 1px solid #d9e3de;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: #f8faf7;
+  text-align: right;
+}
+
+.event-stream-total span,
+.event-stream-total strong {
+  display: block;
+}
+
+.event-stream-total span {
+  color: #60756c;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.event-stream-total strong {
+  color: var(--deep);
+  font-size: 0.9rem;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .inline-error {
@@ -1339,6 +1377,16 @@ code {
 
   .event-row-meta {
     grid-template-columns: 1fr;
+  }
+
+  .event-stream-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .event-stream-total {
+    justify-self: start;
+    text-align: left;
   }
 
   .signal-metrics div,

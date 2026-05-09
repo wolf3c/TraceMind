@@ -594,6 +594,9 @@ describe('TraceMind', function () {
       'Recent users',
       'Recent DAU',
       'Recent devices',
+      'Past 24 hours',
+      '{{count}} events',
+      'Recent behavior evidence from the selected project. Showing the latest {{count}} rows.',
     ];
 
     it('normalizes supported UI locales and falls back to English', function () {

@@ -42,6 +42,7 @@
 - Added `tracemind.capture_setup` so coding agents can retrieve the current project's Web Auto Capture script through MCP before adding manual custom events.
 - Added explicit project summary window metadata and pure console-state helpers so current-project counts stay full-scope while users, DAU, devices, and stale-response handling are easier to reason about and test.
 - Moved project creation into the project selector, added a right-side project actions menu for rename/delete on desktop and mobile, and made project deletion a hard delete of the project plus raw and semantic event data.
+- Added a 24-hour event total beside the detailed event stream so the recent rows remain scannable while the console still shows selected-project volume.
 
 ### Not Yet Included
 
