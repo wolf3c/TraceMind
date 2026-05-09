@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.08.5
+version: 2026.05.09.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -45,6 +45,17 @@ Use `capture_setup` as the source of truth for current setup details instead of 
 - For React Native, do not create a new platform value. Events remain `ios` or `android`; React Native is marked through `deviceInfo.framework` or `sourceDetails.framework`.
 - Native Auto Capture should cover app/session start, screen/page view, tap/click, input changed without values, and submit signals.
 - Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
+
+## Platform Loading And Network Restrictions
+
+If setup looks correct but no data appears, check platform restrictions before changing event code.
+
+- Web: check CSP `script-src` allows the TraceMind script origin and `connect-src` allows `/api/capture`; also check `capture.js` JavaScript MIME type with `nosniff`, stale SRI, CORP, and COEP rules. Fix by adjusting the app response headers to allow the TraceMind script and capture endpoint.
+- iOS: check `Info.plist` `NSAppTransportSecurity` / ATS policy, HTTPS/TLS certificate validity, certificate pinning allowlists, MDM policy, and enterprise proxy rules. Fix by using the HTTPS production endpoint and allowing the TraceMind domain in the app or certificate policy when required.
+- Android: check `android.permission.INTERNET`, cleartext traffic policy, `network_security_config`, certificate pinning, proxy, and custom CA rules. Fix by declaring network permission and using HTTPS in production instead of relying on cleartext exceptions.
+- React Native: check both iOS and Android network rules, then confirm the native module is linked, pods/Gradle dependencies are installed, and native initialization runs before the first product screen.
+- Server Node/Python/HTTP: check egress firewall, VPC, security group, DNS, proxy, TLS CA bundle, HTTP client timeout/retry behavior, and `Content-Type: application/json`. Fix by allowing outbound HTTPS to the TraceMind capture endpoint and configuring the server HTTP client.
+- MCP/Agent Skill runtime: use the server checks, then confirm capture code runs in executable MCP or host runtime hooks, not only in a static `SKILL.md` document.
 
 ## Manual Capture And Identify
 

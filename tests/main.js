@@ -118,9 +118,14 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.08.5'));
+      assert.ok(skill.includes('version: 2026.05.09.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
+      assert.ok(skill.includes('## Platform Loading And Network Restrictions'));
+      assert.ok(skill.includes('script-src'));
+      assert.ok(skill.includes('NSAppTransportSecurity'));
+      assert.ok(skill.includes('network_security_config'));
+      assert.ok(skill.includes('egress firewall'));
       assert.ok(skill.includes('## Instrumenting MCP Servers'));
       assert.ok(skill.includes('## Instrumenting Agent Skills'));
       assert.ok(skill.includes('## Instrumenting Server Applications'));
@@ -140,7 +145,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.08.5');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.09.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -224,12 +229,13 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.08.5');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.09.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
       assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
+      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_proj_'));
 
@@ -316,6 +322,8 @@ describe('TraceMind', function () {
       assert.ok(setup.structuredContent.manualCaptureWarnings.some((warning) => warning.includes('stable business outcomes')));
       assert.ok(setup.structuredContent.manualCaptureExamples.some((example) => example.includes('amount: 29')));
       assert.ok(setup.structuredContent.manualCaptureExample.includes('window.TraceMind.capture'));
+      assert.ok(setup.structuredContent.networkRestrictionChecks.some((check) => check.includes('script-src')));
+      assert.ok(setup.structuredContent.networkRestrictionChecks.some((check) => check.includes('connect-src')));
       assert.ok(setup.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
       assert.ok(!JSON.stringify(setup.structuredContent).includes('tm_mcp_'));
     });
@@ -348,6 +356,7 @@ describe('TraceMind', function () {
       assert.ok(ios.structuredContent.identifySnippet.includes('TraceMind.identify'));
       assert.ok(ios.structuredContent.manualCaptureExamples.some((example) => example.includes('"amount": 29')));
       assert.ok(ios.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
+      assert.ok(ios.structuredContent.networkRestrictionChecks.some((check) => check.includes('NSAppTransportSecurity')));
 
       assert.strictEqual(android.structuredContent.platform, 'android');
       assert.ok(android.structuredContent.install.includes('Gradle'));
@@ -362,6 +371,8 @@ describe('TraceMind', function () {
       assert.ok(android.structuredContent.identifySnippet.includes('TraceMind.identify'));
       assert.ok(android.structuredContent.manualCaptureExamples.some((example) => example.includes('"amount" to 29')));
       assert.ok(android.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
+      assert.ok(android.structuredContent.networkRestrictionChecks.some((check) => check.includes('android.permission.INTERNET')));
+      assert.ok(android.structuredContent.networkRestrictionChecks.some((check) => check.includes('network_security_config')));
 
       assert.strictEqual(reactNative.structuredContent.platform, 'react_native');
       assert.ok(reactNative.structuredContent.install.includes('@tracemind/react-native'));
@@ -376,6 +387,7 @@ describe('TraceMind', function () {
       assert.ok(reactNative.structuredContent.identifySnippet.includes('TraceMind.identify'));
       assert.ok(reactNative.structuredContent.manualCaptureExamples.some((example) => example.includes('amount: 29')));
       assert.ok(reactNative.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
+      assert.ok(reactNative.structuredContent.networkRestrictionChecks.some((check) => check.includes('native module')));
 
       [ios, android, reactNative].forEach((result) => {
         assert.strictEqual(result.structuredContent.tokenType, 'public_auto_capture_project_key');
@@ -476,6 +488,8 @@ describe('TraceMind', function () {
       assert.ok(http.structuredContent.payloadTemplate.projectKey === 'tm_proj_server_sdk');
       assert.strictEqual(http.structuredContent.payloadTemplate.source.type, 'server_app');
       assert.ok(http.structuredContent.manualCaptureExample.includes('/api/capture'));
+      assert.ok(http.structuredContent.networkRestrictionChecks.some((check) => check.includes('egress firewall')));
+      assert.ok(http.structuredContent.networkRestrictionChecks.some((check) => check.includes('Content-Type: application/json')));
 
       [node, python, http].forEach((result) => {
         assert.strictEqual(result.structuredContent.tokenType, 'public_auto_capture_project_key');

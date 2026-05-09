@@ -21,7 +21,7 @@ import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_metho
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.08.5';
+const AGENT_GUIDANCE_VERSION = '2026.05.09.1';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -389,6 +389,7 @@ function guidanceResult(extra = {}) {
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
       'Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
+      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
@@ -468,6 +469,38 @@ const SERVER_MANUAL_CAPTURE_WARNINGS = [
   'Pass a stable internal userId on each server capture when the backend can safely identify the actor.',
 ];
 
+const WEB_NETWORK_RESTRICTION_CHECKS = [
+  'If capture.js does not load, check Content-Security-Policy script-src allows the TraceMind origin.',
+  'If events do not upload, check Content-Security-Policy connect-src allows the TraceMind /api/capture endpoint.',
+  'Check capture.js returns JavaScript MIME type when X-Content-Type-Options: nosniff is enabled, and remove stale SRI/CORP/COEP rules that block the TraceMind script or endpoint.',
+];
+
+const IOS_NETWORK_RESTRICTION_CHECKS = [
+  'Check Info.plist NSAppTransportSecurity / ATS policy allows the HTTPS TraceMind endpoint and does not rely on insecure HTTP in production.',
+  'Check TLS certificate validity, certificate pinning allowlists, MDM policy, enterprise proxy, and device network restrictions for the TraceMind domain.',
+];
+
+const ANDROID_NETWORK_RESTRICTION_CHECKS = [
+  'Check AndroidManifest.xml declares android.permission.INTERNET before expecting capture uploads.',
+  'Check cleartext traffic policy, network_security_config, certificate pinning, proxy, and custom CA policy for the TraceMind endpoint; use HTTPS in production instead of relying on cleartext exceptions.',
+];
+
+const REACT_NATIVE_NETWORK_RESTRICTION_CHECKS = [
+  ...IOS_NETWORK_RESTRICTION_CHECKS,
+  ...ANDROID_NETWORK_RESTRICTION_CHECKS,
+  'Confirm the React Native native module is linked, pods/Gradle dependencies are installed, and native initialization runs before the first product screen.',
+];
+
+const SERVER_NETWORK_RESTRICTION_CHECKS = [
+  'Check egress firewall, VPC, security group, DNS, proxy, and TLS CA bundle policy allow outbound HTTPS to the TraceMind capture endpoint.',
+  'Check the backend HTTP client sets Content-Type: application/json, has reasonable timeout/retry behavior, and sends the sanitized payload returned by capture_setup.',
+];
+
+const MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS = [
+  ...SERVER_NETWORK_RESTRICTION_CHECKS,
+  'For MCP and Agent Skill instrumentation, confirm capture code runs in executable server/runtime hooks, not only in a static SKILL.md document.',
+];
+
 function commonSetup(project, platform) {
   const captureApiUrl = Meteor.absoluteUrl('/api/capture');
   const presenceApiUrl = Meteor.absoluteUrl('/api/presence');
@@ -522,6 +555,7 @@ function platformSetup(project, platform) {
       sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
+      networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'npm test --prefix sdk/server-node',
         'Run the backend test or integration path that triggers the manual capture, then query TraceMind raw behaviors or semantic events.',
@@ -564,6 +598,7 @@ function platformSetup(project, platform) {
       sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
+      networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'python3 -m unittest discover -s sdk/server-python/tests',
         'Run the backend test or integration path that triggers the manual capture, then query TraceMind raw behaviors or semantic events.',
@@ -629,6 +664,7 @@ function platformSetup(project, platform) {
       sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
+      networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'Run the backend test or integration path that triggers the manual capture, then query TraceMind raw behaviors or semantic events.',
       ],
@@ -670,6 +706,7 @@ function platformSetup(project, platform) {
       sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, and mcpFramework.',
       autoCapturedSignals: MCP_AUTO_CAPTURE_SIGNALS,
       privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
+      networkRestrictionChecks: MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'npm test --prefix sdk/mcp-node',
         'Run the MCP server, trigger a tool/resource/prompt request, then query TraceMind raw behaviors or semantic events.',
@@ -711,6 +748,7 @@ function platformSetup(project, platform) {
       sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, and mcpFramework.',
       autoCapturedSignals: MCP_AUTO_CAPTURE_SIGNALS,
       privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
+      networkRestrictionChecks: MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'python3 -m unittest discover -s sdk/mcp-python/tests',
         'Run the MCP server, trigger a tool/resource/prompt request, then query TraceMind raw behaviors or semantic events.',
@@ -753,6 +791,7 @@ function platformSetup(project, platform) {
       sourceModel: 'platform is server; sourceType is agent_skill; sourceKey is the stable Skill name or host runtime skill id; sourceDetails records skill version and host runtime.',
       autoCapturedSignals: AGENT_SKILL_AUTO_CAPTURE_SIGNALS,
       privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
+      networkRestrictionChecks: MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'Run the host agent runtime hook test if available.',
         'Trigger a Skill started/completed/failed lifecycle event, then query TraceMind raw behaviors or semantic events.',
@@ -796,6 +835,7 @@ function platformSetup(project, platform) {
         key: 'iOS bundle id, for example com.example.app',
       },
       sourceModel: 'platform remains ios; sourceKey is the iOS bundle id; sourceDetails.framework is swift.',
+      networkRestrictionChecks: IOS_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'swift test --package-path sdk/ios',
         'Run the app, trigger launch/screen/tap/input/submit, then query TraceMind raw behaviors or semantic events.',
@@ -836,6 +876,7 @@ function platformSetup(project, platform) {
         key: 'Android package name, for example com.example.app',
       },
       sourceModel: 'platform remains android; sourceKey is the Android package name; sourceDetails.framework is kotlin.',
+      networkRestrictionChecks: ANDROID_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'npm run test:sdk:android',
         'Run the app, trigger launch/screen/tap/input/submit, then query TraceMind raw behaviors or semantic events.',
@@ -878,6 +919,7 @@ function platformSetup(project, platform) {
         key: 'Native bundle id or package name; React Native is marked in deviceInfo.framework.',
       },
       sourceModel: 'Do not create a react_native platform value. Events keep platform ios or android and mark deviceInfo.framework/sourceDetails.framework as react_native.',
+      networkRestrictionChecks: REACT_NATIVE_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'npm test --prefix sdk/react-native',
         'Run the iOS and Android app variants, then query TraceMind raw behaviors or semantic events.',
@@ -915,6 +957,7 @@ function platformSetup(project, platform) {
       key: 'Request Origin or Referer hostname.',
     },
     sourceModel: 'platform is web; sourceKey is normalized from request Origin or Referer hostname.',
+    networkRestrictionChecks: WEB_NETWORK_RESTRICTION_CHECKS,
     verificationCommands: [
       'Run the web app, trigger a page load/click/input/submit, then query TraceMind raw behaviors or semantic events.',
     ],
