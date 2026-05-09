@@ -685,12 +685,38 @@ code {
   margin: 0;
 }
 
-.project-add-button {
+.project-action-menu {
+  position: relative;
+  align-self: end;
+}
+
+.project-more-button {
   min-width: 46px;
   min-height: 46px;
   padding: 0 14px;
   font-size: 1.15rem;
   font-weight: 760;
+}
+
+.project-action-popover {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 170px;
+  gap: 8px;
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--paper);
+  box-shadow: 0 16px 44px rgba(7, 27, 24, 0.14);
+}
+
+.project-action-popover button {
+  justify-content: flex-start;
+  width: 100%;
+  box-shadow: none;
 }
 
 .project-create-row {
@@ -1092,7 +1118,6 @@ code {
   .agent-setup-header,
   .field-copy-group,
   .project-console-header,
-  .project-toolbar,
   .project-create-row,
   .event-metrics,
   .event-row,
@@ -1101,6 +1126,10 @@ code {
   .source-row,
   .setup-docs-row {
     grid-template-columns: 1fr;
+  }
+
+  .project-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .compact-copy {

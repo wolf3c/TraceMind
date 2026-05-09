@@ -20,10 +20,12 @@
     zh: "Chinese",
   };
   const setupDocsUrl = "https://github.com/wolf3c/TraceMind#1-%E5%88%86%E9%92%9F%E6%8E%A5%E5%85%A5";
+  const newProjectOption = "__new_project__";
 
   let email = $state("");
   let code = $state("");
   let projectName = $state("");
+  let renameProjectName = $state("");
   let mcpTokenName = $state("");
   let selectedLocale = $state("en");
   let userId = $state(Meteor.userId());
@@ -37,6 +39,8 @@
   let loading = $state(false);
   let selectedProjectId = $state("");
   let showProjectCreate = $state(false);
+  let showProjectActions = $state(false);
+  let showProjectRename = $state(false);
   let selectedProjectSummary = $state(null);
   let projectSummaryLoading = $state(false);
   let projectSummaryError = $state("");
@@ -278,16 +282,44 @@
     }
   }
 
-  function changeSelectedProject() {
+  function changeSelectedProject(event) {
+    const nextProjectId = event?.currentTarget?.value || "";
+    if (nextProjectId === newProjectOption) {
+      showProjectCreate = true;
+      showProjectActions = false;
+      showProjectRename = false;
+      event.currentTarget.value = selectedProjectId;
+      return;
+    }
+
+    selectedProjectId = nextProjectId;
     selectedProjectSummary = null;
+    showProjectCreate = false;
+    showProjectActions = false;
+    showProjectRename = false;
     loadProjectSummary().catch(() => {});
   }
 
-  function toggleProjectCreate() {
-    showProjectCreate = !showProjectCreate;
-    if (!showProjectCreate) {
-      projectName = "";
-    }
+  function toggleProjectActions() {
+    showProjectActions = !showProjectActions;
+    if (!showProjectActions) showProjectRename = false;
+  }
+
+  function startProjectRename() {
+    if (!primaryProject) return;
+    renameProjectName = primaryProject.name;
+    showProjectRename = true;
+    showProjectActions = false;
+  }
+
+  function cancelProjectCreate() {
+    showProjectCreate = false;
+    projectName = "";
+  }
+
+  function cancelProjectRename() {
+    showProjectRename = false;
+    renameProjectName = "";
   }
 
   async function createProject() {
@@ -301,9 +333,57 @@
       selectedProjectId = createdProject._id;
       projectName = "";
       showProjectCreate = false;
+      showProjectActions = false;
+      showProjectRename = false;
       await loadDashboard({ loadProjectSummary: false });
       await loadProjectSummary(createdProject._id);
       status = translateNow("Project created and selected.");
+    } catch (error) {
+      status = errorMessage(error);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function renameProject() {
+    if (!primaryProject) return;
+    const name = renameProjectName.trim();
+    if (!name) return;
+
+    loading = true;
+    status = "";
+    try {
+      const updatedProject = await callMethod("tracemind.project.rename", primaryProject._id, name);
+      replaceProject(updatedProject);
+      showProjectRename = false;
+      renameProjectName = "";
+      status = translateNow("Project name updated.");
+    } catch (error) {
+      status = errorMessage(error);
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function removeProject() {
+    if (!primaryProject) return;
+    if (!window.confirm(translateNow("Delete project {{project}}? This permanently deletes its project key, MCP tokens, raw behaviors, and semantic events.", { project: primaryProject.name }))) return;
+
+    const removedProjectId = primaryProject._id;
+    loading = true;
+    status = "";
+    try {
+      await callMethod("tracemind.project.remove", removedProjectId);
+      selectedProjectSummary = null;
+      projectSummaryRequestId += 1;
+      projectSummaryLoading = false;
+      projectSummaryError = "";
+      selectedProjectId = "";
+      showProjectActions = false;
+      showProjectRename = false;
+      showProjectCreate = false;
+      await loadDashboard();
+      status = translateNow("Project deleted.");
     } catch (error) {
       status = errorMessage(error);
     } finally {
@@ -481,6 +561,8 @@
     selectedProjectSummary = null;
     selectedProjectId = "";
     showProjectCreate = false;
+    showProjectActions = false;
+    showProjectRename = false;
     userId = null;
     loggingIn = false;
     dashboard = null;
@@ -553,6 +635,8 @@
             selectedProjectSummary = null;
             selectedProjectId = "";
             showProjectCreate = false;
+            showProjectActions = false;
+            showProjectRename = false;
             dashboard = null;
           }
           return;
@@ -750,15 +834,28 @@
             <div class="project-toolbar">
               <label class="field-label project-selector" for="selected-project">
                 <span>{$t("Switch project")}</span>
-                <select id="selected-project" name="selectedProject" bind:value={selectedProjectId} onchange={changeSelectedProject}>
+                <select id="selected-project" name="selectedProject" value={selectedProjectId} onchange={changeSelectedProject}>
                   {#each dashboard.projects as project}
                     <option value={project._id}>{project.name}</option>
                   {/each}
+                  <option value={newProjectOption}>{$t("New project")}</option>
                 </select>
               </label>
-              <button class="ghost project-add-button" type="button" onclick={toggleProjectCreate} aria-label={$t("New project")}>
-                {showProjectCreate ? $t("Cancel") : "+"}
-              </button>
+              <div class="project-action-menu">
+                <button class="ghost project-more-button" type="button" onclick={toggleProjectActions} aria-expanded={showProjectActions} aria-label={$t("Project actions")}>
+                  ⋯
+                </button>
+                {#if showProjectActions}
+                  <div class="project-action-popover">
+                    <button class="ghost" type="button" onclick={startProjectRename} disabled={loading}>
+                      {$t("Rename project")}
+                    </button>
+                    <button class="ghost danger" type="button" onclick={removeProject} disabled={loading}>
+                      {$t("Delete project")}
+                    </button>
+                  </div>
+                {/if}
+              </div>
             </div>
             {#if showProjectCreate}
               <div class="project-create-row">
@@ -766,7 +863,18 @@
                 <button type="button" onclick={createProject} disabled={loading || !projectName.trim()}>
                   {$t("Create")}
                 </button>
-                <button class="ghost" type="button" onclick={toggleProjectCreate} disabled={loading}>
+                <button class="ghost" type="button" onclick={cancelProjectCreate} disabled={loading}>
+                  {$t("Cancel")}
+                </button>
+              </div>
+            {/if}
+            {#if showProjectRename}
+              <div class="project-create-row">
+                <input id="project-rename" name="projectRename" bind:value={renameProjectName} placeholder={$t("Project name")} />
+                <button type="button" onclick={renameProject} disabled={loading || !renameProjectName.trim()}>
+                  {$t("Save")}
+                </button>
+                <button class="ghost" type="button" onclick={cancelProjectRename} disabled={loading}>
                   {$t("Cancel")}
                 </button>
               </div>

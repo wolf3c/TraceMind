@@ -1111,6 +1111,111 @@ describe('TraceMind', function () {
       assert.strictEqual(await resolveProjectByMcpToken(refreshedToken.token), null);
     });
 
+    it('lets project owners rename only their own projects', async function () {
+      const ownerUserId = await Meteor.users.insertAsync({
+        emails: [{ address: `project-owner-${Date.now()}@example.com`, verified: true }],
+        createdAt: new Date(),
+      });
+      const otherUserId = await Meteor.users.insertAsync({
+        emails: [{ address: `project-other-${Date.now()}@example.com`, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const renameMethod = Meteor.server.method_handlers['tracemind.project.rename'];
+
+      const ownerDashboard = await dashboardMethod.apply({ userId: ownerUserId }, []);
+      const projectId = ownerDashboard.projects[0]._id;
+
+      const renamedProject = await renameMethod.apply({ userId: ownerUserId }, [projectId, '  Renamed Project  ']);
+      const storedProject = await Projects.findOneAsync(projectId);
+
+      assert.strictEqual(renamedProject._id, projectId);
+      assert.strictEqual(renamedProject.name, 'Renamed Project');
+      assert.strictEqual(storedProject.name, 'Renamed Project');
+      assert.strictEqual(renamedProject.developerId, undefined);
+
+      await assert.rejects(
+        () => renameMethod.apply({ userId: otherUserId }, [projectId, 'Other User Name']),
+        (error) => error.error === 'not-found',
+      );
+      assert.strictEqual((await Projects.findOneAsync(projectId)).name, 'Renamed Project');
+    });
+
+    it('hard deletes owned projects and their captured data without touching sibling projects', async function () {
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: `project-remove-${Date.now()}@example.com`, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const createProjectMethod = Meteor.server.method_handlers['tracemind.project.create'];
+      const removeMethod = Meteor.server.method_handlers['tracemind.project.remove'];
+
+      const dashboard = await dashboardMethod.apply({ userId }, []);
+      const removedProjectId = dashboard.projects[0]._id;
+      const siblingProject = await createProjectMethod.apply({ userId }, ['Sibling Project']);
+
+      await RawBehaviors.insertAsync({
+        projectId: removedProjectId,
+        type: 'page_view',
+        occurredAt: new Date(),
+        createdAt: new Date(),
+      });
+      await RawBehaviors.insertAsync({
+        projectId: siblingProject._id,
+        type: 'page_view',
+        occurredAt: new Date(),
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId: removedProjectId,
+        eventType: 'page_view',
+        title: 'Removed project event',
+        meaning: 'Removed project event.',
+        occurredAt: new Date(),
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId: siblingProject._id,
+        eventType: 'page_view',
+        title: 'Sibling project event',
+        meaning: 'Sibling project event.',
+        occurredAt: new Date(),
+        createdAt: new Date(),
+      });
+
+      const result = await removeMethod.apply({ userId }, [removedProjectId]);
+
+      assert.deepStrictEqual(result, { removed: true, projectId: removedProjectId });
+      assert.strictEqual(await Projects.findOneAsync(removedProjectId), undefined);
+      assert.strictEqual(await RawBehaviors.find({ projectId: removedProjectId }).countAsync(), 0);
+      assert.strictEqual(await SemanticEvents.find({ projectId: removedProjectId }).countAsync(), 0);
+      assert.ok(await Projects.findOneAsync(siblingProject._id));
+      assert.strictEqual(await RawBehaviors.find({ projectId: siblingProject._id }).countAsync(), 1);
+      assert.strictEqual(await SemanticEvents.find({ projectId: siblingProject._id }).countAsync(), 1);
+    });
+
+    it('rejects project deletion by non-owners', async function () {
+      const ownerUserId = await Meteor.users.insertAsync({
+        emails: [{ address: `remove-owner-${Date.now()}@example.com`, verified: true }],
+        createdAt: new Date(),
+      });
+      const otherUserId = await Meteor.users.insertAsync({
+        emails: [{ address: `remove-other-${Date.now()}@example.com`, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const removeMethod = Meteor.server.method_handlers['tracemind.project.remove'];
+
+      const dashboard = await dashboardMethod.apply({ userId: ownerUserId }, []);
+      const projectId = dashboard.projects[0]._id;
+
+      await assert.rejects(
+        () => removeMethod.apply({ userId: otherUserId }, [projectId]),
+        (error) => error.error === 'not-found',
+      );
+      assert.ok(await Projects.findOneAsync(projectId));
+    });
+
     it('lets project owners block and unblock capture sources', async function () {
       const email = `source-owner-${Date.now()}@example.com`;
       const userId = await Meteor.users.insertAsync({

@@ -38,6 +38,10 @@ function normalizeMcpTokenName(nameInput) {
   return String(nameInput || 'MCP Token').trim().slice(0, 80) || 'MCP Token';
 }
 
+function normalizeProjectName(nameInput) {
+  return String(nameInput || 'Untitled Web App').trim().slice(0, 80) || 'Untitled Web App';
+}
+
 function ensureMailUrlFromSettings() {
   const settingsMailUrl = Meteor.settings?.private?.MAIL_URL || Meteor.settings?.MAIL_URL;
   if (!process.env.MAIL_URL && settingsMailUrl) {
@@ -234,7 +238,7 @@ Meteor.methods({
 
   async 'tracemind.project.create'(nameInput) {
     const developer = await getOrCreateDeveloperForUser(this.userId);
-    const name = String(nameInput || 'Untitled Web App').trim().slice(0, 80);
+    const name = normalizeProjectName(nameInput);
     const projectId = await Projects.insertAsync({
       developerId: developer._id,
       name,
@@ -244,6 +248,35 @@ Meteor.methods({
     });
 
     return publicProject(await Projects.findOneAsync(projectId));
+  },
+
+  async 'tracemind.project.rename'(projectId, nameInput) {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const project = await findProjectForDeveloper(projectId, developer._id);
+    if (!project) {
+      throw new Meteor.Error('not-found', 'Project not found.');
+    }
+
+    await Projects.updateAsync(project._id, {
+      $set: {
+        name: normalizeProjectName(nameInput),
+        updatedAt: new Date(),
+      },
+    });
+    return publicProject(await Projects.findOneAsync(project._id));
+  },
+
+  async 'tracemind.project.remove'(projectId) {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const project = await findProjectForDeveloper(projectId, developer._id);
+    if (!project) {
+      throw new Meteor.Error('not-found', 'Project not found.');
+    }
+
+    await RawBehaviors.removeAsync({ projectId: project._id });
+    await SemanticEvents.removeAsync({ projectId: project._id });
+    await Projects.removeAsync(project._id);
+    return { removed: true, projectId: project._id };
   },
 
   async 'tracemind.project.mcpToken.create'(projectId, nameInput) {
