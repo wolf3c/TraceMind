@@ -60,10 +60,10 @@
   let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
   let sourceSummary = $derived(selectedProjectSummary?.sources || []);
   let summary = $derived(selectedProjectSummary?.summary);
-  let presence = $derived(selectedProjectSummary?.presence);
+  let health = $derived(selectedProjectSummary?.health);
+  let healthCurrent = $derived(health?.current || {});
   let displayedRecentEvents = $derived((selectedProjectSummary?.recentEvents || []).slice(0, 15));
   let hiddenRecentEventCount = $derived(Math.max(0, (selectedProjectSummary?.recentEvents || []).length - displayedRecentEvents.length));
-  let latestDau = $derived(summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0);
   let topEventType = $derived(summary?.topEvents?.[0]?.eventType || "none");
   let topPath = $derived(summary?.topPaths?.[0]?.path || "/");
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
@@ -602,6 +602,50 @@
     return `${seconds}s`;
   }
 
+  function formatNumber(value) {
+    return Number(value || 0).toLocaleString(selectedLocale === "zh" ? "zh-CN" : "en-US");
+  }
+
+  function formatDecimal(value) {
+    return Number(value || 0).toLocaleString(selectedLocale === "zh" ? "zh-CN" : "en-US", {
+      maximumFractionDigits: 1,
+    });
+  }
+
+  function formatPercent(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return translateNow("No sample");
+    return `${Math.round(Number(value) * 100)}%`;
+  }
+
+  function formatTrend(value) {
+    const numericValue = Number(value || 0);
+    if (!numericValue) return translateNow("Flat vs previous 24h");
+    const direction = numericValue > 0 ? "↑" : "↓";
+    return `${direction} ${Math.round(Math.abs(numericValue) * 100)}% ${translateNow("vs previous 24h")}`;
+  }
+
+  function trendClass(value) {
+    const numericValue = Number(value || 0);
+    if (numericValue > 0) return "trend-positive";
+    if (numericValue < 0) return "trend-negative";
+    return "trend-flat";
+  }
+
+  function retentionText(retention) {
+    if (!retention || !retention.sampleSize) return translateNow("No sample");
+    return `${formatPercent(retention.rate)} · ${retention.retainedUsers}/${retention.sampleSize}`;
+  }
+
+  function topCountText(item) {
+    if (!item) return translateNow("No data");
+    return `${item.label || item.path || translateNow("Unknown")} · ${formatNumber(item.count)}`;
+  }
+
+  function topDurationText(item) {
+    if (!item) return translateNow("No data");
+    return `${item.label || item.path || translateNow("Unknown")} · ${formatDuration(item.durationMs)}`;
+  }
+
   function eventTypeLabel(event) {
     return event?.eventName || event?.eventType || translateNow("Unknown event");
   }
@@ -1014,51 +1058,79 @@
       <div class="events card-panel">
         <div class="events-header">
           <div>
-            <span>{$t("Current project events")}</span>
+            <div class="health-title-row">
+              <span>{$t("Project health overview")}</span>
+              <strong class={`health-status ${health?.status === "needs_attention" ? "needs-attention" : ""}`}>
+                {health?.status === "needs_attention" ? $t("Needs attention") : $t("Normal")}
+              </strong>
+            </div>
             <h3>{primaryProject?.name || $t("Project")}</h3>
-            <p>{$t("Recent behavior evidence from the selected project.")}</p>
+            <p>{$t("Last 24 hours compared with previous 24 hours.")}</p>
+            {#if health?.attentionSummary}
+              <p class="health-attention">{$t("Needs attention")}: {health.attentionSummary}</p>
+            {/if}
           </div>
           <button class="ghost" type="button" onclick={retryProjectSummary} disabled={projectSummaryLoading || !primaryProject}>
             {projectSummaryLoading ? $t("Loading project events...") : $t("Refresh")}
           </button>
         </div>
-        <div class="event-metrics" aria-label="Current project analytics summary">
-          <div>
-            <span>{$t("Raw behaviors")}</span>
-            <strong>{selectedProjectSummary?.rawCount || 0}</strong>
-          </div>
-          <div>
-            <span>{$t("Semantic events")}</span>
-            <strong>{selectedProjectSummary?.semanticCount || 0}</strong>
-          </div>
-          <div>
-            <span>{$t("Recent users")}</span>
-            <strong>{summary?.uniqueUsers || 0}</strong>
-          </div>
-          <div>
-            <span>{$t("Recent DAU")}</span>
-            <strong>{latestDau}</strong>
-          </div>
-          <div>
-            <span>{$t("Recent devices")}</span>
-            <strong>{summary?.uniqueDevices || 0}</strong>
-          </div>
-          <div>
-            <span>{$t("Online users")}</span>
-            <strong>{presence?.onlineUsers || 0}</strong>
-          </div>
-          <div>
-            <span>{$t("Online sessions")}</span>
-            <strong>{presence?.onlineSessions || 0}</strong>
-          </div>
-          <div>
-            <span>{$t("Total online time")}</span>
-            <strong>{formatDuration(presence?.totalDurationMs)}</strong>
-          </div>
-          <div>
-            <span>{$t("Average session time")}</span>
-            <strong>{formatDuration(presence?.averageSessionDurationMs)}</strong>
-          </div>
+        <div class="event-metrics health-metrics" aria-label="Current project health summary">
+          <details class="health-card">
+            <summary>
+              <span>{$t("Active users")}</span>
+              <strong>{formatNumber(healthCurrent.activeUsers)}</strong>
+              <small class={trendClass(health?.trends?.activeUsers)}>{formatTrend(health?.trends?.activeUsers)}</small>
+              <em>{formatNumber(healthCurrent.newUsers)} {$t("new users")}</em>
+            </summary>
+            <dl class="health-detail-list">
+              <div><dt>{$t("New users")}</dt><dd>{formatNumber(healthCurrent.newUsers)}</dd></div>
+              <div><dt>{$t("D2 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d2)}</dd></div>
+              <div><dt>{$t("D3 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d3)}</dd></div>
+              <div><dt>{$t("D7 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d7)}</dd></div>
+              <div><dt>{$t("D30 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d30)}</dd></div>
+              <div><dt>{$t("User regions")}</dt><dd>{topCountText(healthCurrent.userRegions?.[0])}</dd></div>
+              <div><dt>{$t("User devices")}</dt><dd>{topCountText(healthCurrent.deviceDistribution?.[0])}</dd></div>
+            </dl>
+          </details>
+          <details class="health-card">
+            <summary>
+              <span>{$t("Active sessions")}</span>
+              <strong>{formatNumber(healthCurrent.sessionCount)}</strong>
+              <small class={trendClass(health?.trends?.sessions)}>{formatTrend(health?.trends?.sessions)}</small>
+              <em>{formatDecimal(healthCurrent.averageSessionEvents)} {$t("events/session")}</em>
+            </summary>
+            <dl class="health-detail-list">
+              <div><dt>{$t("Session sources")}</dt><dd>{topCountText(healthCurrent.sessionSources?.[0])}</dd></div>
+              <div><dt>{$t("Session pages")}</dt><dd>{healthCurrent.sessionPaths?.[0] ? `${healthCurrent.sessionPaths[0].path} · ${formatNumber(healthCurrent.sessionPaths[0].count)}` : $t("No data")}</dd></div>
+              <div><dt>{$t("Average session events")}</dt><dd>{formatDecimal(healthCurrent.averageSessionEvents)}</dd></div>
+            </dl>
+          </details>
+          <details class="health-card">
+            <summary>
+              <span>{$t("Average active time per user")}</span>
+              <strong>{formatDuration(healthCurrent.averageActiveDurationMs)}</strong>
+              <small class={trendClass(health?.trends?.averageActiveDuration)}>{formatTrend(health?.trends?.averageActiveDuration)}</small>
+              <em>{$t("averaged by active users")}</em>
+            </summary>
+            <dl class="health-detail-list">
+              <div><dt>{$t("Average active time per user")}</dt><dd>{formatDuration(healthCurrent.averageActiveDurationMs)}</dd></div>
+              <div><dt>{$t("Longest users Top 3")}</dt><dd>{healthCurrent.topDurationUsers?.map(topDurationText).join(" / ") || $t("No data")}</dd></div>
+              <div><dt>{$t("Longest pages Top 3")}</dt><dd>{healthCurrent.topDurationPaths?.map((item) => `${item.path} · ${formatDuration(item.durationMs)}`).join(" / ") || $t("No data")}</dd></div>
+              <div><dt>{$t("Top events Top 3")}</dt><dd>{healthCurrent.topEvents?.map(topCountText).join(" / ") || $t("No data")}</dd></div>
+            </dl>
+          </details>
+          <details class="health-card">
+            <summary>
+              <span>{$t("Total events")}</span>
+              <strong>{formatNumber(healthCurrent.eventCount)}</strong>
+              <small class={trendClass(health?.trends?.events)}>{formatTrend(health?.trends?.events)}</small>
+              <em>{$t("user behavior events in 24h")}</em>
+            </summary>
+            <dl class="health-detail-list">
+              <div><dt>{$t("Top events Top 3")}</dt><dd>{healthCurrent.topEvents?.map(topCountText).join(" / ") || $t("No data")}</dd></div>
+              <div><dt>{$t("Needs attention")}</dt><dd>{health?.attentionItems?.map((item) => item.message).join(" / ") || $t("No attention items")}</dd></div>
+            </dl>
+          </details>
         </div>
         {#if projectSummaryError}
           <div class="inline-error" role="alert">
@@ -1068,6 +1140,10 @@
         {:else if projectSummaryLoading && !selectedProjectSummary}
           <p class="empty">{$t("Loading project events...")}</p>
         {:else if displayedRecentEvents.length}
+          <div class="event-stream-header">
+            <span>{$t("Detailed event stream")}</span>
+            <p>{$t("Recent behavior evidence from the selected project.")}</p>
+          </div>
           <div class="event-list" role="list">
             {#each displayedRecentEvents as event (event._id)}
               <article class="event-row" role="listitem">

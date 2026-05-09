@@ -14,6 +14,7 @@ import {
   normalizeCaptureSource,
   normalizeEmail,
   summarizeBehaviorSources,
+  summarizeProjectHealth,
   summarizePresenceSessions,
 } from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
@@ -790,6 +791,78 @@ describe('TraceMind', function () {
     assert.strictEqual(summary.uniqueUsers, 2);
     assert.strictEqual(summary.uniqueDevices, 2);
     assert.deepStrictEqual(summary.dailyActiveUsers[0], { date: '2026-05-06', count: 2 });
+  });
+
+  it('summarizes project health with rolling 24 hour windows and new-user retention cohorts', function () {
+    const now = new Date('2026-05-09T12:00:00.000Z');
+    const health = summarizeProjectHealth({
+      events: [
+        { eventType: 'page_view', eventName: 'page_view', userId: 'current-user', deviceInfo: { platform: 'MacIntel' }, geo: { country: 'US' }, path: '/', occurredAt: new Date('2026-05-09T11:00:00.000Z') },
+        { eventType: 'click', eventName: 'cta_clicked', anonymousId: 'new-current', deviceInfo: { platform: 'iPhone' }, geo: { country: 'CN' }, path: '/setup', occurredAt: new Date('2026-05-09T10:00:00.000Z') },
+        { eventType: 'tool_call', eventName: 'tool_call', userId: 'current-user', properties: { status: 'failed' }, path: '/mcp', occurredAt: new Date('2026-05-09T09:00:00.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', userId: 'returning-d2', path: '/', occurredAt: new Date('2026-05-09T08:00:00.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', userId: 'returning-d7', path: '/', occurredAt: new Date('2026-05-09T07:00:00.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', userId: 'current-user', path: '/', occurredAt: new Date('2026-05-08T10:00:00.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', userId: 'previous-only', path: '/', occurredAt: new Date('2026-05-08T09:00:00.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', userId: 'returning-d2', path: '/', occurredAt: new Date('2026-05-08T08:00:00.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', userId: 'returning-d7', path: '/', occurredAt: new Date('2026-05-02T13:00:00.000Z') },
+      ],
+      presenceSessions: [
+        { presenceId: 'current-1', userId: 'current-user', path: '/', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-09T10:00:00.000Z'), lastSeenAt: new Date('2026-05-09T10:30:00.000Z') },
+        { presenceId: 'current-2', anonymousId: 'new-current', path: '/setup', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-09T11:00:00.000Z'), lastSeenAt: new Date('2026-05-09T11:15:00.000Z') },
+        { presenceId: 'previous-1', userId: 'previous-only', path: '/', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-08T10:00:00.000Z'), lastSeenAt: new Date('2026-05-08T10:10:00.000Z') },
+      ],
+      now,
+    });
+
+    assert.strictEqual(health.status, 'needs_attention');
+    assert.strictEqual(health.current.activeUsers, 4);
+    assert.strictEqual(health.previous.activeUsers, 3);
+    assert.strictEqual(health.current.newUsers, 1);
+    assert.strictEqual(health.current.eventCount, 5);
+    assert.strictEqual(health.previous.eventCount, 3);
+    assert.strictEqual(health.current.sessionCount, 2);
+    assert.strictEqual(health.previous.sessionCount, 1);
+    assert.strictEqual(health.current.averageActiveDurationMs, 675000);
+    assert.strictEqual(health.current.averageSessionEvents, 2.5);
+    assert.deepStrictEqual(health.current.retention.d2, { sampleSize: 3, retainedUsers: 2, rate: 2 / 3 });
+    assert.deepStrictEqual(health.current.retention.d3, { sampleSize: 0, retainedUsers: 0, rate: null });
+    assert.deepStrictEqual(health.current.retention.d7, { sampleSize: 1, retainedUsers: 1, rate: 1 });
+    assert.deepStrictEqual(health.current.topEvents[0], { label: 'page_view', count: 3 });
+    assert.deepStrictEqual(health.current.userRegions[0], { label: 'US', count: 1 });
+    assert.ok(health.attentionItems.some((item) => item.code === 'failure_events_increased'));
+  });
+
+  it('clips presence duration to the current health window', function () {
+    const health = summarizeProjectHealth({
+      events: [
+        { eventType: 'page_view', userId: 'user-1', occurredAt: new Date('2026-05-09T01:00:00.000Z') },
+      ],
+      presenceSessions: [
+        { presenceId: 'spanning', userId: 'user-1', path: '/docs', startedAt: new Date('2026-05-08T11:30:00.000Z'), lastSeenAt: new Date('2026-05-08T12:30:00.000Z') },
+      ],
+      now: new Date('2026-05-09T12:00:00.000Z'),
+    });
+
+    assert.strictEqual(health.current.totalDurationMs, 1800000);
+    assert.strictEqual(health.current.averageActiveDurationMs, 1800000);
+    assert.deepStrictEqual(health.current.topDurationUsers[0], { label: 'user-1', durationMs: 1800000 });
+    assert.deepStrictEqual(health.current.topDurationPaths[0], { path: '/docs', durationMs: 1800000, sessions: 1 });
+  });
+
+  it('uses stable actor ids for presence health without counting session ids as users', function () {
+    const health = summarizeProjectHealth({
+      events: [],
+      presenceSessions: [
+        { presenceId: 'presence-1', sessionId: 'session-1', deviceId: 'device-1', path: '/', startedAt: new Date('2026-05-09T11:00:00.000Z'), lastSeenAt: new Date('2026-05-09T11:00:00.000Z') },
+        { presenceId: 'presence-2', sessionId: 'session-2', deviceId: 'device-1', path: '/', startedAt: new Date('2026-05-09T11:30:00.000Z'), lastSeenAt: new Date('2026-05-09T11:45:00.000Z') },
+      ],
+      now: new Date('2026-05-09T12:00:00.000Z'),
+    });
+
+    assert.strictEqual(health.current.activeUsers, 1);
+    assert.strictEqual(health.current.sessionCount, 2);
+    assert.deepStrictEqual(health.current.topDurationUsers[0], { label: 'device-1', durationMs: 900000 });
   });
 
   it('normalizes capture sources with cross-platform source fields', function () {

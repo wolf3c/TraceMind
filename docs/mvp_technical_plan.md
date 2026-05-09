@@ -41,6 +41,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - Remote MCP uses a minimal Streamable HTTP JSON-RPC surface with `initialize`, `tools/list`, `tools/call`, and `ping`.
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.
+- The selected-project console health overview uses a rolling 24h window compared with the previous 24h. It reports active users, active sessions, average active time per user, total user behavior events, new-user cohort retention, top distributions, and high-confidence attention items. Raw behavior and semantic event counts remain diagnostics, not the primary developer health cards.
 
 ## Deployment Shape
 

@@ -15,6 +15,7 @@ import {
   publicSemanticEvent,
   summarizeBehaviorSources,
   summarizePresenceSessions,
+  summarizeProjectHealth,
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 
@@ -108,8 +109,13 @@ async function findOwnedProjectWithMcpTokens(projectId, userId) {
 }
 
 async function buildProjectSummary(project) {
+  const now = new Date();
   const rawCount = await RawBehaviors.find({ projectId: project._id }).countAsync();
   const semanticCount = await SemanticEvents.find({ projectId: project._id }).countAsync();
+  const healthEvents = await SemanticEvents.find(
+    { projectId: project._id },
+    { sort: { occurredAt: -1 } },
+  ).fetchAsync();
   const events = await SemanticEvents.find(
     { projectId: project._id },
     { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT },
@@ -117,6 +123,10 @@ async function buildProjectSummary(project) {
   const rawBehaviors = await RawBehaviors.find(
     { projectId: project._id },
     { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT },
+  ).fetchAsync();
+  const healthPresenceSessions = await PresenceSessions.find(
+    { projectId: project._id },
+    { sort: { lastSeenAt: -1 } },
   ).fetchAsync();
   const presenceSessions = await PresenceSessions.find(
     { projectId: project._id },
@@ -135,6 +145,7 @@ async function buildProjectSummary(project) {
       rawBehaviorSampleSize: rawBehaviors.length,
       presenceSessionSampleSize: presenceSessions.length,
     },
+    health: summarizeProjectHealth({ events: healthEvents, presenceSessions: healthPresenceSessions, now }),
     summary: summarizeSemanticEvents(events),
     presence: summarizePresenceSessions(presenceSessions),
     sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),

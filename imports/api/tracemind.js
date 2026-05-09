@@ -8,6 +8,8 @@ export const PresenceSessions = new Mongo.Collection('tracemind_presence_session
 
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
+export const HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
 
 export const EVENT_TYPES = {
   page_view: '浏览页面',
@@ -301,6 +303,10 @@ function validDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function actorIdForEvent(event = {}) {
+  return event.userId || event.anonymousId || event.deviceId || event.deviceFingerprint;
+}
+
 export function buildEventQuery(projectId, filters = {}) {
   const query = { projectId };
   const startAt = validDate(filters.startAt);
@@ -431,6 +437,10 @@ function actorIdForPresence(session = {}) {
   return session.userId || session.anonymousId || session.sessionId || session.presenceId;
 }
 
+function actorIdForHealthPresence(session = {}) {
+  return session.userId || session.anonymousId || session.deviceId || session.deviceFingerprint;
+}
+
 function durationForPresence(session = {}, now = new Date()) {
   const startedAt = validDate(session.startedAt) || validDate(session.createdAt);
   const lastSeenAt = validDate(session.endedAt) || validDate(session.lastSeenAt) || now;
@@ -495,6 +505,278 @@ export function summarizePresenceSessions(sessions = [], now = new Date()) {
     onlineWindowMs: PRESENCE_ONLINE_WINDOW_MS,
     topPaths: [...pathDurations.values()].sort((left, right) => right.durationMs - left.durationMs),
     topSources: [...sourceDurations.values()].sort((left, right) => right.durationMs - left.durationMs),
+  };
+}
+
+function valueInObject(object = {}, keys = []) {
+  for (const key of keys) {
+    if (object?.[key] !== undefined && object?.[key] !== null && object?.[key] !== '') return object[key];
+  }
+  return undefined;
+}
+
+function eventTime(event = {}) {
+  return validDate(event.occurredAt) || validDate(event.createdAt);
+}
+
+function sessionStart(session = {}) {
+  return validDate(session.startedAt) || validDate(session.createdAt);
+}
+
+function sessionEnd(session = {}, now = new Date()) {
+  return validDate(session.endedAt) || validDate(session.lastSeenAt) || now;
+}
+
+function overlapsWindow(start, end, windowStart, windowEnd) {
+  return start && end && start < windowEnd && end >= windowStart;
+}
+
+function clippedDurationMs(session = {}, windowStart, windowEnd, now = new Date()) {
+  const startedAt = sessionStart(session);
+  const endedAt = sessionEnd(session, now);
+  if (!overlapsWindow(startedAt, endedAt, windowStart, windowEnd)) return 0;
+  const clippedStart = Math.max(startedAt.getTime(), windowStart.getTime());
+  const clippedEnd = Math.min(endedAt.getTime(), windowEnd.getTime());
+  return Math.max(0, clippedEnd - clippedStart);
+}
+
+function increment(map, key, amount = 1) {
+  const label = String(key || 'Unknown');
+  map.set(label, (map.get(label) || 0) + amount);
+}
+
+function topCounts(map, limit = 3) {
+  return [...map.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, limit)
+    .map(([label, count]) => ({ label, count }));
+}
+
+function topDurations(map, limit = 3) {
+  return [...map.values()]
+    .sort((left, right) => (
+      right.durationMs - left.durationMs
+      || String(left.label || left.path).localeCompare(String(right.label || right.path))
+    ))
+    .slice(0, limit);
+}
+
+function eventLabel(event = {}) {
+  return event.eventName || event.eventType || 'unknown_event';
+}
+
+function regionLabel(event = {}) {
+  return event.geo?.country || event.geo?.region || event.geo?.city || '';
+}
+
+function deviceLabel(event = {}) {
+  return event.deviceInfo?.platform
+    || event.deviceInfo?.os
+    || event.deviceInfo?.browser
+    || event.platform
+    || '';
+}
+
+function isFailureEvent(event = {}) {
+  const status = String(valueInObject(event.properties, ['status', 'state', 'result']) || event.status || '').toLowerCase();
+  const phase = String(valueInObject(event.properties, ['phase']) || '').toLowerCase();
+  const success = event.properties?.success;
+  return ['failed', 'failure', 'error'].includes(status)
+    || ['failed', 'error'].includes(phase)
+    || success === false;
+}
+
+function percentChange(current, previous) {
+  if (!previous) return current ? 1 : 0;
+  return (current - previous) / previous;
+}
+
+function formatPercentForMessage(value) {
+  return `${Math.round(Math.abs(value) * 100)}%`;
+}
+
+function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
+  const activeUsers = new Set();
+  const eventCounts = new Map();
+  const regionCounts = new Map();
+  const deviceCounts = new Map();
+  const sourceCounts = new Map();
+  const sessionPathCounts = new Map();
+  const durationUsers = new Map();
+  const durationPaths = new Map();
+  let failureEventCount = 0;
+  let lastEventAt = null;
+  let eventCount = 0;
+
+  events.forEach((event) => {
+    const occurredAt = eventTime(event);
+    if (!occurredAt || occurredAt < windowStart || occurredAt >= windowEnd) return;
+    const actorId = actorIdForEvent(event);
+    if (actorId) activeUsers.add(actorId);
+    increment(eventCounts, eventLabel(event));
+    const region = regionLabel(event);
+    const device = deviceLabel(event);
+    if (region) increment(regionCounts, region);
+    if (device) increment(deviceCounts, device);
+    if (isFailureEvent(event)) failureEventCount += 1;
+    if (!lastEventAt || occurredAt > lastEventAt) lastEventAt = occurredAt;
+    eventCount += 1;
+  });
+
+  const windowSessions = [];
+  sessions.forEach((session) => {
+    const startedAt = sessionStart(session);
+    const endedAt = sessionEnd(session, now);
+    if (!overlapsWindow(startedAt, endedAt, windowStart, windowEnd)) return;
+    const durationMs = clippedDurationMs(session, windowStart, windowEnd, now);
+    windowSessions.push(session);
+    const actorId = actorIdForHealthPresence(session);
+    const path = session.path || session.screen || '/';
+    const source = session.sourceLabel || session.sourceKey || session.platform || 'Unknown';
+    if (actorId) {
+      activeUsers.add(actorId);
+      const userItem = durationUsers.get(actorId) || { label: actorId, durationMs: 0 };
+      userItem.durationMs += durationMs;
+      durationUsers.set(actorId, userItem);
+    }
+    const pathItem = durationPaths.get(path) || { path, durationMs: 0, sessions: 0 };
+    pathItem.durationMs += durationMs;
+    pathItem.sessions += 1;
+    durationPaths.set(path, pathItem);
+    increment(sourceCounts, source);
+    increment(sessionPathCounts, path);
+  });
+
+  const totalDurationMs = [...durationUsers.values()].reduce((sum, item) => sum + item.durationMs, 0);
+  const sessionCount = windowSessions.length;
+
+  return {
+    activeUsers: activeUsers.size,
+    eventCount,
+    sessionCount,
+    failureEventCount,
+    lastEventAt,
+    totalDurationMs,
+    averageActiveDurationMs: activeUsers.size ? Math.round(totalDurationMs / activeUsers.size) : 0,
+    averageSessionEvents: sessionCount ? eventCount / sessionCount : 0,
+    topEvents: topCounts(eventCounts, 3),
+    userRegions: topCounts(regionCounts, 5),
+    deviceDistribution: topCounts(deviceCounts, 5),
+    sessionSources: topCounts(sourceCounts, 3),
+    sessionPaths: topCounts(sessionPathCounts, 3).map((item) => ({ path: item.label, count: item.count })),
+    topDurationUsers: topDurations(durationUsers, 3),
+    topDurationPaths: topDurations(durationPaths, 3),
+  };
+}
+
+function retentionSummary(firstSeenByActor, activeCurrentActors, now, day) {
+  const cohortStart = new Date(now.getTime() - day * HEALTH_WINDOW_MS);
+  const cohortEnd = new Date(now.getTime() - (day - 1) * HEALTH_WINDOW_MS);
+  let sampleSize = 0;
+  let retainedUsers = 0;
+
+  firstSeenByActor.forEach((firstSeenAt, actorId) => {
+    if (firstSeenAt >= cohortStart && firstSeenAt < cohortEnd) {
+      sampleSize += 1;
+      if (activeCurrentActors.has(actorId)) retainedUsers += 1;
+    }
+  });
+
+  return {
+    sampleSize,
+    retainedUsers,
+    rate: sampleSize ? retainedUsers / sampleSize : null,
+  };
+}
+
+function attentionItemsForHealth(current, previous, now) {
+  const items = [];
+  const activeUsersChange = percentChange(current.activeUsers, previous.activeUsers);
+  const sessionsChange = percentChange(current.sessionCount, previous.sessionCount);
+  const eventsChange = percentChange(current.eventCount, previous.eventCount);
+
+  if (previous.eventCount > 0 && current.eventCount === 0) {
+    items.push({ code: 'event_stream_stopped', severity: 'high', message: '近 24h 没有新事件，但前一个 24h 有事件。' });
+  }
+  if (current.lastEventAt && now.getTime() - current.lastEventAt.getTime() >= 3 * 60 * 60 * 1000 && previous.eventCount > 0) {
+    items.push({ code: 'no_recent_events', severity: 'medium', message: '最近 3 小时没有收到新事件。' });
+  }
+  if (previous.activeUsers >= 3 && activeUsersChange <= -0.4) {
+    items.push({ code: 'active_users_dropped', severity: 'medium', message: `近 24h 活跃用户较前 24h 下降 ${formatPercentForMessage(activeUsersChange)}。` });
+  }
+  if (previous.sessionCount >= 3 && sessionsChange <= -0.4) {
+    items.push({ code: 'sessions_dropped', severity: 'medium', message: `近 24h 活跃会话较前 24h 下降 ${formatPercentForMessage(sessionsChange)}。` });
+  }
+  if (previous.eventCount >= 5 && eventsChange <= -0.4) {
+    items.push({ code: 'events_dropped', severity: 'medium', message: `近 24h 用户行为事件较前 24h 下降 ${formatPercentForMessage(eventsChange)}。` });
+  }
+  if (previous.eventCount >= 5 && eventsChange >= 1) {
+    items.push({ code: 'events_spiked', severity: 'low', message: `近 24h 用户行为事件较前 24h 上升 ${formatPercentForMessage(eventsChange)}。` });
+  }
+  if (current.failureEventCount > previous.failureEventCount && current.failureEventCount > 0) {
+    items.push({ code: 'failure_events_increased', severity: 'high', message: `近 24h 失败或错误事件 ${current.failureEventCount} 条，高于前一个 24h。` });
+  }
+
+  const topEvent = current.topEvents[0];
+  if (topEvent && current.eventCount >= 10 && topEvent.count / current.eventCount >= 0.8) {
+    items.push({ code: 'top_event_concentration', severity: 'low', message: `近 24h 高频事件 ${topEvent.label} 占比过高。` });
+  }
+
+  return items;
+}
+
+export function summarizeProjectHealth({ events = [], presenceSessions = [], now = new Date() } = {}) {
+  const windowEnd = validDate(now) || new Date();
+  const currentStart = new Date(windowEnd.getTime() - HEALTH_WINDOW_MS);
+  const previousStart = new Date(windowEnd.getTime() - 2 * HEALTH_WINDOW_MS);
+  const current = summarizeWindow({ events, sessions: presenceSessions, windowStart: currentStart, windowEnd, now: windowEnd });
+  const previous = summarizeWindow({ events, sessions: presenceSessions, windowStart: previousStart, windowEnd: currentStart, now: windowEnd });
+  const firstSeenByActor = new Map();
+  const activeCurrentActors = new Set();
+
+  events.forEach((event) => {
+    const actorId = actorIdForEvent(event);
+    const occurredAt = eventTime(event);
+    if (!actorId || !occurredAt) return;
+    const firstSeenAt = firstSeenByActor.get(actorId);
+    if (!firstSeenAt || occurredAt < firstSeenAt) firstSeenByActor.set(actorId, occurredAt);
+    if (occurredAt >= currentStart && occurredAt < windowEnd) activeCurrentActors.add(actorId);
+  });
+  presenceSessions.forEach((session) => {
+    const actorId = actorIdForHealthPresence(session);
+    const startedAt = sessionStart(session);
+    if (!actorId || !startedAt) return;
+    const firstSeenAt = firstSeenByActor.get(actorId);
+    if (!firstSeenAt || startedAt < firstSeenAt) firstSeenByActor.set(actorId, startedAt);
+    if (overlapsWindow(startedAt, sessionEnd(session, windowEnd), currentStart, windowEnd)) activeCurrentActors.add(actorId);
+  });
+
+  current.newUsers = [...firstSeenByActor.values()].filter((firstSeenAt) => firstSeenAt >= currentStart && firstSeenAt < windowEnd).length;
+  current.retention = Object.fromEntries(
+    HEALTH_RETENTION_DAYS.map((day) => [`d${day}`, retentionSummary(firstSeenByActor, activeCurrentActors, windowEnd, day)]),
+  );
+
+  const attentionItems = attentionItemsForHealth(current, previous, windowEnd);
+
+  return {
+    window: {
+      currentStart,
+      currentEnd: windowEnd,
+      previousStart,
+      previousEnd: currentStart,
+      retentionDays: HEALTH_RETENTION_DAYS,
+    },
+    status: attentionItems.length ? 'needs_attention' : 'normal',
+    attentionSummary: attentionItems[0]?.message || '',
+    attentionItems,
+    current,
+    previous,
+    trends: {
+      activeUsers: percentChange(current.activeUsers, previous.activeUsers),
+      sessions: percentChange(current.sessionCount, previous.sessionCount),
+      averageActiveDuration: percentChange(current.averageActiveDurationMs, previous.averageActiveDurationMs),
+      events: percentChange(current.eventCount, previous.eventCount),
+    },
   };
 }
 

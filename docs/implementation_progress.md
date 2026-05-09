@@ -85,3 +85,11 @@ Then add the capture snippet to a small test web page, generate several interact
 - Published package manager distribution for SwiftPM, Gradle, or npm.
 - Generic server request Auto Capture, request/response logging, HTTP hooks, database hooks, crash reporting, and log capture.
 - Device-lab integration smoke tests against real iOS/Android/React Native sample apps.
+
+## 2026-05-09
+
+### Completed
+
+- Reworked the selected-project analytics area into a developer-facing project health overview for the rolling last 24 hours compared with the previous 24 hours.
+- Added health summary aggregation for active users, new users, cohort retention, active sessions, clipped active duration, event totals, top regions/devices/pages/events, and high-confidence attention items.
+- Moved raw behavior and semantic event counts out of the primary cards so the console emphasizes project operating state instead of TraceMind pipeline internals.
