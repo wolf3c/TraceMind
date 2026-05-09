@@ -671,10 +671,6 @@
     return `${item.label || item.path || translateNow("Unknown")} · ${formatDuration(item.durationMs)}`;
   }
 
-  function eventTypeLabel(event) {
-    return event?.eventName || event?.eventType || translateNow("Unknown event");
-  }
-
   function eventSourceLabel(event) {
     return event?.sourceLabel || event?.sourceKey || event?.platform || translateNow("Unknown source");
   }
@@ -1186,14 +1182,12 @@
               <article class="event-row" role="listitem">
                 <div class="event-row-main">
                   <div class="event-row-title">
-                    <span class="tm-badge event-type-badge">{eventTypeLabel(event)}</span>
                     <strong>{event.title}</strong>
                   </div>
                   <p>{event.meaning}</p>
                 </div>
                 <div class="event-row-meta">
                   <span>{compactDate(event.occurredAt)}</span>
-                  <span>{event.path || "/"}</span>
                   <span>{eventSourceLabel(event)}</span>
                   <span>{eventActorLabel(event)}</span>
                 </div>
