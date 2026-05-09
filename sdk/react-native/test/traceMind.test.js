@@ -96,3 +96,19 @@ test('identifies users through the native SDK with sanitized primitive traits', 
     trial: false,
   }]]);
 });
+
+test('updates the native presence screen when available', () => {
+  const calls = [];
+  const client = createTraceMindClient({
+    nativeModule: {
+      setScreen(screen) {
+        calls.push(['setScreen', screen]);
+      },
+    },
+    platform: 'ios',
+  });
+
+  client.setScreen('Checkout');
+
+  assert.deepEqual(calls, [['setScreen', 'Checkout']]);
+});

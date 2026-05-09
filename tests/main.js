@@ -3,6 +3,7 @@ import { Meteor } from 'meteor/meteor';
 import { buildSemanticEvent, summarizeSemanticEvents } from '../imports/api/semantic';
 import {
   Developers,
+  PresenceSessions,
   Projects,
   RawBehaviors,
   SemanticEvents,
@@ -13,6 +14,7 @@ import {
   normalizeCaptureSource,
   normalizeEmail,
   summarizeBehaviorSources,
+  summarizePresenceSessions,
 } from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
 import { resolveConsoleState } from '../imports/ui/console_state';
@@ -155,6 +157,23 @@ describe('TraceMind', function () {
         assert.ok(!content.includes('tm_mcp_'));
         assert.ok(!content.includes('tracemind.super-tree.com'));
       });
+    });
+
+    it('serves Web Auto Capture with presence heartbeat support', async function () {
+      const { clientScript } = await import('../server/capture_routes');
+      const script = clientScript('https://tracemind.example.com');
+
+      assert.ok(script.includes('/api/presence'));
+      assert.ok(script.includes('heartbeatIntervalMs = 5000'));
+      assert.ok(script.includes("sendPresence('heartbeat')"));
+      assert.ok(script.includes("document.addEventListener('visibilitychange'"));
+      assert.ok(script.includes("window.addEventListener('pagehide'"));
+      assert.ok(script.includes("stopPresence('end')"));
+      const presencePayloadStart = script.indexOf('function sendPresence(state)');
+      const presencePayloadEnd = script.indexOf('function stopPresence(state)');
+      const presenceScript = script.slice(presencePayloadStart, presencePayloadEnd);
+      assert.ok(presenceScript.includes('path: location.pathname,'));
+      assert.ok(!presenceScript.includes('location.search'));
     });
 
     it('exposes MCP guidance and privacy validation tools', async function () {
@@ -927,12 +946,14 @@ describe('TraceMind', function () {
 
   if (Meteor.isServer) {
     let ingestCapturePayload;
+    let ingestPresencePayload;
     let resolveProjectByMcpToken;
 
     before(async function () {
       const captureRoutes = await import('../server/capture_routes');
       const methods = await import('../server/tracemind_methods');
       ingestCapturePayload = captureRoutes.ingestCapturePayload;
+      ingestPresencePayload = captureRoutes.ingestPresencePayload;
       resolveProjectByMcpToken = methods.resolveProjectByMcpToken;
     });
 
@@ -1025,6 +1046,34 @@ describe('TraceMind', function () {
         occurredAt: new Date('2026-05-07T02:05:00.000Z'),
         createdAt: new Date('2026-05-07T02:05:00.000Z'),
       });
+      await PresenceSessions.insertAsync({
+        projectId: selectedProject._id,
+        presenceId: 'selected-presence',
+        userId: 'selected-user',
+        sessionId: 'selected-session',
+        sourceType: 'web',
+        sourceKey: 'selected.example',
+        path: '/pricing',
+        startedAt: new Date('2026-05-08T01:00:00.000Z'),
+        lastSeenAt: new Date('2026-05-08T01:01:00.000Z'),
+        endedAt: new Date('2026-05-08T01:01:00.000Z'),
+        state: 'end',
+        durationMs: 60000,
+        createdAt: new Date('2026-05-08T01:00:00.000Z'),
+      });
+      await PresenceSessions.insertAsync({
+        projectId: otherProject._id,
+        presenceId: 'other-presence',
+        userId: 'other-user',
+        sessionId: 'other-session',
+        sourceType: 'web',
+        sourceKey: 'other.example',
+        path: '/other',
+        startedAt: new Date('2026-05-08T01:00:00.000Z'),
+        lastSeenAt: new Date('2026-05-08T01:01:00.000Z'),
+        durationMs: 60000,
+        createdAt: new Date('2026-05-08T01:00:00.000Z'),
+      });
 
       const result = await projectSummaryMethod.apply({ userId }, [selectedProject._id]);
 
@@ -1034,12 +1083,16 @@ describe('TraceMind', function () {
       assert.deepStrictEqual(result.summaryWindow, {
         semanticEventLimit: 200,
         rawBehaviorLimit: 500,
+        presenceSessionLimit: 500,
         semanticEventSampleSize: 200,
         rawBehaviorSampleSize: 1,
+        presenceSessionSampleSize: 1,
       });
       assert.strictEqual(result.summary.totalEvents, 200);
       assert.strictEqual(result.summary.uniqueUsers, 1);
       assert.strictEqual(result.summary.uniqueDevices, 1);
+      assert.strictEqual(result.presence.totalDurationMs, 60000);
+      assert.strictEqual(result.presence.topPaths[0].path, '/pricing');
       assert.deepStrictEqual(result.sources.map((source) => source.sourceKey), ['selected.example']);
       assert.ok(result.recentEvents.some((event) => event.eventName === 'selected_event'));
       assert.strictEqual(result.recentEvents.some((event) => event.eventName === 'other_event'), false);
@@ -1182,6 +1235,20 @@ describe('TraceMind', function () {
         occurredAt: new Date(),
         createdAt: new Date(),
       });
+      await PresenceSessions.insertAsync({
+        projectId: removedProjectId,
+        presenceId: 'removed-presence',
+        startedAt: new Date(),
+        lastSeenAt: new Date(),
+        createdAt: new Date(),
+      });
+      await PresenceSessions.insertAsync({
+        projectId: siblingProject._id,
+        presenceId: 'sibling-presence',
+        startedAt: new Date(),
+        lastSeenAt: new Date(),
+        createdAt: new Date(),
+      });
 
       const result = await removeMethod.apply({ userId }, [removedProjectId]);
 
@@ -1189,9 +1256,11 @@ describe('TraceMind', function () {
       assert.strictEqual(await Projects.findOneAsync(removedProjectId), undefined);
       assert.strictEqual(await RawBehaviors.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await SemanticEvents.find({ projectId: removedProjectId }).countAsync(), 0);
+      assert.strictEqual(await PresenceSessions.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.ok(await Projects.findOneAsync(siblingProject._id));
       assert.strictEqual(await RawBehaviors.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await SemanticEvents.find({ projectId: siblingProject._id }).countAsync(), 1);
+      assert.strictEqual(await PresenceSessions.find({ projectId: siblingProject._id }).countAsync(), 1);
     });
 
     it('rejects project deletion by non-owners', async function () {
@@ -1271,6 +1340,103 @@ describe('TraceMind', function () {
 
       assert.deepStrictEqual(result, { ok: true, ignored: true });
       assert.strictEqual(count, 0);
+    });
+
+    it('upserts presence sessions without creating raw or semantic events', async function () {
+      const projectId = `project-presence-${Date.now()}`;
+      const projectKey = `tm_proj_presence_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-presence',
+        name: 'Presence Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const start = await ingestPresencePayload({
+        projectKey,
+        presenceId: 'tm_pres_test',
+        sessionId: 'tm_sess_presence',
+        anonymousId: 'tm_anon_presence',
+        userId: 'user-presence',
+        deviceId: 'tm_dev_presence',
+        deviceFingerprint: 'tm_fp_presence',
+        platform: 'web',
+        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        path: '/pricing',
+        title: 'Pricing',
+        state: 'start',
+        heartbeatIntervalMs: 5000,
+        occurredAt: '2026-05-08T01:00:00.000Z',
+      }, { headers: {}, socket: {} });
+      const heartbeat = await ingestPresencePayload({
+        projectKey,
+        presenceId: 'tm_pres_test',
+        sessionId: 'tm_sess_presence',
+        anonymousId: 'tm_anon_presence',
+        userId: 'user-presence',
+        deviceId: 'tm_dev_presence',
+        platform: 'web',
+        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        path: '/pricing',
+        title: 'Pricing',
+        state: 'heartbeat',
+        occurredAt: '2026-05-08T01:00:05.000Z',
+      }, { headers: {}, socket: {} });
+      await ingestPresencePayload({
+        projectKey,
+        presenceId: 'tm_pres_test',
+        sessionId: 'tm_sess_presence',
+        anonymousId: 'tm_anon_presence',
+        userId: 'user-presence',
+        deviceId: 'tm_dev_presence',
+        platform: 'web',
+        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        path: '/pricing',
+        title: 'Pricing',
+        state: 'end',
+        occurredAt: '2026-05-08T01:00:10.000Z',
+      }, { headers: {}, socket: {} });
+
+      const session = await PresenceSessions.findOneAsync({ projectId, presenceId: 'tm_pres_test' });
+
+      assert.deepStrictEqual(start, { ok: true, ignored: false });
+      assert.deepStrictEqual(heartbeat, { ok: true, ignored: false });
+      assert.strictEqual(await PresenceSessions.find({ projectId }).countAsync(), 1);
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 0);
+      assert.strictEqual(await SemanticEvents.find({ projectId }).countAsync(), 0);
+      assert.strictEqual(session.state, 'end');
+      assert.strictEqual(session.path, '/pricing');
+      assert.strictEqual(session.sourceKey, 'app.example.com');
+      assert.strictEqual(session.heartbeatCount, 1);
+      assert.strictEqual(session.durationMs, 10000);
+      assert.strictEqual(summarizePresenceSessions([session], new Date('2026-05-08T01:00:12.000Z')).onlineSessions, 0);
+    });
+
+    it('ignores presence from blocked sources', async function () {
+      const projectId = `project-blocked-presence-${Date.now()}`;
+      const projectKey = `tm_proj_blocked_presence_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-blocked-presence',
+        name: 'Blocked Presence Project',
+        projectKey,
+        blockedSources: [{ sourceType: 'web', sourceKey: 'evil.example', blockedAt: new Date() }],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestPresencePayload({
+        projectKey,
+        presenceId: 'tm_pres_blocked',
+        source: { type: 'web', url: 'https://evil.example/pricing' },
+        state: 'start',
+      }, { headers: {}, socket: {} });
+
+      assert.deepStrictEqual(result, { ok: true, ignored: true });
+      assert.strictEqual(await PresenceSessions.find({ projectId }).countAsync(), 0);
     });
 
     it('stores source fields for accepted capture requests', async function () {

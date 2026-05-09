@@ -38,6 +38,11 @@ class TraceMindModule(
     TraceMind.identify(userId = userId, traits = readPrimitiveMap(traits))
   }
 
+  @ReactMethod
+  fun setScreen(screen: String) {
+    TraceMind.setScreen(screen)
+  }
+
   private fun readPrimitiveMap(payload: ReadableMap, key: String): Map<String, Any?> {
     if (!payload.hasKey(key)) return emptyMap()
     return payload.getMap(key)?.let { readPrimitiveMap(it) } ?: emptyMap()

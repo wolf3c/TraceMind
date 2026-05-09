@@ -76,6 +76,13 @@ function createTraceMindClient({ nativeModule, platform } = {}) {
       });
     },
 
+    setScreen(screen) {
+      assertNativeModule();
+      if (resolvedNativeModule.setScreen) {
+        resolvedNativeModule.setScreen(String(screen || '').slice(0, 160));
+      }
+    },
+
     platform,
   };
 }

@@ -3,6 +3,7 @@ import { Random } from 'meteor/random';
 import { Accounts } from 'meteor/accounts-base';
 import {
   Developers,
+  PresenceSessions,
   Projects,
   RawBehaviors,
   SemanticEvents,
@@ -13,12 +14,14 @@ import {
   publicProject,
   publicSemanticEvent,
   summarizeBehaviorSources,
+  summarizePresenceSessions,
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 
 const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
 const PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT = 200;
 const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
+const PROJECT_SUMMARY_PRESENCE_LIMIT = 500;
 
 function newToken(prefix) {
   return `${prefix}_${Random.secret(32)}`;
@@ -115,6 +118,10 @@ async function buildProjectSummary(project) {
     { projectId: project._id },
     { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT },
   ).fetchAsync();
+  const presenceSessions = await PresenceSessions.find(
+    { projectId: project._id },
+    { sort: { lastSeenAt: -1 }, limit: PROJECT_SUMMARY_PRESENCE_LIMIT },
+  ).fetchAsync();
 
   return {
     project: publicProject(await ensureProjectMcpTokens(project)),
@@ -123,10 +130,13 @@ async function buildProjectSummary(project) {
     summaryWindow: {
       semanticEventLimit: PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT,
       rawBehaviorLimit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT,
+      presenceSessionLimit: PROJECT_SUMMARY_PRESENCE_LIMIT,
       semanticEventSampleSize: events.length,
       rawBehaviorSampleSize: rawBehaviors.length,
+      presenceSessionSampleSize: presenceSessions.length,
     },
     summary: summarizeSemanticEvents(events),
+    presence: summarizePresenceSessions(presenceSessions),
     sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
     recentEvents: events.slice(0, 30).map(publicSemanticEvent),
   };
@@ -217,6 +227,10 @@ Meteor.methods({
       { projectId: { $in: projectIds } },
       { sort: { occurredAt: -1 }, limit: 500 },
     ).fetchAsync();
+    const presenceSessions = await PresenceSessions.find(
+      { projectId: { $in: projectIds } },
+      { sort: { lastSeenAt: -1 }, limit: 500 },
+    ).fetchAsync();
     const sourceSummaries = {};
     projectsWithMcpTokens.forEach((project) => {
       sourceSummaries[project._id] = summarizeBehaviorSources(
@@ -231,6 +245,7 @@ Meteor.methods({
       rawCount,
       semanticCount,
       summary: summarizeSemanticEvents(semanticEvents),
+      presence: summarizePresenceSessions(presenceSessions),
       sourceSummaries,
       recentEvents: semanticEvents.slice(0, 20).map(publicSemanticEvent),
     };
@@ -275,6 +290,7 @@ Meteor.methods({
 
     await RawBehaviors.removeAsync({ projectId: project._id });
     await SemanticEvents.removeAsync({ projectId: project._id });
+    await PresenceSessions.removeAsync({ projectId: project._id });
     await Projects.removeAsync(project._id);
     return { removed: true, projectId: project._id };
   },

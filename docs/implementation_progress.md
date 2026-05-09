@@ -72,6 +72,7 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added `/api/capture` batch ingestion for SDK queues using `{ projectKey, events: [...] }`, with per-event source normalization and source blocking.
 - Added initial native SDK packages under `sdk/ios`, `sdk/android`, and `sdk/react-native`, including one-line `TraceMind.start(...)` entrypoints, target hashing, sensitive-field filtering, local queueing, and batch flush paths.
 - Added native manual capture parity with Web: `TraceMind.identify(...)`, primitive string/number/boolean properties and context, user identity persistence, and React Native bridge forwarding.
+- Added independent user presence sessions for Web, iOS, Android, and React Native: `/api/presence`, `tracemind_presence_sessions`, 5-second foreground heartbeat, route/screen/background segment boundaries, and dashboard/MCP online-duration summaries without polluting raw or semantic events.
 - Simplified the developer console setup panel so environment-specific install and usage instructions live in documentation, while the console keeps only the project key, setup docs link, and Coding Agent entrypoint.
 - Updated Auto Capture, semantic event, MCP, README, and coding-agent documentation for cross-platform capture and native manual capture guidance.
 - Extended TraceMind setup planning to third-party MCP server and Agent Skill instrumentation with new `mcp_node`, `mcp_python`, and `agent_skill` setup surfaces, safe MCP runtime event types, and SDK test coverage for MCP tool/resource/prompt metadata capture.

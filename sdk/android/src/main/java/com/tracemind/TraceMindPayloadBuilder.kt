@@ -49,6 +49,25 @@ data class TraceMindBatch(
   val events: List<TraceMindPayload>
 )
 
+data class TraceMindPresencePayload(
+  val projectKey: String,
+  val presenceId: String,
+  val sessionId: String,
+  val anonymousId: String,
+  val deviceId: String,
+  val userId: String? = null,
+  val deviceFingerprint: String,
+  val platform: String,
+  val deviceInfo: Map<String, String>,
+  val source: TraceMindSource,
+  val path: String,
+  val title: String? = null,
+  val screen: String? = null,
+  val state: String,
+  val heartbeatIntervalMs: Int = 5000,
+  val occurredAt: String = Instant.now().toString()
+)
+
 interface TraceMindIdentityStore {
   val sessionId: String
   val anonymousId: String
@@ -134,6 +153,35 @@ class TraceMindPayloadBuilder(
       targetHash = target?.let { hash(targetHashSource(it), "tm_target_") },
       properties = sanitize(properties),
       context = sanitize(context)
+    )
+  }
+
+  fun presencePayload(
+    presenceId: String,
+    state: String,
+    path: String,
+    title: String? = null
+  ): TraceMindPresencePayload {
+    return TraceMindPresencePayload(
+      projectKey = projectKey,
+      presenceId = presenceId,
+      sessionId = identityStore.sessionId,
+      anonymousId = identityStore.anonymousId,
+      deviceId = identityStore.deviceId,
+      userId = identityStore.userId,
+      deviceFingerprint = hash("android:$packageName:${identityStore.deviceId}", "tm_fp_"),
+      platform = "android",
+      deviceInfo = mapOf("os" to "Android", "framework" to framework),
+      source = TraceMindSource(
+        type = "android",
+        packageName = packageName,
+        label = appLabel,
+        details = mapOf("framework" to framework)
+      ),
+      path = path,
+      title = title,
+      screen = path,
+      state = state
     )
   }
 

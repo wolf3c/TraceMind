@@ -32,6 +32,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 
 - Human login uses `accounts-passwordless` and Mailgun-backed Meteor `email`.
 - SDK capture uses a public project key. MCP access uses independent read-only `tm_mcp_*` tokens, separate from both project keys and Meteor Accounts browser sessions.
+- User online duration uses a separate presence store. Web, iOS, Android, and React Native write `/api/presence` heartbeat updates into `tracemind_presence_sessions`; these records do not create raw behaviors or semantic events.
 - Capture requests include cross-platform source fields. Project owners can block suspicious `sourceType + sourceKey` values after seeing them in the console; blocked events return ok but are not stored.
 - `/api/capture` accepts both single-event payloads and SDK batch payloads in `{ projectKey, events: [...] }` form.
 - Native SDK v1 targets stable Auto Capture basics: app/screen view, click/tap, input changed, submit, local queue, and batch flush. Automatic network hook, crash reporting, session replay, screenshots, and native snapshots are out of scope.

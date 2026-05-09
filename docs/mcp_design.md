@@ -57,7 +57,7 @@ Input:
 
 ### `tracemind.summary`
 
-汇总语义事件，返回总事件数、事件分布、路径分布、去重用户数、去重设备数和 DAU。
+汇总语义事件，返回总事件数、事件分布、路径分布、去重用户数、去重设备数和 DAU。返回值也包含 `presence`，用于分析当前在线用户、在线 session、最近在线、总在线时长、平均 session 时长，以及按 path/source 聚合的停留时长。Presence 来自 `/api/presence` 和 `tracemind_presence_sessions`，不是 semantic event。
 
 Input:
 
@@ -378,7 +378,7 @@ Input:
 ## 推荐 LLM 查询顺序
 
 1. 调用 `tracemind.event_definitions` 理解事件含义和字段。
-2. 调用 `tracemind.summary` 获取时间窗口内的概览和 DAU/设备数。
+2. 调用 `tracemind.summary` 获取时间窗口内的概览、DAU/设备数和 presence 在线时长。
 3. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`targetHash` 等维度下钻。
 4. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。
 

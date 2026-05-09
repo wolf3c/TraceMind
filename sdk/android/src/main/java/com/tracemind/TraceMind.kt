@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -20,11 +22,13 @@ object TraceMind {
   fun start(
     application: Application,
     projectKey: String,
-    endpoint: String = "https://tracemind.sandbox.galaxycloud.app/api/capture"
+    endpoint: String = "https://tracemind.sandbox.galaxycloud.app/api/capture",
+    presenceEndpoint: String = endpoint.replace("/api/capture", "/api/presence")
   ) {
     client = TraceMindClient(
       projectKey = projectKey,
       endpoint = endpoint,
+      presenceEndpoint = presenceEndpoint,
       packageName = application.packageName,
       appLabel = application.applicationInfo.loadLabel(application.packageManager).toString(),
       identityStore = SharedPreferencesIdentityStore(
@@ -32,6 +36,11 @@ object TraceMind {
       )
     )
     application.registerActivityLifecycleCallbacks(TraceMindLifecycleCallbacks(client!!))
+  }
+
+  @JvmStatic
+  fun setScreen(screen: String) {
+    client?.setScreen(screen)
   }
 
   @JvmStatic
@@ -54,13 +63,16 @@ object TraceMind {
 class TraceMindClient(
   projectKey: String,
   private val endpoint: String,
+  private val presenceEndpoint: String = endpoint.replace("/api/capture", "/api/presence"),
   packageName: String,
   appLabel: String,
   identityStore: TraceMindIdentityStore? = null,
-  private val maxQueueSize: Int = 100
+  private val maxQueueSize: Int = 100,
+  private val presenceSender: ((TraceMindPresencePayload) -> Unit)? = null
 ) {
   private val queue = ArrayDeque<TraceMindPayload>()
   private val transport = TraceMindHttpTransport(endpoint)
+  private val presenceTransport = TraceMindHttpTransport(presenceEndpoint)
   private val builder = TraceMindPayloadBuilder(
     projectKey = projectKey,
     packageName = packageName,
@@ -71,6 +83,16 @@ class TraceMindClient(
       deviceId = "tm_dev_${uuid()}"
     )
   )
+  private val handler: Handler? = runCatching { Handler(Looper.getMainLooper()) }.getOrNull()
+  private var presenceId: String? = null
+  private var currentScreen = "Application"
+  private val heartbeatIntervalMs = 5000L
+  private val heartbeatRunnable = object : Runnable {
+    override fun run() {
+      sendPresence("heartbeat", currentScreen, currentScreen)
+      handler?.postDelayed(this, heartbeatIntervalMs)
+    }
+  }
 
   fun capture(
     type: String,
@@ -105,6 +127,53 @@ class TraceMindClient(
 
   fun endpoint(): String = endpoint
 
+  fun presenceEndpoint(): String = presenceEndpoint
+
+  fun setScreen(screen: String) {
+    val nextScreen = normalizedScreen(screen)
+    if (nextScreen == currentScreen) return
+    if (presenceId != null) {
+      stopPresence("end")
+      startPresence(nextScreen, nextScreen, "start")
+    } else {
+      currentScreen = nextScreen
+    }
+  }
+
+  fun startPresence(screen: String, title: String? = null, state: String = "start") {
+    currentScreen = normalizedScreen(screen)
+    if (presenceId == null) presenceId = "tm_pres_${uuid()}"
+    handler?.removeCallbacks(heartbeatRunnable)
+    sendPresence(state, currentScreen, title)
+    handler?.postDelayed(heartbeatRunnable, heartbeatIntervalMs)
+  }
+
+  fun stopPresence(state: String = "end") {
+    handler?.removeCallbacks(heartbeatRunnable)
+    sendPresence(state, currentScreen, currentScreen)
+    presenceId = null
+  }
+
+  fun presencePayload(state: String, path: String = currentScreen, title: String? = null): TraceMindPresencePayload {
+    if (presenceId == null) presenceId = "tm_pres_${uuid()}"
+    return builder.presencePayload(
+      presenceId = presenceId ?: "",
+      state = state,
+      path = path,
+      title = title
+    )
+  }
+
+  private fun sendPresence(state: String, path: String, title: String? = null) {
+    val payload = presencePayload(state, path, title)
+    presenceSender?.invoke(payload) ?: Thread { presenceTransport.sendPresence(payload) }.start()
+  }
+
+  private fun normalizedScreen(screen: String): String {
+    val next = screen.take(160)
+    return next.ifEmpty { "Application" }
+  }
+
   private fun uuid(): String = java.util.UUID.randomUUID().toString().replace("-", "")
 }
 
@@ -117,9 +186,11 @@ private class TraceMindLifecycleCallbacks(
 
   override fun onActivityResumed(activity: Activity) {
     client.capture(type = "page_view", path = activity.javaClass.simpleName, title = activity.title?.toString())
+    client.startPresence(activity.javaClass.simpleName, activity.title?.toString())
   }
 
   override fun onActivityPaused(activity: Activity) {
+    client.stopPresence("background")
     client.flush()
   }
 
@@ -198,6 +269,21 @@ private class TraceMindHttpTransport(private val endpoint: String) {
       connection.disconnect()
     }
   }
+
+  fun sendPresence(payload: TraceMindPresencePayload) {
+    val connection = (URL(endpoint).openConnection() as HttpURLConnection)
+    try {
+      connection.requestMethod = "POST"
+      connection.setRequestProperty("Content-Type", "application/json")
+      connection.doOutput = true
+      connection.outputStream.use { stream ->
+        stream.write(payload.toJson().toByteArray(Charsets.UTF_8))
+      }
+      connection.inputStream.close()
+    } finally {
+      connection.disconnect()
+    }
+  }
 }
 
 internal fun TraceMindBatch.toJson(): String {
@@ -225,6 +311,28 @@ private fun TraceMindPayload.toJson(): String {
   title?.let { fields.add(""""title":"${it.escapeJson()}"""") }
   target?.let { fields.add(""""target":${it.toJson()}""") }
   targetHash?.let { fields.add(""""targetHash":"${it.escapeJson()}"""") }
+  return "{${fields.joinToString(",")}}"
+}
+
+private fun TraceMindPresencePayload.toJson(): String {
+  val fields = mutableListOf(
+    """"projectKey":"${projectKey.escapeJson()}"""",
+    """"presenceId":"${presenceId.escapeJson()}"""",
+    """"sessionId":"${sessionId.escapeJson()}"""",
+    """"anonymousId":"${anonymousId.escapeJson()}"""",
+    """"deviceId":"${deviceId.escapeJson()}"""",
+    """"deviceFingerprint":"${deviceFingerprint.escapeJson()}"""",
+    """"platform":"${platform.escapeJson()}"""",
+    """"path":"${path.escapeJson()}"""",
+    """"state":"${state.escapeJson()}"""",
+    """"heartbeatIntervalMs":$heartbeatIntervalMs""",
+    """"occurredAt":"${occurredAt.escapeJson()}"""",
+    """"deviceInfo":${deviceInfo.toJson()}""",
+    """"source":${source.toJson()}"""
+  )
+  userId?.let { fields.add(""""userId":"${it.escapeJson()}"""") }
+  title?.let { fields.add(""""title":"${it.escapeJson()}"""") }
+  screen?.let { fields.add(""""screen":"${it.escapeJson()}"""") }
   return "{${fields.joinToString(",")}}"
 }
 

@@ -11,6 +11,8 @@
 3. `buildSemanticEvent()` 对每条原始行为生成一条语义事件。
 4. 原始行为标记为 `processed`，并保存 `semanticEventId`，方便从语义事件回溯原始日志。
 
+在线时长不走这条链路。Web、iOS、Android 和 React Native 通过 `/api/presence` upsert `tracemind_presence_sessions`，用于当前在线和停留时长统计；presence 不生成 raw behavior 或 semantic event。
+
 ## 语义事件字段
 
 ```json

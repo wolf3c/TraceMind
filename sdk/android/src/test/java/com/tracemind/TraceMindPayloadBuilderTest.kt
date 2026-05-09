@@ -152,4 +152,58 @@ class TraceMindPayloadBuilderTest {
     assertFalse(json.contains("NaN"))
     assertFalse(json.contains("Infinity"))
   }
+
+  @Test
+  fun buildsPresencePayloadForOnlineDuration() {
+    val identityStore = InMemoryIdentityStore(userId = "user_123")
+    val builder = TraceMindPayloadBuilder(
+      projectKey = "tm_proj_android",
+      packageName = "com.example.android",
+      appLabel = "Example Android",
+      framework = "kotlin",
+      identityStore = identityStore
+    )
+
+    val payload = builder.presencePayload(
+      presenceId = "tm_pres_android",
+      state = "heartbeat",
+      path = "CheckoutActivity",
+      title = "Checkout"
+    )
+
+    assertEquals("tm_proj_android", payload.projectKey)
+    assertEquals("tm_pres_android", payload.presenceId)
+    assertEquals("user_123", payload.userId)
+    assertEquals("android", payload.platform)
+    assertEquals("android", payload.source.type)
+    assertEquals("com.example.android", payload.source.packageName)
+    assertEquals("CheckoutActivity", payload.path)
+    assertEquals("CheckoutActivity", payload.screen)
+    assertEquals("heartbeat", payload.state)
+    assertEquals(5000, payload.heartbeatIntervalMs)
+  }
+
+  @Test
+  fun setScreenStartsANewPresenceSegmentWhenPresenceIsActive() {
+    val presences = mutableListOf<TraceMindPresencePayload>()
+    val client = TraceMindClient(
+      projectKey = "tm_proj_android",
+      endpoint = "https://tracemind.example.com/api/capture",
+      packageName = "com.example.android",
+      appLabel = "Example Android",
+      identityStore = InMemoryIdentityStore(userId = "user_123"),
+      presenceSender = { presences.add(it) }
+    )
+
+    client.startPresence("HomeActivity", "Home")
+    val homePresenceId = presences.last().presenceId
+    client.setScreen("Checkout")
+
+    assertEquals(listOf("start", "end", "start"), presences.map { it.state })
+    assertEquals("HomeActivity", presences[1].path)
+    assertEquals(homePresenceId, presences[1].presenceId)
+    assertEquals("Checkout", presences[2].path)
+    assertEquals("Checkout", presences[2].screen)
+    assertFalse(homePresenceId == presences[2].presenceId)
+  }
 }

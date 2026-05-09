@@ -4,6 +4,10 @@ export const Developers = new Mongo.Collection('tracemind_developers');
 export const Projects = new Mongo.Collection('tracemind_projects');
 export const RawBehaviors = new Mongo.Collection('tracemind_raw_behaviors');
 export const SemanticEvents = new Mongo.Collection('tracemind_semantic_events');
+export const PresenceSessions = new Mongo.Collection('tracemind_presence_sessions');
+
+export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
+export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
 
 export const EVENT_TYPES = {
   page_view: '浏览页面',
@@ -420,5 +424,105 @@ export function publicRawBehavior(behavior) {
     occurredAt: behavior.occurredAt,
     semanticStatus: behavior.semanticStatus,
     semanticEventId: behavior.semanticEventId,
+  };
+}
+
+function actorIdForPresence(session = {}) {
+  return session.userId || session.anonymousId || session.sessionId || session.presenceId;
+}
+
+function durationForPresence(session = {}, now = new Date()) {
+  const startedAt = validDate(session.startedAt) || validDate(session.createdAt);
+  const lastSeenAt = validDate(session.endedAt) || validDate(session.lastSeenAt) || now;
+  if (!startedAt || !lastSeenAt) return 0;
+  return Math.max(0, lastSeenAt.getTime() - startedAt.getTime());
+}
+
+export function summarizePresenceSessions(sessions = [], now = new Date()) {
+  const onlineCutoff = new Date(now.getTime() - PRESENCE_ONLINE_WINDOW_MS);
+  const onlineUsers = new Set();
+  const onlineSessions = new Set();
+  const pathDurations = new Map();
+  const sourceDurations = new Map();
+  let totalDurationMs = 0;
+  let lastSeenAt = null;
+
+  sessions.forEach((session) => {
+    const durationMs = Number.isFinite(session.durationMs)
+      ? Math.max(0, session.durationMs)
+      : durationForPresence(session, now);
+    const seenAt = validDate(session.lastSeenAt);
+    const isOnline = session.state !== 'end'
+      && session.state !== 'ended'
+      && session.state !== 'background'
+      && seenAt
+      && seenAt >= onlineCutoff;
+    const actorId = actorIdForPresence(session);
+    const path = session.path || session.screen || '/';
+    const sourceKey = session.sourceKey || session.platform || 'unknown';
+
+    totalDurationMs += durationMs;
+    if (seenAt && (!lastSeenAt || seenAt > lastSeenAt)) lastSeenAt = seenAt;
+    if (isOnline) {
+      if (actorId) onlineUsers.add(actorId);
+      if (session.presenceId) onlineSessions.add(session.presenceId);
+    }
+
+    const pathItem = pathDurations.get(path) || { path, durationMs: 0, sessions: 0 };
+    pathItem.durationMs += durationMs;
+    pathItem.sessions += 1;
+    pathDurations.set(path, pathItem);
+
+    const sourceItem = sourceDurations.get(sourceKey) || {
+      sourceType: session.sourceType || 'unknown',
+      sourceKey,
+      sourceLabel: session.sourceLabel || sourceKey,
+      durationMs: 0,
+      sessions: 0,
+    };
+    sourceItem.durationMs += durationMs;
+    sourceItem.sessions += 1;
+    sourceDurations.set(sourceKey, sourceItem);
+  });
+
+  return {
+    onlineUsers: onlineUsers.size,
+    onlineSessions: onlineSessions.size,
+    totalDurationMs,
+    averageSessionDurationMs: sessions.length ? Math.round(totalDurationMs / sessions.length) : 0,
+    lastSeenAt,
+    heartbeatIntervalMs: PRESENCE_HEARTBEAT_INTERVAL_MS,
+    onlineWindowMs: PRESENCE_ONLINE_WINDOW_MS,
+    topPaths: [...pathDurations.values()].sort((left, right) => right.durationMs - left.durationMs),
+    topSources: [...sourceDurations.values()].sort((left, right) => right.durationMs - left.durationMs),
+  };
+}
+
+export function publicPresenceSession(session) {
+  return {
+    _id: session._id,
+    projectId: session.projectId,
+    presenceId: session.presenceId,
+    sessionId: session.sessionId,
+    anonymousId: session.anonymousId,
+    userId: session.userId,
+    deviceId: session.deviceId,
+    deviceFingerprint: session.deviceFingerprint,
+    platform: session.platform,
+    deviceInfo: session.deviceInfo,
+    sourceType: session.sourceType,
+    sourceKey: session.sourceKey,
+    sourceLabel: session.sourceLabel,
+    sourceDetails: session.sourceDetails,
+    path: session.path,
+    title: session.title,
+    screen: session.screen,
+    startedAt: session.startedAt,
+    lastSeenAt: session.lastSeenAt,
+    endedAt: session.endedAt,
+    state: session.state,
+    heartbeatIntervalMs: session.heartbeatIntervalMs,
+    heartbeatCount: session.heartbeatCount,
+    durationMs: session.durationMs,
   };
 }

@@ -3,6 +3,8 @@ import { Random } from 'meteor/random';
 import { Meteor } from 'meteor/meteor';
 import {
   EVENT_DEFINITIONS,
+  PRESENCE_HEARTBEAT_INTERVAL_MS,
+  PresenceSessions,
   RawBehaviors,
   SemanticEvents,
   buildEventQuery,
@@ -12,6 +14,7 @@ import {
   normalizeCaptureSource,
   publicRawBehavior,
   publicSemanticEvent,
+  summarizePresenceSessions,
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
@@ -361,6 +364,13 @@ async function queryProjectRawBehaviors(project, args = {}) {
   ).fetchAsync();
 }
 
+async function loadProjectPresenceSessions(project, limit = 500) {
+  return PresenceSessions.find(
+    { projectId: project._id },
+    { sort: { lastSeenAt: -1 }, limit },
+  ).fetchAsync();
+}
+
 function textResult(text, structuredContent) {
   return {
     content: [{ type: 'text', text }],
@@ -460,6 +470,7 @@ const SERVER_MANUAL_CAPTURE_WARNINGS = [
 
 function commonSetup(project, platform) {
   const captureApiUrl = Meteor.absoluteUrl('/api/capture');
+  const presenceApiUrl = Meteor.absoluteUrl('/api/presence');
   const notes = [
     'Use projectKey only for Auto Capture writes.',
     'Do not use the MCP token as data-tracemind-token.',
@@ -469,6 +480,7 @@ function commonSetup(project, platform) {
   return {
     platform,
     captureApiUrl,
+    presenceApiUrl,
     autoCapturedSignals: AUTO_CAPTURE_SIGNALS,
     privacyConstraints: PRIVACY_CONSTRAINTS,
     supportedPropertyTypes: SUPPORTED_MANUAL_PROPERTY_TYPES,
@@ -1237,10 +1249,16 @@ export async function callMcpTool(project, name, args = {}) {
 
   if (name === 'tracemind.summary') {
     const events = await queryProjectEvents(project, { ...args, limit: safeLimit(args.limit, 200, 500) });
+    const presenceSessions = await loadProjectPresenceSessions(project);
     const summary = summarizeSemanticEvents(events);
     return textResult(
       `TraceMind 找到 ${summary.totalEvents} 条语义事件。主要事件类型：${summary.topEvents.map((item) => `${item.eventType}（${item.count}）`).join('，') || '暂无'}。`,
-      { project: { _id: project._id, name: project.name }, summary, eventDefinitions: EVENT_DEFINITIONS },
+      {
+        project: { _id: project._id, name: project.name },
+        summary,
+        presence: summarizePresenceSessions(presenceSessions),
+        eventDefinitions: EVENT_DEFINITIONS,
+      },
     );
   }
 
@@ -1264,7 +1282,7 @@ export async function callMcpTool(project, name, args = {}) {
   throw new Error(`Unknown tool: ${name}`);
 }
 
-function clientScript(host) {
+export function clientScript(host) {
   return `
 (function () {
   if (window.__TraceMindLoaded) return;
@@ -1273,6 +1291,7 @@ function clientScript(host) {
   var script = document.currentScript;
   var projectKey = script && script.getAttribute('data-tracemind-token');
   var endpoint = (script && script.getAttribute('data-tracemind-endpoint')) || '${host}/api/capture';
+  var presenceEndpoint = (script && script.getAttribute('data-tracemind-presence-endpoint')) || '${host}/api/presence';
   var staticUserId = script && script.getAttribute('data-tracemind-user-id');
   var userIdProvider = script && script.getAttribute('data-tracemind-user-id-provider');
   var sessionId = localStorage.getItem('tracemind_session_id') || ('tm_sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -1316,6 +1335,9 @@ function clientScript(host) {
   }
 
   var fingerprint = hash(JSON.stringify(fingerprintInfo()), 'tm_fp_');
+  var heartbeatIntervalMs = ${PRESENCE_HEARTBEAT_INTERVAL_MS};
+  var presenceTimer = null;
+  var currentPresenceId = null;
 
   function textOf(element) {
     if (!element) return '';
@@ -1431,7 +1453,56 @@ function clientScript(host) {
       fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true });
   }
 
+  function newPresenceId() {
+    return 'tm_pres_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  function sendPresence(state) {
+    if (!projectKey || !currentPresenceId) return;
+    var payload = {
+      projectKey: projectKey,
+      presenceId: currentPresenceId,
+      sessionId: sessionId,
+      anonymousId: anonymousId,
+      userId: currentUserId(),
+      deviceId: deviceId,
+      deviceFingerprint: fingerprint,
+      platform: 'web',
+      deviceInfo: deviceInfo(),
+      source: currentSource(),
+      path: location.pathname,
+      title: document.title,
+      state: state,
+      heartbeatIntervalMs: heartbeatIntervalMs,
+      occurredAt: new Date().toISOString()
+    };
+
+    navigator.sendBeacon && navigator.sendBeacon(presenceEndpoint, new Blob([JSON.stringify(payload)], { type: 'application/json' })) ||
+      fetch(presenceEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true });
+  }
+
+  function stopPresence(state) {
+    if (presenceTimer) {
+      clearInterval(presenceTimer);
+      presenceTimer = null;
+    }
+    if (currentPresenceId) {
+      sendPresence(state || 'end');
+      currentPresenceId = null;
+    }
+  }
+
+  function startPresence(state) {
+    if (!projectKey || document.visibilityState === 'hidden' || currentPresenceId) return;
+    currentPresenceId = newPresenceId();
+    sendPresence(state || 'start');
+    presenceTimer = setInterval(function () {
+      sendPresence('heartbeat');
+    }, heartbeatIntervalMs);
+  }
+
   send('page_view');
+  startPresence('start');
   document.addEventListener('click', function (event) {
     var target = event.target;
     var targetDetails = targetInfo(target);
@@ -1467,13 +1538,31 @@ function clientScript(host) {
 
   var pushState = history.pushState;
   history.pushState = function () {
+    stopPresence('end');
     pushState.apply(history, arguments);
-    setTimeout(function () { send('route_change'); }, 0);
+    setTimeout(function () {
+      send('route_change');
+      startPresence('start');
+    }, 0);
   };
-  window.addEventListener('popstate', function () { send('route_change'); });
+  window.addEventListener('popstate', function () {
+    stopPresence('end');
+    send('route_change');
+    startPresence('start');
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') {
+      stopPresence('background');
+    } else {
+      startPresence('foreground');
+    }
+  });
+  window.addEventListener('pagehide', function () { stopPresence('end'); });
+  window.addEventListener('beforeunload', function () { stopPresence('end'); });
 
   window.TraceMind = {
     capture: send,
+    presence: sendPresence,
     identify: function (userId, traits) {
       localStorage.setItem('tracemind_user_id', userId);
       send('custom', { eventName: 'identify', userId: userId, properties: traits || {} });
@@ -1563,6 +1652,78 @@ export async function ingestCapturePayload(payload = {}, req = {}) {
   return insertCaptureEvent(project, payload, req);
 }
 
+function normalizePresenceState(value) {
+  const state = safeString(value, 40, 'heartbeat');
+  return ['start', 'heartbeat', 'end', 'background', 'foreground'].includes(state) ? state : 'heartbeat';
+}
+
+export async function ingestPresencePayload(payload = {}, req = {}) {
+  payload = payload || {};
+  const project = await resolveProjectByKey(payload.projectKey);
+  if (!project) {
+    return { ok: false, statusCode: 401, error: 'invalid_project_key' };
+  }
+
+  const source = normalizeCaptureSource(payload, req.headers || {});
+  if (isSourceBlocked(project, source)) {
+    return { ok: true, ignored: true };
+  }
+
+  const now = new Date();
+  const occurredAt = payload.occurredAt ? new Date(payload.occurredAt) : now;
+  const state = normalizePresenceState(payload.state);
+  const endedAt = state === 'end' || state === 'background' ? occurredAt : null;
+  const presenceId = safeString(payload.presenceId, 120, `tm_pres_${Random.id(17)}`);
+  const existing = await PresenceSessions.findOneAsync({ projectId: project._id, presenceId });
+  const startedAt = existing?.startedAt || occurredAt;
+  const durationMs = Math.max(0, (endedAt || occurredAt).getTime() - new Date(startedAt).getTime());
+  const modifier = {
+    $setOnInsert: {
+      projectId: project._id,
+      projectKey: project.projectKey,
+      presenceId,
+      startedAt,
+      createdAt: now,
+    },
+    $set: {
+      sessionId: safeString(payload.sessionId, 120),
+      anonymousId: safeString(payload.anonymousId, 120),
+      userId: safeString(payload.userId, 160),
+      deviceId: safeString(payload.deviceId, 120),
+      deviceFingerprint: safeString(payload.deviceFingerprint, 120),
+      platform: safeString(payload.platform, 40, 'web'),
+      deviceInfo: safeObject(payload.deviceInfo),
+      ip: safeString(clientIp(req), 80),
+      geo: { ...geoFromHeaders(req), ...safeObject(payload.geo, 2048) },
+      sourceType: source.sourceType,
+      sourceKey: source.sourceKey,
+      sourceLabel: source.sourceLabel,
+      sourceDetails: source.sourceDetails,
+      path: safeString(payload.path, 500, '/'),
+      title: safeString(payload.title, 160),
+      screen: safeString(payload.screen, 160),
+      lastSeenAt: occurredAt,
+      ...(endedAt ? { endedAt } : {}),
+      state: endedAt ? state : 'active',
+      heartbeatIntervalMs: Math.max(0, Number(payload.heartbeatIntervalMs) || PRESENCE_HEARTBEAT_INTERVAL_MS),
+      durationMs,
+      updatedAt: now,
+    },
+  };
+
+  if (state === 'heartbeat') {
+    modifier.$inc = { heartbeatCount: 1 };
+  }
+
+  await PresenceSessions.updateAsync(
+    { projectId: project._id, presenceId },
+    modifier,
+    { upsert: true },
+  );
+
+  return { ok: true, ignored: false };
+}
+
 async function handleCapture(req, res) {
   if (req.method === 'OPTIONS') {
     sendJson(res, 204, {});
@@ -1591,6 +1752,34 @@ async function handleCapture(req, res) {
   sendJson(res, 202, { ok: true });
 }
 
+async function handlePresence(req, res) {
+  if (req.method === 'OPTIONS') {
+    sendJson(res, 204, {});
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'method_not_allowed' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req));
+  } catch (error) {
+    sendJson(res, 400, { error: 'invalid_json' });
+    return;
+  }
+
+  const result = await ingestPresencePayload(payload, req);
+  if (!result.ok) {
+    sendJson(res, result.statusCode || 400, { error: result.error });
+    return;
+  }
+
+  sendJson(res, 202, { ok: true });
+}
+
 async function handleMcpGet(req, res) {
   if (req.method === 'OPTIONS') {
     sendJson(res, 204, {});
@@ -1609,6 +1798,7 @@ async function handleMcpGet(req, res) {
     { projectId: project._id },
     { sort: { occurredAt: -1 }, limit: 200 },
   ).fetchAsync();
+  const presenceSessions = await loadProjectPresenceSessions(project);
 
   sendJson(res, 200, {
     protocol: 'tracemind-mcp-preview',
@@ -1618,6 +1808,7 @@ async function handleMcpGet(req, res) {
       description: tool.description,
     })),
     summary: summarizeSemanticEvents(events),
+    presence: summarizePresenceSessions(presenceSessions),
     eventDefinitions: EVENT_DEFINITIONS,
     recentEvents: events.slice(0, 50).map(publicSemanticEvent),
   });
@@ -1728,6 +1919,13 @@ export function registerTraceMindRoutes() {
     handleCapture(req, res).catch((error) => {
       console.error('[TraceMind] capture failed', error);
       sendJson(res, 500, { error: 'capture_failed' });
+    });
+  });
+
+  WebApp.handlers.use('/api/presence', (req, res) => {
+    handlePresence(req, res).catch((error) => {
+      console.error('[TraceMind] presence failed', error);
+      sendJson(res, 500, { error: 'presence_failed' });
     });
   });
 

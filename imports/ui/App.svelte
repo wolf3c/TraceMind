@@ -60,6 +60,7 @@
   let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
   let sourceSummary = $derived(selectedProjectSummary?.sources || []);
   let summary = $derived(selectedProjectSummary?.summary);
+  let presence = $derived(selectedProjectSummary?.presence);
   let displayedRecentEvents = $derived((selectedProjectSummary?.recentEvents || []).slice(0, 15));
   let hiddenRecentEventCount = $derived(Math.max(0, (selectedProjectSummary?.recentEvents || []).length - displayedRecentEvents.length));
   let latestDau = $derived(summary?.dailyActiveUsers?.[summary.dailyActiveUsers.length - 1]?.count || 0);
@@ -591,6 +592,16 @@
     });
   }
 
+  function formatDuration(value) {
+    const totalSeconds = Math.max(0, Math.round(Number(value || 0) / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours) return `${hours}h ${minutes}m`;
+    if (minutes) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  }
+
   function eventTypeLabel(event) {
     return event?.eventName || event?.eventType || translateNow("Unknown event");
   }
@@ -1031,6 +1042,22 @@
           <div>
             <span>{$t("Recent devices")}</span>
             <strong>{summary?.uniqueDevices || 0}</strong>
+          </div>
+          <div>
+            <span>{$t("Online users")}</span>
+            <strong>{presence?.onlineUsers || 0}</strong>
+          </div>
+          <div>
+            <span>{$t("Online sessions")}</span>
+            <strong>{presence?.onlineSessions || 0}</strong>
+          </div>
+          <div>
+            <span>{$t("Total online time")}</span>
+            <strong>{formatDuration(presence?.totalDurationMs)}</strong>
+          </div>
+          <div>
+            <span>{$t("Average session time")}</span>
+            <strong>{formatDuration(presence?.averageSessionDurationMs)}</strong>
           </div>
         </div>
         {#if projectSummaryError}

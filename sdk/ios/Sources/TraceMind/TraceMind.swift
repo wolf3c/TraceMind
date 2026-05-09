@@ -3,6 +3,7 @@ import Foundation
 public struct TraceMindConfiguration {
   public let projectKey: String
   public let endpoint: URL
+  public let presenceEndpoint: URL
   public let sourceKey: String
   public let sourceLabel: String
   public let framework: String
@@ -10,12 +11,14 @@ public struct TraceMindConfiguration {
   public init(
     projectKey: String,
     endpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/capture")!,
+    presenceEndpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/presence")!,
     sourceKey: String = Bundle.main.bundleIdentifier ?? "unknown",
     sourceLabel: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? Bundle.main.bundleIdentifier ?? "unknown",
     framework: String = "swift"
   ) {
     self.projectKey = projectKey
     self.endpoint = endpoint
+    self.presenceEndpoint = presenceEndpoint
     self.sourceKey = sourceKey
     self.sourceLabel = sourceLabel
     self.framework = framework
@@ -141,6 +144,25 @@ public struct TraceMindBatch: Codable {
   public let events: [TraceMindPayload]
 }
 
+public struct TraceMindPresencePayload: Codable {
+  public let projectKey: String
+  public let presenceId: String
+  public let sessionId: String
+  public let anonymousId: String
+  public let deviceId: String
+  public let userId: String?
+  public let deviceFingerprint: String
+  public let platform: String
+  public let deviceInfo: [String: String]
+  public let source: TraceMindSource
+  public let path: String
+  public let title: String?
+  public let screen: String?
+  public let state: String
+  public let heartbeatIntervalMs: Int
+  public let occurredAt: String
+}
+
 public protocol TraceMindIdentityStore {
   var sessionId: String { get }
   var anonymousId: String { get }
@@ -206,6 +228,17 @@ public final class UserDefaultsIdentityStore: TraceMindIdentityStore {
 
 public protocol TraceMindTransport {
   func send(batch: TraceMindBatch, endpoint: URL) async throws
+  func sendPresence(payload: TraceMindPresencePayload, endpoint: URL) async throws
+}
+
+public extension TraceMindTransport {
+  func sendPresence(payload: TraceMindPresencePayload, endpoint: URL) async throws {
+    var request = URLRequest(url: endpoint)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try JSONEncoder.traceMind.encode(payload)
+    _ = try await URLSession.shared.data(for: request)
+  }
 }
 
 public struct URLSessionTraceMindTransport: TraceMindTransport {
@@ -226,6 +259,9 @@ public final class TraceMindClient {
   private let transport: TraceMindTransport
   private let maxQueueSize: Int
   private var queue: [TraceMindPayload] = []
+  private var presenceId: String?
+  private var currentScreen = "Application"
+  private let heartbeatIntervalMs = 5_000
 
   public init(
     configuration: TraceMindConfiguration,
@@ -278,6 +314,65 @@ public final class TraceMindClient {
       context: Self.sanitize(context),
       occurredAt: ISO8601DateFormatter.traceMind.string(from: Date())
     )
+  }
+
+  public func makePresencePayload(state: String, path: String? = nil, title: String? = nil) -> TraceMindPresencePayload {
+    if presenceId == nil {
+      presenceId = "tm_pres_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+    }
+    let screen = path ?? currentScreen
+    return TraceMindPresencePayload(
+      projectKey: configuration.projectKey,
+      presenceId: presenceId ?? "",
+      sessionId: identityStore.sessionId,
+      anonymousId: identityStore.anonymousId,
+      deviceId: identityStore.deviceId,
+      userId: identityStore.userId,
+      deviceFingerprint: Self.hash("ios:\(configuration.sourceKey):\(identityStore.deviceId)", prefix: "tm_fp_"),
+      platform: "ios",
+      deviceInfo: [
+        "os": "iOS",
+        "framework": configuration.framework,
+      ],
+      source: TraceMindSource(
+        type: "ios",
+        bundleId: configuration.sourceKey,
+        packageName: nil,
+        label: configuration.sourceLabel,
+        details: ["framework": configuration.framework]
+      ),
+      path: screen,
+      title: title,
+      screen: screen,
+      state: state,
+      heartbeatIntervalMs: heartbeatIntervalMs,
+      occurredAt: ISO8601DateFormatter.traceMind.string(from: Date())
+    )
+  }
+
+  public func sendPresence(state: String, path: String? = nil, title: String? = nil) async throws {
+    let payload = makePresencePayload(state: state, path: path, title: title)
+    try await transport.sendPresence(payload: payload, endpoint: configuration.presenceEndpoint)
+    if state == "end" || state == "background" {
+      presenceId = nil
+    }
+  }
+
+  public func setScreen(_ screen: String) {
+    currentScreen = Self.normalizedScreen(screen)
+  }
+
+  func switchPresenceScreen(_ screen: String) async throws {
+    let nextScreen = Self.normalizedScreen(screen)
+    if nextScreen == currentScreen { return }
+    let previousScreen = currentScreen
+    if presenceId != nil {
+      try await sendPresence(state: "end", path: previousScreen, title: previousScreen)
+      currentScreen = nextScreen
+      try await sendPresence(state: "start", path: nextScreen, title: nextScreen)
+    } else {
+      currentScreen = nextScreen
+    }
   }
 
   public func capture(
@@ -364,6 +459,11 @@ public final class TraceMindClient {
   private static func normalizeFieldKey(_ key: String) -> String {
     key.lowercased().replacingOccurrences(of: #"[_\-\s]+"#, with: "", options: .regularExpression)
   }
+
+  private static func normalizedScreen(_ screen: String) -> String {
+    let next = String(screen.prefix(160))
+    return next.isEmpty ? "Application" : next
+  }
 }
 
 public enum TraceMind {
@@ -373,7 +473,13 @@ public enum TraceMind {
     projectKey: String,
     endpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/capture")!
   ) {
-    let nextClient = TraceMindClient(configuration: TraceMindConfiguration(projectKey: projectKey, endpoint: endpoint))
+    let presenceEndpoint = URL(string: endpoint.absoluteString.replacingOccurrences(of: "/api/capture", with: "/api/presence"))
+      ?? URL(string: "https://tracemind.sandbox.galaxycloud.app/api/presence")!
+    let nextClient = TraceMindClient(configuration: TraceMindConfiguration(
+      projectKey: projectKey,
+      endpoint: endpoint,
+      presenceEndpoint: presenceEndpoint
+    ))
     client = nextClient
     TraceMindAutoCapture.start(client: nextClient)
   }
@@ -386,6 +492,11 @@ public enum TraceMind {
     context: TraceMindFields = [:]
   ) throws {
     try client?.capture(type: type, eventName: eventName, path: path, properties: properties, context: context)
+  }
+
+  public static func setScreen(_ screen: String) {
+    client?.setScreen(screen)
+    TraceMindAutoCapture.setScreen(screen)
   }
 
   public static func identify(_ userId: String, traits: TraceMindFields = [:]) throws {
@@ -410,6 +521,9 @@ import UIKit
 
 final class TraceMindAutoCapture {
   private static weak var client: TraceMindClient?
+  private static var heartbeatTimer: Timer?
+  private static var currentScreen = "Application"
+  private static var isPresenceActive = false
 
   static func start(client: TraceMindClient) {
     self.client = client
@@ -417,6 +531,18 @@ final class TraceMindAutoCapture {
       self,
       selector: #selector(appDidBecomeActive),
       name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appWillResignActive),
+      name: UIApplication.willResignActiveNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appDidEnterBackground),
+      name: UIApplication.didEnterBackgroundNotification,
       object: nil
     )
     NotificationCenter.default.addObserver(
@@ -431,10 +557,55 @@ final class TraceMindAutoCapture {
       name: UITextView.textDidChangeNotification,
       object: nil
     )
+    if UIApplication.shared.applicationState == .active {
+      appDidBecomeActive()
+    }
   }
 
   @objc private static func appDidBecomeActive() {
     try? client?.capture(type: "page_view", path: "Application", title: "Application")
+    isPresenceActive = true
+    startPresence("foreground")
+  }
+
+  @objc private static func appWillResignActive() {
+    stopPresence("background")
+  }
+
+  @objc private static func appDidEnterBackground() {
+    stopPresence("background")
+  }
+
+  static func setScreen(_ screen: String) {
+    let nextScreen = normalizedScreen(screen)
+    if nextScreen == currentScreen { return }
+    currentScreen = nextScreen
+    if isPresenceActive {
+      Task { try? await client?.switchPresenceScreen(nextScreen) }
+    } else {
+      client?.setScreen(nextScreen)
+    }
+  }
+
+  private static func startPresence(_ state: String) {
+    heartbeatTimer?.invalidate()
+    Task { try? await client?.sendPresence(state: state, path: currentScreen, title: currentScreen) }
+    heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+      Task { try? await client?.sendPresence(state: "heartbeat", path: currentScreen, title: currentScreen) }
+    }
+  }
+
+  private static func stopPresence(_ state: String) {
+    if !isPresenceActive { return }
+    isPresenceActive = false
+    heartbeatTimer?.invalidate()
+    heartbeatTimer = nil
+    Task { try? await client?.sendPresence(state: state, path: currentScreen, title: currentScreen) }
+  }
+
+  private static func normalizedScreen(_ screen: String) -> String {
+    let next = String(screen.prefix(160))
+    return next.isEmpty ? "Application" : next
   }
 
   @objc private static func textDidChange(_ notification: Notification) {
@@ -489,5 +660,6 @@ final class TraceMindAutoCapture {
 #else
 final class TraceMindAutoCapture {
   static func start(client: TraceMindClient) {}
+  static func setScreen(_ screen: String) {}
 }
 #endif

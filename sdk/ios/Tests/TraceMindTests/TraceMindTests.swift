@@ -3,9 +3,18 @@ import XCTest
 
 final class RecordingTransport: TraceMindTransport {
   var lastBatch: TraceMindBatch?
+  var lastPresence: TraceMindPresencePayload?
+  var presences: [TraceMindPresencePayload] = []
+  var lastPresenceEndpoint: URL?
 
   func send(batch: TraceMindBatch, endpoint: URL) async throws {
     lastBatch = batch
+  }
+
+  func sendPresence(payload: TraceMindPresencePayload, endpoint: URL) async throws {
+    lastPresence = payload
+    presences.append(payload)
+    lastPresenceEndpoint = endpoint
   }
 }
 
@@ -166,5 +175,63 @@ final class TraceMindTests: XCTestCase {
     XCTAssertNil(event.properties["access" + "Token"])
     XCTAssertEqual(event.context["source"], .string("pricing"))
     XCTAssertEqual(event.context["retry"], .bool(false))
+  }
+
+  func testPresencePayloadUsesDedicatedEndpointAndScreen() async throws {
+    let transport = RecordingTransport()
+    let identityStore = InMemoryIdentityStore(userId: "user_123")
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        presenceEndpoint: URL(string: "https://tracemind.example.com/api/presence")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: identityStore,
+      transport: transport
+    )
+
+    client.setScreen("CheckoutViewController")
+    try await client.sendPresence(state: "heartbeat")
+
+    let presence = try XCTUnwrap(transport.lastPresence)
+    XCTAssertEqual(transport.lastPresenceEndpoint?.absoluteString, "https://tracemind.example.com/api/presence")
+    XCTAssertEqual(presence.projectKey, "tm_proj_ios")
+    XCTAssertEqual(presence.userId, "user_123")
+    XCTAssertEqual(presence.platform, "ios")
+    XCTAssertEqual(presence.source.type, "ios")
+    XCTAssertEqual(presence.path, "CheckoutViewController")
+    XCTAssertEqual(presence.screen, "CheckoutViewController")
+    XCTAssertEqual(presence.state, "heartbeat")
+    XCTAssertEqual(presence.heartbeatIntervalMs, 5000)
+  }
+
+  func testSwitchPresenceScreenEndsOldSegmentAndStartsNewSegment() async throws {
+    let transport = RecordingTransport()
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        presenceEndpoint: URL(string: "https://tracemind.example.com/api/presence")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore(userId: "user_123"),
+      transport: transport
+    )
+
+    client.setScreen("HomeViewController")
+    try await client.sendPresence(state: "heartbeat")
+    let homePresenceId = try XCTUnwrap(transport.presences.last?.presenceId)
+    try await client.switchPresenceScreen("CheckoutViewController")
+
+    XCTAssertEqual(transport.presences.map(\.state), ["heartbeat", "end", "start"])
+    XCTAssertEqual(transport.presences[1].path, "HomeViewController")
+    XCTAssertEqual(transport.presences[1].presenceId, homePresenceId)
+    XCTAssertEqual(transport.presences[2].path, "CheckoutViewController")
+    XCTAssertNotEqual(transport.presences[2].presenceId, homePresenceId)
   }
 }

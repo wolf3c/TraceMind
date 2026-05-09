@@ -30,6 +30,10 @@ final class TraceMindModule: NSObject {
     try? TraceMind.identify(userId, traits: Self.traceMindFields(traits))
   }
 
+  @objc func setScreen(_ screen: String) {
+    TraceMind.setScreen(screen)
+  }
+
   private static func traceMindFields(_ value: Any?) -> TraceMindFields {
     guard let fields = value as? NSDictionary else { return [:] }
     var next: TraceMindFields = [:]
