@@ -3,6 +3,7 @@ import { Random } from 'meteor/random';
 import { Meteor } from 'meteor/meteor';
 import {
   CaptureDeliveryReports,
+  ACTIVE_IDLE_TIMEOUT_MS,
   EVENT_DEFINITIONS,
   PRESENCE_HEARTBEAT_INTERVAL_MS,
   PresenceSessions,
@@ -1464,8 +1465,13 @@ export function clientScript(host) {
 
   var fingerprint = hash(JSON.stringify(fingerprintInfo()), 'tm_fp_');
   var heartbeatIntervalMs = ${PRESENCE_HEARTBEAT_INTERVAL_MS};
+  var ACTIVE_IDLE_TIMEOUT_MS = 60 * 1000;
   var presenceTimer = null;
   var currentPresenceId = null;
+  var activeDurationMs = 0;
+  var activeStartedAt = null;
+  var lastActiveAt = null;
+  var windowIsFocused = !document.hasFocus || document.hasFocus();
   var MAX_QUEUE_EVENTS = 300;
   var CAPTURE_BATCH_SIZE = 20;
   var PRESENCE_BATCH_SIZE = 20;
@@ -1983,7 +1989,57 @@ export function clientScript(host) {
     return 'tm_pres_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
   }
 
+  function canAccrueActiveTime() {
+    return document.visibilityState !== 'hidden' && windowIsFocused;
+  }
+
+  function resetActiveClock() {
+    activeDurationMs = 0;
+    activeStartedAt = null;
+    lastActiveAt = null;
+  }
+
+  function settleActiveWindow(now) {
+    now = now === undefined || now === null ? Date.now() : now;
+    if (activeStartedAt === null || activeStartedAt === undefined || lastActiveAt === null || lastActiveAt === undefined) return;
+    var idleCutoff = lastActiveAt + ACTIVE_IDLE_TIMEOUT_MS;
+    var endAt = Math.min(now, idleCutoff);
+    if (endAt > activeStartedAt) {
+      activeDurationMs += endAt - activeStartedAt;
+    }
+    activeStartedAt = endAt < now ? null : endAt;
+  }
+
+  function inactiveActiveState(now) {
+    if (!canAccrueActiveTime()) return 'inactive';
+    if (lastActiveAt !== null && lastActiveAt !== undefined && now - lastActiveAt >= ACTIVE_IDLE_TIMEOUT_MS) return 'idle';
+    return 'inactive';
+  }
+
+  function resumeActiveWindow() {
+    if (!canAccrueActiveTime()) return;
+    var now = Date.now();
+    settleActiveWindow(now);
+    lastActiveAt = now;
+    if (activeStartedAt === null || activeStartedAt === undefined) activeStartedAt = now;
+  }
+
+  function pauseActiveWindow() {
+    settleActiveWindow(Date.now());
+    activeStartedAt = null;
+  }
+
+  function recordActiveInteraction() {
+    if (!canAccrueActiveTime()) return;
+    var now = Date.now();
+    settleActiveWindow(now);
+    lastActiveAt = now;
+    if (activeStartedAt === null || activeStartedAt === undefined) activeStartedAt = now;
+  }
+
   function buildPresencePayload(state) {
+    var now = Date.now();
+    settleActiveWindow(now);
     return {
       projectKey: projectKey,
       presenceId: currentPresenceId,
@@ -1999,6 +2055,10 @@ export function clientScript(host) {
       title: document.title,
       state: state,
       heartbeatIntervalMs: heartbeatIntervalMs,
+      activeDurationMs: activeDurationMs,
+      lastActiveAt: lastActiveAt ? new Date(lastActiveAt).toISOString() : undefined,
+      activeState: activeStartedAt ? 'active' : inactiveActiveState(now),
+      idleTimeoutMs: ACTIVE_IDLE_TIMEOUT_MS,
       occurredAt: new Date().toISOString()
     };
   }
@@ -2014,14 +2074,18 @@ export function clientScript(host) {
       presenceTimer = null;
     }
     if (currentPresenceId) {
+      pauseActiveWindow();
       sendPresence(state || 'end');
       currentPresenceId = null;
+      resetActiveClock();
     }
   }
 
   function startPresence(state) {
     if (!projectKey || document.visibilityState === 'hidden' || currentPresenceId) return;
+    resetActiveClock();
     currentPresenceId = newPresenceId();
+    resumeActiveWindow();
     sendPresence(state || 'start');
     presenceTimer = setInterval(function () {
       sendPresence('heartbeat');
@@ -2031,6 +2095,7 @@ export function clientScript(host) {
   var inputDebounceTimers = {};
 
   function sendTargetEvent(eventType, event) {
+    recordActiveInteraction();
     var targetDetails = eventTargetDetails(event, eventType);
     send(eventType, {
       targetText: textOf(targetDetails.element),
@@ -2053,6 +2118,7 @@ export function clientScript(host) {
   }, true);
 
   document.addEventListener('input', function (event) {
+    recordActiveInteraction();
     var targetDetails = eventTargetDetails(event, 'input');
     var key = targetDetails.identity.key;
     clearTimeout(inputDebounceTimers[key]);
@@ -2080,6 +2146,7 @@ export function clientScript(host) {
   }, true);
 
   document.addEventListener('keydown', function (event) {
+    recordActiveInteraction();
     var key = event.key || event.code;
     if (key === 'Enter' || key === 'Search') {
       var target = interactiveTarget(event);
@@ -2088,6 +2155,10 @@ export function clientScript(host) {
       }
     }
   }, true);
+
+  document.addEventListener('scroll', recordActiveInteraction, true);
+  document.addEventListener('touchstart', recordActiveInteraction, true);
+  document.addEventListener('pointerdown', recordActiveInteraction, true);
 
   function captureRouteChange(callback) {
     stopPresence('end');
@@ -2125,6 +2196,20 @@ export function clientScript(host) {
     } else {
       startPresence('foreground');
       flushQueue('visibilitychange', false);
+    }
+  });
+  window.addEventListener('blur', function () {
+    windowIsFocused = false;
+    pauseActiveWindow();
+    sendPresence('heartbeat');
+  });
+  window.addEventListener('focus', function () {
+    windowIsFocused = true;
+    if (currentPresenceId) {
+      resumeActiveWindow();
+      sendPresence('foreground');
+    } else {
+      startPresence('foreground');
     }
   });
   window.addEventListener('online', function () { flushQueue('online', false); });
@@ -2252,6 +2337,17 @@ function normalizePresenceState(value) {
   return ['start', 'heartbeat', 'end', 'background', 'foreground'].includes(state) ? state : 'heartbeat';
 }
 
+function normalizeActiveState(value) {
+  const state = safeString(value, 40, 'inactive');
+  return ['active', 'idle', 'inactive'].includes(state) ? state : 'inactive';
+}
+
+function safeDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 async function upsertPresenceEvent(project, payload = {}, req = {}) {
   const source = normalizeCaptureSource(payload, req.headers || {});
   if (isSourceBlocked(project, source)) {
@@ -2266,6 +2362,9 @@ async function upsertPresenceEvent(project, payload = {}, req = {}) {
   const existing = await PresenceSessions.findOneAsync({ projectId: project._id, presenceId });
   const startedAt = existing?.startedAt || occurredAt;
   const durationMs = Math.max(0, (endedAt || occurredAt).getTime() - new Date(startedAt).getTime());
+  const activeDurationMs = safeCount(payload.activeDurationMs);
+  const lastActiveAt = safeDate(payload.lastActiveAt);
+  const idleTimeoutMs = Math.max(0, Number(payload.idleTimeoutMs) || ACTIVE_IDLE_TIMEOUT_MS);
   const modifier = {
     $setOnInsert: {
       projectId: project._id,
@@ -2296,6 +2395,10 @@ async function upsertPresenceEvent(project, payload = {}, req = {}) {
       state: endedAt ? state : 'active',
       heartbeatIntervalMs: Math.max(0, Number(payload.heartbeatIntervalMs) || PRESENCE_HEARTBEAT_INTERVAL_MS),
       durationMs,
+      activeDurationMs,
+      lastActiveAt,
+      activeState: normalizeActiveState(payload.activeState),
+      idleTimeoutMs,
       updatedAt: now,
     },
   };

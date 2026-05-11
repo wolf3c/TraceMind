@@ -249,6 +249,9 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(presence.screen, "CheckoutViewController")
     XCTAssertEqual(presence.state, "heartbeat")
     XCTAssertEqual(presence.heartbeatIntervalMs, 5000)
+    XCTAssertEqual(presence.activeDurationMs, 0)
+    XCTAssertEqual(presence.activeState, "inactive")
+    XCTAssertEqual(presence.idleTimeoutMs, 60_000)
   }
 
   func testSwitchPresenceScreenEndsOldSegmentAndStartsNewSegment() async throws {
@@ -276,5 +279,41 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(transport.presences[1].presenceId, homePresenceId)
     XCTAssertEqual(transport.presences[2].path, "CheckoutViewController")
     XCTAssertNotEqual(transport.presences[2].presenceId, homePresenceId)
+  }
+
+  func testStrictActiveDurationStopsAtIdleWindowAndBackground() async throws {
+    let transport = RecordingTransport()
+    var now = ISO8601DateFormatter().date(from: "2026-05-08T01:00:00Z")!
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        presenceEndpoint: URL(string: "https://tracemind.example.com/api/presence")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore(userId: "user_123"),
+      transport: transport,
+      clock: { now }
+    )
+
+    try await client.sendPresence(state: "start", path: "CheckoutViewController")
+    now = now.addingTimeInterval(90)
+    try await client.sendPresence(state: "heartbeat", path: "CheckoutViewController")
+    XCTAssertEqual(transport.presences.last?.activeDurationMs, 60_000)
+    XCTAssertEqual(transport.presences.last?.activeState, "idle")
+
+    client.recordActivity()
+    now = now.addingTimeInterval(10)
+    try await client.sendPresence(state: "heartbeat", path: "CheckoutViewController")
+    XCTAssertEqual(transport.presences.last?.activeDurationMs, 70_000)
+    XCTAssertEqual(transport.presences.last?.activeState, "active")
+
+    now = now.addingTimeInterval(20)
+    try await client.sendPresence(state: "background", path: "CheckoutViewController")
+    XCTAssertEqual(transport.presences.last?.activeDurationMs, 90_000)
+    XCTAssertEqual(transport.presences.last?.activeState, "inactive")
+    XCTAssertEqual(transport.presences.last?.lastActiveAt, "2026-05-08T01:01:30Z")
   }
 }

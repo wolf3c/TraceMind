@@ -184,14 +184,21 @@ describe('TraceMind', function () {
 
       assert.ok(script.includes('/api/presence'));
       assert.ok(script.includes('heartbeatIntervalMs = 5000'));
+      assert.ok(script.includes('ACTIVE_IDLE_TIMEOUT_MS = 60 * 1000'));
       assert.ok(script.includes("sendPresence('heartbeat')"));
       assert.ok(script.includes("document.addEventListener('visibilitychange'"));
+      assert.ok(script.includes("window.addEventListener('blur'"));
+      assert.ok(script.includes("window.addEventListener('focus'"));
       assert.ok(script.includes("window.addEventListener('pagehide'"));
       assert.ok(script.includes("stopPresence('end')"));
       const presencePayloadStart = script.indexOf('function buildPresencePayload(state)');
       const presencePayloadEnd = script.indexOf('function sendPresence(state)');
       const presenceScript = script.slice(presencePayloadStart, presencePayloadEnd);
       assert.ok(presenceScript.includes('path: location.pathname,'));
+      assert.ok(presenceScript.includes('activeDurationMs: activeDurationMs,'));
+      assert.ok(presenceScript.includes('lastActiveAt: lastActiveAt ? new Date(lastActiveAt).toISOString() : undefined,'));
+      assert.ok(presenceScript.includes('activeState: activeStartedAt ?'));
+      assert.ok(presenceScript.includes('idleTimeoutMs: ACTIVE_IDLE_TIMEOUT_MS,'));
       assert.ok(!presenceScript.includes('location.search'));
     });
 
@@ -290,6 +297,109 @@ describe('TraceMind', function () {
       assert.strictEqual(presenceBody.events.length, 1);
       assert.strictEqual(captureBody.deliveryStats.sent, 1);
       assert.strictEqual(presenceBody.deliveryStats.sent, 1);
+    });
+
+    it('tracks strict web active duration and stops it on window blur', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const fetchCalls = [];
+      const documentListeners = {};
+      const windowListeners = {};
+      let currentTime = Date.parse('2026-05-08T01:00:00.000Z');
+      class FakeDate extends Date {
+        constructor(...args) {
+          super(...(args.length ? args : [currentTime]));
+        }
+
+        static now() {
+          return currentTime;
+        }
+      }
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind active page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener(type, handler) {
+            documentListeners[type] = handler;
+          },
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date: FakeDate,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch(endpoint, options) {
+          fetchCalls.push({ endpoint, body: options.body });
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener(type, handler) {
+          windowListeners[type] = handler;
+        },
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      currentTime += 30 * 1000;
+      windowListeners.blur();
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      let queued = JSON.parse(storage.get(queueKey));
+      const blurHeartbeat = queued.find((record) => record.kind === 'presence' && record.payload.state === 'heartbeat');
+
+      assert.strictEqual(blurHeartbeat.payload.activeDurationMs, 30000);
+      assert.strictEqual(blurHeartbeat.payload.activeState, 'inactive');
+      assert.strictEqual(blurHeartbeat.payload.idleTimeoutMs, 60000);
+      assert.strictEqual(blurHeartbeat.payload.lastActiveAt, '2026-05-08T01:00:00.000Z');
+
+      currentTime += 120 * 1000;
+      sandbox.window.TraceMind.presence('heartbeat');
+      queued = JSON.parse(storage.get(queueKey));
+      assert.strictEqual(queued.filter((record) => record.kind === 'presence').length, 2);
+      assert.strictEqual(queued.find((record) => record.kind === 'presence' && record.payload.state === 'heartbeat').payload.activeDurationMs, 30000);
+
+      windowListeners.focus();
+      currentTime += 90 * 1000;
+      sandbox.window.TraceMind.presence('heartbeat');
+      queued = JSON.parse(storage.get(queueKey));
+      const heartbeat = queued.find((record) => record.kind === 'presence' && record.payload.state === 'heartbeat');
+
+      assert.strictEqual(heartbeat.payload.activeDurationMs, 90000);
+      assert.strictEqual(heartbeat.payload.activeState, 'idle');
     });
 
     it('keeps failed queue records with retry metadata and coalesces presence heartbeats', async function () {
@@ -1202,9 +1312,9 @@ describe('TraceMind', function () {
         { eventType: 'page_view', eventName: 'page_view', userId: 'returning-d7', path: '/', occurredAt: new Date('2026-05-02T13:00:00.000Z') },
       ],
       presenceSessions: [
-        { presenceId: 'current-1', userId: 'current-user', path: '/', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-09T10:00:00.000Z'), lastSeenAt: new Date('2026-05-09T10:30:00.000Z') },
-        { presenceId: 'current-2', anonymousId: 'new-current', path: '/setup', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-09T11:00:00.000Z'), lastSeenAt: new Date('2026-05-09T11:15:00.000Z') },
-        { presenceId: 'previous-1', userId: 'previous-only', path: '/', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-08T10:00:00.000Z'), lastSeenAt: new Date('2026-05-08T10:10:00.000Z') },
+        { presenceId: 'current-1', userId: 'current-user', path: '/', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-09T10:00:00.000Z'), lastSeenAt: new Date('2026-05-09T10:30:00.000Z'), activeDurationMs: 300000 },
+        { presenceId: 'current-2', anonymousId: 'new-current', path: '/setup', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-09T11:00:00.000Z'), lastSeenAt: new Date('2026-05-09T11:15:00.000Z'), activeDurationMs: 120000 },
+        { presenceId: 'previous-1', userId: 'previous-only', path: '/', sourceKey: 'web', sourceLabel: 'Web', startedAt: new Date('2026-05-08T10:00:00.000Z'), lastSeenAt: new Date('2026-05-08T10:10:00.000Z'), activeDurationMs: 60000 },
       ],
       now,
     });
@@ -1217,7 +1327,7 @@ describe('TraceMind', function () {
     assert.strictEqual(health.previous.eventCount, 3);
     assert.strictEqual(health.current.sessionCount, 2);
     assert.strictEqual(health.previous.sessionCount, 1);
-    assert.strictEqual(health.current.averageActiveDurationMs, 675000);
+    assert.strictEqual(health.current.averageActiveDurationMs, 105000);
     assert.strictEqual(health.current.averageSessionEvents, 2.5);
     assert.deepStrictEqual(health.current.retention.d2, { sampleSize: 3, retainedUsers: 2, rate: 2 / 3 });
     assert.deepStrictEqual(health.current.retention.d3, { sampleSize: 0, retainedUsers: 0, rate: null });
@@ -1227,36 +1337,38 @@ describe('TraceMind', function () {
     assert.ok(health.attentionItems.some((item) => item.code === 'failure_events_increased'));
   });
 
-  it('clips presence duration to the current health window', function () {
+  it('uses strict active duration for health time metrics', function () {
     const health = summarizeProjectHealth({
       events: [
         { eventType: 'page_view', userId: 'user-1', occurredAt: new Date('2026-05-09T01:00:00.000Z') },
       ],
       presenceSessions: [
-        { presenceId: 'spanning', userId: 'user-1', path: '/docs', startedAt: new Date('2026-05-08T11:30:00.000Z'), lastSeenAt: new Date('2026-05-08T12:30:00.000Z') },
+        { presenceId: 'active', userId: 'user-1', path: '/docs', startedAt: new Date('2026-05-09T01:00:00.000Z'), lastSeenAt: new Date('2026-05-09T02:00:00.000Z'), durationMs: 3600000, activeDurationMs: 600000 },
+        { presenceId: 'legacy', userId: 'user-2', path: '/legacy', startedAt: new Date('2026-05-09T03:00:00.000Z'), lastSeenAt: new Date('2026-05-09T04:00:00.000Z'), durationMs: 3600000 },
+        { presenceId: 'spanning', userId: 'user-3', path: '/spanning', startedAt: new Date('2026-05-08T11:59:30.000Z'), lastSeenAt: new Date('2026-05-08T12:00:30.000Z'), durationMs: 60000, activeDurationMs: 120000 },
       ],
       now: new Date('2026-05-09T12:00:00.000Z'),
     });
 
-    assert.strictEqual(health.current.totalDurationMs, 1800000);
-    assert.strictEqual(health.current.averageActiveDurationMs, 1800000);
-    assert.deepStrictEqual(health.current.topDurationUsers[0], { label: 'user-1', durationMs: 1800000 });
-    assert.deepStrictEqual(health.current.topDurationPaths[0], { path: '/docs', durationMs: 1800000, sessions: 1 });
+    assert.strictEqual(health.current.totalDurationMs, 630000);
+    assert.strictEqual(health.current.averageActiveDurationMs, 210000);
+    assert.deepStrictEqual(health.current.topDurationUsers[0], { label: 'user-1', durationMs: 600000 });
+    assert.deepStrictEqual(health.current.topDurationPaths[0], { path: '/docs', durationMs: 600000, sessions: 1 });
   });
 
   it('uses stable actor ids for presence health without counting session ids as users', function () {
     const health = summarizeProjectHealth({
       events: [],
       presenceSessions: [
-        { presenceId: 'presence-1', sessionId: 'session-1', deviceId: 'device-1', path: '/', startedAt: new Date('2026-05-09T11:00:00.000Z'), lastSeenAt: new Date('2026-05-09T11:00:00.000Z') },
-        { presenceId: 'presence-2', sessionId: 'session-2', deviceId: 'device-1', path: '/', startedAt: new Date('2026-05-09T11:30:00.000Z'), lastSeenAt: new Date('2026-05-09T11:45:00.000Z') },
+        { presenceId: 'presence-1', sessionId: 'session-1', deviceId: 'device-1', path: '/', startedAt: new Date('2026-05-09T11:00:00.000Z'), lastSeenAt: new Date('2026-05-09T11:00:00.000Z'), activeDurationMs: 0 },
+        { presenceId: 'presence-2', sessionId: 'session-2', deviceId: 'device-1', path: '/', startedAt: new Date('2026-05-09T11:30:00.000Z'), lastSeenAt: new Date('2026-05-09T11:45:00.000Z'), activeDurationMs: 120000 },
       ],
       now: new Date('2026-05-09T12:00:00.000Z'),
     });
 
     assert.strictEqual(health.current.activeUsers, 1);
     assert.strictEqual(health.current.sessionCount, 2);
-    assert.deepStrictEqual(health.current.topDurationUsers[0], { label: 'device-1', durationMs: 900000 });
+    assert.deepStrictEqual(health.current.topDurationUsers[0], { label: 'device-1', durationMs: 120000 });
   });
 
   it('summarizes top bounce pages by session-level presence and interactions', function () {
@@ -1270,21 +1382,21 @@ describe('TraceMind', function () {
         { eventType: 'route_change', eventName: 'route_change', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/checkout', occurredAt: new Date('2026-05-09T09:31:00.000Z') },
       ],
       presenceSessions: [
-        { presenceId: 'pricing-presence-1', sessionId: 'pricing-bounce-1', anonymousId: 'anon-1', path: '/pricing', startedAt: new Date('2026-05-09T09:00:00.000Z'), lastSeenAt: new Date('2026-05-09T09:00:10.000Z') },
-        { presenceId: 'pricing-presence-2', sessionId: 'pricing-bounce-2', anonymousId: 'anon-2', path: '/pricing', startedAt: new Date('2026-05-09T09:10:00.000Z'), lastSeenAt: new Date('2026-05-09T09:10:20.000Z') },
-        { presenceId: 'pricing-presence-3', sessionId: 'pricing-click', anonymousId: 'anon-3', path: '/pricing', startedAt: new Date('2026-05-09T09:20:00.000Z'), lastSeenAt: new Date('2026-05-09T09:20:40.000Z') },
-        { presenceId: 'home-presence', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/home', startedAt: new Date('2026-05-09T09:30:00.000Z'), lastSeenAt: new Date('2026-05-09T09:31:00.000Z') },
-        { presenceId: 'checkout-presence', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/checkout', startedAt: new Date('2026-05-09T09:31:00.000Z'), lastSeenAt: new Date('2026-05-09T09:32:00.000Z') },
+        { presenceId: 'pricing-presence-1', sessionId: 'pricing-bounce-1', anonymousId: 'anon-1', path: '/pricing', startedAt: new Date('2026-05-09T09:00:00.000Z'), lastSeenAt: new Date('2026-05-09T09:00:10.000Z'), activeDurationMs: 10000 },
+        { presenceId: 'pricing-presence-2', sessionId: 'pricing-bounce-2', anonymousId: 'anon-2', path: '/pricing', startedAt: new Date('2026-05-09T09:10:00.000Z'), lastSeenAt: new Date('2026-05-09T09:10:20.000Z'), activeDurationMs: 5000 },
+        { presenceId: 'pricing-presence-3', sessionId: 'pricing-click', anonymousId: 'anon-3', path: '/pricing', startedAt: new Date('2026-05-09T09:20:00.000Z'), lastSeenAt: new Date('2026-05-09T09:20:40.000Z'), activeDurationMs: 20000 },
+        { presenceId: 'home-presence', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/home', startedAt: new Date('2026-05-09T09:30:00.000Z'), lastSeenAt: new Date('2026-05-09T09:31:00.000Z'), activeDurationMs: 30000 },
+        { presenceId: 'checkout-presence', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/checkout', startedAt: new Date('2026-05-09T09:31:00.000Z'), lastSeenAt: new Date('2026-05-09T09:32:00.000Z'), activeDurationMs: 30000 },
         { presenceId: 'legacy-presence', path: '/legacy', startedAt: new Date('2026-05-09T10:00:00.000Z'), lastSeenAt: new Date('2026-05-09T10:00:05.000Z') },
-        { presenceId: 'spanning-presence', sessionId: 'spanning-bounce', path: '/spanning', startedAt: new Date('2026-05-08T11:30:00.000Z'), lastSeenAt: new Date('2026-05-08T12:30:00.000Z') },
+        { presenceId: 'spanning-presence', sessionId: 'spanning-bounce', path: '/spanning', startedAt: new Date('2026-05-08T11:30:00.000Z'), lastSeenAt: new Date('2026-05-08T12:30:00.000Z'), activeDurationMs: 120000 },
       ],
       now: new Date('2026-05-09T12:00:00.000Z'),
     });
 
     assert.deepStrictEqual(health.current.topBouncePages, [
-      { path: '/legacy', sessions: 1, bounces: 1, bounceRate: 1, averageBounceDurationMs: 5000 },
-      { path: '/spanning', sessions: 1, bounces: 1, bounceRate: 1, averageBounceDurationMs: 1800000 },
-      { path: '/pricing', sessions: 3, bounces: 2, bounceRate: 2 / 3, averageBounceDurationMs: 15000 },
+      { path: '/legacy', sessions: 1, bounces: 1, bounceRate: 1, averageBounceDurationMs: 0 },
+      { path: '/spanning', sessions: 1, bounces: 1, bounceRate: 1, averageBounceDurationMs: 120000 },
+      { path: '/pricing', sessions: 3, bounces: 2, bounceRate: 2 / 3, averageBounceDurationMs: 7500 },
     ]);
   });
 
@@ -2004,6 +2116,7 @@ describe('TraceMind', function () {
       assert.strictEqual(result.ignored, 0);
       assert.strictEqual(sessions.length, 2);
       assert.deepStrictEqual(sessions.map((session) => session.path), ['/docs', '/pricing']);
+      assert.deepStrictEqual(sessions.map((session) => session.activeDurationMs), [0, 0]);
       assert.strictEqual(reports.length, 1);
       assert.strictEqual(reports[0].endpoint, 'presence');
       assert.strictEqual(reports[0].batchId, 'tm_batch_presence');
@@ -2038,6 +2151,10 @@ describe('TraceMind', function () {
         title: 'Pricing',
         state: 'start',
         heartbeatIntervalMs: 5000,
+        activeDurationMs: 0,
+        lastActiveAt: '2026-05-08T01:00:00.000Z',
+        activeState: 'active',
+        idleTimeoutMs: 60000,
         occurredAt: '2026-05-08T01:00:00.000Z',
       }, { headers: {}, socket: {} });
       const heartbeat = await ingestPresencePayload({
@@ -2052,6 +2169,10 @@ describe('TraceMind', function () {
         path: '/pricing',
         title: 'Pricing',
         state: 'heartbeat',
+        activeDurationMs: 5000,
+        lastActiveAt: '2026-05-08T01:00:00.000Z',
+        activeState: 'active',
+        idleTimeoutMs: 60000,
         occurredAt: '2026-05-08T01:00:05.000Z',
       }, { headers: {}, socket: {} });
       await ingestPresencePayload({
@@ -2066,6 +2187,10 @@ describe('TraceMind', function () {
         path: '/pricing',
         title: 'Pricing',
         state: 'end',
+        activeDurationMs: 7000,
+        lastActiveAt: '2026-05-08T01:00:00.000Z',
+        activeState: 'inactive',
+        idleTimeoutMs: 60000,
         occurredAt: '2026-05-08T01:00:10.000Z',
       }, { headers: {}, socket: {} });
 
@@ -2081,6 +2206,10 @@ describe('TraceMind', function () {
       assert.strictEqual(session.sourceKey, 'app.example.com');
       assert.strictEqual(session.heartbeatCount, 1);
       assert.strictEqual(session.durationMs, 10000);
+      assert.strictEqual(session.activeDurationMs, 7000);
+      assert.strictEqual(session.activeState, 'inactive');
+      assert.strictEqual(session.idleTimeoutMs, 60000);
+      assert.deepStrictEqual(session.lastActiveAt, new Date('2026-05-08T01:00:00.000Z'));
       assert.strictEqual(summarizePresenceSessions([session], new Date('2026-05-08T01:00:12.000Z')).onlineSessions, 0);
     });
 

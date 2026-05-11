@@ -209,7 +209,11 @@ class TraceMindPayloadBuilderTest {
       presenceId = "tm_pres_android",
       state = "heartbeat",
       path = "CheckoutActivity",
-      title = "Checkout"
+      title = "Checkout",
+      activeDurationMs = 120_000,
+      lastActiveAt = "2026-05-08T01:00:00Z",
+      activeState = "idle",
+      idleTimeoutMs = 60_000
     )
 
     assertEquals("tm_proj_android", payload.projectKey)
@@ -222,6 +226,10 @@ class TraceMindPayloadBuilderTest {
     assertEquals("CheckoutActivity", payload.screen)
     assertEquals("heartbeat", payload.state)
     assertEquals(5000, payload.heartbeatIntervalMs)
+    assertEquals(120_000, payload.activeDurationMs)
+    assertEquals("2026-05-08T01:00:00Z", payload.lastActiveAt)
+    assertEquals("idle", payload.activeState)
+    assertEquals(60_000, payload.idleTimeoutMs)
   }
 
   @Test
@@ -246,5 +254,37 @@ class TraceMindPayloadBuilderTest {
     assertEquals("Checkout", presences[2].path)
     assertEquals("Checkout", presences[2].screen)
     assertFalse(homePresenceId == presences[2].presenceId)
+  }
+
+  @Test
+  fun strictActiveDurationStopsAtIdleWindowAndBackground() {
+    val presences = mutableListOf<TraceMindPresencePayload>()
+    var now = 0L
+    val client = TraceMindClient(
+      projectKey = "tm_proj_android",
+      endpoint = "https://tracemind.example.com/api/capture",
+      packageName = "com.example.android",
+      appLabel = "Example Android",
+      identityStore = InMemoryIdentityStore(userId = "user_123"),
+      presenceSender = { presences.add(it) },
+      clock = { now }
+    )
+
+    client.startPresence("CheckoutActivity", "Checkout")
+    now += 90_000
+    val idle = client.presencePayload("heartbeat")
+    assertEquals(60_000, idle.activeDurationMs)
+    assertEquals("idle", idle.activeState)
+
+    client.recordActivity()
+    now += 10_000
+    val active = client.presencePayload("heartbeat")
+    assertEquals(70_000, active.activeDurationMs)
+    assertEquals("active", active.activeState)
+
+    now += 20_000
+    client.stopPresence("background")
+    assertEquals(90_000, presences.last().activeDurationMs)
+    assertEquals("inactive", presences.last().activeState)
   }
 }

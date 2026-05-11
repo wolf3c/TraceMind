@@ -92,7 +92,7 @@ Then add the capture snippet to a small test web page, generate several interact
 ### Completed
 
 - Reworked the selected-project analytics area into a developer-facing project health overview for the rolling last 24 hours compared with the previous 24 hours.
-- Added health summary aggregation for active users, new users, cohort retention, active sessions, clipped active duration, event totals, top regions/devices/pages/events, and high-confidence attention items.
+- Added health summary aggregation for active users, new users, cohort retention, active sessions, strict active duration, event totals, top regions/devices/pages/events, and high-confidence attention items.
 - Moved raw behavior and semantic event counts out of the primary cards so the console emphasizes project operating state instead of TraceMind pipeline internals.
 - Added stable Auto Capture target identity and action aggregation: Web now resolves interactive ancestors, prefers existing engineering identifiers, emits `targetIdentity`, `identityConfidence`, `actionKey`, and keeps raw `target` details for investigation.
 - Completed core Web signal coverage for product analysis: debounced input edits, change events, submit intent, `replaceState`, `hashchange`, and query-free event paths.
@@ -109,3 +109,4 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added a compact delivery health summary to the selected-project dashboard/API and updated Web setup documentation for the queue and cross-network troubleshooting path.
 - Cleaned up dashboard health-detail Top 3 rows so long user IDs, paths, and event names render as separate ranked entries instead of a dense joined string.
 - Added health-summary bounce-page analysis that reports `topBouncePages` for the current and previous 24h windows, using session-level presence plus route/interaction evidence and showing the Top 3 in the average-active-time details.
+- Added strict active-duration accounting on presence records. Web now stops strict active time on `window.blur` and only accrues when visible, focused, and inside a 60-second interaction window; iOS/Android/RN use the same foreground + recent tap/text/screen contract. Dashboard health active-time metrics now use `activeDurationMs`; foreground presence `durationMs` remains available for online/session summaries.

@@ -75,6 +75,10 @@ data class TraceMindPresencePayload(
   val screen: String? = null,
   val state: String,
   val heartbeatIntervalMs: Int = 5000,
+  val activeDurationMs: Int = 0,
+  val lastActiveAt: String? = null,
+  val activeState: String = "inactive",
+  val idleTimeoutMs: Int = 60000,
   val occurredAt: String = Instant.now().toString()
 )
 
@@ -176,7 +180,12 @@ class TraceMindPayloadBuilder(
     presenceId: String,
     state: String,
     path: String,
-    title: String? = null
+    title: String? = null,
+    activeDurationMs: Int = 0,
+    lastActiveAt: String? = null,
+    activeState: String = "inactive",
+    idleTimeoutMs: Int = 60000,
+    occurredAt: String = Instant.now().toString()
   ): TraceMindPresencePayload {
     return TraceMindPresencePayload(
       projectKey = projectKey,
@@ -197,7 +206,12 @@ class TraceMindPayloadBuilder(
       path = path,
       title = title,
       screen = path,
-      state = state
+      state = state,
+      activeDurationMs = activeDurationMs,
+      lastActiveAt = lastActiveAt,
+      activeState = activeState,
+      idleTimeoutMs = idleTimeoutMs,
+      occurredAt = occurredAt
     )
   }
 

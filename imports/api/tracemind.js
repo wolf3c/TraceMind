@@ -9,6 +9,7 @@ export const CaptureDeliveryReports = new Mongo.Collection('tracemind_capture_de
 
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
+export const ACTIVE_IDLE_TIMEOUT_MS = 60 * 1000;
 export const HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
 
@@ -600,6 +601,11 @@ function clippedDurationMs(session = {}, windowStart, windowEnd, now = new Date(
   return Math.max(0, clippedEnd - clippedStart);
 }
 
+function activeDurationMsForPresence(session = {}) {
+  const durationMs = Number(session.activeDurationMs);
+  return Number.isFinite(durationMs) ? Math.max(0, Math.floor(durationMs)) : 0;
+}
+
 function increment(map, key, amount = 1) {
   const label = String(key || 'Unknown');
   map.set(label, (map.get(label) || 0) + amount);
@@ -772,7 +778,10 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     const startedAt = sessionStart(session);
     const endedAt = sessionEnd(session, now);
     if (!overlapsWindow(startedAt, endedAt, windowStart, windowEnd)) return;
-    const durationMs = clippedDurationMs(session, windowStart, windowEnd, now);
+    const durationMs = Math.min(
+      activeDurationMsForPresence(session),
+      clippedDurationMs(session, windowStart, windowEnd, now),
+    );
     windowSessions.push(session);
     const actorId = actorIdForHealthPresence(session);
     const path = session.path || session.screen || '/';
@@ -963,5 +972,9 @@ export function publicPresenceSession(session) {
     heartbeatIntervalMs: session.heartbeatIntervalMs,
     heartbeatCount: session.heartbeatCount,
     durationMs: session.durationMs,
+    activeDurationMs: activeDurationMsForPresence(session),
+    lastActiveAt: session.lastActiveAt,
+    activeState: session.activeState,
+    idleTimeoutMs: Number.isFinite(session.idleTimeoutMs) ? Math.max(0, session.idleTimeoutMs) : ACTIVE_IDLE_TIMEOUT_MS,
   };
 }

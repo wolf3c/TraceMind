@@ -32,7 +32,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 
 - Human login uses `accounts-passwordless` and Mailgun-backed Meteor `email`.
 - SDK capture uses a public project key. MCP access uses independent read-only `tm_mcp_*` tokens, separate from both project keys and Meteor Accounts browser sessions.
-- User online duration uses a separate presence store. Web, iOS, Android, and React Native write `/api/presence` heartbeat updates into `tracemind_presence_sessions`; these records do not create raw behaviors or semantic events.
+- User online duration uses a separate presence store. Web, iOS, Android, and React Native write `/api/presence` heartbeat updates into `tracemind_presence_sessions`; these records do not create raw behaviors or semantic events. Dashboard health active-time metrics use strict `activeDurationMs`, not foreground `durationMs`: Web requires visible + focused + a 60-second interaction window, while iOS/Android/RN require foreground app state plus recent tap/text/screen activity.
 - Capture requests include cross-platform source fields. Project owners can block suspicious `sourceType + sourceKey` values after seeing them in the console; blocked events return ok but are not stored.
 - `/api/capture` accepts both single-event payloads and SDK batch payloads in `{ projectKey, events: [...] }` form.
 - Native SDK v1 targets stable Auto Capture basics: app/screen view, click/tap, input changed, submit, local queue, and batch flush. Automatic network hook, crash reporting, session replay, screenshots, and native snapshots are out of scope.
@@ -41,7 +41,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - Remote MCP uses a minimal Streamable HTTP JSON-RPC surface with `initialize`, `tools/list`, `tools/call`, and `ping`.
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.
-- The selected-project console health overview uses a rolling 24h window compared with the previous 24h. It reports active users, active sessions, average active time per user, total user behavior events, new-user cohort retention, top distributions, top bounce pages, and high-confidence attention items. Raw behavior and semantic event counts remain diagnostics, not the primary developer health cards.
+- The selected-project console health overview uses a rolling 24h window compared with the previous 24h. It reports active users, active sessions, average strict active time per user, total user behavior events, new-user cohort retention, top distributions, top bounce pages, and high-confidence attention items. Raw behavior and semantic event counts remain diagnostics, not the primary developer health cards.
 
 ## Deployment Shape
 

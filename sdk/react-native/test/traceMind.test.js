@@ -137,3 +137,22 @@ test('updates the native presence screen when available', () => {
 
   assert.deepEqual(calls, [['setScreen', 'Checkout']]);
 });
+
+test('keeps React Native as a native SDK proxy without its own platform value', () => {
+  const calls = [];
+  const client = createTraceMindClient({
+    nativeModule: {
+      start(config) {
+        calls.push(config);
+      },
+    },
+    platform: 'android',
+  });
+
+  client.start({ projectKey: 'tm_proj_rn' });
+
+  assert.equal(client.platform, 'android');
+  assert.equal(client.presence, undefined);
+  assert.equal(calls[0].platform, undefined);
+  assert.deepEqual(calls[0].deviceInfo, { framework: 'react_native' });
+});

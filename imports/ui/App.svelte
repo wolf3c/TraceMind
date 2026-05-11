@@ -1155,7 +1155,7 @@
               <span>{$t("Average active time per user")}</span>
               <strong>{formatDuration(healthCurrent.averageActiveDurationMs)}</strong>
               <small class={trendClass(health?.trends?.averageActiveDuration)}>{formatTrend(health?.trends?.averageActiveDuration)}</small>
-              <em>{$t("averaged by active users")}</em>
+              <em>{$t("foreground/focus + 60s interaction")}</em>
             </summary>
             <dl class="health-detail-list">
               <div><dt>{$t("Average active time per user")}</dt><dd>{formatDuration(healthCurrent.averageActiveDurationMs)}</dd></div>

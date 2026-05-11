@@ -11,7 +11,7 @@
 3. `buildSemanticEvent()` 对每条原始行为生成一条语义事件。
 4. 原始行为标记为 `processed`，并保存 `semanticEventId`，方便从语义事件回溯原始日志。
 
-在线时长不走这条链路。Web、iOS、Android 和 React Native 通过 `/api/presence` upsert `tracemind_presence_sessions`，用于当前在线和停留时长统计；presence 不生成 raw behavior 或 semantic event。
+在线时长不走这条链路。Web、iOS、Android 和 React Native 通过 `/api/presence` upsert `tracemind_presence_sessions`，用于当前在线和停留时长统计；presence 不生成 raw behavior 或 semantic event。`durationMs` 保留前台/可见 presence 停留时长，Dashboard 健康里的活跃时长使用严格 `activeDurationMs`：前台/可见、Web 焦点窗口、且最近 60 秒内有交互，旧记录缺字段按 0 处理。
 
 ## 语义事件字段
 

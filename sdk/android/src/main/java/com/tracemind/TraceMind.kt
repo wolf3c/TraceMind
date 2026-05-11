@@ -14,6 +14,7 @@ import android.view.Window
 import android.widget.EditText
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
 import java.util.ArrayDeque
 
 object TraceMind {
@@ -69,7 +70,8 @@ class TraceMindClient(
   appLabel: String,
   identityStore: TraceMindIdentityStore? = null,
   private val maxQueueSize: Int = 100,
-  private val presenceSender: ((TraceMindPresencePayload) -> Unit)? = null
+  private val presenceSender: ((TraceMindPresencePayload) -> Unit)? = null,
+  private val clock: () -> Long = { System.currentTimeMillis() }
 ) {
   private val queue = ArrayDeque<TraceMindPayload>()
   private val transport = TraceMindHttpTransport(endpoint)
@@ -88,6 +90,10 @@ class TraceMindClient(
   private var presenceId: String? = null
   private var currentScreen = "Application"
   private val heartbeatIntervalMs = 5000L
+  private val activeIdleTimeoutMs = 60_000L
+  private var activeDurationMs = 0L
+  private var activeStartedAt: Long? = null
+  private var lastActiveAt: Long? = null
   private val heartbeatRunnable = object : Runnable {
     override fun run() {
       sendPresence("heartbeat", currentScreen, currentScreen)
@@ -104,6 +110,7 @@ class TraceMindClient(
     properties: Map<String, Any?> = emptyMap(),
     context: Map<String, Any?> = emptyMap()
   ) {
+    recordActivity()
     queue.addLast(builder.payload(type, eventName, path, title, target, properties, context))
     while (queue.size > maxQueueSize) queue.removeFirst()
   }
@@ -134,6 +141,7 @@ class TraceMindClient(
     val nextScreen = normalizedScreen(screen)
     if (nextScreen == currentScreen) return
     if (presenceId != null) {
+      recordActivity()
       stopPresence("end")
       startPresence(nextScreen, nextScreen, "start")
     } else {
@@ -153,15 +161,31 @@ class TraceMindClient(
     handler?.removeCallbacks(heartbeatRunnable)
     sendPresence(state, currentScreen, currentScreen)
     presenceId = null
+    resetActiveClock()
   }
 
   fun presencePayload(state: String, path: String = currentScreen, title: String? = null): TraceMindPresencePayload {
-    if (presenceId == null) presenceId = "tm_pres_${uuid()}"
+    if (presenceId == null) {
+      presenceId = "tm_pres_${uuid()}"
+      resetActiveClock()
+    }
+    if (state == "end" || state == "background") {
+      pauseActiveWindow()
+    } else if (state == "start" || state == "foreground") {
+      resumeActiveWindow()
+    }
+    val now = clock()
+    settleActiveWindow(now)
     return builder.presencePayload(
       presenceId = presenceId ?: "",
       state = state,
       path = path,
-      title = title
+      title = title,
+      activeDurationMs = activeDurationInt(),
+      lastActiveAt = lastActiveAt?.let { Instant.ofEpochMilli(it).toString() },
+      activeState = activeState(state, now),
+      idleTimeoutMs = activeIdleTimeoutMs.toInt(),
+      occurredAt = Instant.ofEpochMilli(now).toString()
     )
   }
 
@@ -173,6 +197,50 @@ class TraceMindClient(
   private fun normalizedScreen(screen: String): String {
     val next = screen.take(160)
     return next.ifEmpty { "Application" }
+  }
+
+  fun recordActivity() {
+    val now = clock()
+    settleActiveWindow(now)
+    lastActiveAt = now
+    if (activeStartedAt == null) activeStartedAt = now
+  }
+
+  private fun resumeActiveWindow() {
+    val now = clock()
+    settleActiveWindow(now)
+    lastActiveAt = now
+    if (activeStartedAt == null) activeStartedAt = now
+  }
+
+  private fun pauseActiveWindow() {
+    settleActiveWindow(clock())
+    activeStartedAt = null
+  }
+
+  private fun settleActiveWindow(now: Long) {
+    val startedAt = activeStartedAt ?: return
+    val activeLastAt = lastActiveAt ?: return
+    val endAt = minOf(now, activeLastAt + activeIdleTimeoutMs)
+    if (endAt > startedAt) activeDurationMs += endAt - startedAt
+    activeStartedAt = if (endAt < now) null else endAt
+  }
+
+  private fun resetActiveClock() {
+    activeDurationMs = 0
+    activeStartedAt = null
+    lastActiveAt = null
+  }
+
+  private fun activeDurationInt(): Int {
+    return activeDurationMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+  }
+
+  private fun activeState(state: String, now: Long): String {
+    if (state == "end" || state == "background") return "inactive"
+    if (activeStartedAt != null) return "active"
+    val activeLastAt = lastActiveAt ?: return "inactive"
+    return if (now - activeLastAt >= activeIdleTimeoutMs) "idle" else "inactive"
   }
 
   private fun uuid(): String = java.util.UUID.randomUUID().toString().replace("-", "")
@@ -331,6 +399,9 @@ private fun TraceMindPresencePayload.toJson(): String {
     """"path":"${path.escapeJson()}"""",
     """"state":"${state.escapeJson()}"""",
     """"heartbeatIntervalMs":$heartbeatIntervalMs""",
+    """"activeDurationMs":$activeDurationMs""",
+    """"activeState":"${activeState.escapeJson()}"""",
+    """"idleTimeoutMs":$idleTimeoutMs""",
     """"occurredAt":"${occurredAt.escapeJson()}"""",
     """"deviceInfo":${deviceInfo.toJson()}""",
     """"source":${source.toJson()}"""
@@ -338,6 +409,7 @@ private fun TraceMindPresencePayload.toJson(): String {
   userId?.let { fields.add(""""userId":"${it.escapeJson()}"""") }
   title?.let { fields.add(""""title":"${it.escapeJson()}"""") }
   screen?.let { fields.add(""""screen":"${it.escapeJson()}"""") }
+  lastActiveAt?.let { fields.add(""""lastActiveAt":"${it.escapeJson()}"""") }
   return "{${fields.joinToString(",")}}"
 }
 

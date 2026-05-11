@@ -176,6 +176,10 @@ public struct TraceMindPresencePayload: Codable {
   public let screen: String?
   public let state: String
   public let heartbeatIntervalMs: Int
+  public let activeDurationMs: Int
+  public let lastActiveAt: String?
+  public let activeState: String
+  public let idleTimeoutMs: Int
   public let occurredAt: String
 }
 
@@ -274,21 +278,28 @@ public final class TraceMindClient {
   private let identityStore: TraceMindIdentityStore
   private let transport: TraceMindTransport
   private let maxQueueSize: Int
+  private let clock: () -> Date
   private var queue: [TraceMindPayload] = []
   private var presenceId: String?
   private var currentScreen = "Application"
   private let heartbeatIntervalMs = 5_000
+  private let activeIdleTimeoutMs = 60_000
+  private var activeDurationMs = 0
+  private var activeStartedAt: Date?
+  private var lastActiveAt: Date?
 
   public init(
     configuration: TraceMindConfiguration,
     identityStore: TraceMindIdentityStore = UserDefaultsIdentityStore(),
     transport: TraceMindTransport = URLSessionTraceMindTransport(),
-    maxQueueSize: Int = 100
+    maxQueueSize: Int = 100,
+    clock: @escaping () -> Date = Date.init
   ) {
     self.configuration = configuration
     self.identityStore = identityStore
     self.transport = transport
     self.maxQueueSize = maxQueueSize
+    self.clock = clock
   }
 
   public func makePayload(
@@ -334,14 +345,22 @@ public final class TraceMindClient {
       actionKey: actionKey,
       properties: Self.sanitize(properties),
       context: Self.sanitize(context),
-      occurredAt: ISO8601DateFormatter.traceMind.string(from: Date())
+      occurredAt: ISO8601DateFormatter.traceMind.string(from: clock())
     )
   }
 
   public func makePresencePayload(state: String, path: String? = nil, title: String? = nil) -> TraceMindPresencePayload {
     if presenceId == nil {
       presenceId = "tm_pres_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+      resetActiveClock()
     }
+    if state == "end" || state == "background" {
+      pauseActiveWindow()
+    } else if state == "start" || state == "foreground" {
+      resumeActiveWindow()
+    }
+    let now = clock()
+    settleActiveWindow(now)
     let screen = path ?? currentScreen
     return TraceMindPresencePayload(
       projectKey: configuration.projectKey,
@@ -368,7 +387,11 @@ public final class TraceMindClient {
       screen: screen,
       state: state,
       heartbeatIntervalMs: heartbeatIntervalMs,
-      occurredAt: ISO8601DateFormatter.traceMind.string(from: Date())
+      activeDurationMs: activeDurationMs,
+      lastActiveAt: lastActiveAt.map { ISO8601DateFormatter.traceMind.string(from: $0) },
+      activeState: (state == "end" || state == "background") ? "inactive" : activeState(now),
+      idleTimeoutMs: activeIdleTimeoutMs,
+      occurredAt: ISO8601DateFormatter.traceMind.string(from: now)
     )
   }
 
@@ -377,10 +400,14 @@ public final class TraceMindClient {
     try await transport.sendPresence(payload: payload, endpoint: configuration.presenceEndpoint)
     if state == "end" || state == "background" {
       presenceId = nil
+      resetActiveClock()
     }
   }
 
   public func setScreen(_ screen: String) {
+    if presenceId != nil {
+      recordActivity()
+    }
     currentScreen = Self.normalizedScreen(screen)
   }
 
@@ -389,6 +416,7 @@ public final class TraceMindClient {
     if nextScreen == currentScreen { return }
     let previousScreen = currentScreen
     if presenceId != nil {
+      recordActivity()
       try await sendPresence(state: "end", path: previousScreen, title: previousScreen)
       currentScreen = nextScreen
       try await sendPresence(state: "start", path: nextScreen, title: nextScreen)
@@ -406,6 +434,7 @@ public final class TraceMindClient {
     properties: TraceMindFields = [:],
     context: TraceMindFields = [:]
   ) throws {
+    recordActivity()
     queue.append(try makePayload(
       type: type,
       eventName: eventName,
@@ -418,6 +447,51 @@ public final class TraceMindClient {
     if queue.count > maxQueueSize {
       queue.removeFirst(queue.count - maxQueueSize)
     }
+  }
+
+  func recordActivity() {
+    let now = clock()
+    settleActiveWindow(now)
+    lastActiveAt = now
+    if activeStartedAt == nil {
+      activeStartedAt = now
+    }
+  }
+
+  private func resumeActiveWindow() {
+    let now = clock()
+    settleActiveWindow(now)
+    lastActiveAt = now
+    if activeStartedAt == nil {
+      activeStartedAt = now
+    }
+  }
+
+  private func pauseActiveWindow() {
+    settleActiveWindow(clock())
+    activeStartedAt = nil
+  }
+
+  private func settleActiveWindow(_ now: Date) {
+    guard let activeStartedAt, let lastActiveAt else { return }
+    let idleCutoff = lastActiveAt.addingTimeInterval(Double(activeIdleTimeoutMs) / 1000)
+    let endAt = min(now, idleCutoff)
+    if endAt > activeStartedAt {
+      activeDurationMs += Int(endAt.timeIntervalSince(activeStartedAt) * 1000)
+    }
+    self.activeStartedAt = endAt < now ? nil : endAt
+  }
+
+  private func resetActiveClock() {
+    activeDurationMs = 0
+    activeStartedAt = nil
+    lastActiveAt = nil
+  }
+
+  private func activeState(_ now: Date) -> String {
+    if activeStartedAt != nil { return "active" }
+    guard let lastActiveAt else { return "inactive" }
+    return now.timeIntervalSince(lastActiveAt) * 1000 >= Double(activeIdleTimeoutMs) ? "idle" : "inactive"
   }
 
   public func identify(_ userId: String, traits: TraceMindFields = [:]) throws {
@@ -548,8 +622,12 @@ public enum TraceMind {
   }
 
   public static func setScreen(_ screen: String) {
+#if canImport(UIKit)
+    TraceMindAutoCapture.setScreen(screen)
+#else
     client?.setScreen(screen)
     TraceMindAutoCapture.setScreen(screen)
+#endif
   }
 
   public static func identify(_ userId: String, traits: TraceMindFields = [:]) throws {
