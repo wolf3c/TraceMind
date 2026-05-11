@@ -1259,6 +1259,35 @@ describe('TraceMind', function () {
     assert.deepStrictEqual(health.current.topDurationUsers[0], { label: 'device-1', durationMs: 900000 });
   });
 
+  it('summarizes top bounce pages by session-level presence and interactions', function () {
+    const health = summarizeProjectHealth({
+      events: [
+        { eventType: 'page_view', eventName: 'page_view', sessionId: 'pricing-bounce-1', anonymousId: 'anon-1', path: '/pricing', occurredAt: new Date('2026-05-09T09:00:00.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', sessionId: 'pricing-bounce-2', anonymousId: 'anon-2', path: '/pricing', occurredAt: new Date('2026-05-09T09:10:00.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', sessionId: 'pricing-click', anonymousId: 'anon-3', path: '/pricing', occurredAt: new Date('2026-05-09T09:20:00.000Z') },
+        { eventType: 'click', eventName: 'cta_clicked', sessionId: 'pricing-click', anonymousId: 'anon-3', path: '/pricing', occurredAt: new Date('2026-05-09T09:20:10.000Z') },
+        { eventType: 'page_view', eventName: 'page_view', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/home', occurredAt: new Date('2026-05-09T09:30:00.000Z') },
+        { eventType: 'route_change', eventName: 'route_change', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/checkout', occurredAt: new Date('2026-05-09T09:31:00.000Z') },
+      ],
+      presenceSessions: [
+        { presenceId: 'pricing-presence-1', sessionId: 'pricing-bounce-1', anonymousId: 'anon-1', path: '/pricing', startedAt: new Date('2026-05-09T09:00:00.000Z'), lastSeenAt: new Date('2026-05-09T09:00:10.000Z') },
+        { presenceId: 'pricing-presence-2', sessionId: 'pricing-bounce-2', anonymousId: 'anon-2', path: '/pricing', startedAt: new Date('2026-05-09T09:10:00.000Z'), lastSeenAt: new Date('2026-05-09T09:10:20.000Z') },
+        { presenceId: 'pricing-presence-3', sessionId: 'pricing-click', anonymousId: 'anon-3', path: '/pricing', startedAt: new Date('2026-05-09T09:20:00.000Z'), lastSeenAt: new Date('2026-05-09T09:20:40.000Z') },
+        { presenceId: 'home-presence', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/home', startedAt: new Date('2026-05-09T09:30:00.000Z'), lastSeenAt: new Date('2026-05-09T09:31:00.000Z') },
+        { presenceId: 'checkout-presence', sessionId: 'multi-page', anonymousId: 'anon-4', path: '/checkout', startedAt: new Date('2026-05-09T09:31:00.000Z'), lastSeenAt: new Date('2026-05-09T09:32:00.000Z') },
+        { presenceId: 'legacy-presence', path: '/legacy', startedAt: new Date('2026-05-09T10:00:00.000Z'), lastSeenAt: new Date('2026-05-09T10:00:05.000Z') },
+        { presenceId: 'spanning-presence', sessionId: 'spanning-bounce', path: '/spanning', startedAt: new Date('2026-05-08T11:30:00.000Z'), lastSeenAt: new Date('2026-05-08T12:30:00.000Z') },
+      ],
+      now: new Date('2026-05-09T12:00:00.000Z'),
+    });
+
+    assert.deepStrictEqual(health.current.topBouncePages, [
+      { path: '/legacy', sessions: 1, bounces: 1, bounceRate: 1, averageBounceDurationMs: 5000 },
+      { path: '/spanning', sessions: 1, bounces: 1, bounceRate: 1, averageBounceDurationMs: 1800000 },
+      { path: '/pricing', sessions: 3, bounces: 2, bounceRate: 2 / 3, averageBounceDurationMs: 15000 },
+    ]);
+  });
+
   it('normalizes capture sources with cross-platform source fields', function () {
     assert.deepStrictEqual(
       normalizeCaptureSource({

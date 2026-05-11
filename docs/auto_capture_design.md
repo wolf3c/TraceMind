@@ -145,6 +145,8 @@ Native 和 React Native 使用同一语义：应用启动只调用一次 `TraceM
 
 在线时长使用独立 presence 模型：SDK 在前台或页面可见时启动 `presenceId` 区间，每 5 秒发送 heartbeat；页面隐藏、App 进后台、路由或 screen 切换时结束当前区间，Native/RN `setScreen` 会切分旧 screen 和新 screen 的在线区间。Web presence 只记录 `pathname`，不包含 query string。服务端按 `projectId + presenceId` upsert 到 `tracemind_presence_sessions`，15 秒内有 `lastSeenAt` 的区间视为当前在线。Presence 不生成 raw behavior 或 semantic event。
 
+健康概览里的「跳出页面 Top3」依赖同一套 session、presence 和 route/screen 边界：同一个 `sessionId` 在统计窗口内只有一个 `path` 或 `screen`、没有 `route_change`、且没有明确互动事件时才算跳出。旧数据缺少 `sessionId` 时只用 `presenceId` 兜底，平均跳出时长使用当前窗口内裁剪后的 presence duration。
+
 ## 手动埋点
 
 自动采集无法表达的业务语义使用 `custom` + `eventName`：

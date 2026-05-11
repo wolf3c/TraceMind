@@ -1214,6 +1214,11 @@ code {
   white-space: nowrap;
 }
 
+.health-top-item .health-top-metric {
+  text-align: right;
+  white-space: normal;
+}
+
 .event-stream-header {
   display: flex;
   justify-content: space-between;

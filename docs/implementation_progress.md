@@ -108,3 +108,4 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added batch presence ingestion and `tracemind_capture_delivery_reports` so capture/presence batches can report accepted, ignored, retry, drop, coalescing, and queue-depth diagnostics without creating semantic events.
 - Added a compact delivery health summary to the selected-project dashboard/API and updated Web setup documentation for the queue and cross-network troubleshooting path.
 - Cleaned up dashboard health-detail Top 3 rows so long user IDs, paths, and event names render as separate ranked entries instead of a dense joined string.
+- Added health-summary bounce-page analysis that reports `topBouncePages` for the current and previous 24h windows, using session-level presence plus route/interaction evidence and showing the Top 3 in the average-active-time details.

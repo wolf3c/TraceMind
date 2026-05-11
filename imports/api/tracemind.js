@@ -12,6 +12,9 @@ export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
 export const HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
 
+const PASSIVE_BOUNCE_EVENT_NAMES = new Set(['page_view', 'route_change']);
+const EXPLICIT_BOUNCE_INTERACTION_EVENT_TYPES = new Set(['click', 'input', 'submit', 'change', 'custom']);
+
 export const EVENT_TYPES = {
   page_view: '浏览页面',
   click: '点击元素',
@@ -618,8 +621,79 @@ function topDurations(map, limit = 3) {
     .slice(0, limit);
 }
 
+function topBouncePagesForSessions(sessionsByKey, limit = 3) {
+  const pagesByPath = new Map();
+
+  sessionsByKey.forEach((session) => {
+    if (!session.paths.size) return;
+
+    session.paths.forEach((path) => {
+      const page = pagesByPath.get(path) || {
+        path,
+        sessions: 0,
+        bounces: 0,
+        totalBounceDurationMs: 0,
+      };
+
+      page.sessions += 1;
+      pagesByPath.set(path, page);
+    });
+
+    if (session.paths.size !== 1 || session.hasRouteChange || session.hasInteraction) return;
+
+    const [path] = session.paths;
+    const page = pagesByPath.get(path);
+    page.bounces += 1;
+    page.totalBounceDurationMs += session.durationMs;
+  });
+
+  return [...pagesByPath.values()]
+    .filter((page) => page.bounces > 0)
+    .map((page) => ({
+      path: page.path,
+      sessions: page.sessions,
+      bounces: page.bounces,
+      bounceRate: page.sessions ? page.bounces / page.sessions : 0,
+      averageBounceDurationMs: Math.round(page.totalBounceDurationMs / page.bounces),
+    }))
+    .sort((left, right) => (
+      right.bounceRate - left.bounceRate
+      || right.bounces - left.bounces
+      || right.sessions - left.sessions
+      || left.path.localeCompare(right.path)
+    ))
+    .slice(0, limit);
+}
+
 function eventLabel(event = {}) {
   return event.eventName || event.eventType || 'unknown_event';
+}
+
+function eventSessionKey(event = {}) {
+  return event.sessionId || event.presenceId || null;
+}
+
+function presenceSessionKey(session = {}) {
+  return session.sessionId || session.presenceId || null;
+}
+
+function isRouteChangeEvent(event = {}) {
+  return event.eventType === 'route_change' || event.eventName === 'route_change';
+}
+
+function isBounceInteractionEvent(event = {}) {
+  const eventType = String(event.eventType || '').toLowerCase();
+  const eventName = String(event.eventName || '').toLowerCase();
+
+  if (EXPLICIT_BOUNCE_INTERACTION_EVENT_TYPES.has(eventType) || EXPLICIT_BOUNCE_INTERACTION_EVENT_TYPES.has(eventName)) {
+    return true;
+  }
+
+  if (eventType) {
+    return !PASSIVE_BOUNCE_EVENT_NAMES.has(eventType);
+  }
+
+  return Boolean(eventName && !PASSIVE_BOUNCE_EVENT_NAMES.has(eventName));
 }
 
 function regionLabel(event = {}) {
@@ -661,6 +735,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
   const sessionPathCounts = new Map();
   const durationUsers = new Map();
   const durationPaths = new Map();
+  const bounceSessions = new Map();
   let failureEventCount = 0;
   let lastEventAt = null;
   let eventCount = 0;
@@ -677,6 +752,18 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     if (device) increment(deviceCounts, device);
     if (isFailureEvent(event)) failureEventCount += 1;
     if (!lastEventAt || occurredAt > lastEventAt) lastEventAt = occurredAt;
+    const bounceKey = eventSessionKey(event);
+    if (bounceKey) {
+      const bounceSession = bounceSessions.get(bounceKey) || {
+        paths: new Set(),
+        durationMs: 0,
+        hasRouteChange: false,
+        hasInteraction: false,
+      };
+      if (isRouteChangeEvent(event)) bounceSession.hasRouteChange = true;
+      if (isBounceInteractionEvent(event)) bounceSession.hasInteraction = true;
+      bounceSessions.set(bounceKey, bounceSession);
+    }
     eventCount += 1;
   });
 
@@ -690,6 +777,18 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     const actorId = actorIdForHealthPresence(session);
     const path = session.path || session.screen || '/';
     const source = session.sourceLabel || session.sourceKey || session.platform || 'Unknown';
+    const bounceKey = presenceSessionKey(session);
+    if (bounceKey) {
+      const bounceSession = bounceSessions.get(bounceKey) || {
+        paths: new Set(),
+        durationMs: 0,
+        hasRouteChange: false,
+        hasInteraction: false,
+      };
+      bounceSession.paths.add(path);
+      bounceSession.durationMs += durationMs;
+      bounceSessions.set(bounceKey, bounceSession);
+    }
     if (actorId) {
       activeUsers.add(actorId);
       const userItem = durationUsers.get(actorId) || { label: actorId, durationMs: 0 };
@@ -723,6 +822,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     sessionPaths: topCounts(sessionPathCounts, 3).map((item) => ({ path: item.label, count: item.count })),
     topDurationUsers: topDurations(durationUsers, 3),
     topDurationPaths: topDurations(durationPaths, 3),
+    topBouncePages: topBouncePagesForSessions(bounceSessions, 3),
   };
 }
 

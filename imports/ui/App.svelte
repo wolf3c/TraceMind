@@ -644,6 +644,13 @@
     return `${Math.round(Number(value) * 100)}%`;
   }
 
+  function formatRatePercent(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return translateNow("No sample");
+    return `${(Number(value) * 100).toLocaleString(selectedLocale === "zh" ? "zh-CN" : "en-US", {
+      maximumFractionDigits: 1,
+    })}%`;
+  }
+
   function formatTrend(value) {
     const numericValue = Number(value || 0);
     if (!numericValue) return translateNow("Flat vs previous 24h");
@@ -670,6 +677,10 @@
 
   function topItemLabel(item) {
     return item?.label || item?.path || translateNow("Unknown");
+  }
+
+  function bouncePageMetricText(item) {
+    return `${formatRatePercent(item?.bounceRate)} · ${formatNumber(item?.bounces)}/${formatNumber(item?.sessions)} · ${formatDuration(item?.averageBounceDurationMs)} ${translateNow("avg")}`;
   }
 
   function eventSourceLabel(event) {
@@ -1176,6 +1187,24 @@
                           <span class="health-top-rank">{index + 1}</span>
                           <span class="health-top-label">{topItemLabel(item)}</span>
                           <strong>{formatDuration(item.durationMs)}</strong>
+                        </li>
+                      {/each}
+                    </ol>
+                  {:else}
+                    {$t("No data")}
+                  {/if}
+                </dd>
+              </div>
+              <div class="health-detail-row-stacked">
+                <dt>{$t("Bounce pages Top 3")}</dt>
+                <dd>
+                  {#if healthCurrent.topBouncePages?.length}
+                    <ol class="health-top-list" aria-label={$t("Bounce pages Top 3")}>
+                      {#each healthCurrent.topBouncePages as item, index (`bounce-page-${index}-${topItemLabel(item)}-${item.bounces}-${item.sessions}`)}
+                        <li class="health-top-item">
+                          <span class="health-top-rank">{index + 1}</span>
+                          <span class="health-top-label">{topItemLabel(item)}</span>
+                          <strong class="health-top-metric">{bouncePageMetricText(item)}</strong>
                         </li>
                       {/each}
                     </ol>
