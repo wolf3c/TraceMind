@@ -668,9 +668,8 @@
     return `${item.label || item.path || translateNow("Unknown")} · ${formatNumber(item.count)}`;
   }
 
-  function topDurationText(item) {
-    if (!item) return translateNow("No data");
-    return `${item.label || item.path || translateNow("Unknown")} · ${formatDuration(item.durationMs)}`;
+  function topItemLabel(item) {
+    return item?.label || item?.path || translateNow("Unknown");
   }
 
   function eventSourceLabel(event) {
@@ -1149,9 +1148,60 @@
             </summary>
             <dl class="health-detail-list">
               <div><dt>{$t("Average active time per user")}</dt><dd>{formatDuration(healthCurrent.averageActiveDurationMs)}</dd></div>
-              <div><dt>{$t("Longest users Top 3")}</dt><dd>{healthCurrent.topDurationUsers?.map(topDurationText).join(" / ") || $t("No data")}</dd></div>
-              <div><dt>{$t("Longest pages Top 3")}</dt><dd>{healthCurrent.topDurationPaths?.map((item) => `${item.path} · ${formatDuration(item.durationMs)}`).join(" / ") || $t("No data")}</dd></div>
-              <div><dt>{$t("Top events Top 3")}</dt><dd>{healthCurrent.topEvents?.map(topCountText).join(" / ") || $t("No data")}</dd></div>
+              <div class="health-detail-row-stacked">
+                <dt>{$t("Longest users Top 3")}</dt>
+                <dd>
+                  {#if healthCurrent.topDurationUsers?.length}
+                    <ol class="health-top-list" aria-label={$t("Longest users Top 3")}>
+                      {#each healthCurrent.topDurationUsers as item, index (`duration-user-${index}-${topItemLabel(item)}-${item.durationMs}`)}
+                        <li class="health-top-item">
+                          <span class="health-top-rank">{index + 1}</span>
+                          <span class="health-top-label">{topItemLabel(item)}</span>
+                          <strong>{formatDuration(item.durationMs)}</strong>
+                        </li>
+                      {/each}
+                    </ol>
+                  {:else}
+                    {$t("No data")}
+                  {/if}
+                </dd>
+              </div>
+              <div class="health-detail-row-stacked">
+                <dt>{$t("Longest pages Top 3")}</dt>
+                <dd>
+                  {#if healthCurrent.topDurationPaths?.length}
+                    <ol class="health-top-list" aria-label={$t("Longest pages Top 3")}>
+                      {#each healthCurrent.topDurationPaths as item, index (`duration-path-${index}-${topItemLabel(item)}-${item.durationMs}`)}
+                        <li class="health-top-item">
+                          <span class="health-top-rank">{index + 1}</span>
+                          <span class="health-top-label">{topItemLabel(item)}</span>
+                          <strong>{formatDuration(item.durationMs)}</strong>
+                        </li>
+                      {/each}
+                    </ol>
+                  {:else}
+                    {$t("No data")}
+                  {/if}
+                </dd>
+              </div>
+              <div class="health-detail-row-stacked">
+                <dt>{$t("Top events Top 3")}</dt>
+                <dd>
+                  {#if healthCurrent.topEvents?.length}
+                    <ol class="health-top-list" aria-label={$t("Top events Top 3")}>
+                      {#each healthCurrent.topEvents as item, index (`event-${index}-${topItemLabel(item)}-${item.count}`)}
+                        <li class="health-top-item">
+                          <span class="health-top-rank">{index + 1}</span>
+                          <span class="health-top-label">{topItemLabel(item)}</span>
+                          <strong>{formatNumber(item.count)}</strong>
+                        </li>
+                      {/each}
+                    </ol>
+                  {:else}
+                    {$t("No data")}
+                  {/if}
+                </dd>
+              </div>
             </dl>
           </details>
           <details class="health-card">
@@ -1162,7 +1212,24 @@
               <em>{$t("user behavior events in 24h")}</em>
             </summary>
             <dl class="health-detail-list">
-              <div><dt>{$t("Top events Top 3")}</dt><dd>{healthCurrent.topEvents?.map(topCountText).join(" / ") || $t("No data")}</dd></div>
+              <div class="health-detail-row-stacked">
+                <dt>{$t("Top events Top 3")}</dt>
+                <dd>
+                  {#if healthCurrent.topEvents?.length}
+                    <ol class="health-top-list" aria-label={$t("Top events Top 3")}>
+                      {#each healthCurrent.topEvents as item, index (`event-${index}-${topItemLabel(item)}-${item.count}`)}
+                        <li class="health-top-item">
+                          <span class="health-top-rank">{index + 1}</span>
+                          <span class="health-top-label">{topItemLabel(item)}</span>
+                          <strong>{formatNumber(item.count)}</strong>
+                        </li>
+                      {/each}
+                    </ol>
+                  {:else}
+                    {$t("No data")}
+                  {/if}
+                </dd>
+              </div>
               <div><dt>{$t("Needs attention")}</dt><dd>{health?.attentionItems?.map((item) => item.message).join(" / ") || $t("No attention items")}</dd></div>
             </dl>
           </details>
