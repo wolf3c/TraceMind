@@ -2,6 +2,7 @@ import { Meteor } from 'meteor/meteor';
 import { Random } from 'meteor/random';
 import { Accounts } from 'meteor/accounts-base';
 import {
+  CaptureDeliveryReports,
   Developers,
   PresenceSessions,
   Projects,
@@ -14,6 +15,7 @@ import {
   publicProject,
   publicSemanticEvent,
   summarizeBehaviorSources,
+  summarizeCaptureDelivery,
   summarizePresenceSessions,
   summarizeProjectHealth,
 } from '/imports/api/tracemind';
@@ -23,6 +25,8 @@ const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
 const PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT = 200;
 const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
 const PROJECT_SUMMARY_PRESENCE_LIMIT = 500;
+const PROJECT_SUMMARY_DELIVERY_REPORT_LIMIT = 500;
+const DELIVERY_SUMMARY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function newToken(prefix) {
   return `${prefix}_${Random.secret(32)}`;
@@ -132,6 +136,13 @@ async function buildProjectSummary(project) {
     { projectId: project._id },
     { sort: { lastSeenAt: -1 }, limit: PROJECT_SUMMARY_PRESENCE_LIMIT },
   ).fetchAsync();
+  const deliveryReports = await CaptureDeliveryReports.find(
+    {
+      projectId: project._id,
+      createdAt: { $gte: new Date(now.getTime() - DELIVERY_SUMMARY_WINDOW_MS) },
+    },
+    { sort: { createdAt: -1 }, limit: PROJECT_SUMMARY_DELIVERY_REPORT_LIMIT },
+  ).fetchAsync();
 
   return {
     project: publicProject(await ensureProjectMcpTokens(project)),
@@ -141,13 +152,16 @@ async function buildProjectSummary(project) {
       semanticEventLimit: PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT,
       rawBehaviorLimit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT,
       presenceSessionLimit: PROJECT_SUMMARY_PRESENCE_LIMIT,
+      deliveryReportLimit: PROJECT_SUMMARY_DELIVERY_REPORT_LIMIT,
       semanticEventSampleSize: events.length,
       rawBehaviorSampleSize: rawBehaviors.length,
       presenceSessionSampleSize: presenceSessions.length,
+      deliveryReportSampleSize: deliveryReports.length,
     },
     health: summarizeProjectHealth({ events: healthEvents, presenceSessions: healthPresenceSessions, now }),
     summary: summarizeSemanticEvents(events),
     presence: summarizePresenceSessions(presenceSessions),
+    delivery: summarizeCaptureDelivery(deliveryReports),
     sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
     recentEvents: events.slice(0, 30).map(publicSemanticEvent),
   };
@@ -302,6 +316,7 @@ Meteor.methods({
     await RawBehaviors.removeAsync({ projectId: project._id });
     await SemanticEvents.removeAsync({ projectId: project._id });
     await PresenceSessions.removeAsync({ projectId: project._id });
+    await CaptureDeliveryReports.removeAsync({ projectId: project._id });
     await Projects.removeAsync(project._id);
     return { removed: true, projectId: project._id };
   },

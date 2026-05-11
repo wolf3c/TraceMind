@@ -64,6 +64,8 @@
   let summary = $derived(selectedProjectSummary?.summary);
   let health = $derived(selectedProjectSummary?.health);
   let healthCurrent = $derived(health?.current || {});
+  let delivery = $derived(selectedProjectSummary?.delivery || {});
+  let deliveryDropped = $derived(Number(delivery.droppedOldest || 0) + Number(delivery.droppedStorage || 0));
   let displayedRecentEvents = $derived((selectedProjectSummary?.recentEvents || []).slice(0, 15));
   let hiddenRecentEventCount = $derived(Math.max(0, (selectedProjectSummary?.recentEvents || []).length - displayedRecentEvents.length));
   let projectSummaryRefreshAge = $derived(formatRefreshAge(projectSummaryLastLoadedAt, refreshAgeTick, selectedLocale));
@@ -1162,6 +1164,24 @@
             <dl class="health-detail-list">
               <div><dt>{$t("Top events Top 3")}</dt><dd>{healthCurrent.topEvents?.map(topCountText).join(" / ") || $t("No data")}</dd></div>
               <div><dt>{$t("Needs attention")}</dt><dd>{health?.attentionItems?.map((item) => item.message).join(" / ") || $t("No attention items")}</dd></div>
+            </dl>
+          </details>
+          <details class="health-card">
+            <summary>
+              <span>{$t("Delivery health")}</span>
+              <strong>{formatNumber(deliveryDropped)}</strong>
+              <small class={delivery.failedFlushes ? "trend-negative" : "trend-flat"}>
+                {delivery.failedFlushes ? `${formatNumber(delivery.failedFlushes)} ${$t("failed flushes")}` : $t("No failed flushes")}
+              </small>
+              <em>{$t("dropped queue records")}</em>
+            </summary>
+            <dl class="health-detail-list">
+              <div><dt>{$t("Accepted uploads")}</dt><dd>{formatNumber(delivery.accepted)}</dd></div>
+              <div><dt>{$t("Ignored uploads")}</dt><dd>{formatNumber(delivery.ignored)}</dd></div>
+              <div><dt>{$t("Retry count")}</dt><dd>{formatNumber(delivery.retryCount)}</dd></div>
+              <div><dt>{$t("Coalesced presence")}</dt><dd>{formatNumber(delivery.coalescedPresence)}</dd></div>
+              <div><dt>{$t("Max queue depth")}</dt><dd>{formatNumber(delivery.maxQueueDepth)}</dd></div>
+              <div><dt>{$t("Last successful flush")}</dt><dd>{delivery.lastSuccessfulFlushAt ? compactDate(delivery.lastSuccessfulFlushAt) : $t("No data")}</dd></div>
             </dl>
           </details>
         </div>

@@ -2,6 +2,7 @@ import { WebApp } from 'meteor/webapp';
 import { Random } from 'meteor/random';
 import { Meteor } from 'meteor/meteor';
 import {
+  CaptureDeliveryReports,
   EVENT_DEFINITIONS,
   PRESENCE_HEARTBEAT_INTERVAL_MS,
   PresenceSessions,
@@ -95,6 +96,10 @@ function safeObject(value, maxBytes = 8192) {
     return { truncated: true, preview: json.slice(0, maxBytes) };
   }
   return JSON.parse(json);
+}
+
+function safeCount(value) {
+  return Math.max(0, Math.floor(Number(value) || 0));
 }
 
 function clientIp(req) {
@@ -1058,6 +1063,51 @@ function sanitizeServerCaptureFields(fields = {}) {
   );
 }
 
+function deliverySourcePayload(payload = {}) {
+  const firstEvent = Array.isArray(payload.events) && payload.events.length > 0
+    ? safeObject(payload.events[0])
+    : {};
+  return {
+    ...payload,
+    ...firstEvent,
+    source: firstEvent.source || payload.source,
+    sourceType: firstEvent.sourceType || payload.sourceType,
+    sourceKey: firstEvent.sourceKey || payload.sourceKey,
+    platform: firstEvent.platform || payload.platform,
+  };
+}
+
+async function recordDeliveryReport(project, payload = {}, req = {}, endpoint, result = {}) {
+  const stats = safeObject(payload.deliveryStats, 4096);
+  if (Object.keys(stats).length === 0) return;
+
+  const source = normalizeCaptureSource(deliverySourcePayload(payload), req.headers || {});
+  await CaptureDeliveryReports.insertAsync({
+    projectId: project._id,
+    projectKey: project.projectKey,
+    endpoint: safeString(endpoint, 40),
+    sourceType: source.sourceType,
+    sourceKey: source.sourceKey,
+    sourceLabel: source.sourceLabel,
+    sourceDetails: source.sourceDetails,
+    sessionId: safeString(payload.sessionId, 120),
+    deviceId: safeString(payload.deviceId, 120),
+    batchId: safeString(stats.batchId, 120),
+    reason: safeString(stats.reason, 80),
+    queued: safeCount(stats.queued),
+    sent: safeCount(stats.sent),
+    accepted: safeCount(result.accepted ?? stats.accepted),
+    ignored: safeCount(result.ignored ?? stats.ignored),
+    droppedOldest: safeCount(stats.droppedOldest),
+    droppedStorage: safeCount(stats.droppedStorage),
+    retryCount: safeCount(stats.retryCount),
+    coalescedPresence: safeCount(stats.coalescedPresence),
+    maxQueueDepth: safeCount(stats.maxQueueDepth),
+    lastError: safeString(stats.lastError, 160),
+    createdAt: new Date(),
+  });
+}
+
 function validateEventName(eventName) {
   if (!eventName) return [];
   return /^[a-z][a-z0-9_]*$/.test(String(eventName))
@@ -1340,12 +1390,31 @@ export function clientScript(host) {
   var presenceEndpoint = (script && script.getAttribute('data-tracemind-presence-endpoint')) || '${host}/api/presence';
   var staticUserId = script && script.getAttribute('data-tracemind-user-id');
   var userIdProvider = script && script.getAttribute('data-tracemind-user-id-provider');
-  var sessionId = localStorage.getItem('tracemind_session_id') || ('tm_sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
-  var anonymousId = localStorage.getItem('tracemind_anonymous_id') || ('tm_anon_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
-  var deviceId = localStorage.getItem('tracemind_device_id') || ('tm_dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
-  localStorage.setItem('tracemind_session_id', sessionId);
-  localStorage.setItem('tracemind_anonymous_id', anonymousId);
-  localStorage.setItem('tracemind_device_id', deviceId);
+
+  function readLocal(key) {
+    try {
+      return window.localStorage && localStorage.getItem(key);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeLocal(key, value) {
+    try {
+      if (!window.localStorage) return false;
+      localStorage.setItem(key, value);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  var sessionId = readLocal('tracemind_session_id') || ('tm_sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+  var anonymousId = readLocal('tracemind_anonymous_id') || ('tm_anon_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+  var deviceId = readLocal('tracemind_device_id') || ('tm_dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+  writeLocal('tracemind_session_id', sessionId);
+  writeLocal('tracemind_anonymous_id', anonymousId);
+  writeLocal('tracemind_device_id', deviceId);
 
   function hash(value, prefix) {
     var h = 5381;
@@ -1397,6 +1466,324 @@ export function clientScript(host) {
   var heartbeatIntervalMs = ${PRESENCE_HEARTBEAT_INTERVAL_MS};
   var presenceTimer = null;
   var currentPresenceId = null;
+  var MAX_QUEUE_EVENTS = 300;
+  var CAPTURE_BATCH_SIZE = 20;
+  var PRESENCE_BATCH_SIZE = 20;
+  var MAX_UNLOAD_BATCH_BYTES = 60 * 1024;
+  var RETRY_BASE_MS = 1000;
+  var RETRY_MAX_MS = 60 * 1000;
+  var FLUSH_DELAY_MS = 500;
+  var queueStorageKey = 'tracemind_queue_' + hash(projectKey || endpoint, 'tm_q_');
+  var statsStorageKey = 'tracemind_delivery_stats_' + hash(projectKey || endpoint, 'tm_ds_');
+  var flushTimer = null;
+  var flushing = false;
+  var queueStorageAvailable = true;
+
+  function defaultDeliveryStats() {
+    return {
+      droppedOldest: 0,
+      droppedStorage: 0,
+      retryCount: 0,
+      coalescedPresence: 0,
+      maxQueueDepth: 0,
+      lastError: '',
+      lastFlushAt: '',
+      lastFailedFlushAt: ''
+    };
+  }
+
+  function loadDeliveryStats() {
+    try {
+      return Object.assign(defaultDeliveryStats(), JSON.parse(readLocal(statsStorageKey) || '{}'));
+    } catch (error) {
+      return defaultDeliveryStats();
+    }
+  }
+
+  var deliveryStats = loadDeliveryStats();
+
+  function persistDeliveryStats() {
+    writeLocal(statsStorageKey, JSON.stringify(deliveryStats));
+  }
+
+  function loadQueue() {
+    try {
+      var parsed = JSON.parse(readLocal(queueStorageKey) || '[]');
+      return Array.isArray(parsed) ? parsed.filter(function (record) {
+        return record && record.id && (record.kind === 'capture' || record.kind === 'presence') && record.payload;
+      }) : [];
+    } catch (error) {
+      deliveryStats.lastError = 'queue_load_failed';
+      persistDeliveryStats();
+      return [];
+    }
+  }
+
+  var queue = loadQueue();
+
+  function persistQueue() {
+    var encoded = JSON.stringify(queue);
+    if (writeLocal(queueStorageKey, encoded)) {
+      queueStorageAvailable = true;
+      return true;
+    }
+    queueStorageAvailable = false;
+    var candidate = queue.slice();
+    var dropped = 0;
+    while (candidate.length > 0) {
+      candidate.shift();
+      dropped += 1;
+      if (writeLocal(queueStorageKey, JSON.stringify(candidate))) {
+        queue = candidate;
+        queueStorageAvailable = true;
+        break;
+      }
+    }
+    if (dropped > 0 && queueStorageAvailable) {
+      deliveryStats.droppedStorage += dropped;
+      deliveryStats.lastError = 'storage_quota';
+      persistDeliveryStats();
+    } else if (!queueStorageAvailable) {
+      deliveryStats.lastError = 'storage_unavailable';
+      persistDeliveryStats();
+    }
+    return queueStorageAvailable;
+  }
+
+  function trimQueue() {
+    var dropped = 0;
+    while (queue.length > MAX_QUEUE_EVENTS) {
+      queue.shift();
+      dropped += 1;
+    }
+    if (dropped > 0) {
+      deliveryStats.droppedOldest += dropped;
+      persistDeliveryStats();
+    }
+  }
+
+  function recordId() {
+    return 'tm_evt_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  function batchId() {
+    return 'tm_batch_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  function retryDelay(attempts) {
+    var base = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * Math.pow(2, Math.max(0, attempts - 1)));
+    return base + Math.floor(Math.random() * 250);
+  }
+
+  function queueStatus() {
+    var nextRetryAt = null;
+    queue.forEach(function (record) {
+      if (record.nextAttemptAt && (!nextRetryAt || record.nextAttemptAt < nextRetryAt)) {
+        nextRetryAt = record.nextAttemptAt;
+      }
+    });
+    return {
+      queueLength: queue.length,
+      droppedOldest: deliveryStats.droppedOldest,
+      droppedStorage: deliveryStats.droppedStorage,
+      retryCount: deliveryStats.retryCount,
+      coalescedPresence: deliveryStats.coalescedPresence,
+      maxQueueDepth: deliveryStats.maxQueueDepth,
+      lastError: deliveryStats.lastError,
+      lastFlushAt: deliveryStats.lastFlushAt,
+      lastFailedFlushAt: deliveryStats.lastFailedFlushAt,
+      nextRetryAt: nextRetryAt ? new Date(nextRetryAt).toISOString() : '',
+      storage: queueStorageAvailable ? 'localStorage' : 'memory'
+    };
+  }
+
+  function scheduleFlush(delay) {
+    if (flushTimer) return;
+    flushTimer = setTimeout(function () {
+      flushTimer = null;
+      flushQueue('scheduled', false);
+    }, delay === undefined ? FLUSH_DELAY_MS : delay);
+  }
+
+  function coalescePresenceHeartbeat(record) {
+    if (record.kind !== 'presence' || record.payload.state !== 'heartbeat' || !record.payload.presenceId) return false;
+    for (var i = queue.length - 1; i >= 0; i -= 1) {
+      var existing = queue[i];
+      if (existing.kind === 'presence' && existing.payload && existing.payload.state === 'heartbeat'
+        && existing.payload.presenceId === record.payload.presenceId) {
+        existing.payload = Object.assign({}, existing.payload, record.payload);
+        existing.createdAt = record.createdAt;
+        deliveryStats.coalescedPresence += 1;
+        persistDeliveryStats();
+        persistQueue();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function enqueue(kind, payload) {
+    if (!projectKey) return;
+    var record = {
+      id: recordId(),
+      kind: kind,
+      payload: payload,
+      attempts: 0,
+      nextAttemptAt: 0,
+      createdAt: Date.now()
+    };
+    if (!coalescePresenceHeartbeat(record)) {
+      queue.push(record);
+    }
+    deliveryStats.maxQueueDepth = Math.max(deliveryStats.maxQueueDepth, queue.length);
+    trimQueue();
+    persistQueue();
+    persistDeliveryStats();
+    scheduleFlush();
+  }
+
+  function dueRecords(kind, limit, maxBytes) {
+    var now = Date.now();
+    var selected = [];
+    var bytes = 0;
+    for (var i = 0; i < queue.length; i += 1) {
+      var record = queue[i];
+      if (record.kind !== kind || (record.nextAttemptAt && record.nextAttemptAt > now)) continue;
+      var size = JSON.stringify(record.payload).length + 64;
+      if (selected.length > 0 && (selected.length >= limit || bytes + size > maxBytes)) break;
+      selected.push(record);
+      bytes += size;
+      if (selected.length >= limit) break;
+    }
+    return selected;
+  }
+
+  function deliveryReport(reason, records) {
+    var retryCount = deliveryStats.retryCount;
+    records.forEach(function (record) {
+      retryCount += record.attempts || 0;
+    });
+    return {
+      batchId: batchId(),
+      reason: reason || 'scheduled',
+      queued: queue.length,
+      sent: records.length,
+      droppedOldest: deliveryStats.droppedOldest,
+      droppedStorage: deliveryStats.droppedStorage,
+      retryCount: retryCount,
+      coalescedPresence: deliveryStats.coalescedPresence,
+      maxQueueDepth: deliveryStats.maxQueueDepth,
+      lastError: deliveryStats.lastError
+    };
+  }
+
+  function resetReportedStats() {
+    deliveryStats.droppedOldest = 0;
+    deliveryStats.droppedStorage = 0;
+    deliveryStats.retryCount = 0;
+    deliveryStats.coalescedPresence = 0;
+    deliveryStats.maxQueueDepth = queue.length;
+    deliveryStats.lastError = '';
+    deliveryStats.lastFlushAt = new Date().toISOString();
+    persistDeliveryStats();
+  }
+
+  function removeRecords(records) {
+    var ids = {};
+    records.forEach(function (record) { ids[record.id] = true; });
+    queue = queue.filter(function (record) { return !ids[record.id]; });
+    persistQueue();
+  }
+
+  function markRecordsFailed(records, error) {
+    var now = Date.now();
+    var message = error && error.message ? error.message : 'network_error';
+    records.forEach(function (record) {
+      record.attempts = (record.attempts || 0) + 1;
+      record.nextAttemptAt = now + retryDelay(record.attempts);
+    });
+    deliveryStats.retryCount += records.length;
+    deliveryStats.lastError = String(message).slice(0, 160);
+    deliveryStats.lastFailedFlushAt = new Date().toISOString();
+    persistQueue();
+    persistDeliveryStats();
+    scheduleFlush(retryDelay(1));
+  }
+
+  function sendBatch(endpoint, body, unloadMode) {
+    var json = JSON.stringify(body);
+    if (unloadMode && navigator.sendBeacon) {
+      return navigator.sendBeacon(endpoint, new Blob([json], { type: 'application/json' }));
+    }
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: json,
+      keepalive: !!unloadMode
+    }).then(function (response) {
+      if (!response.ok) throw new Error('http_' + response.status);
+      return response;
+    });
+  }
+
+  function flushKind(kind, reason, unloadMode) {
+    var records = dueRecords(
+      kind,
+      kind === 'capture' ? CAPTURE_BATCH_SIZE : PRESENCE_BATCH_SIZE,
+      unloadMode ? MAX_UNLOAD_BATCH_BYTES : Infinity
+    );
+    if (records.length === 0) return Promise.resolve();
+    var body = {
+      projectKey: projectKey,
+      sessionId: sessionId,
+      anonymousId: anonymousId,
+      userId: currentUserId(),
+      deviceId: deviceId,
+      deviceFingerprint: fingerprint,
+      platform: 'web',
+      events: records.map(function (record) { return record.payload; }),
+      deliveryStats: deliveryReport(reason, records)
+    };
+    var targetEndpoint = kind === 'capture' ? endpoint : presenceEndpoint;
+    var result = sendBatch(targetEndpoint, body, unloadMode);
+    if (result === true) {
+      removeRecords(records);
+      resetReportedStats();
+      return Promise.resolve();
+    }
+    if (result === false) {
+      markRecordsFailed(records, new Error('beacon_rejected'));
+      return Promise.resolve();
+    }
+    return result.then(function () {
+      removeRecords(records);
+      resetReportedStats();
+    }).catch(function (error) {
+      markRecordsFailed(records, error);
+    });
+  }
+
+  function flushQueue(reason, unloadMode) {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    if (!unloadMode && navigator.onLine === false) return Promise.resolve(queueStatus());
+    if (flushing && !unloadMode) return Promise.resolve(queueStatus());
+    flushing = true;
+    return flushKind('capture', reason, unloadMode)
+      .then(function () { return flushKind('presence', reason, unloadMode); })
+      .then(function () {
+        flushing = false;
+        return queueStatus();
+      })
+      .catch(function (error) {
+        flushing = false;
+        deliveryStats.lastError = error && error.message ? error.message : 'flush_failed';
+        persistDeliveryStats();
+        return queueStatus();
+      });
+  }
 
   function textOf(element) {
     if (!element) return '';
@@ -1565,12 +1952,11 @@ export function clientScript(host) {
         return undefined;
       }
     }
-    return normalizeUserId(staticUserId) || normalizeUserId(localStorage.getItem('tracemind_user_id'));
+    return normalizeUserId(staticUserId) || normalizeUserId(readLocal('tracemind_user_id'));
   }
 
-  function send(type, data) {
-    if (!projectKey) return;
-    var payload = Object.assign({
+  function buildCapturePayload(type, data) {
+    return Object.assign({
       projectKey: projectKey,
       sessionId: sessionId,
       anonymousId: anonymousId,
@@ -1586,18 +1972,19 @@ export function clientScript(host) {
       title: document.title,
       occurredAt: new Date().toISOString()
     }, data || {});
+  }
 
-    navigator.sendBeacon && navigator.sendBeacon(endpoint, new Blob([JSON.stringify(payload)], { type: 'application/json' })) ||
-      fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true });
+  function send(type, data) {
+    if (!projectKey) return;
+    enqueue('capture', buildCapturePayload(type, data));
   }
 
   function newPresenceId() {
     return 'tm_pres_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
   }
 
-  function sendPresence(state) {
-    if (!projectKey || !currentPresenceId) return;
-    var payload = {
+  function buildPresencePayload(state) {
+    return {
       projectKey: projectKey,
       presenceId: currentPresenceId,
       sessionId: sessionId,
@@ -1614,9 +2001,11 @@ export function clientScript(host) {
       heartbeatIntervalMs: heartbeatIntervalMs,
       occurredAt: new Date().toISOString()
     };
+  }
 
-    navigator.sendBeacon && navigator.sendBeacon(presenceEndpoint, new Blob([JSON.stringify(payload)], { type: 'application/json' })) ||
-      fetch(presenceEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true });
+  function sendPresence(state) {
+    if (!projectKey || !currentPresenceId) return;
+    enqueue('presence', buildPresencePayload(state));
   }
 
   function stopPresence(state) {
@@ -1732,18 +2121,31 @@ export function clientScript(host) {
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') {
       stopPresence('background');
+      flushQueue('visibilitychange', true);
     } else {
       startPresence('foreground');
+      flushQueue('visibilitychange', false);
     }
   });
-  window.addEventListener('pagehide', function () { stopPresence('end'); });
-  window.addEventListener('beforeunload', function () { stopPresence('end'); });
+  window.addEventListener('online', function () { flushQueue('online', false); });
+  window.addEventListener('pagehide', function () {
+    stopPresence('end');
+    flushQueue('pagehide', true);
+  });
+  window.addEventListener('beforeunload', function () {
+    stopPresence('end');
+    flushQueue('beforeunload', true);
+  });
 
   window.TraceMind = {
     capture: send,
     presence: sendPresence,
+    flush: function () {
+      return flushQueue('manual', false);
+    },
+    status: queueStatus,
     identify: function (userId, traits) {
-      localStorage.setItem('tracemind_user_id', userId);
+      writeLocal('tracemind_user_id', userId);
       send('custom', { eventName: 'identify', userId: userId, properties: traits || {} });
     },
     sessionId: sessionId,
@@ -1832,10 +2234,17 @@ export async function ingestCapturePayload(payload = {}, req = {}) {
       else accepted += 1;
     }
 
-    return { ok: true, accepted, ignored };
+    const result = { ok: true, accepted, ignored };
+    await recordDeliveryReport(project, payload, req, 'capture', result);
+    return result;
   }
 
-  return insertCaptureEvent(project, payload, req);
+  const result = await insertCaptureEvent(project, payload, req);
+  await recordDeliveryReport(project, payload, req, 'capture', {
+    accepted: result.ignored ? 0 : 1,
+    ignored: result.ignored ? 1 : 0,
+  });
+  return result;
 }
 
 function normalizePresenceState(value) {
@@ -1843,13 +2252,7 @@ function normalizePresenceState(value) {
   return ['start', 'heartbeat', 'end', 'background', 'foreground'].includes(state) ? state : 'heartbeat';
 }
 
-export async function ingestPresencePayload(payload = {}, req = {}) {
-  payload = payload || {};
-  const project = await resolveProjectByKey(payload.projectKey);
-  if (!project) {
-    return { ok: false, statusCode: 401, error: 'invalid_project_key' };
-  }
-
+async function upsertPresenceEvent(project, payload = {}, req = {}) {
   const source = normalizeCaptureSource(payload, req.headers || {});
   if (isSourceBlocked(project, source)) {
     return { ok: true, ignored: true };
@@ -1908,6 +2311,42 @@ export async function ingestPresencePayload(payload = {}, req = {}) {
   );
 
   return { ok: true, ignored: false };
+}
+
+export async function ingestPresencePayload(payload = {}, req = {}) {
+  payload = payload || {};
+  const project = await resolveProjectByKey(payload.projectKey);
+  if (!project) {
+    return { ok: false, statusCode: 401, error: 'invalid_project_key' };
+  }
+
+  if (Array.isArray(payload.events)) {
+    let accepted = 0;
+    let ignored = 0;
+    const sharedPayload = { ...payload };
+    delete sharedPayload.events;
+
+    for (const eventPayload of payload.events.slice(0, 100)) {
+      const result = await upsertPresenceEvent(project, {
+        ...sharedPayload,
+        ...safeObject(eventPayload),
+        projectKey: project.projectKey,
+      }, req);
+      if (result.ignored) ignored += 1;
+      else accepted += 1;
+    }
+
+    const result = { ok: true, accepted, ignored };
+    await recordDeliveryReport(project, payload, req, 'presence', result);
+    return result;
+  }
+
+  const result = await upsertPresenceEvent(project, payload, req);
+  await recordDeliveryReport(project, payload, req, 'presence', {
+    accepted: result.ignored ? 0 : 1,
+    ignored: result.ignored ? 1 : 0,
+  });
+  return result;
 }
 
 async function handleCapture(req, res) {

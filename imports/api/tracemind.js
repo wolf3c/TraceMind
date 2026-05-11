@@ -5,6 +5,7 @@ export const Projects = new Mongo.Collection('tracemind_projects');
 export const RawBehaviors = new Mongo.Collection('tracemind_raw_behaviors');
 export const SemanticEvents = new Mongo.Collection('tracemind_semantic_events');
 export const PresenceSessions = new Mongo.Collection('tracemind_presence_sessions');
+export const CaptureDeliveryReports = new Mongo.Collection('tracemind_capture_delivery_reports');
 
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
@@ -283,6 +284,46 @@ export function summarizeBehaviorSources(behaviors = [], blockedSources = []) {
     if (right.count !== left.count) return right.count - left.count;
     return new Date(right.lastSeenAt || 0) - new Date(left.lastSeenAt || 0);
   });
+}
+
+export function summarizeCaptureDelivery(reports = []) {
+  const summary = {
+    reportCount: reports.length,
+    sent: 0,
+    accepted: 0,
+    ignored: 0,
+    droppedOldest: 0,
+    droppedStorage: 0,
+    retryCount: 0,
+    coalescedPresence: 0,
+    maxQueueDepth: 0,
+    failedFlushes: 0,
+    lastSuccessfulFlushAt: null,
+    lastFailedFlushAt: null,
+  };
+
+  reports.forEach((report) => {
+    summary.sent += Number(report.sent) || 0;
+    summary.accepted += Number(report.accepted) || 0;
+    summary.ignored += Number(report.ignored) || 0;
+    summary.droppedOldest += Number(report.droppedOldest) || 0;
+    summary.droppedStorage += Number(report.droppedStorage) || 0;
+    summary.retryCount += Number(report.retryCount) || 0;
+    summary.coalescedPresence += Number(report.coalescedPresence) || 0;
+    summary.maxQueueDepth = Math.max(summary.maxQueueDepth, Number(report.maxQueueDepth) || 0);
+
+    const createdAt = report.createdAt || null;
+    if (report.lastError) {
+      summary.failedFlushes += 1;
+      if (createdAt && (!summary.lastFailedFlushAt || new Date(createdAt) > new Date(summary.lastFailedFlushAt))) {
+        summary.lastFailedFlushAt = createdAt;
+      }
+    } else if (createdAt && (!summary.lastSuccessfulFlushAt || new Date(createdAt) > new Date(summary.lastSuccessfulFlushAt))) {
+      summary.lastSuccessfulFlushAt = createdAt;
+    }
+  });
+
+  return summary;
 }
 
 export function publicMcpToken(token) {

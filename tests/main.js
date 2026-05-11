@@ -2,6 +2,7 @@ import assert from 'assert';
 import { Meteor } from 'meteor/meteor';
 import { buildSemanticEvent, summarizeSemanticEvents } from '../imports/api/semantic';
 import {
+  CaptureDeliveryReports,
   Developers,
   PresenceSessions,
   Projects,
@@ -14,6 +15,7 @@ import {
   normalizeCaptureSource,
   normalizeEmail,
   summarizeBehaviorSources,
+  summarizeCaptureDelivery,
   summarizeProjectHealth,
   summarizePresenceSessions,
 } from '../imports/api/tracemind';
@@ -186,11 +188,347 @@ describe('TraceMind', function () {
       assert.ok(script.includes("document.addEventListener('visibilitychange'"));
       assert.ok(script.includes("window.addEventListener('pagehide'"));
       assert.ok(script.includes("stopPresence('end')"));
-      const presencePayloadStart = script.indexOf('function sendPresence(state)');
-      const presencePayloadEnd = script.indexOf('function stopPresence(state)');
+      const presencePayloadStart = script.indexOf('function buildPresencePayload(state)');
+      const presencePayloadEnd = script.indexOf('function sendPresence(state)');
       const presenceScript = script.slice(presencePayloadStart, presencePayloadEnd);
       assert.ok(presenceScript.includes('path: location.pathname,'));
       assert.ok(!presenceScript.includes('location.search'));
+    });
+
+    it('serves Web Auto Capture with reliable local queue support', async function () {
+      const { clientScript } = await import('../server/capture_routes');
+      const script = clientScript('https://tracemind.example.com');
+
+      assert.ok(script.includes('MAX_QUEUE_EVENTS = 300'));
+      assert.ok(script.includes('CAPTURE_BATCH_SIZE = 20'));
+      assert.ok(script.includes('PRESENCE_BATCH_SIZE = 20'));
+      assert.ok(script.includes('function loadQueue()'));
+      assert.ok(script.includes('function persistQueue()'));
+      assert.ok(script.includes('function enqueue(kind, payload)'));
+      assert.ok(script.includes('function coalescePresenceHeartbeat(record)'));
+      assert.ok(script.includes('function flushQueue(reason, unloadMode)'));
+      assert.ok(script.includes('function sendBatch(endpoint, body, unloadMode)'));
+      assert.ok(script.includes('deliveryStats'));
+      assert.ok(script.includes('flush: function ()'));
+      assert.ok(script.includes('status: queueStatus'));
+      assert.ok(!script.includes('navigator.sendBeacon && navigator.sendBeacon(endpoint'));
+    });
+
+    it('queues web capture records in localStorage and clears them after a successful flush', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const fetchCalls = [];
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind test page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener() {},
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch(endpoint, options) {
+          fetchCalls.push({ endpoint, body: options.body });
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      const queued = JSON.parse(storage.get(queueKey));
+
+      assert.ok(queued.some((record) => record.kind === 'capture' && record.payload.type === 'page_view'));
+      assert.ok(queued.some((record) => record.kind === 'presence' && record.payload.state === 'start'));
+
+      await sandbox.window.TraceMind.flush();
+      const flushedQueue = JSON.parse(storage.get(queueKey));
+      const captureBody = JSON.parse(fetchCalls.find((call) => call.endpoint.endsWith('/api/capture')).body);
+      const presenceBody = JSON.parse(fetchCalls.find((call) => call.endpoint.endsWith('/api/presence')).body);
+
+      assert.strictEqual(flushedQueue.length, 0);
+      assert.strictEqual(captureBody.events.length, 1);
+      assert.strictEqual(presenceBody.events.length, 1);
+      assert.strictEqual(captureBody.deliveryStats.sent, 1);
+      assert.strictEqual(presenceBody.deliveryStats.sent, 1);
+    });
+
+    it('keeps failed queue records with retry metadata and coalesces presence heartbeats', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind test page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener() {},
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch() {
+          return Promise.reject(new Error('network_error'));
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      sandbox.window.TraceMind.presence('heartbeat');
+      sandbox.window.TraceMind.presence('heartbeat');
+      sandbox.window.TraceMind.presence('heartbeat');
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      let queued = JSON.parse(storage.get(queueKey));
+
+      assert.strictEqual(queued.filter((record) => record.kind === 'presence' && record.payload.state === 'heartbeat').length, 1);
+      assert.ok(sandbox.window.TraceMind.status().coalescedPresence >= 2);
+
+      for (let i = 0; i < 305; i += 1) {
+        sandbox.window.TraceMind.capture('custom', { eventName: `queue_test_${i}` });
+      }
+
+      queued = JSON.parse(storage.get(queueKey));
+      const statusBeforeFlush = sandbox.window.TraceMind.status();
+
+      assert.strictEqual(queued.length, 300);
+      assert.ok(statusBeforeFlush.droppedOldest > 0);
+
+      await sandbox.window.TraceMind.flush();
+      queued = JSON.parse(storage.get(queueKey));
+
+      assert.strictEqual(queued.length, 300);
+      assert.ok(queued.some((record) => record.kind === 'capture' && record.attempts === 1 && record.nextAttemptAt > Date.now()));
+      assert.strictEqual(sandbox.window.TraceMind.status().lastError, 'network_error');
+    });
+
+    it('drops oldest records and reports storage pressure when localStorage quota is tight', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind quota page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener() {},
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch() {
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) {
+            if (key.startsWith('tracemind_queue_') && JSON.parse(value).length > 3) {
+              throw new Error('QuotaExceededError');
+            }
+            storage.set(key, value);
+          },
+          removeItem(key) { storage.delete(key); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      for (let i = 0; i < 5; i += 1) {
+        sandbox.window.TraceMind.capture('custom', { eventName: `storage_pressure_${i}` });
+      }
+
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      const queued = JSON.parse(storage.get(queueKey));
+      const status = sandbox.window.TraceMind.status();
+
+      assert.strictEqual(queued.length, 3);
+      assert.strictEqual(status.storage, 'localStorage');
+      assert.strictEqual(status.droppedOldest, 0);
+      assert.ok(status.droppedStorage > 0);
+      assert.strictEqual(status.lastError, 'storage_quota');
+    });
+
+    it('keeps an in-memory queue when localStorage writes are unavailable', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const fetchCalls = [];
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind private mode page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener() {},
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch(endpoint, options) {
+          fetchCalls.push({ endpoint, body: options.body });
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem() { throw new Error('storage disabled'); },
+          setItem() { throw new Error('storage disabled'); },
+          removeItem() { throw new Error('storage disabled'); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      const beforeFlush = sandbox.window.TraceMind.status();
+
+      assert.strictEqual(beforeFlush.storage, 'memory');
+      assert.strictEqual(beforeFlush.queueLength, 2);
+      assert.strictEqual(beforeFlush.droppedStorage, 0);
+      assert.strictEqual(beforeFlush.lastError, 'storage_unavailable');
+
+      await sandbox.window.TraceMind.flush();
+      const afterFlush = sandbox.window.TraceMind.status();
+
+      assert.strictEqual(afterFlush.queueLength, 0);
+      assert.ok(fetchCalls.some((call) => call.endpoint.endsWith('/api/capture')));
+      assert.ok(fetchCalls.some((call) => call.endpoint.endsWith('/api/presence')));
     });
 
     it('serves Web Auto Capture with stable target identity and core SPA signals', async function () {
@@ -1087,6 +1425,50 @@ describe('TraceMind', function () {
     assert.strictEqual(isSourceBlocked({ blockedSources }, { sourceType: 'web', sourceKey: 'app.example.com' }), false);
   });
 
+  it('summarizes capture delivery reports for project health', function () {
+    const reports = [
+      {
+        droppedOldest: 2,
+        droppedStorage: 1,
+        retryCount: 3,
+        coalescedPresence: 4,
+        maxQueueDepth: 12,
+        sent: 10,
+        accepted: 9,
+        ignored: 1,
+        lastError: '',
+        createdAt: new Date('2026-05-09T10:00:00.000Z'),
+      },
+      {
+        droppedOldest: 1,
+        droppedStorage: 0,
+        retryCount: 1,
+        coalescedPresence: 0,
+        maxQueueDepth: 20,
+        sent: 0,
+        accepted: 0,
+        ignored: 0,
+        lastError: 'network_error',
+        createdAt: new Date('2026-05-09T10:05:00.000Z'),
+      },
+    ];
+
+    assert.deepStrictEqual(summarizeCaptureDelivery(reports), {
+      reportCount: 2,
+      sent: 10,
+      accepted: 9,
+      ignored: 1,
+      droppedOldest: 3,
+      droppedStorage: 1,
+      retryCount: 4,
+      coalescedPresence: 4,
+      maxQueueDepth: 20,
+      failedFlushes: 1,
+      lastSuccessfulFlushAt: new Date('2026-05-09T10:00:00.000Z'),
+      lastFailedFlushAt: new Date('2026-05-09T10:05:00.000Z'),
+    });
+  });
+
   if (Meteor.isServer) {
     let ingestCapturePayload;
     let ingestPresencePayload;
@@ -1227,9 +1609,11 @@ describe('TraceMind', function () {
         semanticEventLimit: 200,
         rawBehaviorLimit: 500,
         presenceSessionLimit: 500,
+        deliveryReportLimit: 500,
         semanticEventSampleSize: 200,
         rawBehaviorSampleSize: 1,
         presenceSessionSampleSize: 1,
+        deliveryReportSampleSize: 0,
       });
       assert.strictEqual(result.summary.totalEvents, 200);
       assert.strictEqual(result.summary.uniqueUsers, 1);
@@ -1483,6 +1867,119 @@ describe('TraceMind', function () {
 
       assert.deepStrictEqual(result, { ok: true, ignored: true });
       assert.strictEqual(count, 0);
+    });
+
+    it('records capture delivery stats separately from raw behavior', async function () {
+      const projectId = `project-capture-delivery-${Date.now()}`;
+      const projectKey = `tm_proj_delivery_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-capture-delivery',
+        name: 'Capture Delivery Project',
+        projectKey,
+        blockedSources: [{ sourceType: 'web', sourceKey: 'blocked.example', blockedAt: new Date() }],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        sessionId: 'tm_sess_delivery',
+        deviceId: 'tm_dev_delivery',
+        deliveryStats: {
+          batchId: 'tm_batch_capture',
+          reason: 'scheduled',
+          queued: 3,
+          sent: 3,
+          droppedOldest: 2,
+          droppedStorage: 1,
+          retryCount: 4,
+          coalescedPresence: 0,
+          maxQueueDepth: 30,
+        },
+        events: [
+          { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
+          { type: 'click', source: { type: 'web', url: 'https://blocked.example/' } },
+          { type: 'submit', source: { type: 'web', url: 'https://app.example.com/signup' } },
+        ],
+      }, { headers: {}, socket: {} });
+
+      const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
+      const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 2);
+      assert.strictEqual(result.ignored, 1);
+      assert.strictEqual(behaviors.length, 2);
+      assert.strictEqual(reports.length, 1);
+      assert.strictEqual(reports[0].endpoint, 'capture');
+      assert.strictEqual(reports[0].batchId, 'tm_batch_capture');
+      assert.strictEqual(reports[0].accepted, 2);
+      assert.strictEqual(reports[0].ignored, 1);
+      assert.strictEqual(reports[0].droppedOldest, 2);
+      assert.strictEqual(reports[0].droppedStorage, 1);
+      assert.strictEqual(await SemanticEvents.find({ projectId }).countAsync(), 0);
+    });
+
+    it('accepts batched presence payloads and records delivery stats', async function () {
+      const projectId = `project-presence-batch-${Date.now()}`;
+      const projectKey = `tm_proj_presence_batch_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-presence-batch',
+        name: 'Presence Batch Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestPresencePayload({
+        projectKey,
+        sessionId: 'tm_sess_presence_batch',
+        deviceId: 'tm_dev_presence_batch',
+        deliveryStats: {
+          batchId: 'tm_batch_presence',
+          reason: 'visibilitychange',
+          queued: 2,
+          sent: 2,
+          droppedOldest: 0,
+          droppedStorage: 0,
+          retryCount: 1,
+          coalescedPresence: 3,
+          maxQueueDepth: 8,
+        },
+        events: [
+          {
+            presenceId: 'tm_pres_batch_a',
+            source: { type: 'web', url: 'https://app.example.com/docs' },
+            path: '/docs',
+            state: 'start',
+            occurredAt: '2026-05-08T01:00:00.000Z',
+          },
+          {
+            presenceId: 'tm_pres_batch_b',
+            source: { type: 'web', url: 'https://app.example.com/pricing' },
+            path: '/pricing',
+            state: 'heartbeat',
+            occurredAt: '2026-05-08T01:00:05.000Z',
+          },
+        ],
+      }, { headers: {}, socket: {} });
+
+      const sessions = await PresenceSessions.find({ projectId }, { sort: { presenceId: 1 } }).fetchAsync();
+      const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 2);
+      assert.strictEqual(result.ignored, 0);
+      assert.strictEqual(sessions.length, 2);
+      assert.deepStrictEqual(sessions.map((session) => session.path), ['/docs', '/pricing']);
+      assert.strictEqual(reports.length, 1);
+      assert.strictEqual(reports[0].endpoint, 'presence');
+      assert.strictEqual(reports[0].batchId, 'tm_batch_presence');
+      assert.strictEqual(reports[0].coalescedPresence, 3);
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 0);
     });
 
     it('upserts presence sessions without creating raw or semantic events', async function () {

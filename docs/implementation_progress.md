@@ -98,3 +98,12 @@ Then add the capture snippet to a small test web page, generate several interact
 - Completed core Web signal coverage for product analysis: debounced input edits, change events, submit intent, `replaceState`, `hashchange`, and query-free event paths.
 - Added manual capture compatibility fields (`relatedActionKey`, `relatedTargetHash`, `correlationId`) so business-result events can be correlated with auto-captured actions without overriding manual `eventName`.
 - Aligned native SDK payloads with the Web action model and improved capture targets: iOS now hooks `UIControl` actions, Android resolves the touched view instead of relying only on focus, and React Native preserves native platform behavior while marking framework metadata.
+
+## 2026-05-11
+
+### Completed
+
+- Added a reliable Web Auto Capture queue backed by `localStorage`, with batched flushes, retry backoff, queue caps, oldest-record dropping, manual `TraceMind.flush()`, and non-sensitive `TraceMind.status()` diagnostics.
+- Moved Web presence onto the same reliable queue and coalesced pending heartbeat records by `presenceId` so offline heartbeats do not crowd out behavior events.
+- Added batch presence ingestion and `tracemind_capture_delivery_reports` so capture/presence batches can report accepted, ignored, retry, drop, coalescing, and queue-depth diagnostics without creating semantic events.
+- Added a compact delivery health summary to the selected-project dashboard/API and updated Web setup documentation for the queue and cross-network troubleshooting path.

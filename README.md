@@ -66,7 +66,11 @@ TraceMind 会在页面上暴露：
 ```js
 window.TraceMind.capture(type, data);
 window.TraceMind.identify(userId, traits);
+window.TraceMind.flush();
+window.TraceMind.status();
 ```
+
+Web 自动采集会先写入内存队列，并尽量同步持久化到 `localStorage`。队列会批量发送行为事件和在线区间，网络失败时保留事件并指数退避重试；页面隐藏、关闭、恢复联网或调用 `TraceMind.flush()` 时都会尝试 flush。`TraceMind.status()` 返回队列长度、丢弃计数、重试次数和最近错误等非敏感诊断摘要，可用于排查跨境网络或 CSP/connect-src 导致的上报稀疏问题。
 
 ## iOS 接入方式
 
@@ -476,14 +480,15 @@ window.__TraceMindLoaded
 网络影响：
 
 - 页面会额外加载一次 `capture.js`。
-- 每次自动事件会向 `/api/capture` 发送一次后台请求。
-- 优先使用 `navigator.sendBeacon`，不支持时使用 `fetch(..., keepalive: true)`。
+- 自动事件和在线区间先写入本地队列，再批量发送到 `/api/capture` 和 `/api/presence`。
+- 普通前台发送使用 `fetch` 获取成功/失败结果；页面隐藏或关闭时优先使用 `navigator.sendBeacon`。
+- 发送失败会保留队列并重试，队列超过上限时才丢弃最旧记录。
 
 性能影响：
 
 - 普通页面影响很小。
-- 高流量网站、复杂页面或高频交互场景会增加请求量和数据库写入量。
-- 后续生产版本应支持采样、节流和批量上报。
+- 高流量网站、复杂页面或高频交互场景会增加队列压力和数据库写入量。
+- 后续生产版本应支持采样和更细粒度节流。
 
 兼容性影响：
 
