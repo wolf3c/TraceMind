@@ -1403,7 +1403,7 @@
     {/if}
 
     {#if status}
-      <p class="status-alert">{status}</p>
+      <p class="status-alert" role="status" aria-live="polite">{status}</p>
     {/if}
   </section>
 
