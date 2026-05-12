@@ -56,8 +56,11 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('https://local.example/agents/tracemind/AGENTS_SNIPPET.md'));
       assert.ok(prompt.includes('https://local.example/agents/tracemind/manifest.json'));
       assert.ok(prompt.includes('不要覆盖已有配置，只能合并或追加'));
+      assert.ok(prompt.includes('先确认当前工作目录或仓库就是用户要接入 TraceMind 的目标项目'));
       assert.ok(prompt.includes('请不要创建自定义 skill 目录'));
       assert.ok(prompt.includes('如果已经安装过 TraceMind Skill 或已经追加过 TraceMind rules'));
+      assert.ok(prompt.includes('如果项目级 instruction 文件里已经存在不同 Project ID 的 `TraceMind project binding`'));
+      assert.ok(prompt.includes('如果已经存在相同 Project ID 的 `TraceMind project binding`'));
       assert.ok(prompt.includes('如果已有同名 MCP server `tracemind-abc123`'));
       assert.ok(prompt.includes('如果已有其他 `tracemind-*` TraceMind MCP server'));
       assert.ok(prompt.includes('如果已有旧的 `tracemind` MCP server'));
@@ -97,7 +100,10 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('- Expected MCP server: tracemind-xyz789'));
       assert.ok(!prompt.includes('tracemind-customer-portal'));
       assert.ok(prompt.includes('Do not create a custom skill directory'));
+      assert.ok(prompt.includes('first confirm that the current working directory or repository is the target project'));
       assert.ok(prompt.includes('If TraceMind Skill or TraceMind rules already exist'));
+      assert.ok(prompt.includes('If the project-level instruction file already contains a `TraceMind project binding` with a different Project ID'));
+      assert.ok(prompt.includes('If the same Project ID binding already exists'));
       assert.ok(prompt.includes('If an MCP server named `tracemind-xyz789` already exists'));
       assert.ok(prompt.includes('If other `tracemind-*` TraceMind MCP servers exist'));
       assert.ok(prompt.includes('If an old `tracemind` MCP server exists'));

@@ -460,6 +460,8 @@ MCP 使用独立 token，格式为 `tm_mcp_xxx`。它和 Auto Capture 的公开 
 
 控制台里可以为同一个项目创建多个 MCP Token，分别发给不同成员或 Agent。泄露后可以刷新单个 token，刷新后旧 token 立即失效；也可以删除不再使用的 token。
 
+复制 Coding Agent 安装提示词前，请先切到目标代码仓库对应的 agent 会话或工作区，避免把另一个 TraceMind 项目的绑定写入错误仓库。
+
 MCP 连接地址：
 
 ```text
