@@ -413,7 +413,7 @@ Input:
 }
 ```
 
-服务端要求 `type`、`title` 和 `summary`，`type` 只能是 `issue` 或 `idea`。提交内容会被截断、数组会被限制长度，并通过隐私检查拒绝 PII、token、raw prompt、原始用户内容、源码 diff、请求/响应 body、headers、cookies、authorization 值和带 query 的完整 URL。返回值为 `{ ok, feedbackId, createdAt }`。
+服务端要求 `type`、`title` 和 `summary`，`type` 只能是 `issue` 或 `idea`。提交内容会被截断、数组会被限制长度，并通过隐私检查拒绝 PII、token、raw prompt、原始用户内容、源码 diff、请求/响应 body、headers、cookies、authorization 值和带 query 的完整 URL。服务端会按同一项目和 MCP token 对 24 小时内相同脱敏内容做去重，重复提交返回已有 `feedbackId` 和 `deduplicated: true`；非重复提交按同一项目和 MCP token 限制为每分钟最多 5 条、24 小时最多 100 条，超限返回 `feedback_rate_limited` 且不写入反馈库。成功返回值为 `{ ok, feedbackId, createdAt }`。
 
 ## 推荐 LLM 查询顺序
 

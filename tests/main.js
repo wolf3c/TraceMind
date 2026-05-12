@@ -890,6 +890,72 @@ describe('TraceMind', function () {
       assert.strictEqual(await FeedbackReports.find({ projectId }).countAsync(), 0);
     });
 
+    it('deduplicates repeated MCP feedback reports from the same token', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const projectId = `project-feedback-dedupe-${Date.now()}`;
+      const project = {
+        _id: projectId,
+        name: 'Feedback Dedupe Project',
+        mcpTokens: [{ id: 'mcp_dedupe', name: 'Codex Agent', token: 'tm_mcp_dedupe' }],
+      };
+      const args = {
+        type: 'issue',
+        title: 'Setup copy button has no visible feedback',
+        summary: 'The copy action succeeds, but the UI does not show a visible copied state.',
+        evidence: {
+          paths: ['/setup'],
+          actionKeys: ['web:/setup:click:copy-mcp-url'],
+        },
+        environment: {
+          platform: 'web',
+          sourceType: 'web',
+          sourceKey: 'app.example.com',
+        },
+      };
+
+      await FeedbackReports.removeAsync({ projectId });
+
+      const first = await callMcpTool(project, 'tracemind.submit_feedback', args, { mcpToken: 'tm_mcp_dedupe' });
+      const second = await callMcpTool(project, 'tracemind.submit_feedback', args, { mcpToken: 'tm_mcp_dedupe' });
+
+      assert.strictEqual(first.structuredContent.ok, true);
+      assert.strictEqual(second.structuredContent.ok, true);
+      assert.strictEqual(second.structuredContent.deduplicated, true);
+      assert.strictEqual(second.structuredContent.feedbackId, first.structuredContent.feedbackId);
+      assert.strictEqual(await FeedbackReports.find({ projectId }).countAsync(), 1);
+    });
+
+    it('rate limits excessive MCP feedback reports from the same token', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const projectId = `project-feedback-rate-${Date.now()}`;
+      const project = {
+        _id: projectId,
+        name: 'Feedback Rate Project',
+        mcpTokens: [{ id: 'mcp_rate', name: 'Cursor', token: 'tm_mcp_rate' }],
+      };
+
+      await FeedbackReports.removeAsync({ projectId });
+
+      for (let index = 0; index < 5; index += 1) {
+        const result = await callMcpTool(project, 'tracemind.submit_feedback', {
+          type: 'idea',
+          title: `Improve onboarding step ${index}`,
+          summary: `Suggestion ${index} for making onboarding clearer.`,
+        }, { mcpToken: 'tm_mcp_rate' });
+        assert.strictEqual(result.structuredContent.ok, true);
+      }
+
+      const limited = await callMcpTool(project, 'tracemind.submit_feedback', {
+        type: 'idea',
+        title: 'Improve onboarding after limit',
+        summary: 'Another unique suggestion that should be rate limited.',
+      }, { mcpToken: 'tm_mcp_rate' });
+
+      assert.strictEqual(limited.structuredContent.ok, false);
+      assert.ok(limited.structuredContent.findings.some((finding) => finding.code === 'feedback_rate_limited'));
+      assert.strictEqual(await FeedbackReports.find({ projectId }).countAsync(), 5);
+    });
+
     it('returns the current project web auto capture setup through MCP', async function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = {
@@ -1762,6 +1828,7 @@ describe('TraceMind', function () {
       const semanticIndexes = await indexNames(SemanticEvents);
       const presenceIndexes = await indexNames(PresenceSessions);
       const deliveryIndexes = await indexNames(CaptureDeliveryReports);
+      const feedbackIndexes = await indexNames(FeedbackReports);
       const reportIndexes = await indexNames(ProjectDailyReports);
 
       [
@@ -1793,6 +1860,10 @@ describe('TraceMind', function () {
         'projectId_1_lastSeenAt_-1',
       ].forEach((name) => assert.ok(presenceIndexes.has(name), `missing ${name}`));
       assert.ok(deliveryIndexes.has('projectId_1_createdAt_-1'));
+      [
+        'feedback_project_token_fingerprint_time',
+        'feedback_project_token_time',
+      ].forEach((name) => assert.ok(feedbackIndexes.has(name), `missing ${name}`));
       assert.ok(reportIndexes.has('projectId_1_reportDate_1'));
     });
 

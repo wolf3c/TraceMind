@@ -40,7 +40,7 @@ Meteor Accounts restores the browser session asynchronously after a page refresh
 - No OAuth.
 - Human login uses Meteor Accounts with `accounts-passwordless`.
 - Email sending uses Meteor `email` and Mailgun SMTP through `MAIL_URL`.
-- TraceMind exposes `projectKey` for Auto Capture and separate MCP tokens for MCP access. Project keys are public write identifiers and cannot query MCP. MCP tokens can read behavior evidence and write developer feedback reports through `tracemind.submit_feedback`.
+- TraceMind exposes `projectKey` for Auto Capture and separate MCP tokens for MCP access. Project keys are public write identifiers and cannot query MCP. MCP tokens can read behavior evidence and write developer feedback reports through `tracemind.submit_feedback`; those feedback writes are deduplicated and rate limited per project/token.
 - Public project keys are protected by post-ingestion governance rather than a required setup-time whitelist in the MVP: the console shows source statistics, and owners can block a `sourceType + sourceKey` so future events from that source are accepted at the HTTP layer but not stored.
 - Developer `authToken` should stay hidden until there is a separate management API that actually needs it.
 

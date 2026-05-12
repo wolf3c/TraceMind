@@ -5,6 +5,7 @@ import {
   DAILY_REPORT_DRAFT_MIN_REFRESH_MS,
   DAILY_REPORT_TIMEZONE,
   Developers,
+  FeedbackReports,
   HEALTH_RETENTION_DAYS,
   PresenceSessions,
   ProjectDailyReports,
@@ -273,6 +274,14 @@ export async function ensureTraceMindIndexes() {
     RawBehaviors.rawCollection().createIndex({ projectId: 1, actionKey: 1, occurredAt: -1 }, { name: 'raw_project_action_time' }),
     RawBehaviors.rawCollection().createIndex({ projectId: 1, targetHash: 1, occurredAt: -1 }, { name: 'raw_project_target_time' }),
     CaptureDeliveryReports.rawCollection().createIndex({ projectId: 1, createdAt: -1 }),
+    FeedbackReports.rawCollection().createIndex(
+      { projectId: 1, mcpTokenId: 1, feedbackFingerprint: 1, createdAt: -1 },
+      { name: 'feedback_project_token_fingerprint_time' },
+    ),
+    FeedbackReports.rawCollection().createIndex(
+      { projectId: 1, mcpTokenId: 1, createdAt: -1 },
+      { name: 'feedback_project_token_time' },
+    ),
   ]);
 }
 

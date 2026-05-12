@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { WebApp } from 'meteor/webapp';
 import { Random } from 'meteor/random';
 import { Meteor } from 'meteor/meteor';
@@ -1093,6 +1094,10 @@ const FEEDBACK_TYPES = new Set(['issue', 'idea']);
 const FEEDBACK_PLATFORMS = new Set(['web', 'ios', 'android', 'server', 'unknown']);
 const FEEDBACK_SOURCE_TYPES = new Set(['web', 'ios', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown']);
 const FEEDBACK_ARRAY_LIMIT = 20;
+const FEEDBACK_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const FEEDBACK_RATE_WINDOW_MS = 60 * 1000;
+const FEEDBACK_RATE_LIMIT = 5;
+const FEEDBACK_DAILY_LIMIT = 100;
 
 function feedbackText(value, max = 1000) {
   return safeString(value, max).trim();
@@ -1155,6 +1160,30 @@ function feedbackTokenAttribution(project = {}, mcpToken = '') {
   };
 }
 
+function feedbackTokenScope(project = {}, mcpToken = '') {
+  return feedbackTokenAttribution(project, mcpToken).mcpTokenId || 'unknown';
+}
+
+function canonicalFeedbackValue(value) {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map((item) => canonicalFeedbackValue(item));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalFeedbackValue(value[key])]),
+    );
+  }
+  return value;
+}
+
+function feedbackFingerprint(sanitized) {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify(canonicalFeedbackValue(sanitized)))
+    .digest('hex');
+}
+
 function sanitizeFeedbackReport(args = {}) {
   return {
     type: feedbackText(args.type, 20).toLowerCase(),
@@ -1202,11 +1231,59 @@ async function submitFeedbackReport(project, args = {}, options = {}) {
   }
 
   const createdAt = new Date();
+  const mcpTokenId = feedbackTokenScope(project, options.mcpToken);
+  const fingerprint = feedbackFingerprint(sanitized);
+  const dedupeAfter = new Date(createdAt.getTime() - FEEDBACK_DEDUPE_WINDOW_MS);
+  const duplicate = await FeedbackReports.findOneAsync({
+    projectId: project._id,
+    mcpTokenId,
+    feedbackFingerprint: fingerprint,
+    createdAt: { $gte: dedupeAfter },
+  }, { sort: { createdAt: -1 } });
+
+  if (duplicate) {
+    return textResult(
+      `TraceMind feedback already submitted: ${duplicate._id}.`,
+      {
+        ok: true,
+        deduplicated: true,
+        feedbackId: duplicate._id,
+        createdAt: duplicate.createdAt,
+      },
+    );
+  }
+
+  const rateWindowStart = new Date(createdAt.getTime() - FEEDBACK_RATE_WINDOW_MS);
+  const dailyWindowStart = new Date(createdAt.getTime() - FEEDBACK_DEDUPE_WINDOW_MS);
+  const [recentCount, dailyCount] = await Promise.all([
+    FeedbackReports.find({ projectId: project._id, mcpTokenId, createdAt: { $gte: rateWindowStart } }).countAsync(),
+    FeedbackReports.find({ projectId: project._id, mcpTokenId, createdAt: { $gte: dailyWindowStart } }).countAsync(),
+  ]);
+
+  if (recentCount >= FEEDBACK_RATE_LIMIT || dailyCount >= FEEDBACK_DAILY_LIMIT) {
+    const rateFindings = [];
+    addFinding(
+      rateFindings,
+      'error',
+      'feedback_rate_limited',
+      'Too many feedback reports were submitted from this MCP token. Retry later or consolidate repeated reports.',
+    );
+    return textResult(
+      'TraceMind rejected the feedback report.',
+      validationResult(rateFindings, [
+        'Consolidate repeated feedback before submitting.',
+        'Use one feedback report with evidence references when multiple observations describe the same issue.',
+      ]),
+    );
+  }
+
   const feedbackId = await FeedbackReports.insertAsync({
     projectId: project._id,
     projectName: projectDisplayName(project),
     submittedVia: 'mcp',
     ...feedbackTokenAttribution(project, options.mcpToken),
+    mcpTokenId,
+    feedbackFingerprint: fingerprint,
     ...sanitized,
     createdAt,
     updatedAt: createdAt,
