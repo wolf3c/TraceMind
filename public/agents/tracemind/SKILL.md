@@ -20,6 +20,9 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 8. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
 9. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
 10. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+11. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
+12. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
+13. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
 
 ## Auto Capture Setup Workflow
 
@@ -102,6 +105,17 @@ Manual capture follows the same mental model on Web, iOS, Android, React Native,
 - Put stable business facts in `properties`; put route, source, experiment, or UI context in `context`.
 - Native and React Native SDKs omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
 - Manual events are for outcomes such as purchase completed, subscription changed, invite sent, or onboarding completed. Do not use manual capture for raw input values or screen contents.
+
+## Developer Feedback Submission
+
+TraceMind MCP can submit developer feedback separately from analytics events. Use this when the developer has found a product issue or idea and wants TraceMind to store the report for later handling.
+
+- Use `tracemind.submit_feedback`; do not send feedback through `/api/capture` or manual `custom` events.
+- Ask the developer before submitting unless they explicitly asked you to submit the feedback.
+- Include `type` (`issue` or `idea`), `title`, and a sanitized `summary`.
+- Add optional `expected`, `actual`, `suggestion`, and short `reproductionSteps` when they clarify the report.
+- Prefer evidence references: event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, time window, session IDs, device IDs, and short sanitized examples.
+- Do not include PII, personal contact fields, secrets, token values, raw prompts, raw user content, source code, diffs, request/response bodies, headers, cookies, authorization values, tool arguments/results, resource content, or full query URLs.
 
 ## Event Rules
 

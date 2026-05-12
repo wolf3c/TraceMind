@@ -5,6 +5,7 @@ import {
   CaptureDeliveryReports,
   ACTIVE_IDLE_TIMEOUT_MS,
   EVENT_DEFINITIONS,
+  FeedbackReports,
   PRESENCE_HEARTBEAT_INTERVAL_MS,
   PresenceSessions,
   RawBehaviors,
@@ -45,6 +46,9 @@ const FORBIDDEN_ANALYTICS_KEYS = [
   'toolResult',
   'resourceContent',
   'rawUserContent',
+  'sourceCode',
+  'sourceDiff',
+  'codeDiff',
   'rawRequestBody',
   'requestBody',
   'rawResponseBody',
@@ -262,6 +266,52 @@ export function mcpTools(project) {
       },
     },
     {
+      name: 'tracemind.submit_feedback',
+      title: projectScopedTitle('TraceMind Submit Feedback', project),
+      description: projectScopedDescription('将开发者明确要求上报的问题或想法写入 TraceMind 反馈库。提交前应先收集可复核证据，并避免发送 PII、token、raw prompt、源码 diff 或原始用户内容。', project),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['issue', 'idea'], description: '反馈类型：issue 或 idea。' },
+          title: { type: 'string', description: '简短标题。' },
+          summary: { type: 'string', description: '已脱敏的问题或想法摘要。' },
+          expected: { type: 'string', description: '可选，预期行为。' },
+          actual: { type: 'string', description: '可选，实际行为。' },
+          suggestion: { type: 'string', description: '可选，建议改进。' },
+          reproductionSteps: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '可选，简短复现步骤。',
+          },
+          evidence: {
+            type: 'object',
+            properties: {
+              startAt: { type: 'string' },
+              endAt: { type: 'string' },
+              paths: { type: 'array', items: { type: 'string' } },
+              eventIds: { type: 'array', items: { type: 'string' } },
+              rawBehaviorIds: { type: 'array', items: { type: 'string' } },
+              actionKeys: { type: 'array', items: { type: 'string' } },
+              targetHashes: { type: 'array', items: { type: 'string' } },
+              userIds: { type: 'array', items: { type: 'string' } },
+              sessionIds: { type: 'array', items: { type: 'string' } },
+              deviceIds: { type: 'array', items: { type: 'string' } },
+              examples: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          environment: {
+            type: 'object',
+            properties: {
+              platform: { type: 'string', enum: ['web', 'ios', 'android', 'server', 'unknown'] },
+              sourceType: { type: 'string', enum: ['web', 'ios', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown'] },
+              sourceKey: { type: 'string' },
+            },
+          },
+        },
+        required: ['type', 'title', 'summary'],
+      },
+    },
+    {
       name: 'tracemind.summary',
       title: projectScopedTitle('TraceMind Behavior Summary', project),
       description: projectScopedDescription('汇总当前 Web 产品最近的语义行为事件。', project),
@@ -402,6 +452,9 @@ function guidanceResult(extra = {}) {
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
+      'When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.',
+      'Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.',
+      'Prefer evidence references over raw copied content, screenshots, source diffs, raw prompts, tool arguments, tool results, request bodies, response bodies, headers, cookies, authorization values, or full query URLs.',
       'Ask the user before updating local skill or instruction files.',
     ],
     ...extra,
@@ -1021,8 +1074,9 @@ function privacyFindings(fields = {}) {
     const looksLikeEmail = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(value);
     const looksLikeSecret = /(sk-|pk_|bearer\s+|api[_-]?key|access[_-]?token)/i.test(value);
     const looksLikeFullQueryUrl = /^https?:\/\/\S+\?\S+/.test(value);
+    const looksLikeRawSensitiveContent = /\b(raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:)/i.test(value);
 
-    if (isForbiddenAnalyticsKey(field.key) || looksLikeEmail || looksLikeSecret || looksLikeFullQueryUrl) {
+    if (isForbiddenAnalyticsKey(field.key) || looksLikeEmail || looksLikeSecret || looksLikeFullQueryUrl || looksLikeRawSensitiveContent) {
       addFinding(
         findings,
         'error',
@@ -1033,6 +1087,139 @@ function privacyFindings(fields = {}) {
     }
   });
   return findings;
+}
+
+const FEEDBACK_TYPES = new Set(['issue', 'idea']);
+const FEEDBACK_PLATFORMS = new Set(['web', 'ios', 'android', 'server', 'unknown']);
+const FEEDBACK_SOURCE_TYPES = new Set(['web', 'ios', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown']);
+const FEEDBACK_ARRAY_LIMIT = 20;
+
+function feedbackText(value, max = 1000) {
+  return safeString(value, max).trim();
+}
+
+function feedbackDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function feedbackArray(value, maxLength = 160, limit = FEEDBACK_ARRAY_LIMIT) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => feedbackText(item, maxLength))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function sanitizeFeedbackEvidence(evidenceInput = {}) {
+  const evidence = safeObject(evidenceInput);
+  const sanitized = {
+    paths: feedbackArray(evidence.paths, 300),
+    eventIds: feedbackArray(evidence.eventIds, 120),
+    rawBehaviorIds: feedbackArray(evidence.rawBehaviorIds, 120),
+    actionKeys: feedbackArray(evidence.actionKeys, 300),
+    targetHashes: feedbackArray(evidence.targetHashes, 120),
+    userIds: feedbackArray(evidence.userIds, 120),
+    sessionIds: feedbackArray(evidence.sessionIds, 120),
+    deviceIds: feedbackArray(evidence.deviceIds, 120),
+    examples: feedbackArray(evidence.examples, 500, 10),
+  };
+  const startAt = feedbackDate(evidence.startAt);
+  const endAt = feedbackDate(evidence.endAt);
+
+  if (startAt) sanitized.startAt = startAt;
+  if (endAt) sanitized.endAt = endAt;
+
+  return sanitized;
+}
+
+function sanitizeFeedbackEnvironment(environmentInput = {}) {
+  const environment = safeObject(environmentInput);
+  const platform = String(environment.platform || 'unknown').toLowerCase();
+  const sourceType = String(environment.sourceType || 'unknown').toLowerCase();
+
+  return {
+    platform: FEEDBACK_PLATFORMS.has(platform) ? platform : 'unknown',
+    sourceType: FEEDBACK_SOURCE_TYPES.has(sourceType) ? sourceType : 'unknown',
+    sourceKey: feedbackText(environment.sourceKey, 200),
+  };
+}
+
+function feedbackTokenAttribution(project = {}, mcpToken = '') {
+  const token = (project.mcpTokens || []).find((candidate) => candidate.token === mcpToken);
+  if (!token) return {};
+  return {
+    mcpTokenId: token.id,
+    mcpTokenName: token.name,
+  };
+}
+
+function sanitizeFeedbackReport(args = {}) {
+  return {
+    type: feedbackText(args.type, 20).toLowerCase(),
+    title: feedbackText(args.title, 160),
+    summary: feedbackText(args.summary, 2000),
+    expected: feedbackText(args.expected, 1000),
+    actual: feedbackText(args.actual, 1000),
+    suggestion: feedbackText(args.suggestion, 1000),
+    reproductionSteps: feedbackArray(args.reproductionSteps, 500, 12),
+    evidence: sanitizeFeedbackEvidence(args.evidence),
+    environment: sanitizeFeedbackEnvironment(args.environment),
+  };
+}
+
+function validateFeedbackReport(args = {}) {
+  const sanitized = sanitizeFeedbackReport(args);
+  const findings = [];
+
+  if (!FEEDBACK_TYPES.has(sanitized.type)) {
+    addFinding(findings, 'error', 'invalid_feedback_type', 'Feedback type must be issue or idea.', 'type');
+  }
+  if (!sanitized.title) {
+    addFinding(findings, 'error', 'missing_feedback_title', 'Feedback title is required.', 'title');
+  }
+  if (!sanitized.summary) {
+    addFinding(findings, 'error', 'missing_feedback_summary', 'Feedback summary is required.', 'summary');
+  }
+
+  privacyFindings(args).forEach((finding) => findings.push(finding));
+
+  return { sanitized, findings };
+}
+
+async function submitFeedbackReport(project, args = {}, options = {}) {
+  const { sanitized, findings } = validateFeedbackReport(args);
+
+  if (findings.some((finding) => finding.severity === 'error')) {
+    return textResult(
+      'TraceMind rejected the feedback report.',
+      validationResult(findings, [
+        'Submit only sanitized summaries and TraceMind evidence references.',
+        'Remove PII, secrets, tokens, raw prompts, raw user content, source diffs, request/response bodies, headers, cookies, authorization values, and full query URLs.',
+      ]),
+    );
+  }
+
+  const createdAt = new Date();
+  const feedbackId = await FeedbackReports.insertAsync({
+    projectId: project._id,
+    projectName: projectDisplayName(project),
+    submittedVia: 'mcp',
+    ...feedbackTokenAttribution(project, options.mcpToken),
+    ...sanitized,
+    createdAt,
+    updatedAt: createdAt,
+  });
+
+  return textResult(
+    `TraceMind feedback submitted: ${feedbackId}.`,
+    {
+      ok: true,
+      feedbackId,
+      createdAt,
+    },
+  );
 }
 
 function normalizePrivacyKey(key) {
@@ -1245,7 +1432,7 @@ async function projectEventNames(project, query = '', limit = 20) {
     .slice(0, safeLimit(limit, 20, 50));
 }
 
-export async function callMcpTool(project, name, args = {}) {
+export async function callMcpTool(project, name, args = {}, options = {}) {
   if (name === 'tracemind.event_definitions') {
     return textResult(
       EVENT_DEFINITIONS.map((event) => `${event.eventType}: ${event.meaning}`).join('\n'),
@@ -1342,6 +1529,10 @@ export async function callMcpTool(project, name, args = {}) {
       findings.length ? 'TraceMind found privacy risks.' : 'TraceMind privacy check passed.',
       validationResult(findings),
     );
+  }
+
+  if (name === 'tracemind.submit_feedback') {
+    return submitFeedbackReport(project, args, options);
   }
 
   if (name === 'tracemind.summary') {
@@ -2608,7 +2799,7 @@ async function handleMcpPost(req, res) {
 
     if (item.method === 'tools/call') {
       try {
-        const result = await callMcpTool(project, item.params?.name, item.params?.arguments || {});
+        const result = await callMcpTool(project, item.params?.name, item.params?.arguments || {}, { mcpToken });
         responses.push(jsonRpcResult(item.id, result));
       } catch (error) {
         responses.push(jsonRpcError(item.id, -32602, error.message));

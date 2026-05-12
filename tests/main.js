@@ -4,6 +4,7 @@ import { buildSemanticEvent, summarizeSemanticEvents } from '../imports/api/sema
 import {
   CaptureDeliveryReports,
   Developers,
+  FeedbackReports,
   PresenceSessions,
   Projects,
   RawBehaviors,
@@ -140,6 +141,8 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('## Instrumenting MCP Servers'));
       assert.ok(skill.includes('## Instrumenting Agent Skills'));
       assert.ok(skill.includes('## Instrumenting Server Applications'));
+      assert.ok(skill.includes('## Developer Feedback Submission'));
+      assert.ok(skill.includes('tracemind.submit_feedback'));
       assert.ok(skill.includes('ordinary server applications use manual capture first'));
       assert.ok(skill.includes('static Skill file cannot auto-capture'));
       assert.ok(skill.includes('installCommands'));
@@ -158,6 +161,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('mcp_node'));
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
+      assert.ok(snippet.includes('tracemind.submit_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.strictEqual(manifest.guidanceVersion, '2026.05.09.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
@@ -165,6 +169,7 @@ describe('TraceMind', function () {
       assert.strictEqual(manifest.mcp.serverName, undefined);
       assert.ok(manifest.mcp.tools.includes('tracemind.project_info'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
+      assert.ok(manifest.mcp.tools.includes('tracemind.submit_feedback'));
       assert.ok(manifest.platforms.includes('mcp_node'));
       assert.ok(manifest.platforms.includes('mcp_python'));
       assert.ok(manifest.platforms.includes('agent_skill'));
@@ -681,6 +686,7 @@ describe('TraceMind', function () {
       assert.ok(toolNames.includes('tracemind.capture_setup'));
       assert.ok(toolNames.includes('tracemind.validate_event_payload'));
       assert.ok(toolNames.includes('tracemind.validate_instrumentation_diff'));
+      assert.ok(toolNames.includes('tracemind.submit_feedback'));
 
       const projectTools = mcpTools(project);
       assert.ok(projectTools.some((tool) => (
@@ -717,6 +723,8 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.'));
+      assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_proj_'));
 
@@ -774,6 +782,105 @@ describe('TraceMind', function () {
       assert.strictEqual(mcpAutoDiffValidation.structuredContent.ok, true);
       assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.path === 'eventName'));
       assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.message.includes('promptName')));
+    });
+
+    it('submits sanitized developer feedback through MCP without creating behavior events', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const projectId = `project-feedback-${Date.now()}`;
+      const project = {
+        _id: projectId,
+        name: 'Feedback Project',
+        mcpTokens: [{ id: 'mcp_feedback', name: 'Codex Agent', token: 'tm_mcp_feedback' }],
+      };
+
+      await FeedbackReports.removeAsync({ projectId });
+      const rawBefore = await RawBehaviors.find({ projectId }).countAsync();
+      const semanticBefore = await SemanticEvents.find({ projectId }).countAsync();
+
+      const result = await callMcpTool(project, 'tracemind.submit_feedback', {
+        type: 'issue',
+        title: 'Pricing CTA does not submit',
+        summary: 'Users click the pricing CTA, but no submit event appears in the selected time window.',
+        expected: 'The CTA should create a submit or checkout event.',
+        actual: 'Only repeated click events are visible.',
+        suggestion: 'Inspect the form handler and disabled state after the click.',
+        reproductionSteps: ['Open /pricing', 'Click Start trial', 'Check that no submit event appears'],
+        evidence: {
+          startAt: '2026-05-10T00:00:00.000Z',
+          endAt: '2026-05-10T01:00:00.000Z',
+          paths: ['/pricing'],
+          eventIds: ['event_1'],
+          rawBehaviorIds: ['raw_1'],
+          actionKeys: ['web:/pricing:click:target:data-testid:start-trial'],
+          targetHashes: ['tm_target_abc'],
+          userIds: ['user_123'],
+          sessionIds: ['tm_sess_123'],
+          deviceIds: ['tm_dev_123'],
+          examples: ['Three clicks from one session with no follow-up submit event.'],
+        },
+        environment: {
+          platform: 'web',
+          sourceType: 'web',
+          sourceKey: 'app.example.com',
+        },
+      }, { mcpToken: 'tm_mcp_feedback' });
+
+      assert.strictEqual(result.structuredContent.ok, true);
+      assert.ok(result.structuredContent.feedbackId);
+      const report = await FeedbackReports.findOneAsync(result.structuredContent.feedbackId);
+      assert.strictEqual(report.projectId, projectId);
+      assert.strictEqual(report.type, 'issue');
+      assert.strictEqual(report.title, 'Pricing CTA does not submit');
+      assert.strictEqual(report.submittedVia, 'mcp');
+      assert.strictEqual(report.mcpTokenId, 'mcp_feedback');
+      assert.strictEqual(report.mcpTokenName, 'Codex Agent');
+      assert.strictEqual(report.evidence.paths[0], '/pricing');
+      assert.strictEqual(report.evidence.eventIds[0], 'event_1');
+      assert.strictEqual(report.environment.platform, 'web');
+      assert.ok(!JSON.stringify(report).includes('tm_mcp_feedback'));
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), rawBefore);
+      assert.strictEqual(await SemanticEvents.find({ projectId }).countAsync(), semanticBefore);
+    });
+
+    it('rejects invalid or sensitive MCP feedback reports', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const projectId = `project-feedback-invalid-${Date.now()}`;
+      const project = {
+        _id: projectId,
+        name: 'Invalid Feedback Project',
+        mcpTokens: [{ id: 'mcp_invalid', name: 'Cursor', token: 'tm_mcp_invalid' }],
+      };
+
+      await FeedbackReports.removeAsync({ projectId });
+
+      const invalid = await callMcpTool(project, 'tracemind.submit_feedback', {
+        type: 'question',
+        title: '',
+        summary: '',
+      }, { mcpToken: 'tm_mcp_invalid' });
+      assert.strictEqual(invalid.structuredContent.ok, false);
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.code === 'invalid_feedback_type'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.code === 'missing_feedback_title'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.code === 'missing_feedback_summary'));
+
+      const sensitive = await callMcpTool(project, 'tracemind.submit_feedback', {
+        type: 'idea',
+        title: 'Add onboarding hint',
+        summary: 'Contact person@example.com and use Bearer tm_mcp_secret to replay the raw prompt.',
+        evidence: {
+          examples: ['Full URL https://app.example.com/pricing?email=person@example.com'],
+          rawPrompt: 'raw user prompt',
+          sourceDiff: '+ const token = req.headers.authorization',
+        },
+        environment: {
+          platform: 'web',
+          sourceType: 'web',
+          sourceKey: 'app.example.com',
+        },
+      }, { mcpToken: 'tm_mcp_invalid' });
+      assert.strictEqual(sensitive.structuredContent.ok, false);
+      assert.ok(sensitive.structuredContent.findings.some((finding) => finding.code === 'forbidden_property'));
+      assert.strictEqual(await FeedbackReports.find({ projectId }).countAsync(), 0);
     });
 
     it('returns the current project web auto capture setup through MCP', async function () {
@@ -1917,6 +2024,22 @@ describe('TraceMind', function () {
         lastSeenAt: new Date(),
         createdAt: new Date(),
       });
+      await FeedbackReports.insertAsync({
+        projectId: removedProjectId,
+        type: 'issue',
+        title: 'Removed project feedback',
+        summary: 'Feedback for deleted project.',
+        submittedVia: 'mcp',
+        createdAt: new Date(),
+      });
+      await FeedbackReports.insertAsync({
+        projectId: siblingProject._id,
+        type: 'idea',
+        title: 'Sibling project feedback',
+        summary: 'Feedback for sibling project.',
+        submittedVia: 'mcp',
+        createdAt: new Date(),
+      });
 
       const result = await removeMethod.apply({ userId }, [removedProjectId]);
 
@@ -1925,10 +2048,12 @@ describe('TraceMind', function () {
       assert.strictEqual(await RawBehaviors.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await SemanticEvents.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await PresenceSessions.find({ projectId: removedProjectId }).countAsync(), 0);
+      assert.strictEqual(await FeedbackReports.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.ok(await Projects.findOneAsync(siblingProject._id));
       assert.strictEqual(await RawBehaviors.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await SemanticEvents.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await PresenceSessions.find({ projectId: siblingProject._id }).countAsync(), 1);
+      assert.strictEqual(await FeedbackReports.find({ projectId: siblingProject._id }).countAsync(), 1);
     });
 
     it('rejects project deletion by non-owners', async function () {

@@ -6,6 +6,7 @@ export const RawBehaviors = new Mongo.Collection('tracemind_raw_behaviors');
 export const SemanticEvents = new Mongo.Collection('tracemind_semantic_events');
 export const PresenceSessions = new Mongo.Collection('tracemind_presence_sessions');
 export const CaptureDeliveryReports = new Mongo.Collection('tracemind_capture_delivery_reports');
+export const FeedbackReports = new Mongo.Collection('tracemind_feedback_reports');
 
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;

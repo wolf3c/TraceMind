@@ -865,7 +865,7 @@
       <article>
         <span class="tm-badge tm-badge-amber">{$t("AI-driven")}</span>
         <h3>{$t("AI analysis and instrumentation")}</h3>
-        <p>{$t("TraceMind turns raw behavior into semantic events and exposes read-only MCP evidence so Codex, Claude Code, or Cursor can analyze product usage directly.")}</p>
+        <p>{$t("TraceMind turns raw behavior into semantic events and exposes MCP evidence so Codex, Claude Code, or Cursor can analyze product usage and submit developer feedback directly.")}</p>
       </article>
     </div>
   </section>
@@ -1017,7 +1017,7 @@
                 <div class="mcp-token-header">
                   <div>
                     <span>{$t("MCP Tokens")}</span>
-                    <strong>{$t("Assign independent read-only credentials to members or agents")}</strong>
+                    <strong>{$t("Assign independent MCP credentials to members or agents")}</strong>
                   </div>
                   <div class="mcp-token-create">
                     <input id="mcp-token-name" name="mcpTokenName" bind:value={mcpTokenName} placeholder={$t("Cursor / Claude / teammate")} />
@@ -1057,7 +1057,7 @@
                     {/each}
                   </div>
                 {:else}
-                  <p class="empty">{$t("This project has no MCP token. Add one so AI agents can read semantic events with read-only access.")}</p>
+                  <p class="empty">{$t("This project has no MCP token. Add one so AI agents can read semantic events and submit developer feedback.")}</p>
                 {/if}
               </div>
             </details>

@@ -2,7 +2,7 @@
 
 ## 目标
 
-让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义。TraceMind 自己的远程 MCP 端点不是采集目标，而是只读分析入口；第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问用户流失、功能使用和转化问题：默认查询语义事件，需要复核时再查询原始日志。
+让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入独立反馈库。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问用户流失、功能使用和转化问题：默认查询语义事件，需要复核时再查询原始日志。
 
 ## Endpoint
 
@@ -17,7 +17,7 @@ POST /mcp?mcpToken=MCP_TOKEN
 Authorization: Bearer MCP_TOKEN
 ```
 
-`MCP_TOKEN` 是独立的只读 MCP 凭证，格式为 `tm_mcp_xxx`。它不同于 Auto Capture 使用的公开 `projectKey`，项目 key 不能访问 MCP。
+`MCP_TOKEN` 是独立 MCP 凭证，格式为 `tm_mcp_xxx`。它不同于 Auto Capture 使用的公开 `projectKey`，项目 key 不能访问 MCP。MCP token 可读取项目行为证据，并允许通过 `tracemind.submit_feedback` 提交开发者反馈；除反馈提交外，分析工具保持只读。
 
 ## 多项目识别
 
@@ -377,12 +377,51 @@ Input:
 }
 ```
 
+### `tracemind.submit_feedback`
+
+在开发者明确要求或确认后，将问题或想法反馈写入独立的 `tracemind_feedback_reports` 集合。这个工具不写入 `/api/capture`，也不会创建 raw behavior 或 semantic event。
+
+Input:
+
+```json
+{
+  "type": "issue",
+  "title": "Pricing CTA does not submit",
+  "summary": "Users click the pricing CTA, but no submit event appears in the selected time window.",
+  "expected": "The CTA should create a submit or checkout event.",
+  "actual": "Only repeated click events are visible.",
+  "suggestion": "Inspect the form handler and disabled state after the click.",
+  "reproductionSteps": ["Open /pricing", "Click Start trial", "Check that no submit event appears"],
+  "evidence": {
+    "startAt": "2026-05-10T00:00:00.000Z",
+    "endAt": "2026-05-10T01:00:00.000Z",
+    "paths": ["/pricing"],
+    "eventIds": ["event_1"],
+    "rawBehaviorIds": ["raw_1"],
+    "actionKeys": ["web:/pricing:click:target:data-testid:start-trial"],
+    "targetHashes": ["tm_target_abc"],
+    "userIds": ["user_123"],
+    "sessionIds": ["tm_sess_123"],
+    "deviceIds": ["tm_dev_123"],
+    "examples": ["Three clicks from one session with no follow-up submit event."]
+  },
+  "environment": {
+    "platform": "web",
+    "sourceType": "web",
+    "sourceKey": "app.example.com"
+  }
+}
+```
+
+服务端要求 `type`、`title` 和 `summary`，`type` 只能是 `issue` 或 `idea`。提交内容会被截断、数组会被限制长度，并通过隐私检查拒绝 PII、token、raw prompt、原始用户内容、源码 diff、请求/响应 body、headers、cookies、authorization 值和带 query 的完整 URL。返回值为 `{ ok, feedbackId, createdAt }`。
+
 ## 推荐 LLM 查询顺序
 
 1. 调用 `tracemind.event_definitions` 理解事件含义和字段。
 2. 调用 `tracemind.summary` 获取时间窗口内的概览、DAU/设备数和 presence 在线时长。
 3. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
 4. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。
+5. 当开发者发现问题或提出想法时，先询问是否需要上报；若开发者明确要求上报，收集脱敏摘要和证据引用后调用 `tracemind.submit_feedback`。
 
 当同一页面存在多个相同文案的按钮或输入框时，不要只按 `targetText` 判断。先查看事件里的 `targetIdentity`、`identityConfidence`、`target.path`、`target.id`、`target.name`、`target.testId`，优先用 `actionKey` 聚合同一动作，再用 `targetHash` 精确查询同一元素。低置信度 identity 适合 session 复核，不适合直接作为长期漏斗节点。
 
@@ -394,6 +433,7 @@ Input:
 4. 必要时调用 `tracemind.suggest_instrumentation` 获取复用、Auto Capture 或 draft 建议。
 5. 修改代码前后使用 `tracemind.validate_event_payload` 或 `tracemind.privacy_check` 复核字段。
 6. 完成前调用 `tracemind.validate_instrumentation_diff` 校验本次 diff。
+7. 如果开发者在埋点或分析过程中发现问题/想法并要求上报，调用 `tracemind.submit_feedback`，优先附上事件 ID、raw behavior ID、路径、`actionKey`、`targetHash` 和时间窗口，不要粘贴原始敏感内容。
 
 ## GET Preview Response
 
@@ -421,7 +461,7 @@ Input:
 
 ## MVP 决策
 
-- MCP 端点只读。
+- MCP 端点的分析工具只读；`tracemind.submit_feedback` 是唯一反馈写入工具，写入独立反馈集合。
 - LLM 默认从语义事件开始分析，但可以显式查询原始行为日志。
 - MCP 使用独立 token，可以在控制台新增、重命名、刷新或删除；刷新/删除后旧 token 立即失效。
 - MCP token 可以通过 `mcpToken` URL 参数或 `Authorization: Bearer` 传入，推荐 Bearer。

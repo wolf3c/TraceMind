@@ -25,13 +25,13 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 | Auth + projects | `server/tracemind_methods.js`, `imports/api/tracemind.js` | Configure passwordless email, map `Meteor.userId()` to developer record and project key |
 | Capture SDKs | `server/capture_routes.js`, `sdk/ios`, `sdk/android`, `sdk/react-native`, `sdk/mcp-node`, `sdk/mcp-python`, `sdk/server-node`, `sdk/server-python` | Serve `/capture.js`, provide Web/Native/MCP/server SDKs, and ingest `/api/capture` raw behavior with identity, device, source, IP/geo, custom fields |
 | Semantic extraction | `server/semantic_jobs.js`, `imports/api/semantic.js` | Periodically convert raw behavior into semantic events |
-| Remote MCP | `server/capture_routes.js` | Serve `/mcp?mcpToken=...` or Bearer MCP tokens with event definitions, filtered semantic event queries, raw log queries, summaries, and a GET preview |
+| Remote MCP | `server/capture_routes.js` | Serve `/mcp?mcpToken=...` or Bearer MCP tokens with event definitions, filtered semantic event queries, raw log queries, summaries, developer feedback submission, and a GET preview |
 | Tests | `tests/main.js` | Cover email normalization, semantic extraction, summary logic, and login/project creation |
 
 ## MVP Boundaries
 
 - Human login uses `accounts-passwordless` and Mailgun-backed Meteor `email`.
-- SDK capture uses a public project key. MCP access uses independent read-only `tm_mcp_*` tokens, separate from both project keys and Meteor Accounts browser sessions.
+- SDK capture uses a public project key. MCP access uses independent `tm_mcp_*` tokens, separate from both project keys and Meteor Accounts browser sessions. MCP tokens read behavior evidence and can write developer feedback reports through `tracemind.submit_feedback`; other analysis tools remain read-only.
 - User online duration uses a separate presence store. Web, iOS, Android, and React Native write `/api/presence` heartbeat updates into `tracemind_presence_sessions`; these records do not create raw behaviors or semantic events. Dashboard health active-time metrics use strict `activeDurationMs`, not foreground `durationMs`: Web requires visible + focused + a 60-second interaction window, while iOS/Android/RN require foreground app state plus recent tap/text/screen activity.
 - Capture requests include cross-platform source fields. Project owners can block suspicious `sourceType + sourceKey` values after seeing them in the console; blocked events return ok but are not stored.
 - `/api/capture` accepts both single-event payloads and SDK batch payloads in `{ projectKey, events: [...] }` form.

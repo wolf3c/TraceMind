@@ -16,7 +16,7 @@
 - Added DAU, unique user, and unique device summary output.
 - Added `/mcp` remote MCP endpoint with JSON-RPC `initialize`, `tools/list`, `tools/call`, and `ping`, plus a GET preview for manual debugging.
 - Added independent multi-token MCP authorization so MCP access no longer reuses the public Auto Capture project key.
-- Added read-only MCP analysis tools for event definitions, filtered semantic event queries, filtered raw behavior queries, and filtered summaries, so AI coding agents can answer product usage questions from behavior evidence.
+- Added MCP analysis tools for event definitions, filtered semantic event queries, filtered raw behavior queries, and filtered summaries, so AI coding agents can answer product usage questions from behavior evidence.
 - Added concise technical design docs for auth, capture, semantic extraction, MCP, and the MVP architecture.
 - Added Meteor Mocha coverage for normalization, semantic event building, summaries, and login/project creation.
 - Added deployment config for running TraceMind as an independent app, now served from `https://tracemind.sandbox.galaxycloud.app`, plus deployment docs and commands.
@@ -29,7 +29,7 @@
 - Added `imports/ui/i18n` support for English and Chinese UI text, including locale normalization, persisted language selection, translated status messages, translated confirmation text, and a console language selector.
 - Switched UI copy to English source-text translation keys so `en.js` can rely on fallback behavior while `zh.js` carries only Chinese overrides.
 - Added `DESIGN.md` and refreshed the first viewport into a darker AI behavior cockpit with a live stream preview, signal metrics, and clearer semantic chips.
-- Refined the landing-page positioning around the developer outcome: one script turns real user behavior into product signals that can be questioned from Codex, Claude Code, or Cursor through read-only MCP.
+- Refined the landing-page positioning around the developer outcome: one script turns real user behavior into product signals that can be questioned from Codex, Claude Code, or Cursor through MCP.
 - Replaced the placeholder `T` favicon and navigation mark with the Calm Glyph brand icon, combining a clean Mind glyph with a subtle behavior trace.
 - Removed Flowbite-Svelte after evaluating its limited product fit and Meteor Rspack integration cost; repeated cards, form fields, selects, textareas, alerts, and badges now use local semantic markup and CSS primitives.
 - Added Meteor Mocha coverage for i18n locale normalization, compact English fallback, required Chinese overrides, fallback translation, and interpolation.
@@ -110,3 +110,11 @@ Then add the capture snippet to a small test web page, generate several interact
 - Cleaned up dashboard health-detail Top 3 rows so long user IDs, paths, and event names render as separate ranked entries instead of a dense joined string.
 - Added health-summary bounce-page analysis that reports `topBouncePages` for the current and previous 24h windows, using session-level presence plus route/interaction evidence and showing the Top 3 in the average-active-time details.
 - Added strict active-duration accounting on presence records. Web now stops strict active time on `window.blur` and only accrues when visible, focused, and inside a 60-second interaction window; iOS/Android/RN use the same foreground + recent tap/text/screen contract. Dashboard health active-time metrics now use `activeDurationMs`; foreground presence `durationMs` remains available for online/session summaries.
+
+## 2026-05-12
+
+### Completed
+
+- Added `tracemind_feedback_reports` and the `tracemind.submit_feedback` MCP tool so coding agents can submit sanitized developer issues or ideas with TraceMind evidence references after developer confirmation.
+- Kept feedback separate from `/api/capture`, raw behaviors, and semantic events; MCP analysis tools remain read-only while feedback submission is the single MCP write path.
+- Updated MCP, Skill, agent snippet, token, and product wording to describe MCP as behavior evidence access plus controlled feedback submission.

@@ -1,6 +1,6 @@
 # TraceMind
 
-TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、Android、React Native、MCP server、普通后端服务和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过只读 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题。
+TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、Android、React Native、MCP server、普通后端服务和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题，也可以在开发者确认后上报问题或想法反馈。
 
 ## 1 分钟接入
 
@@ -456,7 +456,7 @@ window.TraceMind.capture("custom", {
 
 ## 远程 MCP 授权
 
-MCP 使用独立的只读 token，格式为 `tm_mcp_xxx`。它和 Auto Capture 的公开 `tm_proj_xxx` 项目 token 分离，项目 token 只能写入采集数据，不能查询 MCP。
+MCP 使用独立 token，格式为 `tm_mcp_xxx`。它和 Auto Capture 的公开 `tm_proj_xxx` 项目 token 分离，项目 token 只能写入采集数据，不能查询 MCP。MCP token 可读取项目行为证据，并允许通过 `tracemind.submit_feedback` 提交开发者反馈；除反馈提交外，分析工具保持只读。
 
 控制台里可以为同一个项目创建多个 MCP Token，分别发给不同成员或 Agent。泄露后可以刷新单个 token，刷新后旧 token 立即失效；也可以删除不再使用的 token。
 

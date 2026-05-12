@@ -4,6 +4,7 @@ import { Accounts } from 'meteor/accounts-base';
 import {
   CaptureDeliveryReports,
   Developers,
+  FeedbackReports,
   PresenceSessions,
   Projects,
   RawBehaviors,
@@ -317,6 +318,7 @@ Meteor.methods({
     await SemanticEvents.removeAsync({ projectId: project._id });
     await PresenceSessions.removeAsync({ projectId: project._id });
     await CaptureDeliveryReports.removeAsync({ projectId: project._id });
+    await FeedbackReports.removeAsync({ projectId: project._id });
     await Projects.removeAsync(project._id);
     return { removed: true, projectId: project._id };
   },
