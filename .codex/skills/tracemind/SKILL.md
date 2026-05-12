@@ -10,15 +10,19 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 ## Required Workflow
 
-1. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
-2. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-3. Identify the target platform: `web`, `ios`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
-4. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
-5. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
-6. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
-7. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
-8. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
-9. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+1. If the project instruction file contains a TraceMind Project Binding, use the expected MCP server and call `tracemind.project_info`; continue only if the returned `projectId` matches the bound Project ID.
+2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
+3. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
+4. Identify the target platform: `web`, `ios`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
+5. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
+6. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
+7. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
+8. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
+9. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
+10. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+11. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
+12. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
+13. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
 
 ## Auto Capture Setup Workflow
 
@@ -46,6 +50,28 @@ Use `capture_setup` as the source of truth for current setup details instead of 
 - Native Auto Capture should cover app/session start, screen/page view, tap/click, input changed without values, and submit signals.
 - Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
 
+## Instrumenting MCP Servers
+
+For third-party MCP servers, TraceMind Auto Capture records safe MCP runtime metadata rather than DOM or native UI behavior. Use `capture_setup` as the source of truth:
+
+- Node MCP servers use `{ "platform": "mcp_node" }` and initialize with `TraceMindMCP.start(server, { projectKey, sourceKey })`.
+- Python MCP servers use `{ "platform": "mcp_python" }` and initialize with `TraceMindMCP.start(server, project_key=..., source_key=...)`.
+- Keep `platform` as `server`; MCP source identity is represented as `sourceType: "mcp_server"` and a stable `sourceKey` such as the package or server name.
+- Auto Capture should record MCP server/session start, tool call completed, resource read completed, and prompt request completed.
+- Tool/resource/prompt events may include names, status, duration, error type, URI scheme, target hash, and result-size buckets. They must not include raw prompts, tool arguments, tool results, resource content, source code, diffs, secrets, tokens, or full query URLs.
+- If the MCP server can identify the actor, use the SDK `identityResolver(request)` / `identity_resolver(request)` hook to return stable internal IDs only.
+- Manual MCP `custom` events are for stable business outcomes such as `document_indexed`, `repository_synced`, or `deployment_created`; search and validate event names before coding.
+
+## Instrumenting Agent Skills
+
+A static Skill file is guidance, not executable runtime, so a static Skill file cannot auto-capture by itself.
+
+- Use `{ "platform": "agent_skill" }` to get guidance for host runtime lifecycle hooks.
+- Only add Skill Auto Capture when the host agent runtime exposes executable started/completed/failed hooks.
+- Record Skill lifecycle with `sourceType: "agent_skill"` and a stable source key such as the Skill name or host runtime Skill ID.
+- If no lifecycle hook exists, keep the Skill as a tutorial and add manual capture in the MCP server or agent runtime that actually executes the work.
+- Never store raw user prompts, raw tool inputs/outputs, generated code, diffs, secrets, or token values from Skill workflows.
+
 ## Platform Loading And Network Restrictions
 
 If setup looks correct but no data appears, check platform restrictions before changing event code.
@@ -69,12 +95,15 @@ Manual capture follows the same mental model on Web, iOS, Android, React Native,
 
 ## Instrumenting Server Applications
 
-Ordinary server applications use manual capture first. Do not add generic request Auto Capture, global HTTP hooks, database hooks, crash reporting, or log capture unless TraceMind MCP guidance explicitly returns that setup in a future version.
+For v1, ordinary server applications use manual capture first and do not enable request Auto Capture. Do not add generic request Auto Capture, global HTTP hooks, database hooks, crash reporting, or log capture unless TraceMind MCP guidance explicitly returns that setup in a future version.
 
-- Use `{ "platform": "server_node" }`, `{ "platform": "server_python" }`, or `{ "platform": "server_http" }`.
+- Use `{ "platform": "server_node" }` for Node backends and initialize `TraceMindServer.start({ projectKey, sourceKey })` once at server startup.
+- Use `{ "platform": "server_python" }` for Python backends and initialize `TraceMindServer.start(project_key=..., source_key=...)` once at server startup.
+- Use `{ "platform": "server_http" }` when no first-party SDK exists; call `/api/capture` directly with the returned safe payload template.
 - Keep `platform` as `server`; server app source identity is represented as `sourceType: "server_app"` and a stable `sourceKey` such as `billing-api`.
 - Add manual `custom` events only for stable business outcomes such as payment succeeded, invoice paid, workspace created, job completed, sync completed, or webhook handled.
 - Before coding, call `tracemind.search_event_names`, then `tracemind.validate_event_payload`; after changes, call `tracemind.validate_instrumentation_diff`.
+- Pass a stable internal `userId` on each event when available. Do not use email, phone number, or other PII as identity.
 - Never capture request bodies, response bodies, headers, cookies, authorization values, raw logs, raw prompts/content, secrets, tokens, SQL, source code, diffs, or full query URLs.
 
 ## Event Rules
@@ -90,6 +119,17 @@ Ordinary server applications use manual capture first. Do not add generic reques
 Never send PII, secrets, raw user content, raw prompts, access tokens, API keys, passwords, phone numbers, emails, or full URLs with query strings.
 
 Use `tracemind.privacy_check` when a field name or sample value might be sensitive.
+
+## Developer Feedback Submission
+
+TraceMind MCP can submit developer feedback separately from analytics events. Use this when the developer has found a product issue or idea and wants TraceMind to store the report for later handling.
+
+- Use `tracemind.submit_feedback`; do not send feedback through `/api/capture` or manual `custom` events.
+- Ask the developer before submitting unless they explicitly asked you to submit the feedback.
+- Include `type` (`issue` or `idea`), `title`, and a sanitized `summary`.
+- Add optional `expected`, `actual`, `suggestion`, and short `reproductionSteps` when they clarify the report.
+- Prefer evidence references: event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, time window, session IDs, device IDs, and short sanitized examples.
+- Do not include PII, personal contact fields, secrets, token values, raw prompts, raw user content, source code, diffs, request/response bodies, headers, cookies, authorization values, tool arguments/results, resource content, or full query URLs.
 
 ## Update Rule
 
