@@ -23,6 +23,7 @@
   const setupDocsUrl = "https://github.com/wolf3c/TraceMind#1-%E5%88%86%E9%92%9F%E6%8E%A5%E5%85%A5";
   const newProjectOption = "__new_project__";
   const appVersion = packageInfo.version || "dev";
+  const reportTimezoneOffsetMs = 8 * 60 * 60 * 1000;
 
   let email = $state("");
   let code = $state("");
@@ -49,6 +50,7 @@
   let projectSummaryError = $state("");
   let projectSummaryRequestId = $state(0);
   let projectSummaryLastLoadedAt = $state(null);
+  let selectedReportDate = $state(reportDateForDate());
   let refreshAgeTick = $state(Date.now());
   let dashboardLoadPromise = null;
   let copiedTargetTimer = null;
@@ -72,6 +74,9 @@
   let displayedRecentEvents = $derived((selectedProjectSummary?.recentEvents || []).slice(0, 15));
   let hiddenRecentEventCount = $derived(Math.max(0, (selectedProjectSummary?.recentEvents || []).length - displayedRecentEvents.length));
   let projectSummaryRefreshAge = $derived(formatRefreshAge(projectSummaryLastLoadedAt, refreshAgeTick, selectedLocale));
+  let todayReportDate = $derived(reportDateForDate(refreshAgeTick));
+  let yesterdayReportDate = $derived(addReportDays(todayReportDate, -1));
+  let dayBeforeReportDate = $derived(addReportDays(todayReportDate, -2));
   let topEventType = $derived(summary?.topEvents?.[0]?.eventType || "none");
   let topPath = $derived(summary?.topPaths?.[0]?.path || "/");
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
@@ -119,6 +124,17 @@
     return messages[error.error] ? translateNow(messages[error.error]) : reason;
   }
 
+  function reportDateForDate(value = Date.now()) {
+    const time = value instanceof Date ? value.getTime() : Number(value || Date.now());
+    return new Date(time + reportTimezoneOffsetMs).toISOString().slice(0, 10);
+  }
+
+  function addReportDays(reportDate, days) {
+    const [year, month, day] = String(reportDate || reportDateForDate()).split("-").map(Number);
+    const startMs = Date.UTC(year, month - 1, day) - reportTimezoneOffsetMs;
+    return reportDateForDate(startMs + days * 24 * 60 * 60 * 1000);
+  }
+
   function syncSelectedProject(nextDashboard) {
     const projects = nextDashboard?.projects || [];
     const nextSelectedProjectId = resolveSelectedProjectId(projects, selectedProjectId);
@@ -132,7 +148,7 @@
     }
   }
 
-  async function loadProjectSummary(projectId = selectedProjectId) {
+  async function loadProjectSummary(projectId = selectedProjectId, reportDate = selectedReportDate) {
     const requestUserId = Meteor.userId();
     if (!requestUserId || !projectId) {
       selectedProjectSummary = null;
@@ -146,7 +162,7 @@
     projectSummaryError = "";
 
     try {
-      const nextSummary = await callMethod("tracemind.project.summary", projectId);
+      const nextSummary = await callMethod("tracemind.project.summary", projectId, reportDate);
       if (!shouldApplyProjectSummaryResponse({
         requestId,
         activeRequestId: projectSummaryRequestId,
@@ -157,6 +173,7 @@
       })) {
         return null;
       }
+      if (reportDate !== selectedReportDate) return null;
       selectedProjectSummary = nextSummary;
       projectSummaryLastLoadedAt = new Date();
       refreshAgeTick = Date.now();
@@ -294,6 +311,18 @@
     } catch (error) {
       status = errorMessage(error);
     }
+  }
+
+  function selectReportDate(reportDate) {
+    if (!reportDate || reportDate === selectedReportDate) return;
+    selectedReportDate = reportDate;
+    selectedProjectSummary = null;
+    projectSummaryLastLoadedAt = null;
+    loadProjectSummary().catch(() => {});
+  }
+
+  function changeReportDate(event) {
+    selectReportDate(event?.currentTarget?.value || todayReportDate);
   }
 
   function changeSelectedProject(event) {
@@ -662,9 +691,9 @@
 
   function formatTrend(value) {
     const numericValue = Number(value || 0);
-    if (!numericValue) return translateNow("Flat vs previous 24h");
+    if (!numericValue) return translateNow("Flat vs previous day");
     const direction = numericValue > 0 ? "↑" : "↓";
-    return `${direction} ${Math.round(Math.abs(numericValue) * 100)}% ${translateNow("vs previous 24h")}`;
+    return `${direction} ${Math.round(Math.abs(numericValue) * 100)}% ${translateNow("vs previous day")}`;
   }
 
   function trendClass(value) {
@@ -1116,7 +1145,19 @@
               </strong>
             </div>
             <h3>{primaryProject?.name || $t("Project")}</h3>
-            <p>{$t("Last 24 hours compared with previous 24 hours.")}</p>
+            <p>{$t("Daily report compared with the previous day.")}</p>
+            <div class="report-date-control" aria-label={$t("Project health report date")}>
+              <button class:active={selectedReportDate === todayReportDate} type="button" onclick={() => selectReportDate(todayReportDate)}>
+                {$t("Today")}
+              </button>
+              <button class:active={selectedReportDate === yesterdayReportDate} type="button" onclick={() => selectReportDate(yesterdayReportDate)}>
+                {$t("Yesterday")}
+              </button>
+              <button class:active={selectedReportDate === dayBeforeReportDate} type="button" onclick={() => selectReportDate(dayBeforeReportDate)}>
+                {$t("Day before")}
+              </button>
+              <input type="date" value={selectedReportDate} max={todayReportDate} onchange={changeReportDate} aria-label={$t("Select report date")} />
+            </div>
             {#if health?.attentionSummary}
               <p class="health-attention">{$t("Needs attention")}: {health.attentionSummary}</p>
             {/if}
@@ -1261,7 +1302,7 @@
               <span>{$t("Total events")}</span>
               <strong>{formatNumber(healthCurrent.eventCount)}</strong>
               <small class={trendClass(health?.trends?.events)}>{formatTrend(health?.trends?.events)}</small>
-              <em>{$t("user behavior events in 24h")}</em>
+              <em>{$t("user behavior events on selected day")}</em>
             </summary>
             <dl class="health-detail-list">
               <div class="health-detail-row-stacked">
@@ -1319,8 +1360,8 @@
                 count: displayedRecentEvents.length,
               })}</p>
             </div>
-            <div class="event-stream-total" aria-label={$t("Past 24 hours")}>
-              <span>{$t("Past 24 hours")}</span>
+            <div class="event-stream-total" aria-label={$t("Selected day")}>
+              <span>{$t("Selected day")}</span>
               <strong>{$t("{{count}} events", {
                 count: formatNumber(healthCurrent.eventCount),
               })}</strong>

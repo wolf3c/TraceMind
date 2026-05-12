@@ -7,12 +7,15 @@ export const SemanticEvents = new Mongo.Collection('tracemind_semantic_events');
 export const PresenceSessions = new Mongo.Collection('tracemind_presence_sessions');
 export const CaptureDeliveryReports = new Mongo.Collection('tracemind_capture_delivery_reports');
 export const FeedbackReports = new Mongo.Collection('tracemind_feedback_reports');
+export const ProjectDailyReports = new Mongo.Collection('tracemind_project_daily_reports');
 
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
 export const ACTIVE_IDLE_TIMEOUT_MS = 60 * 1000;
 export const HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
+export const DAILY_REPORT_TIMEZONE = 'Asia/Shanghai';
+export const DAILY_REPORT_DRAFT_MIN_REFRESH_MS = 60 * 1000;
 
 const PASSIVE_BOUNCE_EVENT_NAMES = new Set(['page_view', 'route_change']);
 const EXPLICIT_BOUNCE_INTERACTION_EVENT_TYPES = new Set(['click', 'input', 'submit', 'change', 'custom']);
@@ -856,6 +859,31 @@ function retentionSummary(firstSeenByActor, activeCurrentActors, now, day) {
   };
 }
 
+function emptyHealthWindow() {
+  return {
+    activeUsers: 0,
+    eventCount: 0,
+    sessionCount: 0,
+    failureEventCount: 0,
+    lastEventAt: null,
+    totalDurationMs: 0,
+    averageActiveDurationMs: 0,
+    averageSessionEvents: 0,
+    topEvents: [],
+    userRegions: [],
+    deviceDistribution: [],
+    sessionSources: [],
+    sessionPaths: [],
+    topDurationUsers: [],
+    topDurationPaths: [],
+    topBouncePages: [],
+    newUsers: 0,
+    retention: Object.fromEntries(
+      HEALTH_RETENTION_DAYS.map((day) => [`d${day}`, { sampleSize: 0, retainedUsers: 0, rate: null }]),
+    ),
+  };
+}
+
 function attentionItemsForHealth(current, previous, now) {
   const items = [];
   const activeUsersChange = percentChange(current.activeUsers, previous.activeUsers);
@@ -892,12 +920,35 @@ function attentionItemsForHealth(current, previous, now) {
   return items;
 }
 
-export function summarizeProjectHealth({ events = [], presenceSessions = [], now = new Date() } = {}) {
-  const windowEnd = validDate(now) || new Date();
-  const currentStart = new Date(windowEnd.getTime() - HEALTH_WINDOW_MS);
-  const previousStart = new Date(windowEnd.getTime() - 2 * HEALTH_WINDOW_MS);
-  const current = summarizeWindow({ events, sessions: presenceSessions, windowStart: currentStart, windowEnd, now: windowEnd });
-  const previous = summarizeWindow({ events, sessions: presenceSessions, windowStart: previousStart, windowEnd: currentStart, now: windowEnd });
+export function summarizeProjectHealthForWindow({
+  events = [],
+  presenceSessions = [],
+  currentStart,
+  currentEnd,
+  previousStart,
+  previousEnd,
+  now = currentEnd,
+  retention = null,
+  newUsers = null,
+} = {}) {
+  const windowEnd = validDate(currentEnd) || validDate(now) || new Date();
+  const resolvedCurrentStart = validDate(currentStart) || new Date(windowEnd.getTime() - HEALTH_WINDOW_MS);
+  const resolvedPreviousEnd = validDate(previousEnd) || resolvedCurrentStart;
+  const resolvedPreviousStart = validDate(previousStart) || new Date(resolvedPreviousEnd.getTime() - HEALTH_WINDOW_MS);
+  const current = summarizeWindow({
+    events,
+    sessions: presenceSessions,
+    windowStart: resolvedCurrentStart,
+    windowEnd,
+    now: windowEnd,
+  });
+  const previous = summarizeWindow({
+    events,
+    sessions: presenceSessions,
+    windowStart: resolvedPreviousStart,
+    windowEnd: resolvedPreviousEnd,
+    now: windowEnd,
+  });
   const firstSeenByActor = new Map();
   const activeCurrentActors = new Set();
 
@@ -907,7 +958,7 @@ export function summarizeProjectHealth({ events = [], presenceSessions = [], now
     if (!actorId || !occurredAt) return;
     const firstSeenAt = firstSeenByActor.get(actorId);
     if (!firstSeenAt || occurredAt < firstSeenAt) firstSeenByActor.set(actorId, occurredAt);
-    if (occurredAt >= currentStart && occurredAt < windowEnd) activeCurrentActors.add(actorId);
+    if (occurredAt >= resolvedCurrentStart && occurredAt < windowEnd) activeCurrentActors.add(actorId);
   });
   presenceSessions.forEach((session) => {
     const actorId = actorIdForHealthPresence(session);
@@ -915,11 +966,13 @@ export function summarizeProjectHealth({ events = [], presenceSessions = [], now
     if (!actorId || !startedAt) return;
     const firstSeenAt = firstSeenByActor.get(actorId);
     if (!firstSeenAt || startedAt < firstSeenAt) firstSeenByActor.set(actorId, startedAt);
-    if (overlapsWindow(startedAt, sessionEnd(session, windowEnd), currentStart, windowEnd)) activeCurrentActors.add(actorId);
+    if (overlapsWindow(startedAt, sessionEnd(session, windowEnd), resolvedCurrentStart, windowEnd)) activeCurrentActors.add(actorId);
   });
 
-  current.newUsers = [...firstSeenByActor.values()].filter((firstSeenAt) => firstSeenAt >= currentStart && firstSeenAt < windowEnd).length;
-  current.retention = Object.fromEntries(
+  current.newUsers = Number.isFinite(newUsers)
+    ? Math.max(0, newUsers)
+    : [...firstSeenByActor.values()].filter((firstSeenAt) => firstSeenAt >= resolvedCurrentStart && firstSeenAt < windowEnd).length;
+  current.retention = retention || Object.fromEntries(
     HEALTH_RETENTION_DAYS.map((day) => [`d${day}`, retentionSummary(firstSeenByActor, activeCurrentActors, windowEnd, day)]),
   );
 
@@ -927,10 +980,10 @@ export function summarizeProjectHealth({ events = [], presenceSessions = [], now
 
   return {
     window: {
-      currentStart,
+      currentStart: resolvedCurrentStart,
       currentEnd: windowEnd,
-      previousStart,
-      previousEnd: currentStart,
+      previousStart: resolvedPreviousStart,
+      previousEnd: resolvedPreviousEnd,
       retentionDays: HEALTH_RETENTION_DAYS,
     },
     status: attentionItems.length ? 'needs_attention' : 'normal',
@@ -945,6 +998,69 @@ export function summarizeProjectHealth({ events = [], presenceSessions = [], now
       events: percentChange(current.eventCount, previous.eventCount),
     },
   };
+}
+
+export function summarizeProjectHealthFromDailyReports({
+  currentReport,
+  previousReport,
+  retention = null,
+} = {}) {
+  const current = {
+    ...emptyHealthWindow(),
+    ...(currentReport?.current || {}),
+    newUsers: Number(currentReport?.current?.newUsers || currentReport?.newActorKeys?.length || 0),
+    retention: retention || emptyHealthWindow().retention,
+  };
+  const previous = {
+    ...emptyHealthWindow(),
+    ...(previousReport?.current || {}),
+    newUsers: Number(previousReport?.current?.newUsers || previousReport?.newActorKeys?.length || 0),
+  };
+  const currentStart = validDate(currentReport?.sourceWindow?.startAt);
+  const currentEnd = validDate(currentReport?.sourceWindow?.endAt);
+  const previousStart = validDate(previousReport?.sourceWindow?.startAt);
+  const previousEnd = validDate(previousReport?.sourceWindow?.endAt);
+  const attentionItems = attentionItemsForHealth(current, previous, currentEnd || new Date());
+
+  return {
+    window: {
+      currentStart,
+      currentEnd,
+      previousStart,
+      previousEnd,
+      reportDate: currentReport?.reportDate || '',
+      previousReportDate: previousReport?.reportDate || '',
+      granularity: 'day',
+      timezone: DAILY_REPORT_TIMEZONE,
+      retentionDays: HEALTH_RETENTION_DAYS,
+    },
+    status: attentionItems.length ? 'needs_attention' : 'normal',
+    attentionSummary: attentionItems[0]?.message || '',
+    attentionItems,
+    current,
+    previous,
+    trends: {
+      activeUsers: percentChange(current.activeUsers, previous.activeUsers),
+      sessions: percentChange(current.sessionCount, previous.sessionCount),
+      averageActiveDuration: percentChange(current.averageActiveDurationMs, previous.averageActiveDurationMs),
+      events: percentChange(current.eventCount, previous.eventCount),
+    },
+  };
+}
+
+export function summarizeProjectHealth({ events = [], presenceSessions = [], now = new Date() } = {}) {
+  const windowEnd = validDate(now) || new Date();
+  const currentStart = new Date(windowEnd.getTime() - HEALTH_WINDOW_MS);
+  const previousStart = new Date(windowEnd.getTime() - 2 * HEALTH_WINDOW_MS);
+  return summarizeProjectHealthForWindow({
+    events,
+    presenceSessions,
+    currentStart,
+    currentEnd: windowEnd,
+    previousStart,
+    previousEnd: currentStart,
+    now: windowEnd,
+  });
 }
 
 export function publicPresenceSession(session) {

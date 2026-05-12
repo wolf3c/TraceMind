@@ -992,6 +992,41 @@ code {
   font-size: 0.9rem;
 }
 
+.report-date-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.report-date-control button,
+.report-date-control input {
+  min-height: 34px;
+  border: 1px solid #d5e0da;
+  border-radius: 8px;
+  background: #fffefa;
+  color: var(--deep);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.report-date-control button {
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.report-date-control button.active {
+  border-color: #276b50;
+  background: #e8f4ee;
+  color: #12352d;
+}
+
+.report-date-control input {
+  padding: 0 8px;
+}
+
 .events-header span {
   display: block;
   color: #708179;

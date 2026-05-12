@@ -118,3 +118,6 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added `tracemind_feedback_reports` and the `tracemind.submit_feedback` MCP tool so coding agents can submit sanitized developer issues or ideas with TraceMind evidence references after developer confirmation.
 - Kept feedback separate from `/api/capture`, raw behaviors, and semantic events; MCP analysis tools remain read-only while feedback submission is the single MCP write path.
 - Updated MCP, Skill, agent snippet, token, and product wording to describe MCP as behavior evidence access plus controlled feedback submission.
+- Added `tracemind_project_daily_reports` for selected-project health. The dashboard now reads Asia/Shanghai daily reports, uses a one-minute draft refresh floor for today, and compares the selected date with the previous day instead of scanning all historical semantic events and presence sessions on every refresh.
+- Stored hashed daily actor sets inside reports so D2/D3/D7/D30 retention can be computed by report intersections without exposing raw actor ids in the report payload.
+- Added daily report finalization and query indexes for project/date and project/time-window reads across semantic events, presence sessions, raw behaviors, and delivery reports.

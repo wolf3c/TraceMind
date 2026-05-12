@@ -24,7 +24,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 | Landing + console | `imports/ui/App.svelte`, `client/main.css` | Explain product, handle passwordless login, show project key/platform setup snippets/recent events |
 | Auth + projects | `server/tracemind_methods.js`, `imports/api/tracemind.js` | Configure passwordless email, map `Meteor.userId()` to developer record and project key |
 | Capture SDKs | `server/capture_routes.js`, `sdk/ios`, `sdk/android`, `sdk/react-native`, `sdk/mcp-node`, `sdk/mcp-python`, `sdk/server-node`, `sdk/server-python` | Serve `/capture.js`, provide Web/Native/MCP/server SDKs, and ingest `/api/capture` raw behavior with identity, device, source, IP/geo, custom fields |
-| Semantic extraction | `server/semantic_jobs.js`, `imports/api/semantic.js` | Periodically convert raw behavior into semantic events |
+| Semantic extraction + reports | `server/semantic_jobs.js`, `server/daily_reports.js`, `imports/api/semantic.js` | Periodically convert raw behavior into semantic events and maintain daily project health reports |
 | Remote MCP | `server/capture_routes.js` | Serve `/mcp?mcpToken=...` or Bearer MCP tokens with event definitions, filtered semantic event queries, raw log queries, summaries, developer feedback submission, and a GET preview |
 | Tests | `tests/main.js` | Cover email normalization, semantic extraction, summary logic, and login/project creation |
 
@@ -41,7 +41,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - Remote MCP uses a minimal Streamable HTTP JSON-RPC surface with `initialize`, `tools/list`, `tools/call`, and `ping`.
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.
-- The selected-project console health overview uses a rolling 24h window compared with the previous 24h. It reports active users, active sessions, average strict active time per user, total user behavior events, new-user cohort retention, top distributions, top bounce pages, and high-confidence attention items. Raw behavior and semantic event counts remain diagnostics, not the primary developer health cards.
+- The selected-project console health overview reads Asia/Shanghai daily reports instead of scanning all historical events on refresh. Today is a draft report recomputed at most once per minute, historical dates read final reports, and the daily finalization job computes yesterday after the day closes. Reports store hashed actor sets internally so D2/D3/D7/D30 retention can be calculated without returning raw actor ids to the client.
 
 ## Deployment Shape
 

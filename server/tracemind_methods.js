@@ -6,6 +6,7 @@ import {
   Developers,
   FeedbackReports,
   PresenceSessions,
+  ProjectDailyReports,
   Projects,
   RawBehaviors,
   SemanticEvents,
@@ -16,18 +17,16 @@ import {
   publicProject,
   publicSemanticEvent,
   summarizeBehaviorSources,
-  summarizeCaptureDelivery,
   summarizePresenceSessions,
-  summarizeProjectHealth,
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
+import { reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 
 const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
 const PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT = 200;
 const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
 const PROJECT_SUMMARY_PRESENCE_LIMIT = 500;
 const PROJECT_SUMMARY_DELIVERY_REPORT_LIMIT = 500;
-const DELIVERY_SUMMARY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function newToken(prefix) {
   return `${prefix}_${Random.secret(32)}`;
@@ -113,14 +112,12 @@ async function findOwnedProjectWithMcpTokens(projectId, userId) {
   return ensureProjectMcpTokens(project);
 }
 
-async function buildProjectSummary(project) {
+async function buildProjectSummary(project, selectedDateInput) {
   const now = new Date();
+  const today = reportDateForDate(now);
+  const selectedDate = String(selectedDateInput || today) > today ? today : selectedDateInput || today;
   const rawCount = await RawBehaviors.find({ projectId: project._id }).countAsync();
   const semanticCount = await SemanticEvents.find({ projectId: project._id }).countAsync();
-  const healthEvents = await SemanticEvents.find(
-    { projectId: project._id },
-    { sort: { occurredAt: -1 } },
-  ).fetchAsync();
   const events = await SemanticEvents.find(
     { projectId: project._id },
     { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT },
@@ -129,21 +126,11 @@ async function buildProjectSummary(project) {
     { projectId: project._id },
     { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT },
   ).fetchAsync();
-  const healthPresenceSessions = await PresenceSessions.find(
-    { projectId: project._id },
-    { sort: { lastSeenAt: -1 } },
-  ).fetchAsync();
   const presenceSessions = await PresenceSessions.find(
     { projectId: project._id },
     { sort: { lastSeenAt: -1 }, limit: PROJECT_SUMMARY_PRESENCE_LIMIT },
   ).fetchAsync();
-  const deliveryReports = await CaptureDeliveryReports.find(
-    {
-      projectId: project._id,
-      createdAt: { $gte: new Date(now.getTime() - DELIVERY_SUMMARY_WINDOW_MS) },
-    },
-    { sort: { createdAt: -1 }, limit: PROJECT_SUMMARY_DELIVERY_REPORT_LIMIT },
-  ).fetchAsync();
+  const { report, health } = await resolveProjectDailyHealth(project._id, selectedDate, { now });
 
   return {
     project: publicProject(await ensureProjectMcpTokens(project)),
@@ -157,12 +144,16 @@ async function buildProjectSummary(project) {
       semanticEventSampleSize: events.length,
       rawBehaviorSampleSize: rawBehaviors.length,
       presenceSessionSampleSize: presenceSessions.length,
-      deliveryReportSampleSize: deliveryReports.length,
+      deliveryReportSampleSize: report?.delivery?.reportCount || 0,
+      reportDate: report?.reportDate || selectedDate,
+      reportStatus: report?.status || 'draft',
+      reportComputedAt: report?.computedAt || null,
+      reportTimezone: report?.timezone || 'Asia/Shanghai',
     },
-    health: summarizeProjectHealth({ events: healthEvents, presenceSessions: healthPresenceSessions, now }),
+    health,
     summary: summarizeSemanticEvents(events),
     presence: summarizePresenceSessions(presenceSessions),
-    delivery: summarizeCaptureDelivery(deliveryReports),
+    delivery: report?.delivery || {},
     sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
     recentEvents: events.slice(0, 30).map(publicSemanticEvent),
   };
@@ -319,6 +310,7 @@ Meteor.methods({
     await PresenceSessions.removeAsync({ projectId: project._id });
     await CaptureDeliveryReports.removeAsync({ projectId: project._id });
     await FeedbackReports.removeAsync({ projectId: project._id });
+    await ProjectDailyReports.removeAsync({ projectId: project._id });
     await Projects.removeAsync(project._id);
     return { removed: true, projectId: project._id };
   },
@@ -416,16 +408,16 @@ Meteor.methods({
     return publicProject(await Projects.findOneAsync(project._id));
   },
 
-  async 'tracemind.project.summary'(projectId) {
+  async 'tracemind.project.summary'(projectId, selectedDate) {
     const developer = await getOrCreateDeveloperForUser(this.userId);
     const project = await findProjectForDeveloper(projectId, developer._id);
     if (!project) {
       throw new Meteor.Error('not-found', 'Project not found.');
     }
-    return buildProjectSummary(project);
+    return buildProjectSummary(project, selectedDate);
   },
 
-  async 'tracemind.project.summaryByToken'(authToken, projectId) {
+  async 'tracemind.project.summaryByToken'(authToken, projectId, selectedDate) {
     const developer = await findDeveloperByToken(authToken);
     if (!developer) {
       throw new Meteor.Error('not-authorized', 'Login is required.');
@@ -435,6 +427,6 @@ Meteor.methods({
     if (!project) {
       throw new Meteor.Error('not-found', 'Project not found.');
     }
-    return buildProjectSummary(project);
+    return buildProjectSummary(project, selectedDate);
   },
 });

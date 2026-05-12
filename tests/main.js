@@ -6,6 +6,7 @@ import {
   Developers,
   FeedbackReports,
   PresenceSessions,
+  ProjectDailyReports,
   Projects,
   RawBehaviors,
   SemanticEvents,
@@ -1720,13 +1721,18 @@ describe('TraceMind', function () {
   if (Meteor.isServer) {
     let ingestCapturePayload;
     let ingestPresencePayload;
+    let computeProjectDailyReport;
+    let resolveProjectDailyHealth;
     let resolveProjectByMcpToken;
 
     before(async function () {
       const captureRoutes = await import('../server/capture_routes');
+      const dailyReports = await import('../server/daily_reports');
       const methods = await import('../server/tracemind_methods');
       ingestCapturePayload = captureRoutes.ingestCapturePayload;
       ingestPresencePayload = captureRoutes.ingestPresencePayload;
+      computeProjectDailyReport = dailyReports.computeProjectDailyReport;
+      resolveProjectDailyHealth = dailyReports.resolveProjectDailyHealth;
       resolveProjectByMcpToken = methods.resolveProjectByMcpToken;
     });
 
@@ -1853,16 +1859,15 @@ describe('TraceMind', function () {
       assert.strictEqual(result.project._id, selectedProject._id);
       assert.strictEqual(result.rawCount, 1);
       assert.strictEqual(result.semanticCount, 201);
-      assert.deepStrictEqual(result.summaryWindow, {
-        semanticEventLimit: 200,
-        rawBehaviorLimit: 500,
-        presenceSessionLimit: 500,
-        deliveryReportLimit: 500,
-        semanticEventSampleSize: 200,
-        rawBehaviorSampleSize: 1,
-        presenceSessionSampleSize: 1,
-        deliveryReportSampleSize: 0,
-      });
+      assert.strictEqual(result.summaryWindow.semanticEventLimit, 200);
+      assert.strictEqual(result.summaryWindow.rawBehaviorLimit, 500);
+      assert.strictEqual(result.summaryWindow.presenceSessionLimit, 500);
+      assert.strictEqual(result.summaryWindow.deliveryReportLimit, 500);
+      assert.strictEqual(result.summaryWindow.semanticEventSampleSize, 200);
+      assert.strictEqual(result.summaryWindow.rawBehaviorSampleSize, 1);
+      assert.strictEqual(result.summaryWindow.presenceSessionSampleSize, 1);
+      assert.strictEqual(result.summaryWindow.deliveryReportSampleSize, 0);
+      assert.ok(result.summaryWindow.reportDate);
       assert.strictEqual(result.summary.totalEvents, 200);
       assert.strictEqual(result.summary.uniqueUsers, 1);
       assert.strictEqual(result.summary.uniqueDevices, 1);
@@ -1871,6 +1876,146 @@ describe('TraceMind', function () {
       assert.deepStrictEqual(result.sources.map((source) => source.sourceKey), ['selected.example']);
       assert.ok(result.recentEvents.some((event) => event.eventName === 'selected_event'));
       assert.strictEqual(result.recentEvents.some((event) => event.eventName === 'other_event'), false);
+    });
+
+    it('computes daily project reports with hashed actor sets and retention-ready metrics', async function () {
+      const projectId = `project-daily-report-${Date.now()}`;
+      await ProjectDailyReports.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Daily Report App',
+        projectKey: `tm_proj_daily_${Date.now()}`,
+        authToken: `tm_auth_daily_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'page_view',
+        eventName: 'page_view',
+        anonymousId: 'anon-a',
+        deviceId: 'device-a',
+        platform: 'web',
+        geo: { country: 'CN' },
+        deviceInfo: { browser: 'Chrome' },
+        path: '/home',
+        occurredAt: new Date('2026-05-11T16:30:00.000Z'),
+        createdAt: new Date('2026-05-11T16:30:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'checkout_failed',
+        userId: 'user-b',
+        platform: 'web',
+        properties: { status: 'failed' },
+        path: '/checkout',
+        occurredAt: new Date('2026-05-12T01:00:00.000Z'),
+        createdAt: new Date('2026-05-12T01:00:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'outside_day',
+        userId: 'outside-user',
+        occurredAt: new Date('2026-05-12T16:01:00.000Z'),
+        createdAt: new Date('2026-05-12T16:01:00.000Z'),
+      });
+      await PresenceSessions.insertAsync({
+        projectId,
+        presenceId: 'presence-a',
+        anonymousId: 'anon-a',
+        sessionId: 'session-a',
+        sourceType: 'web',
+        sourceKey: 'app.example',
+        path: '/home',
+        startedAt: new Date('2026-05-11T16:30:00.000Z'),
+        lastSeenAt: new Date('2026-05-11T16:35:00.000Z'),
+        endedAt: new Date('2026-05-11T16:35:00.000Z'),
+        activeDurationMs: 120000,
+      });
+      await PresenceSessions.insertAsync({
+        projectId,
+        presenceId: 'presence-other-day',
+        userId: 'outside-user',
+        sessionId: 'session-other-day',
+        path: '/other',
+        startedAt: new Date('2026-05-12T16:01:00.000Z'),
+        lastSeenAt: new Date('2026-05-12T16:05:00.000Z'),
+        activeDurationMs: 120000,
+      });
+
+      const report = await computeProjectDailyReport(projectId, '2026-05-12', {
+        final: true,
+        now: new Date('2026-05-12T16:30:00.000Z'),
+      });
+
+      assert.strictEqual(report.reportDate, '2026-05-12');
+      assert.strictEqual(report.status, 'final');
+      assert.strictEqual(report.current.eventCount, 2);
+      assert.strictEqual(report.current.activeUsers, 2);
+      assert.strictEqual(report.current.sessionCount, 1);
+      assert.strictEqual(report.current.failureEventCount, 1);
+      assert.deepStrictEqual(report.current.topEvents[0], { label: 'checkout_failed', count: 1 });
+      assert.strictEqual(report.activeActorKeys.length, 2);
+      assert.strictEqual(report.activeActorKeys.some((key) => key.includes('anon-a') || key.includes('user-b')), false);
+
+      const savedReports = await ProjectDailyReports.find({ projectId, reportDate: '2026-05-12' }).fetchAsync();
+      assert.strictEqual(savedReports.length, 1);
+    });
+
+    it('uses cached draft reports for today within one minute and daily reports for project health trends', async function () {
+      const projectId = `project-daily-health-${Date.now()}`;
+      await ProjectDailyReports.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Daily Health App',
+        projectKey: `tm_proj_health_${Date.now()}`,
+        authToken: `tm_auth_health_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'signup_started',
+        anonymousId: 'cohort-user',
+        occurredAt: new Date('2026-05-10T01:00:00.000Z'),
+        createdAt: new Date('2026-05-10T01:00:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'signup_started',
+        anonymousId: 'cohort-user',
+        occurredAt: new Date('2026-05-12T01:00:00.000Z'),
+        createdAt: new Date('2026-05-12T01:00:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'yesterday_event',
+        anonymousId: 'yesterday-user',
+        occurredAt: new Date('2026-05-11T01:00:00.000Z'),
+        createdAt: new Date('2026-05-11T01:00:00.000Z'),
+      });
+
+      const first = await resolveProjectDailyHealth(projectId, '2026-05-12', {
+        now: new Date('2026-05-12T03:00:00.000Z'),
+      });
+      const second = await resolveProjectDailyHealth(projectId, '2026-05-12', {
+        now: new Date('2026-05-12T03:00:30.000Z'),
+      });
+
+      assert.strictEqual(first.report._id, second.report._id);
+      assert.deepStrictEqual(first.health.current.retention.d2, {
+        sampleSize: 1,
+        retainedUsers: 1,
+        rate: 1,
+      });
+      assert.strictEqual(first.health.current.eventCount, 1);
+      assert.strictEqual(first.health.previous.eventCount, 1);
+      assert.strictEqual(first.health.trends.events, 0);
     });
 
     it('resolves MCP access only through independent MCP tokens', async function () {
@@ -2040,6 +2185,24 @@ describe('TraceMind', function () {
         submittedVia: 'mcp',
         createdAt: new Date(),
       });
+      await ProjectDailyReports.insertAsync({
+        projectId: removedProjectId,
+        reportDate: '2026-05-12',
+        status: 'final',
+        activeActorKeys: ['removed-actor'],
+        newActorKeys: ['removed-actor'],
+        current: { eventCount: 1 },
+        createdAt: new Date(),
+      });
+      await ProjectDailyReports.insertAsync({
+        projectId: siblingProject._id,
+        reportDate: '2026-05-12',
+        status: 'final',
+        activeActorKeys: ['sibling-actor'],
+        newActorKeys: ['sibling-actor'],
+        current: { eventCount: 1 },
+        createdAt: new Date(),
+      });
 
       const result = await removeMethod.apply({ userId }, [removedProjectId]);
 
@@ -2049,11 +2212,13 @@ describe('TraceMind', function () {
       assert.strictEqual(await SemanticEvents.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await PresenceSessions.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await FeedbackReports.find({ projectId: removedProjectId }).countAsync(), 0);
+      assert.strictEqual(await ProjectDailyReports.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.ok(await Projects.findOneAsync(siblingProject._id));
       assert.strictEqual(await RawBehaviors.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await SemanticEvents.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await PresenceSessions.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await FeedbackReports.find({ projectId: siblingProject._id }).countAsync(), 1);
+      assert.strictEqual(await ProjectDailyReports.find({ projectId: siblingProject._id }).countAsync(), 1);
     });
 
     it('rejects project deletion by non-owners', async function () {
