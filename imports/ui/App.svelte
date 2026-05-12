@@ -43,6 +43,7 @@
   let showProjectCreate = $state(false);
   let showProjectActions = $state(false);
   let showProjectRename = $state(false);
+  let showActiveTimeTip = $state(false);
   let selectedProjectSummary = $state(null);
   let projectSummaryLoading = $state(false);
   let projectSummaryError = $state("");
@@ -334,6 +335,12 @@
   function cancelProjectRename() {
     showProjectRename = false;
     renameProjectName = "";
+  }
+
+  function toggleActiveTimeTip(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    showActiveTimeTip = !showActiveTimeTip;
   }
 
   async function createProject() {
@@ -1154,10 +1161,24 @@
           </details>
           <details class="health-card">
             <summary>
-              <span>{$t("Average active time per user")}</span>
+              <span class="health-card-title">
+                {$t("Average active time per user")}
+                <button
+                  class="health-info-button"
+                  type="button"
+                  aria-expanded={showActiveTimeTip}
+                  aria-label={$t("Active time collection logic")}
+                  onclick={toggleActiveTimeTip}
+                >i</button>
+                {#if showActiveTimeTip}
+                  <span class="health-info-popover" role="tooltip">
+                    {$t("Active time counts when the app is in the foreground and the user has recent interaction. Web also requires the page to be visible and the browser window focused; missing legacy active-time data is counted as 0.")}
+                  </span>
+                {/if}
+              </span>
               <strong>{formatDuration(healthCurrent.averageActiveDurationMs)}</strong>
               <small class={trendClass(health?.trends?.averageActiveDuration)}>{formatTrend(health?.trends?.averageActiveDuration)}</small>
-              <em>{$t("foreground/focus + 60s interaction")}</em>
+              <em>{$t("averaged by active users")}</em>
             </summary>
             <dl class="health-detail-list">
               <div><dt>{$t("Average active time per user")}</dt><dd>{formatDuration(healthCurrent.averageActiveDurationMs)}</dd></div>

@@ -1111,6 +1111,55 @@ code {
   font-weight: 650;
 }
 
+.health-card .health-card-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: visible;
+}
+
+.health-info-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  border: 1px solid #c8d8d1;
+  border-radius: 999px;
+  padding: 0;
+  color: #60756c;
+  background: #eef5f1;
+  font-size: 0.62rem;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.health-info-button:hover,
+.health-info-button:focus-visible {
+  border-color: #8fb5a6;
+  color: var(--deep);
+  background: #e2efe9;
+}
+
+.health-info-popover {
+  position: absolute;
+  z-index: 4;
+  top: 22px;
+  left: 0;
+  width: min(260px, calc(100vw - 64px));
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
+  padding: 9px 10px;
+  box-shadow: 0 12px 30px rgba(22, 43, 36, 0.14);
+  color: var(--deep) !important;
+  background: #fffefa;
+  font-size: 0.72rem !important;
+  font-weight: 520 !important;
+  line-height: 1.45;
+}
+
 .health-card strong {
   color: var(--deep);
   font-size: 1.45rem;
