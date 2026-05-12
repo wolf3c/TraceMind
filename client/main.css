@@ -48,6 +48,15 @@ button,
   box-shadow: 0 10px 22px rgba(15, 47, 42, 0.18);
 }
 
+.app-version {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 18px 28px;
+  color: rgba(99, 117, 109, 0.74);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;

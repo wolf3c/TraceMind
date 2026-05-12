@@ -4,6 +4,7 @@
   import { Tracker } from "meteor/tracker";
   import { untrack } from "svelte";
   import { get } from "svelte/store";
+  import packageInfo from "../../package.json";
   import { buildAgentInstallPrompt } from "./agent_setup";
   import { resolveConsoleState } from "./console_state";
   import { locale, locales, t } from "./i18n/i18n";
@@ -21,6 +22,7 @@
   };
   const setupDocsUrl = "https://github.com/wolf3c/TraceMind#1-%E5%88%86%E9%92%9F%E6%8E%A5%E5%85%A5";
   const newProjectOption = "__new_project__";
+  const appVersion = packageInfo.version || "dev";
 
   let email = $state("");
   let code = $state("");
@@ -1336,4 +1338,8 @@
       <p class="status-alert">{status}</p>
     {/if}
   </section>
+
+  <footer class="app-version" aria-label="TraceMind version">
+    TraceMind v{appVersion}
+  </footer>
 </main>
