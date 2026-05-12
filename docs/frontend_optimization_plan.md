@@ -236,3 +236,24 @@
 
 - Run `npx svelte-check --compiler-warnings error`.
 - Inspect the Chinese mobile layout and confirm the section shows only two concise feature cards.
+
+## 2026-05-12 Homepage First-Viewport Positioning Pass
+
+### Current Behavior
+
+- The public hero says one line of code helps developers see product usage, but the differentiation from ordinary analytics is not immediate.
+- The right-side live-data panel has useful density, but it does not clearly show the product path from raw behavior to semantic evidence to MCP agent analysis.
+- The background chart competes with the product preview instead of supporting it.
+
+### Target Behavior
+
+- Lead with the AI Coding Agent outcome: TraceMind lets AI agents understand real user behavior.
+- Make the hero preview a three-step evidence flow: Capture, Understand, and Ask.
+- Keep the primary conversion as setup, with a short proof line for one-minute setup, public `projectKey` capture writes, and independent MCP token authorization.
+- Keep dashboard, API, MCP, SDK, and Agent Skill behavior unchanged.
+
+### Verification Plan
+
+- Run `npx svelte-check --compiler-warnings error`.
+- Run `npm test` or the same Meteor Mocha command on an alternate port if 3000 is occupied.
+- Start the app and inspect the public hero on desktop, 860px, and 560px widths for readable copy, no overflow, clear CTA hierarchy, and no untranslated Chinese keys.

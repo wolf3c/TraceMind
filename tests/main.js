@@ -1144,7 +1144,11 @@ describe('TraceMind', function () {
     const requiredKeys = [
       'Language',
       'AI-native behavior intelligence',
-      'See how users actually use your product with one line of code.',
+      'Let AI agents understand',
+      'real user behavior.',
+      'Add one line of code and TraceMind turns clicks, paths, forms, and active time into product evidence that Codex, Claude Code, and Cursor can question through MCP.',
+      '1-minute setup · public projectKey writes · independent MCP token authorization',
+      'View setup docs',
       'Email',
       'Send code',
       'Checking your session...',

@@ -816,58 +816,64 @@
 
     <div class="hero-grid">
       <div class="hero-copy">
-        <h1>{$t("See how users actually use your product with one line of code.")}</h1>
-        <p class="lede">{$t("TraceMind turns real user behavior into product signals you can analyze. With remote MCP, you can ask Codex, Claude Code, or Cursor about drop-off, feature usage, and conversion issues directly.")}</p>
+        <h1>
+          <span>{$t("Let AI agents understand")}</span>
+          <span>{$t("real user behavior.")}</span>
+        </h1>
+        <p class="lede">{$t("Add one line of code and TraceMind turns clicks, paths, forms, and active time into product evidence that Codex, Claude Code, and Cursor can question through MCP.")}</p>
         <div class="hero-actions">
           <a href="#console" class="button">{$t("Start setup")}</a>
-          <a href={setupDocsUrl} class="button secondary" target="_blank" rel="noreferrer">{$t("Open docs")}</a>
+          <a href={setupDocsUrl} class="button secondary" target="_blank" rel="noreferrer">{$t("View setup docs")}</a>
         </div>
+        <p class="hero-proof">{$t("1-minute setup · public projectKey writes · independent MCP token authorization")}</p>
       </div>
 
       <div class="signal-panel card-panel" aria-label="TraceMind data flow">
         <div class="signal-panel-header">
-          <span class="tm-badge tm-badge-signal">{$t("Live behavior stream")}</span>
-          <span class="tm-badge tm-badge-amber">{$t("Remote MCP ready")}</span>
+          <div>
+            <span class="tm-badge tm-badge-signal">{$t("AI-readable behavior evidence")}</span>
+            <strong>{$t("Raw behavior -> semantic event -> agent answer")}</strong>
+          </div>
           <code>tm_proj_xxx</code>
         </div>
 
-        <div class="signal-metrics">
+        <div class="signal-metrics" aria-label={$t("TraceMind setup path")}>
           <div>
-            <span>{$t("Raw events")}</span>
-            <strong>1,248</strong>
+            <span>{$t("Setup")}</span>
+            <strong>{$t("1 line")}</strong>
           </div>
           <div>
-            <span>{$t("Semantic events")}</span>
-            <strong>317</strong>
+            <span>{$t("Evidence")}</span>
+            <strong>{$t("Semantic")}</strong>
           </div>
           <div>
-            <span>{$t("Agent queries")}</span>
-            <strong>42</strong>
+            <span>{$t("Access")}</span>
+            <strong>{$t("MCP")}</strong>
           </div>
         </div>
 
-        <div class="event-stream">
-          <div>
-            <span>{$t("Raw behavior")}</span>
-            <strong>{$t("POST /api/capture")}</strong>
-            <small>{$t("click, page_view, submit")}</small>
-          </div>
-          <div>
-            <span>{$t("Semantic understanding")}</span>
-            <strong>{$t("semantic_event.created")}</strong>
-            <small>{$t("Viewed pricing page, submitted signup form")}</small>
-          </div>
-          <div>
-            <span>{$t("AI agent access")}</span>
+        <div class="evidence-flow">
+          <article class="evidence-step">
+            <span>01 / {$t("Capture")}</span>
+            <strong>{$t("click /pricing -> submit signup")}</strong>
+            <small>{$t("Auto Capture records pages, clicks, forms, and active time without manual event planning.")}</small>
+          </article>
+          <article class="evidence-step">
+            <span>02 / {$t("Understand")}</span>
+            <strong>{$t("user_reached_pricing_without_signup")}</strong>
+            <small>{$t("TraceMind keeps the raw behavior and creates AI-readable semantic evidence.")}</small>
+          </article>
+          <article class="evidence-step">
+            <span>03 / {$t("Ask")}</span>
             <strong>{$t("mcp.tools.call")}</strong>
-            <small>{$t("Codex, Claude Code, and Cursor read semantic events through MCP")}</small>
-          </div>
+            <small>{$t("Codex, Claude Code, and Cursor query the evidence through independently authorized MCP tokens.")}</small>
+          </article>
         </div>
 
         <div class="agent-query">
-          <span>{$t("Codex asks")}</span>
-          <strong>{$t("Why did users reach pricing but not submit?")}</strong>
-          <p>{$t("TraceMind returns key paths, user distribution, device sources, and reviewable behavior evidence.")}</p>
+          <span>{$t("Agent asks through MCP")}</span>
+          <strong>{$t("Which users reached pricing but did not submit?")}</strong>
+          <p>{$t("TraceMind returns paths, cohorts, device sources, and reviewable behavior evidence.")}</p>
         </div>
       </div>
     </div>
@@ -876,7 +882,7 @@
   <section id="how" class="workflow">
     <div>
       <p class="section-label">{$t("Two core capabilities")}</p>
-      <h2>{$t("Turn real user behavior into AI-readable product data with one line of code.")}</h2>
+      <h2>{$t("Auto Capture plus AI-readable behavior evidence, without rebuilding your analytics stack.")}</h2>
     </div>
     <div class="one-line-example">
       <div>
@@ -893,7 +899,7 @@
       </article>
       <article>
         <span class="tm-badge tm-badge-amber">{$t("AI-driven")}</span>
-        <h3>{$t("AI analysis and instrumentation")}</h3>
+        <h3>{$t("AI-readable evidence")}</h3>
         <p>{$t("TraceMind turns raw behavior into semantic events and exposes MCP evidence so Codex, Claude Code, or Cursor can analyze product usage and submit developer feedback directly.")}</p>
       </article>
     </div>
