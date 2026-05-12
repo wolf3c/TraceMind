@@ -1,17 +1,17 @@
 ---
 name: version-updater
-description: Use before each TraceMind release to set the project version consistently. Updates the canonical package.json version, verifies all visible/runtime references read from that source, and runs the lightweight checks needed before handoff.
+description: Use before each TraceMind release or deployment. Updates the canonical package.json version, verifies visible/runtime references, runs release checks, deploys through the configured Meteor deploy command when requested, and verifies the deployed app.
 ---
 
 # Version Updater
 
-Use this skill when preparing a TraceMind release and the project version must be set before deployment or tagging.
+Use this skill when preparing or deploying a TraceMind release. It owns the release version bump, pre-deploy checks, Meteor deploy command, and post-deploy verification.
 
 ## Scope
 
 The canonical app version is `package.json` field `version`. The current UI reads that value from `imports/ui/App.svelte` and renders it in the footer, so do not add another version constant unless the user explicitly changes the product contract.
 
-Out of scope unless requested: release notes, git tags, deploy commands, changelog writing, SDK package publishing, and changing TraceMind agent guidance versions such as `AGENT_GUIDANCE_VERSION`.
+This skill covers the TraceMind Meteor app deployment, not SDK package publishing. Out of scope unless requested: release notes, git tags, changelog writing, SDK package publishing, and changing TraceMind agent guidance versions such as `AGENT_GUIDANCE_VERSION`.
 
 ## Workflow
 
@@ -31,10 +31,22 @@ Out of scope unless requested: release notes, git tags, deploy commands, changel
 4. Verify references:
    - Search for the old version and confirm any remaining matches are intentional examples, historical docs, generated artifacts, or unrelated guidance versions.
    - Confirm `imports/ui/App.svelte` still reads from `package.json` instead of a duplicate constant.
-5. Run the minimal checks:
+5. Run pre-deploy checks:
    - `node -e "const p=require('./package.json'); console.log(p.version)"`
    - `npm test` when release timing allows.
    - If `npm test` cannot run, state the blocker and the exact command left for the user.
+6. Deploy when the user asks for deployment or the request clearly says this is a deployment release:
+   - Prefer the repository script: `npm run deploy`.
+   - In this repo the deploy script is the canonical command and currently expands to `meteor deploy tracemind.sandbox.galaxycloud.app --settings .deploy/settings.json`.
+   - If the user explicitly specifies another Meteor app target, run that exact command form, for example `meteor deploy TraceMind --settings .deploy/settings.json`.
+   - Do not print or commit `.deploy/settings.json`; it is intentionally private.
+   - If deploy fails because of missing Galaxy/runtime environment, inspect or request logs and report the exact missing variable. `MONGO_URL` must be available in the Galaxy runtime environment before the app can start.
+7. Verify the deployed app after a successful deploy:
+   - `npm run deploy:logs` when logs are needed to confirm startup health.
+   - `curl -I https://tracemind.sandbox.galaxycloud.app/`
+   - `curl -I https://tracemind.sandbox.galaxycloud.app/capture.js`
+   - Confirm `/capture.js` serves JavaScript and the app URL responds successfully.
+   - If MCP behavior changed or needs release confidence, verify `/mcp` with a valid MCP token without exposing the token in the final response.
 
 ## Version Selection Rules
 
@@ -50,5 +62,7 @@ Report:
 - old version -> new version
 - files changed
 - verification commands run and their result
+- deploy command run and whether it succeeded, if deployment was requested
+- deployed URL checks and log findings, if deployment was requested
 - any remaining old-version matches and why they were left untouched
-- suggested commit message, for example `Set release version to 2026.5.12-2`
+- suggested commit message, for example `Deploy TraceMind 2026.5.12-2`
