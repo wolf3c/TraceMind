@@ -7,7 +7,7 @@ const INTERVAL_MS = 30 * 1000;
 
 export async function extractSemanticEventsOnce() {
   const rawBehaviors = await RawBehaviors.find(
-    { semanticStatus: { $ne: 'processed' } },
+    { semanticStatus: 'pending' },
     { sort: { createdAt: 1 }, limit: BATCH_SIZE },
   ).fetchAsync();
 

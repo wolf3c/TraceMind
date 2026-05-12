@@ -1732,18 +1732,68 @@ describe('TraceMind', function () {
     let ingestCapturePayload;
     let ingestPresencePayload;
     let computeProjectDailyReport;
+    let ensureTraceMindIndexes;
     let resolveProjectDailyHealth;
     let resolveProjectByMcpToken;
+    let extractSemanticEventsOnce;
 
     before(async function () {
       const captureRoutes = await import('../server/capture_routes');
       const dailyReports = await import('../server/daily_reports');
       const methods = await import('../server/tracemind_methods');
+      const semanticJobs = await import('../server/semantic_jobs');
       ingestCapturePayload = captureRoutes.ingestCapturePayload;
       ingestPresencePayload = captureRoutes.ingestPresencePayload;
       computeProjectDailyReport = dailyReports.computeProjectDailyReport;
+      ensureTraceMindIndexes = dailyReports.ensureTraceMindIndexes;
       resolveProjectDailyHealth = dailyReports.resolveProjectDailyHealth;
       resolveProjectByMcpToken = methods.resolveProjectByMcpToken;
+      extractSemanticEventsOnce = semanticJobs.extractSemanticEventsOnce;
+    });
+
+    it('creates indexes for capture, MCP, presence, and event query paths', async function () {
+      await ensureTraceMindIndexes();
+
+      const indexNames = async (collection) => new Set((await collection.rawCollection().indexes()).map((index) => index.name));
+
+      const projectIndexes = await indexNames(Projects);
+      const developerIndexes = await indexNames(Developers);
+      const rawIndexes = await indexNames(RawBehaviors);
+      const semanticIndexes = await indexNames(SemanticEvents);
+      const presenceIndexes = await indexNames(PresenceSessions);
+      const deliveryIndexes = await indexNames(CaptureDeliveryReports);
+      const reportIndexes = await indexNames(ProjectDailyReports);
+
+      [
+        'project_key_unique',
+        'mcp_token_unique',
+        'developer_projects_created',
+      ].forEach((name) => assert.ok(projectIndexes.has(name), `missing ${name}`));
+      [
+        'developer_user_unique',
+        'developer_email_unique',
+        'developer_auth_token_unique',
+      ].forEach((name) => assert.ok(developerIndexes.has(name), `missing ${name}`));
+      [
+        'projectId_1_occurredAt_-1',
+        'raw_semantic_queue',
+        'raw_project_action_time',
+        'raw_project_target_time',
+      ].forEach((name) => assert.ok(rawIndexes.has(name), `missing ${name}`));
+      [
+        'projectId_1_occurredAt_-1',
+        'semantic_project_event_name_time',
+        'semantic_project_event_type_time',
+        'semantic_project_action_time',
+        'semantic_project_target_time',
+      ].forEach((name) => assert.ok(semanticIndexes.has(name), `missing ${name}`));
+      [
+        'presence_project_presence_unique',
+        'projectId_1_startedAt_-1',
+        'projectId_1_lastSeenAt_-1',
+      ].forEach((name) => assert.ok(presenceIndexes.has(name), `missing ${name}`));
+      assert.ok(deliveryIndexes.has('projectId_1_createdAt_-1'));
+      assert.ok(reportIndexes.has('projectId_1_reportDate_1'));
     });
 
     it('creates TraceMind developer data from a Meteor Accounts user', async function () {
@@ -2308,6 +2358,34 @@ describe('TraceMind', function () {
 
       assert.deepStrictEqual(result, { ok: true, ignored: true });
       assert.strictEqual(count, 0);
+    });
+
+    it('extracts semantic events from pending raw behaviors only', async function () {
+      const projectId = `project-semantic-queue-${Date.now()}`;
+      await RawBehaviors.insertAsync({
+        projectId,
+        type: 'page_view',
+        path: '/pending',
+        semanticStatus: 'pending',
+        occurredAt: new Date('2026-05-10T10:00:00.000Z'),
+        createdAt: new Date('2026-05-10T10:00:00.000Z'),
+      });
+      await RawBehaviors.insertAsync({
+        projectId,
+        type: 'page_view',
+        path: '/legacy',
+        semanticStatus: 'retry',
+        occurredAt: new Date('2026-05-10T10:01:00.000Z'),
+        createdAt: new Date('2026-05-10T10:01:00.000Z'),
+      });
+
+      await extractSemanticEventsOnce();
+      const events = await SemanticEvents.find({ projectId }).fetchAsync();
+      const remainingRetry = await RawBehaviors.findOneAsync({ projectId, path: '/legacy' });
+
+      assert.strictEqual(events.length, 1);
+      assert.strictEqual(events[0].path, '/pending');
+      assert.strictEqual(remainingRetry.semanticStatus, 'retry');
     });
 
     it('records capture delivery stats separately from raw behavior', async function () {

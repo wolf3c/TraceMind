@@ -4,6 +4,7 @@ import {
   CaptureDeliveryReports,
   DAILY_REPORT_DRAFT_MIN_REFRESH_MS,
   DAILY_REPORT_TIMEZONE,
+  Developers,
   HEALTH_RETENTION_DAYS,
   PresenceSessions,
   ProjectDailyReports,
@@ -246,10 +247,31 @@ export async function resolveProjectDailyHealth(projectId, reportDateInput, { no
 export async function ensureTraceMindIndexes() {
   await Promise.all([
     ProjectDailyReports.rawCollection().createIndex({ projectId: 1, reportDate: 1 }, { unique: true }),
+    Projects.rawCollection().createIndex({ projectKey: 1 }, { unique: true, name: 'project_key_unique' }),
+    Projects.rawCollection().createIndex(
+      { 'mcpTokens.token': 1 },
+      {
+        unique: true,
+        name: 'mcp_token_unique',
+        partialFilterExpression: { 'mcpTokens.token': { $type: 'string' } },
+      },
+    ),
+    Projects.rawCollection().createIndex({ developerId: 1, createdAt: 1 }, { name: 'developer_projects_created' }),
+    Developers.rawCollection().createIndex({ userId: 1 }, { unique: true, sparse: true, name: 'developer_user_unique' }),
+    Developers.rawCollection().createIndex({ email: 1 }, { unique: true, sparse: true, name: 'developer_email_unique' }),
+    Developers.rawCollection().createIndex({ authToken: 1 }, { unique: true, sparse: true, name: 'developer_auth_token_unique' }),
     SemanticEvents.rawCollection().createIndex({ projectId: 1, occurredAt: -1 }),
+    SemanticEvents.rawCollection().createIndex({ projectId: 1, eventName: 1, occurredAt: -1 }, { name: 'semantic_project_event_name_time' }),
+    SemanticEvents.rawCollection().createIndex({ projectId: 1, eventType: 1, occurredAt: -1 }, { name: 'semantic_project_event_type_time' }),
+    SemanticEvents.rawCollection().createIndex({ projectId: 1, actionKey: 1, occurredAt: -1 }, { name: 'semantic_project_action_time' }),
+    SemanticEvents.rawCollection().createIndex({ projectId: 1, targetHash: 1, occurredAt: -1 }, { name: 'semantic_project_target_time' }),
+    PresenceSessions.rawCollection().createIndex({ projectId: 1, presenceId: 1 }, { unique: true, name: 'presence_project_presence_unique' }),
     PresenceSessions.rawCollection().createIndex({ projectId: 1, startedAt: -1 }),
     PresenceSessions.rawCollection().createIndex({ projectId: 1, lastSeenAt: -1 }),
     RawBehaviors.rawCollection().createIndex({ projectId: 1, occurredAt: -1 }),
+    RawBehaviors.rawCollection().createIndex({ semanticStatus: 1, createdAt: 1 }, { name: 'raw_semantic_queue' }),
+    RawBehaviors.rawCollection().createIndex({ projectId: 1, actionKey: 1, occurredAt: -1 }, { name: 'raw_project_action_time' }),
+    RawBehaviors.rawCollection().createIndex({ projectId: 1, targetHash: 1, occurredAt: -1 }, { name: 'raw_project_target_time' }),
     CaptureDeliveryReports.rawCollection().createIndex({ projectId: 1, createdAt: -1 }),
   ]);
 }
