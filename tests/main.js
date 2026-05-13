@@ -1900,6 +1900,7 @@ describe('TraceMind', function () {
       const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
       const createProjectMethod = Meteor.server.method_handlers['tracemind.project.create'];
       const projectSummaryMethod = Meteor.server.method_handlers['tracemind.project.summary'];
+      const projectEventsMethod = Meteor.server.method_handlers['tracemind.project.events'];
 
       const dashboard = await dashboardMethod.apply({ userId }, []);
       const selectedProject = dashboard.projects[0];
@@ -1934,6 +1935,17 @@ describe('TraceMind', function () {
         occurredAt: new Date('2026-05-08T01:05:00.000Z'),
         createdAt: new Date('2026-05-08T01:05:00.000Z'),
       });
+      await Promise.all(Array.from({ length: 25 }, (_, index) => SemanticEvents.insertAsync({
+        projectId: selectedProject._id,
+        eventType: 'custom',
+        eventName: `selected_day_event_${index}`,
+        title: `Selected day event ${index}`,
+        meaning: 'Selected project day event.',
+        userId: 'selected-user',
+        deviceId: 'selected-device',
+        occurredAt: new Date(`2026-05-08T01:${String(10 + index).padStart(2, '0')}:00.000Z`),
+        createdAt: new Date(`2026-05-08T01:${String(10 + index).padStart(2, '0')}:00.000Z`),
+      })));
       await Promise.all(Array.from({ length: 200 }, (_, index) => SemanticEvents.insertAsync({
         projectId: selectedProject._id,
         eventType: 'custom',
@@ -1942,8 +1954,8 @@ describe('TraceMind', function () {
         meaning: 'Selected project window event.',
         userId: 'selected-user',
         deviceId: 'selected-device',
-        occurredAt: new Date(`2026-05-07T${String(index % 24).padStart(2, '0')}:00:00.000Z`),
-        createdAt: new Date(`2026-05-07T${String(index % 24).padStart(2, '0')}:00:00.000Z`),
+        occurredAt: new Date(`2026-05-06T${String(index % 24).padStart(2, '0')}:00:00.000Z`),
+        createdAt: new Date(`2026-05-06T${String(index % 24).padStart(2, '0')}:00:00.000Z`),
       })));
       await SemanticEvents.insertAsync({
         projectId: otherProject._id,
@@ -1985,28 +1997,46 @@ describe('TraceMind', function () {
         createdAt: new Date('2026-05-08T01:00:00.000Z'),
       });
 
-      const result = await projectSummaryMethod.apply({ userId }, [selectedProject._id]);
+      const result = await projectSummaryMethod.apply({ userId }, [selectedProject._id, '2026-05-08']);
 
       assert.strictEqual(result.project._id, selectedProject._id);
       assert.strictEqual(result.rawCount, 1);
-      assert.strictEqual(result.semanticCount, 201);
-      assert.strictEqual(result.summaryWindow.semanticEventLimit, 200);
+      assert.strictEqual(result.semanticCount, 226);
+      assert.strictEqual(result.summaryWindow.eventStreamPageSize, 20);
       assert.strictEqual(result.summaryWindow.rawBehaviorLimit, 500);
       assert.strictEqual(result.summaryWindow.presenceSessionLimit, 500);
       assert.strictEqual(result.summaryWindow.deliveryReportLimit, 500);
-      assert.strictEqual(result.summaryWindow.semanticEventSampleSize, 200);
+      assert.strictEqual(result.summaryWindow.semanticEventSampleSize, 0);
       assert.strictEqual(result.summaryWindow.rawBehaviorSampleSize, 1);
       assert.strictEqual(result.summaryWindow.presenceSessionSampleSize, 1);
       assert.strictEqual(result.summaryWindow.deliveryReportSampleSize, 0);
       assert.ok(result.summaryWindow.reportDate);
-      assert.strictEqual(result.summary.totalEvents, 200);
+      assert.strictEqual(result.summary.totalEvents, 26);
       assert.strictEqual(result.summary.uniqueUsers, 1);
-      assert.strictEqual(result.summary.uniqueDevices, 1);
+      assert.strictEqual(result.summary.uniqueDevices, 0);
       assert.strictEqual(result.presence.totalDurationMs, 60000);
       assert.strictEqual(result.presence.topPaths[0].path, '/pricing');
       assert.deepStrictEqual(result.sources.map((source) => source.sourceKey), ['selected.example']);
-      assert.ok(result.recentEvents.some((event) => event.eventName === 'selected_event'));
-      assert.strictEqual(result.recentEvents.some((event) => event.eventName === 'other_event'), false);
+      assert.deepStrictEqual(result.recentEvents, []);
+
+      const firstPage = await projectEventsMethod.apply({ userId }, [selectedProject._id, '2026-05-08']);
+      assert.strictEqual(firstPage.events.length, 20);
+      assert.strictEqual(firstPage.offset, 0);
+      assert.strictEqual(firstPage.limit, 20);
+      assert.strictEqual(firstPage.nextOffset, 20);
+      assert.strictEqual(firstPage.hasMore, true);
+      assert.strictEqual(firstPage.events[0].eventName, 'selected_day_event_24');
+      assert.strictEqual(firstPage.events.some((event) => event.eventName === 'other_event'), false);
+
+      const secondPage = await projectEventsMethod.apply({ userId }, [
+        selectedProject._id,
+        '2026-05-08',
+        { offset: firstPage.nextOffset, limit: 20 },
+      ]);
+      assert.strictEqual(secondPage.events.length, 6);
+      assert.strictEqual(secondPage.nextOffset, 26);
+      assert.strictEqual(secondPage.hasMore, false);
+      assert.ok(secondPage.events.some((event) => event.eventName === 'selected_event'));
     });
 
     it('computes daily project reports with hashed actor sets and retention-ready metrics', async function () {
