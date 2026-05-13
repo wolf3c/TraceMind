@@ -249,6 +249,12 @@ Meteor.startup(() => {
 });
 
 Meteor.methods({
+  async 'tracemind.dashboard.bootstrap'() {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    await getOrCreateDefaultProject(developer);
+    return { ready: true };
+  },
+
   async 'tracemind.dashboard'() {
     const developer = await getOrCreateDeveloperForUser(this.userId);
     await getOrCreateDefaultProject(developer);

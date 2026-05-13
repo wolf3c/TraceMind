@@ -1942,6 +1942,68 @@ describe('TraceMind', function () {
       assert.strictEqual(reports[0].firstSeenActorKeys, undefined);
     });
 
+    it('publishes developer profile and owned projects without internal auth fields', async function () {
+      const email = `project-pub-${Date.now()}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: email, verified: true }],
+        createdAt: new Date(),
+      });
+      const developerId = await Developers.insertAsync({
+        userId,
+        email,
+        authToken: `tm_dev_project_pub_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      const ownedProjectId = `project-owned-pub-${Date.now()}`;
+      await Projects.insertAsync({
+        _id: ownedProjectId,
+        developerId,
+        name: 'Owned Project',
+        projectKey: `tm_proj_owned_${Date.now()}`,
+        mcpTokens: [{
+          id: 'mcp-owned',
+          name: 'Default MCP Token',
+          token: `tm_mcp_owned_${Date.now()}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }],
+        blockedSources: [{
+          sourceType: 'web',
+          sourceKey: 'owned.example',
+          sourceLabel: 'owned.example',
+          reason: 'test',
+          blockedAt: new Date(),
+        }],
+        createdAt: new Date(),
+      });
+      await Projects.insertAsync({
+        _id: `project-other-pub-${Date.now()}`,
+        developerId: 'other-developer',
+        name: 'Other Project',
+        projectKey: `tm_proj_other_${Date.now()}`,
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const profilePublish = Meteor.server.publish_handlers['tracemind.developer.profile'];
+      const projectsPublish = Meteor.server.publish_handlers['tracemind.projects'];
+      const profileCursor = profilePublish.apply({ userId }, []);
+      const projectsCursor = await projectsPublish.apply({ userId }, []);
+      const profiles = await profileCursor.fetchAsync();
+      const projects = await projectsCursor.fetchAsync();
+
+      assert.strictEqual(profiles.length, 1);
+      assert.strictEqual(profiles[0].email, email);
+      assert.strictEqual(profiles[0].authToken, undefined);
+      assert.strictEqual(projects.length, 1);
+      assert.strictEqual(projects[0]._id, ownedProjectId);
+      assert.strictEqual(projects[0].name, 'Owned Project');
+      assert.strictEqual(projects[0].developerId, undefined);
+      assert.strictEqual(projects[0].projectKey.startsWith('tm_proj_owned_'), true);
+      assert.strictEqual(projects[0].mcpTokens[0].id, 'mcp-owned');
+      assert.strictEqual(projects[0].blockedSources[0].sourceKey, 'owned.example');
+    });
+
     it('creates TraceMind developer data from a Meteor Accounts user', async function () {
       const email = `founder-${Date.now()}@example.com`;
       const userId = await Meteor.users.insertAsync({

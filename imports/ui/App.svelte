@@ -6,7 +6,9 @@
   import { get } from "svelte/store";
   import packageInfo from "../../package.json";
   import {
+    Developers,
     ProjectDailyReports,
+    Projects,
     summarizeProjectHealthFromDailyReports,
   } from "../api/tracemind";
   import AuthPanel from "./AuthPanel.svelte";
@@ -77,6 +79,28 @@
   let showIntro = $state(false);
   let dashboardLoadPromise = null;
   let copiedTargetTimer = null;
+
+  function publicProjectFromClient(project) {
+    if (!project) return null;
+    return {
+      _id: project._id,
+      name: project.name,
+      projectKey: project.projectKey,
+      mcpTokens: project.mcpTokens || [],
+      blockedSources: project.blockedSources || [],
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    };
+  }
+
+  function buildDashboardFromPublications(developer, projects = [], previousDashboard = dashboard) {
+    if (!developer) return null;
+    return {
+      ...(previousDashboard || {}),
+      developer: { email: developer.email },
+      projects: projects.map(publicProjectFromClient).filter(Boolean),
+    };
+  }
 
   let consoleState = $derived(resolveConsoleState({
     dashboard,
@@ -417,20 +441,13 @@
     dashboardLoading = true;
     dashboardLoadError = "";
 
-    const loadPromise = callMethod("tracemind.dashboard")
-      .then((nextDashboard) => {
+    const loadPromise = callMethod("tracemind.dashboard.bootstrap")
+      .then((result) => {
         if (requestId !== dashboardRequestId || requestUserId !== Meteor.userId()) return null;
-        const selectedProject = dashboard?.projects?.find((project) => project._id === selectedProjectId);
-        const nextProjects = nextDashboard?.projects || [];
-        const resolvedDashboard = selectedProject && !nextProjects.some((project) => project._id === selectedProjectId)
-          ? mergeProjectIntoDashboard(nextDashboard, selectedProject)
-          : nextDashboard;
-        syncSelectedProject(resolvedDashboard);
-        dashboard = resolvedDashboard;
         if (shouldLoadProjectSummary && selectedProjectId) {
           loadProjectSummary(selectedProjectId).catch(() => {});
         }
-        return nextDashboard;
+        return result;
       })
       .catch((error) => {
         if (requestId === dashboardRequestId && requestUserId === Meteor.userId()) {
@@ -540,14 +557,12 @@
     status = "";
     try {
       const createdProject = await callMethod("tracemind.project.create", name);
-      dashboard = mergeProjectIntoDashboard(dashboard, createdProject);
       selectedProjectId = createdProject._id;
       resetEventStream();
       projectName = "";
       showProjectCreate = false;
       showProjectActions = false;
       showProjectRename = false;
-      await loadDashboard({ loadProjectSummary: false });
       await loadProjectSummary(createdProject._id);
       status = translateNow("Project created and selected.");
     } catch (error) {
@@ -565,8 +580,7 @@
     loading = true;
     status = "";
     try {
-      const updatedProject = await callMethod("tracemind.project.rename", primaryProject._id, name);
-      replaceProject(updatedProject);
+      await callMethod("tracemind.project.rename", primaryProject._id, name);
       showProjectRename = false;
       renameProjectName = "";
       status = translateNow("Project name updated.");
@@ -596,7 +610,6 @@
       showProjectActions = false;
       showProjectRename = false;
       showProjectCreate = false;
-      await loadDashboard();
       status = translateNow("Project deleted.");
     } catch (error) {
       status = errorMessage(error);
@@ -625,13 +638,12 @@
     loading = true;
     status = "";
     try {
-      const updatedProject = await callMethod(
+      await callMethod(
         "tracemind.project.mcpToken.create",
         primaryProject._id,
         mcpTokenName.trim() || "MCP Token",
       );
       mcpTokenName = "";
-      replaceProject(updatedProject);
       status = translateNow("MCP token created.");
     } catch (error) {
       status = errorMessage(error);
@@ -646,13 +658,12 @@
     loading = true;
     status = "";
     try {
-      const updatedProject = await callMethod(
+      await callMethod(
         "tracemind.project.mcpToken.rename",
         primaryProject._id,
         token.id,
         token.name,
       );
-      replaceProject(updatedProject);
       status = translateNow("MCP token name updated.");
     } catch (error) {
       status = errorMessage(error);
@@ -668,12 +679,11 @@
     loading = true;
     status = "";
     try {
-      const updatedProject = await callMethod(
+      await callMethod(
         "tracemind.project.mcpToken.refresh",
         primaryProject._id,
         token.id,
       );
-      replaceProject(updatedProject);
       status = translateNow("MCP token refreshed. The old token is invalid.");
     } catch (error) {
       status = errorMessage(error);
@@ -689,12 +699,11 @@
     loading = true;
     status = "";
     try {
-      const updatedProject = await callMethod(
+      await callMethod(
         "tracemind.project.mcpToken.remove",
         primaryProject._id,
         token.id,
       );
-      replaceProject(updatedProject);
       status = translateNow("MCP token deleted.");
     } catch (error) {
       status = errorMessage(error);
@@ -740,7 +749,7 @@
         sourceLabel: source.sourceLabel,
         reason: "Blocked from console",
       });
-      await loadDashboard();
+      await loadProjectSummary();
       status = translateNow("Source blocked. Future events from it will not enter the database.");
     } catch (error) {
       status = errorMessage(error);
@@ -759,7 +768,7 @@
         sourceType: source.sourceType,
         sourceKey: source.sourceKey,
       });
-      await loadDashboard();
+      await loadProjectSummary();
       status = translateNow("Source unblocked.");
     } catch (error) {
       status = errorMessage(error);
@@ -909,6 +918,39 @@
   $effect(() => locale.subscribe((value) => {
     selectedLocale = value;
   }));
+
+  $effect(() => {
+    const requestUserId = userId;
+    if (!requestUserId) return;
+
+    const computation = Tracker.autorun(() => {
+      const developerHandle = Meteor.subscribe("tracemind.developer.profile");
+      const projectsHandle = Meteor.subscribe("tracemind.projects");
+      const developer = Developers.findOne({ userId: requestUserId });
+      const projects = Projects.find({}, { sort: { createdAt: 1 } }).fetch();
+      const ready = developerHandle.ready() && projectsHandle.ready();
+
+      untrack(() => {
+        if (requestUserId !== Meteor.userId()) return;
+        if (developer) {
+          const nextDashboard = buildDashboardFromPublications(developer, projects);
+          const previousSelectedProjectId = selectedProjectId;
+          syncSelectedProject(nextDashboard);
+          dashboard = nextDashboard;
+          dashboardLoadError = "";
+          if (ready) dashboardLoading = false;
+          if (selectedProjectId && selectedProjectId !== previousSelectedProjectId) {
+            loadProjectSummary(selectedProjectId).catch(() => {});
+          }
+        } else if (ready) {
+          dashboard = null;
+          dashboardLoading = false;
+        }
+      });
+    });
+
+    return () => computation.stop();
+  });
 
   $effect(() => {
     const requestUserId = userId;

@@ -22,7 +22,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 | Module | Files | Responsibility |
 | --- | --- | --- |
 | Landing + console | `imports/ui/App.svelte`, `client/main.css` | Explain product, handle passwordless login, show project key/platform setup snippets/recent events |
-| Auth + projects | `server/tracemind_methods.js`, `imports/api/tracemind.js` | Configure passwordless email, map `Meteor.userId()` to developer record and project key |
+| Auth + projects | `server/tracemind_methods.js`, `server/tracemind_publications.js`, `imports/api/tracemind.js` | Configure passwordless email, map `Meteor.userId()` to developer record and project key, and publish owner-scoped console project metadata |
 | Capture SDKs | `server/capture_routes.js`, `sdk/ios`, `sdk/android`, `sdk/react-native`, `sdk/mcp-node`, `sdk/mcp-python`, `sdk/server-node`, `sdk/server-python` | Serve `/capture.js`, provide Web/Native/MCP/server SDKs, and ingest `/api/capture` raw behavior with identity, device, source, IP/geo, custom fields |
 | Semantic extraction + reports | `server/semantic_jobs.js`, `server/daily_reports.js`, `imports/api/semantic.js` | Periodically convert raw behavior into semantic events and maintain daily project health reports |
 | Remote MCP | `server/capture_routes.js` | Serve `/mcp?mcpToken=...` or Bearer MCP tokens with event definitions, filtered semantic event queries, raw log queries, summaries, developer feedback submission, and a GET preview |
@@ -42,6 +42,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.
 - The selected-project console health overview reads Asia/Shanghai daily reports instead of scanning all historical events on refresh. The dashboard subscribes to safe `tracemind_project_daily_reports` fields and uses Minimongo as the date-switch cache. Today is refreshed lazily as a draft report, while historical dates read already-materialized final reports from pub/sub instead of synchronously backfilling on click. Reports store hashed actor sets internally and persist only the public D2/D3/D7/D30 retention result for the client.
+- The authenticated console also reads the developer profile and owned project metadata through Meteor pub/sub so the current account, project selector, project key, MCP token controls, and blocked-source state reuse Minimongo after the first subscription. Write operations remain Meteor methods, and `tracemind.dashboard.bootstrap` only ensures the developer/default project exists.
 
 ## Deployment Shape
 
