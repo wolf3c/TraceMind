@@ -9,6 +9,7 @@
   import { resolveConsoleState } from "./console_state";
   import { locale, locales, t } from "./i18n/i18n";
   import {
+    mergeProjectIntoDashboard,
     resolveInitialProjectSummaryState,
     resolveSelectedProjectId,
     shouldApplyProjectSummaryResponse,
@@ -358,8 +359,13 @@
     const loadPromise = callMethod("tracemind.dashboard")
       .then((nextDashboard) => {
         if (requestId !== dashboardRequestId || requestUserId !== Meteor.userId()) return null;
-        syncSelectedProject(nextDashboard);
-        dashboard = nextDashboard;
+        const selectedProject = dashboard?.projects?.find((project) => project._id === selectedProjectId);
+        const nextProjects = nextDashboard?.projects || [];
+        const resolvedDashboard = selectedProject && !nextProjects.some((project) => project._id === selectedProjectId)
+          ? mergeProjectIntoDashboard(nextDashboard, selectedProject)
+          : nextDashboard;
+        syncSelectedProject(resolvedDashboard);
+        dashboard = resolvedDashboard;
         if (shouldLoadProjectSummary && selectedProjectId) {
           loadProjectSummary(selectedProjectId).catch(() => {});
         }
@@ -474,6 +480,7 @@
     status = "";
     try {
       const createdProject = await callMethod("tracemind.project.create", name);
+      dashboard = mergeProjectIntoDashboard(dashboard, createdProject);
       selectedProjectId = createdProject._id;
       resetEventStream();
       projectName = "";
@@ -539,13 +546,7 @@
   }
 
   function replaceProject(updatedProject) {
-    if (!dashboard) return;
-    dashboard = {
-      ...dashboard,
-      projects: dashboard.projects.map((project) => (
-        project._id === updatedProject._id ? updatedProject : project
-      )),
-    };
+    dashboard = mergeProjectIntoDashboard(dashboard, updatedProject);
   }
 
   async function createMcpToken() {

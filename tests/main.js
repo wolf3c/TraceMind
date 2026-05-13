@@ -24,6 +24,7 @@ import {
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
 import { resolveConsoleState } from '../imports/ui/console_state';
 import {
+  mergeProjectIntoDashboard,
   resolveInitialProjectSummaryState,
   resolveSelectedProjectId,
   shouldApplyProjectSummaryResponse,
@@ -1332,6 +1333,25 @@ describe('TraceMind', function () {
         projectSummaryLoading: false,
         projectSummaryError: '',
       });
+    });
+
+    it('merges newly created projects into dashboard state immediately', function () {
+      const dashboard = {
+        rawCount: 1,
+        projects: [{ _id: 'project-a', name: 'Existing' }],
+      };
+      const createdProject = { _id: 'project-b', name: 'Created' };
+
+      const nextDashboard = mergeProjectIntoDashboard(dashboard, createdProject);
+      const sameDashboard = mergeProjectIntoDashboard(nextDashboard, {
+        _id: 'project-b',
+        name: 'Created again',
+      });
+
+      assert.deepStrictEqual(nextDashboard.projects.map((project) => project.name), ['Existing', 'Created']);
+      assert.deepStrictEqual(sameDashboard.projects.map((project) => project.name), ['Existing', 'Created again']);
+      assert.strictEqual(sameDashboard.projects.length, 2);
+      assert.strictEqual(sameDashboard.rawCount, 1);
     });
 
     it('rejects stale project summary responses', function () {
