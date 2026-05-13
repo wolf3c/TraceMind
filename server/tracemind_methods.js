@@ -20,7 +20,7 @@ import {
   summarizePresenceSessions,
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
-import { reportDateBounds, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
+import { queueProjectDailyHealthRefresh, reportDateBounds, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 
 const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
 const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
@@ -152,6 +152,7 @@ async function buildProjectSummary(project, selectedDateInput) {
     { projectId: project._id },
     { sort: { lastSeenAt: -1 }, limit: PROJECT_SUMMARY_PRESENCE_LIMIT },
   ).fetchAsync();
+  queueProjectDailyHealthRefresh(project._id, selectedDate, { now });
   const { report, health } = await resolveProjectDailyHealth(project._id, selectedDate, { now });
 
   return {
@@ -437,6 +438,21 @@ Meteor.methods({
       throw new Meteor.Error('not-found', 'Project not found.');
     }
     return buildProjectSummary(project, selectedDate);
+  },
+
+  async 'tracemind.project.dailyReports.refresh'(projectId, selectedDate) {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const project = await findProjectForDeveloper(projectId, developer._id);
+    if (!project) {
+      throw new Meteor.Error('not-found', 'Project not found.');
+    }
+
+    const now = new Date();
+    const today = reportDateForDate(now);
+    const reportDate = String(selectedDate || today) > today ? today : selectedDate || today;
+    const queued = queueProjectDailyHealthRefresh(project._id, reportDate, { now });
+
+    return { queued, reportDate };
   },
 
   async 'tracemind.project.events'(projectId, selectedDateInput, options = {}) {

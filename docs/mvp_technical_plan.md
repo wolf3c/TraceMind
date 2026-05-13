@@ -41,7 +41,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - Remote MCP uses a minimal Streamable HTTP JSON-RPC surface with `initialize`, `tools/list`, `tools/call`, and `ping`.
 - Semantic understanding is deterministic in v1.0. It creates readable business-ish events from capture context, with no LLM dependency yet.
 - DAU uses `userId || anonymousId`; device analysis uses `deviceId` first and `deviceFingerprint` as an auxiliary fallback.
-- The selected-project console health overview reads Asia/Shanghai daily reports instead of scanning all historical events on refresh. Today is a draft report recomputed at most once per minute, historical dates read final reports, and the daily finalization job computes yesterday after the day closes. Reports store hashed actor sets internally so D2/D3/D7/D30 retention can be calculated without returning raw actor ids to the client.
+- The selected-project console health overview reads Asia/Shanghai daily reports instead of scanning all historical events on refresh. The dashboard subscribes to safe `tracemind_project_daily_reports` fields and uses Minimongo as the date-switch cache. Today is refreshed lazily as a draft report, while historical dates read already-materialized final reports from pub/sub instead of synchronously backfilling on click. Reports store hashed actor sets internally and persist only the public D2/D3/D7/D30 retention result for the client.
 
 ## Deployment Shape
 

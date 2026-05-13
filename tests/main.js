@@ -1826,6 +1826,7 @@ describe('TraceMind', function () {
     before(async function () {
       const captureRoutes = await import('../server/capture_routes');
       const dailyReports = await import('../server/daily_reports');
+      await import('../server/tracemind_publications');
       const methods = await import('../server/tracemind_methods');
       const semanticJobs = await import('../server/semantic_jobs');
       ingestCapturePayload = captureRoutes.ingestCapturePayload;
@@ -1885,6 +1886,60 @@ describe('TraceMind', function () {
         'feedback_project_token_time',
       ].forEach((name) => assert.ok(feedbackIndexes.has(name), `missing ${name}`));
       assert.ok(reportIndexes.has('projectId_1_reportDate_1'));
+    });
+
+    it('publishes owned daily reports without internal actor hash fields', async function () {
+      const email = `daily-report-pub-${Date.now()}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: email, verified: true }],
+        createdAt: new Date(),
+      });
+      const developerId = await Developers.insertAsync({
+        userId,
+        email,
+        authToken: `tm_dev_pub_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      const projectId = `project-daily-pub-${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId,
+        name: 'Published Daily Report App',
+        projectKey: `tm_proj_pub_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      await ProjectDailyReports.insertAsync({
+        projectId,
+        reportDate: '2026-05-12',
+        timezone: 'Asia/Shanghai',
+        status: 'final',
+        computedAt: new Date('2026-05-12T16:30:00.000Z'),
+        sourceWindow: {
+          startAt: new Date('2026-05-11T16:00:00.000Z'),
+          endAt: new Date('2026-05-12T16:00:00.000Z'),
+        },
+        current: {
+          eventCount: 1,
+          activeUsers: 1,
+          retention: { d2: { sampleSize: 1, retainedUsers: 1, rate: 1 } },
+        },
+        activeActorKeys: ['internal-active-hash'],
+        newActorKeys: ['internal-new-hash'],
+        firstSeenActorKeys: ['internal-first-hash'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const publish = Meteor.server.publish_handlers['tracemind.project.dailyReports'];
+      const cursor = await publish.apply({ userId }, [projectId, ['2026-05-12']]);
+      const reports = await cursor.fetchAsync();
+
+      assert.strictEqual(reports.length, 1);
+      assert.strictEqual(reports[0].reportDate, '2026-05-12');
+      assert.strictEqual(reports[0].current.eventCount, 1);
+      assert.strictEqual(reports[0].activeActorKeys, undefined);
+      assert.strictEqual(reports[0].newActorKeys, undefined);
+      assert.strictEqual(reports[0].firstSeenActorKeys, undefined);
     });
 
     it('creates TraceMind developer data from a Meteor Accounts user', async function () {
@@ -2016,6 +2071,10 @@ describe('TraceMind', function () {
         durationMs: 60000,
         createdAt: new Date('2026-05-08T01:00:00.000Z'),
       });
+      await computeProjectDailyReport(selectedProject._id, '2026-05-08', {
+        final: true,
+        now: new Date('2026-05-08T16:30:00.000Z'),
+      });
 
       const result = await projectSummaryMethod.apply({ userId }, [selectedProject._id, '2026-05-08']);
 
@@ -2145,7 +2204,7 @@ describe('TraceMind', function () {
       assert.strictEqual(savedReports.length, 1);
     });
 
-    it('uses cached draft reports for today within one minute and daily reports for project health trends', async function () {
+    it('reads materialized daily reports for project health trends without synchronously backfilling history', async function () {
       const projectId = `project-daily-health-${Date.now()}`;
       await ProjectDailyReports.removeAsync({ projectId });
       await Projects.insertAsync({
@@ -2181,6 +2240,18 @@ describe('TraceMind', function () {
         createdAt: new Date('2026-05-11T01:00:00.000Z'),
       });
 
+      await computeProjectDailyReport(projectId, '2026-05-10', {
+        final: true,
+        now: new Date('2026-05-10T16:30:00.000Z'),
+      });
+      await computeProjectDailyReport(projectId, '2026-05-11', {
+        final: true,
+        now: new Date('2026-05-11T16:30:00.000Z'),
+      });
+      await computeProjectDailyReport(projectId, '2026-05-12', {
+        final: false,
+        now: new Date('2026-05-12T03:00:00.000Z'),
+      });
       const first = await resolveProjectDailyHealth(projectId, '2026-05-12', {
         now: new Date('2026-05-12T03:00:00.000Z'),
       });
@@ -2197,6 +2268,12 @@ describe('TraceMind', function () {
       assert.strictEqual(first.health.current.eventCount, 1);
       assert.strictEqual(first.health.previous.eventCount, 1);
       assert.strictEqual(first.health.trends.events, 0);
+
+      const missing = await resolveProjectDailyHealth(projectId, '2026-04-01', {
+        now: new Date('2026-05-12T03:00:30.000Z'),
+      });
+      assert.ok(!missing.report);
+      assert.strictEqual(missing.health.current.eventCount, 0);
     });
 
     it('resolves MCP access only through independent MCP tokens', async function () {

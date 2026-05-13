@@ -1,5 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import './tracemind_methods';
+import './tracemind_publications';
 import { registerTraceMindRoutes } from './capture_routes';
 import { ensureTraceMindIndexes, startDailyReportJob, computeFinalReportsForYesterday } from './daily_reports';
 import { startSemanticExtractionJob, extractSemanticEventsOnce } from './semantic_jobs';

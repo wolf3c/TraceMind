@@ -88,6 +88,12 @@ function activeActorKeysFor(projectId, events = [], sessions = []) {
   ]);
 }
 
+function emptyRetention() {
+  return Object.fromEntries(
+    HEALTH_RETENTION_DAYS.map((day) => [`d${day}`, { sampleSize: 0, retainedUsers: 0, rate: null }]),
+  );
+}
+
 async function previousActorKeys(projectId, reportDate) {
   const reports = await ProjectDailyReports.find(
     { projectId, reportDate: { $lt: reportDate } },
@@ -130,6 +136,27 @@ async function loadDayDeliveryReports(projectId, startAt, endAt) {
   ).fetchAsync();
 }
 
+async function retentionForExistingReports(projectId, reportDate, activeActorKeys = []) {
+  const cohortDates = HEALTH_RETENTION_DAYS.map((day) => addReportDays(reportDate, -day));
+  const cohortReports = await ProjectDailyReports.find(
+    { projectId, reportDate: { $in: cohortDates } },
+    { fields: { reportDate: 1, newActorKeys: 1 } },
+  ).fetchAsync();
+  const reportsByDate = new Map(cohortReports.map((report) => [report.reportDate, report]));
+
+  return Object.fromEntries(
+    HEALTH_RETENTION_DAYS.map((day) => {
+      const cohortActors = reportsByDate.get(addReportDays(reportDate, -day))?.newActorKeys || [];
+      const retainedUsers = intersect(cohortActors, activeActorKeys).length;
+      return [`d${day}`, {
+        sampleSize: cohortActors.length,
+        retainedUsers,
+        rate: cohortActors.length ? retainedUsers / cohortActors.length : null,
+      }];
+    }),
+  );
+}
+
 export async function computeProjectDailyReport(projectId, reportDateInput, { final = false, force = false, now = new Date() } = {}) {
   const reportDate = reportDateInput || reportDateForDate(now);
   const existing = await ProjectDailyReports.findOneAsync({ projectId, reportDate });
@@ -144,6 +171,7 @@ export async function computeProjectDailyReport(projectId, reportDateInput, { fi
   const activeActorKeys = activeActorKeysFor(projectId, events, presenceSessions);
   const seenBefore = await previousActorKeys(projectId, reportDate);
   const newActorKeys = activeActorKeys.filter((key) => !seenBefore.has(key));
+  const retention = await retentionForExistingReports(projectId, reportDate, activeActorKeys);
   const current = summarizeProjectHealthForWindow({
     events,
     presenceSessions,
@@ -172,6 +200,7 @@ export async function computeProjectDailyReport(projectId, reportDateInput, { fi
     current: {
       ...current,
       newUsers: newActorKeys.length,
+      retention,
     },
     delivery: summarizeCaptureDelivery(deliveryReports),
     updatedAt: computedAt,
@@ -208,34 +237,12 @@ async function resolveCurrentReport(projectId, reportDate, now) {
   return ensureReport(projectId, reportDate, { now, final: true });
 }
 
-async function retentionFor(projectId, reportDate, activeActorKeys, now) {
-  const retention = {};
-
-  for (const day of HEALTH_RETENTION_DAYS) {
-    const cohortDate = addReportDays(reportDate, -day);
-    const cohortReport = await ensureReport(projectId, cohortDate, { now, final: true });
-    const cohortActors = cohortReport?.newActorKeys || [];
-    const retainedUsers = intersect(cohortActors, activeActorKeys).length;
-    retention[`d${day}`] = {
-      sampleSize: cohortActors.length,
-      retainedUsers,
-      rate: cohortActors.length ? retainedUsers / cohortActors.length : null,
-    };
-  }
-
-  return retention;
-}
-
 export async function resolveProjectDailyHealth(projectId, reportDateInput, { now = new Date() } = {}) {
   const reportDate = reportDateInput || reportDateForDate(now);
   const previousReportDate = addReportDays(reportDate, -1);
-  await ensureReport(projectId, previousReportDate, { now, final: true });
-  for (const day of HEALTH_RETENTION_DAYS) {
-    await ensureReport(projectId, addReportDays(reportDate, -day), { now, final: true });
-  }
-  const report = await resolveCurrentReport(projectId, reportDate, now);
+  const report = await ProjectDailyReports.findOneAsync({ projectId, reportDate });
   const previousReport = await ProjectDailyReports.findOneAsync({ projectId, reportDate: previousReportDate });
-  const retention = await retentionFor(projectId, reportDate, report?.activeActorKeys || [], now);
+  const retention = report?.current?.retention || emptyRetention();
   const health = summarizeProjectHealthFromDailyReports({
     currentReport: report,
     previousReport,
@@ -243,6 +250,20 @@ export async function resolveProjectDailyHealth(projectId, reportDateInput, { no
   });
 
   return { report, previousReport, health };
+}
+
+export function queueProjectDailyHealthRefresh(projectId, reportDateInput, { now = new Date() } = {}) {
+  const reportDate = reportDateInput || reportDateForDate(now);
+  const today = reportDateForDate(now);
+  if (reportDate !== today) return false;
+
+  Meteor.defer(() => {
+    resolveCurrentReport(projectId, reportDate, new Date()).catch((error) => {
+      console.error('[TraceMind] daily report draft refresh failed', error);
+    });
+  });
+
+  return true;
 }
 
 export async function ensureTraceMindIndexes() {

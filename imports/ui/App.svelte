@@ -5,6 +5,10 @@
   import { untrack } from "svelte";
   import { get } from "svelte/store";
   import packageInfo from "../../package.json";
+  import {
+    ProjectDailyReports,
+    summarizeProjectHealthFromDailyReports,
+  } from "../api/tracemind";
   import AuthPanel from "./AuthPanel.svelte";
   import { buildAgentInstallPrompt } from "./agent_setup";
   import ConsoleStatePanel from "./ConsoleStatePanel.svelte";
@@ -66,6 +70,9 @@
   let eventStreamHasMore = $state(true);
   let eventStreamRequestId = $state(0);
   let selectedReportDate = $state(reportDateForDate());
+  let dailyReportsReady = $state(false);
+  let publishedDailyReport = $state(null);
+  let publishedProjectHealth = $state(null);
   let refreshAgeTick = $state(Date.now());
   let showIntro = $state(false);
   let dashboardLoadPromise = null;
@@ -83,13 +90,15 @@
   );
   let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
   let sourceSummary = $derived(selectedProjectSummary?.sources || []);
-  let summary = $derived(selectedProjectSummary?.summary);
-  let health = $derived(selectedProjectSummary?.health);
+  let summary = $derived(summaryFromHealth(publishedProjectHealth || selectedMethodProjectHealth()) || selectedProjectSummary?.summary);
+  let health = $derived(publishedProjectHealth || selectedMethodProjectHealth());
   let healthCurrent = $derived(health?.current || {});
-  let delivery = $derived(selectedProjectSummary?.delivery || {});
+  let delivery = $derived(publishedDailyReport?.delivery || (
+    selectedProjectSummary?.summaryWindow?.reportDate === selectedReportDate ? selectedProjectSummary?.delivery : {}
+  ));
   let deliveryDropped = $derived(Number(delivery.droppedOldest || 0) + Number(delivery.droppedStorage || 0));
   let displayedRecentEvents = $derived(eventStreamEvents);
-  let projectSummaryRefreshAge = $derived(formatRefreshAge(projectSummaryLastLoadedAt, refreshAgeTick, selectedLocale));
+  let projectSummaryRefreshAge = $derived(formatRefreshAge(reportLoadedAt(), refreshAgeTick, selectedLocale));
   let todayReportDate = $derived(reportDateForDate(refreshAgeTick));
   let yesterdayReportDate = $derived(addReportDays(todayReportDate, -1));
   let dayBeforeReportDate = $derived(addReportDays(todayReportDate, -2));
@@ -123,6 +132,11 @@
     });
   }
 
+  function requestDailyReportRefresh(projectId = selectedProjectId, reportDate = selectedReportDate) {
+    if (!Meteor.userId() || !projectId || !reportDate) return;
+    callMethod("tracemind.project.dailyReports.refresh", projectId, reportDate).catch(() => {});
+  }
+
   function errorMessage(error) {
     const messages = {
       "invalid-email": "Enter a valid email address.",
@@ -149,6 +163,47 @@
     const [year, month, day] = String(reportDate || reportDateForDate()).split("-").map(Number);
     const startMs = Date.UTC(year, month - 1, day) - reportTimezoneOffsetMs;
     return reportDateForDate(startMs + days * 24 * 60 * 60 * 1000);
+  }
+
+  function reportDatesForSubscription(reportDate = selectedReportDate) {
+    return [...new Set([
+      todayReportDate,
+      yesterdayReportDate,
+      dayBeforeReportDate,
+      reportDate,
+      addReportDays(reportDate, -1),
+    ].filter(Boolean))];
+  }
+
+  function selectedMethodProjectHealth() {
+    return selectedProjectSummary?.summaryWindow?.reportDate === selectedReportDate
+      ? selectedProjectSummary?.health
+      : null;
+  }
+
+  function summaryFromHealth(projectHealth) {
+    const current = projectHealth?.current;
+    if (!current) return null;
+    return {
+      totalEvents: Number(current.eventCount || 0),
+      uniqueUsers: Number(current.activeUsers || 0),
+      uniqueDevices: (current.deviceDistribution || []).length,
+      dailyActiveUsers: [],
+      topEvents: (current.topEvents || []).map((item) => ({
+        eventType: item.label,
+        count: item.count,
+      })),
+      topPaths: (current.sessionPaths || []).map((item) => ({
+        path: item.path,
+        count: item.count,
+      })),
+    };
+  }
+
+  function reportLoadedAt() {
+    return publishedDailyReport?.computedAt
+      ? new Date(publishedDailyReport.computedAt)
+      : projectSummaryLastLoadedAt;
   }
 
   function resetEventStream({ collapse = true } = {}) {
@@ -411,6 +466,7 @@
     status = "";
     resetEventStream();
     try {
+      requestDailyReportRefresh();
       await loadProjectSummary();
     } catch (error) {
       status = errorMessage(error);
@@ -420,10 +476,8 @@
   function selectReportDate(reportDate) {
     if (!reportDate || reportDate === selectedReportDate) return;
     selectedReportDate = reportDate;
-    selectedProjectSummary = null;
-    projectSummaryLastLoadedAt = null;
     resetEventStream();
-    loadProjectSummary().catch(() => {});
+    requestDailyReportRefresh(selectedProjectId, reportDate);
   }
 
   function changeReportDate(event) {
@@ -857,6 +911,43 @@
   }));
 
   $effect(() => {
+    const requestUserId = userId;
+    const projectId = selectedProjectId;
+    const reportDate = selectedReportDate;
+    const reportDates = reportDatesForSubscription(reportDate);
+
+    if (!requestUserId || !projectId || !reportDates.length) {
+      dailyReportsReady = false;
+      publishedDailyReport = null;
+      publishedProjectHealth = null;
+      return;
+    }
+
+    requestDailyReportRefresh(projectId, reportDate);
+
+    const computation = Tracker.autorun(() => {
+      const handle = Meteor.subscribe("tracemind.project.dailyReports", projectId, reportDates);
+      const currentReport = ProjectDailyReports.findOne({ projectId, reportDate });
+      const previousReport = ProjectDailyReports.findOne({ projectId, reportDate: addReportDays(reportDate, -1) });
+      const nextHealth = currentReport || previousReport
+        ? summarizeProjectHealthFromDailyReports({
+          currentReport,
+          previousReport,
+          retention: currentReport?.current?.retention,
+        })
+        : null;
+
+      untrack(() => {
+        dailyReportsReady = handle.ready();
+        publishedDailyReport = currentReport || null;
+        publishedProjectHealth = nextHealth;
+      });
+    });
+
+    return () => computation.stop();
+  });
+
+  $effect(() => {
     const computation = Tracker.autorun(() => {
       untrack(() => {
         const nextUserId = Meteor.userId();
@@ -879,6 +970,9 @@
             projectSummaryError = "";
             selectedProjectSummary = null;
             projectSummaryLastLoadedAt = null;
+            dailyReportsReady = false;
+            publishedDailyReport = null;
+            publishedProjectHealth = null;
             selectedProjectId = "";
             resetEventStream();
             showProjectCreate = false;
