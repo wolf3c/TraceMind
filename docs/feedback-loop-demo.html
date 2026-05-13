@@ -1,0 +1,1603 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TraceMind Feedback Loop Demo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f8fff9'/%3E%3Cpath d='M8 22V10l7 7 9-9v14' fill='none' stroke='%230d332b' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M15 23h9' stroke='%2317c093' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #132521;
+      --muted: #65746e;
+      --faint: #8a9691;
+      --paper: #f7f4ed;
+      --panel: #fffdf8;
+      --line: #dbe2dc;
+      --deep: #061d18;
+      --deep-2: #0d332b;
+      --green: #17c093;
+      --green-2: #0a8f6c;
+      --mint: #dff7ed;
+      --amber: #f4b942;
+      --blue: #7bb7ff;
+      --violet: #9d8cff;
+      --shadow: 0 24px 80px rgba(8, 31, 25, 0.16);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    button,
+    select {
+      font: inherit;
+    }
+
+    .page {
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .hero {
+      position: relative;
+      min-height: 96vh;
+      display: grid;
+      grid-template-columns: minmax(360px, 0.82fr) minmax(560px, 1.18fr);
+      gap: clamp(32px, 5vw, 76px);
+      align-items: center;
+      padding: 34px clamp(24px, 7vw, 120px) 66px;
+      color: #f8fff9;
+      background:
+        radial-gradient(circle at 78% 12%, rgba(23, 192, 147, 0.28), transparent 34%),
+        radial-gradient(circle at 52% 86%, rgba(244, 185, 66, 0.14), transparent 36%),
+        linear-gradient(135deg, #031814 0%, #08241e 44%, #0a3328 100%);
+      isolation: isolate;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      opacity: 0.23;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+      background-size: 72px 72px;
+      mask-image: linear-gradient(90deg, transparent, #000 18%, #000 86%, transparent);
+    }
+
+    .nav {
+      position: absolute;
+      top: 34px;
+      left: clamp(24px, 7vw, 120px);
+      right: clamp(24px, 7vw, 120px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 2;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #f8fff9;
+      color: var(--deep-2);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .brand-mark svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-actions select,
+    .nav-actions button {
+      height: 42px;
+      border-radius: 6px;
+      padding: 0 16px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.12);
+      color: #f8fff9;
+      backdrop-filter: blur(10px);
+    }
+
+    .nav-actions select {
+      color: #12221e;
+      background: rgba(255, 255, 255, 0.86);
+    }
+
+    .hero-copy {
+      padding-top: 70px;
+      max-width: 650px;
+    }
+
+    .hero-copy h1 {
+      margin: 0;
+      max-width: 680px;
+      font-size: clamp(48px, 5.2vw, 72px);
+      line-height: 1.02;
+      letter-spacing: 0;
+      font-weight: 820;
+    }
+
+    .hero-copy p {
+      margin: 26px 0 0;
+      max-width: 620px;
+      color: rgba(248, 255, 249, 0.84);
+      font-size: clamp(18px, 2vw, 24px);
+      line-height: 1.58;
+      font-weight: 450;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 30px;
+    }
+
+    .primary,
+    .secondary {
+      height: 48px;
+      border-radius: 7px;
+      padding: 0 22px;
+      border: 1px solid transparent;
+      font-weight: 680;
+      cursor: default;
+    }
+
+    .primary {
+      color: #06201a;
+      background: var(--green);
+      box-shadow: 0 16px 36px rgba(23, 192, 147, 0.28);
+    }
+
+    .secondary {
+      color: #f8fff9;
+      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(255, 255, 255, 0.35);
+    }
+
+    .trust-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+      color: rgba(248, 255, 249, 0.78);
+      font-weight: 650;
+    }
+
+    .trust-strip span {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+    }
+
+    .product-board {
+      align-self: center;
+      display: grid;
+      gap: 10px;
+      margin-top: 48px;
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(7, 29, 24, 0.78);
+      border: 1px solid rgba(207, 239, 228, 0.2);
+      box-shadow: 0 28px 88px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(18px);
+    }
+
+    .board-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 15px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, rgba(23, 192, 147, 0.16), rgba(255, 255, 255, 0.05));
+      border: 1px solid rgba(207, 239, 228, 0.18);
+    }
+
+    .board-header h2 {
+      margin: 0;
+      font-size: 23px;
+      line-height: 1.14;
+      letter-spacing: 0;
+    }
+
+    .board-header p {
+      margin: 7px 0 0;
+      color: rgba(248, 255, 249, 0.72);
+      line-height: 1.5;
+    }
+
+    .project-key {
+      flex: 0 0 auto;
+      padding: 8px 10px;
+      border-radius: 7px;
+      color: #d9fff3;
+      background: rgba(255, 255, 255, 0.1);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .flow-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border: 1px solid rgba(207, 239, 228, 0.18);
+      border-radius: 11px;
+      overflow: hidden;
+    }
+
+    .flow-step {
+      min-height: 124px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.045);
+      border-right: 1px solid rgba(207, 239, 228, 0.18);
+    }
+
+    .flow-step:last-child {
+      border-right: 0;
+    }
+
+    .flow-step span,
+    .feedback-card span {
+      display: block;
+      color: rgba(248, 255, 249, 0.58);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .flow-step strong {
+      display: block;
+      margin-top: 12px;
+      font-size: 22px;
+      line-height: 1.08;
+    }
+
+    .flow-step p,
+    .feedback-card p {
+      margin: 12px 0 0;
+      color: rgba(248, 255, 249, 0.72);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .evidence-stream {
+      display: grid;
+      gap: 8px;
+      padding: 12px 14px;
+      border-radius: 11px;
+      background: rgba(0, 0, 0, 0.16);
+      border: 1px solid rgba(207, 239, 228, 0.14);
+    }
+
+    .stream-line {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      color: rgba(248, 255, 249, 0.72);
+      font-size: 13px;
+    }
+
+    .stream-line strong {
+      min-width: 0;
+      color: #eafff7;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .loop-strip {
+      display: grid;
+      grid-template-columns: 0.78fr 1.22fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .loop-mini,
+    .feedback-card {
+      border-radius: 11px;
+      border: 1px solid rgba(207, 239, 228, 0.18);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 14px;
+    }
+
+    .loop-mini {
+      display: grid;
+      place-items: center;
+      text-align: center;
+      min-height: 104px;
+      background:
+        radial-gradient(circle at 48% 40%, rgba(23, 192, 147, 0.2), transparent 52%),
+        rgba(255, 255, 255, 0.04);
+    }
+
+    .loop-mini strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .loop-mini small {
+      display: block;
+      margin-top: 10px;
+      color: rgba(248, 255, 249, 0.66);
+      line-height: 1.45;
+    }
+
+    .feedback-card strong {
+      display: block;
+      margin-top: 10px;
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .command-card {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      border-radius: 12px;
+      background:
+        linear-gradient(135deg, rgba(23, 192, 147, 0.16), rgba(255, 255, 255, 0.05));
+      border: 1px solid rgba(207, 239, 228, 0.18);
+    }
+
+    .command-bubble {
+      padding: 15px;
+      border-radius: 11px;
+      color: #eafff7;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(207, 239, 228, 0.16);
+      font-size: 18px;
+      line-height: 1.35;
+      font-weight: 760;
+    }
+
+    .agent-steps {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .agent-steps span {
+      min-height: 52px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 9px;
+      border-radius: 9px;
+      color: rgba(248, 255, 249, 0.82);
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(207, 239, 228, 0.13);
+      font-size: 12px;
+      font-weight: 720;
+      line-height: 1.25;
+    }
+
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .analysis-card {
+      min-height: 166px;
+      padding: 15px;
+      border-radius: 11px;
+      border: 1px solid rgba(207, 239, 228, 0.18);
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .analysis-card span {
+      display: block;
+      color: rgba(248, 255, 249, 0.56);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .analysis-card strong {
+      display: block;
+      margin-top: 10px;
+      font-size: 20px;
+      line-height: 1.16;
+    }
+
+    .analysis-card ul {
+      list-style: none;
+      margin: 13px 0 0;
+      padding: 0;
+      display: grid;
+      gap: 7px;
+      color: rgba(248, 255, 249, 0.74);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .analysis-card li {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .analysis-card li::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      margin-top: 5px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .loop-preview {
+      display: grid;
+      grid-template-columns: 0.88fr 1.12fr;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border-radius: 11px;
+      border: 1px solid rgba(207, 239, 228, 0.18);
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .mini-cycle {
+      position: relative;
+      min-height: 118px;
+      display: grid;
+      place-items: center;
+    }
+
+    .mini-cycle::before {
+      content: "";
+      width: 112px;
+      height: 112px;
+      border-radius: 50%;
+      border: 2px solid rgba(23, 192, 147, 0.52);
+      border-right-color: rgba(244, 185, 66, 0.78);
+      transform: rotate(-28deg);
+      box-shadow: inset 0 0 38px rgba(23, 192, 147, 0.12);
+    }
+
+    .mini-cycle::after {
+      content: "AI";
+      position: absolute;
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #06201a;
+      background: var(--green);
+      font-weight: 820;
+      box-shadow: 0 14px 28px rgba(23, 192, 147, 0.24);
+    }
+
+    .loop-preview h3 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+
+    .loop-preview p {
+      margin: 8px 0 0;
+      color: rgba(248, 255, 249, 0.7);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .solution-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 42px;
+    }
+
+    .solution-card {
+      min-height: 280px;
+      padding: 28px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .solution-icon {
+      width: 58px;
+      height: 58px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #06201a;
+      background: var(--green);
+      font-weight: 820;
+      font-size: 20px;
+      box-shadow: 0 18px 38px rgba(23, 192, 147, 0.24);
+    }
+
+    .solution-card h3 {
+      margin: 28px 0 12px;
+      font-size: 30px;
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .solution-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.62;
+    }
+
+    .cycle-duo {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+      margin-top: 42px;
+    }
+
+    .cycle-card {
+      min-height: 620px;
+      padding: 30px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .cycle-card.dark {
+      color: #f8fff9;
+      background:
+        radial-gradient(circle at 50% 48%, rgba(23, 192, 147, 0.18), transparent 42%),
+        var(--deep);
+      border-color: rgba(255, 255, 255, 0.13);
+    }
+
+    .cycle-card h3 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .cycle-card > p {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.58;
+    }
+
+    .cycle-card.dark > p {
+      color: rgba(248, 255, 249, 0.72);
+    }
+
+    .cycle-diagram {
+      --cycle-size: min(360px, calc(100% - 120px));
+      --node-width: 156px;
+      --node-side-offset: calc(var(--cycle-size) * 0.28);
+      --node-vertical-offset: calc(var(--cycle-size) * 0.36);
+      --arrow-gap: 22px;
+      position: relative;
+      height: 540px;
+      margin-top: 30px;
+    }
+
+    .cycle-ring {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: var(--cycle-size);
+      height: auto;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 2px solid rgba(23, 192, 147, 0.34);
+      border-right-color: rgba(244, 185, 66, 0.68);
+      border-bottom-color: rgba(23, 192, 147, 0.58);
+      transform: translate(-50%, -50%) rotate(-18deg);
+    }
+
+    .cycle-core {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 120px;
+      height: 120px;
+      transform: translate(-50%, -50%);
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #06201a;
+      background: var(--green);
+      text-align: center;
+      font-weight: 820;
+      line-height: 1.18;
+      box-shadow: 0 24px 48px rgba(23, 192, 147, 0.28);
+    }
+
+    .cycle-node {
+      position: absolute;
+      width: var(--node-width);
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 740;
+      box-shadow: 0 14px 36px rgba(8, 31, 25, 0.1);
+    }
+
+    .cycle-node span {
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      margin-right: 7px;
+      border-radius: 50%;
+      color: #06201a;
+      background: var(--green);
+      font-size: 12px;
+      font-weight: 820;
+      vertical-align: middle;
+    }
+
+    .cycle-card.dark .cycle-node {
+      color: #f8fff9;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.13);
+      box-shadow: none;
+    }
+
+    .cycle-card.dark .cycle-node span {
+      color: #06201a;
+      background: var(--amber);
+    }
+
+    .cycle-node.node-4 {
+      left: 50%;
+      top: calc(50% - var(--node-vertical-offset));
+      transform: translate(-50%, -50%);
+    }
+
+    .cycle-node.node-1 {
+      left: calc(50% + var(--node-side-offset));
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .cycle-node.node-2 {
+      left: 50%;
+      top: calc(50% + var(--node-vertical-offset));
+      transform: translate(-50%, -50%);
+    }
+
+    .cycle-node.node-3 {
+      left: calc(50% - var(--node-side-offset));
+      top: 50%;
+      transform: translate(-100%, -50%);
+    }
+
+    .cycle-arrow {
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #06201a;
+      background: var(--amber);
+      font-weight: 820;
+    }
+
+    .cycle-arrow.a {
+      left: calc(50% + var(--cycle-size) * 0.36 + var(--arrow-gap));
+      top: calc(50% - var(--cycle-size) * 0.36 - var(--arrow-gap));
+    }
+
+    .cycle-arrow.b {
+      left: calc(50% + var(--cycle-size) * 0.36 + var(--arrow-gap));
+      top: calc(50% + var(--cycle-size) * 0.36 + var(--arrow-gap));
+    }
+
+    .cycle-arrow.c {
+      left: calc(50% - var(--cycle-size) * 0.36 - var(--arrow-gap));
+      top: calc(50% + var(--cycle-size) * 0.36 + var(--arrow-gap));
+    }
+
+    .cycle-arrow.d {
+      left: calc(50% - var(--cycle-size) * 0.36 - var(--arrow-gap));
+      top: calc(50% - var(--cycle-size) * 0.36 - var(--arrow-gap));
+    }
+
+    .loop-stage {
+      position: relative;
+      min-height: 585px;
+      padding-top: 72px;
+    }
+
+    .loop-orbit {
+      position: absolute;
+      inset: 116px 78px 92px;
+      z-index: 0;
+      border: 1px solid rgba(185, 236, 219, 0.22);
+      border-radius: 999px;
+      transform: rotate(-11deg);
+      box-shadow: inset 0 0 80px rgba(23, 192, 147, 0.08);
+    }
+
+    .loop-orbit::before,
+    .loop-orbit::after {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 10px rgba(23, 192, 147, 0.12);
+    }
+
+    .loop-orbit::before {
+      top: 11%;
+      right: 17%;
+    }
+
+    .loop-orbit::after {
+      bottom: 16%;
+      left: 14%;
+    }
+
+    .loop-center {
+      position: absolute;
+      inset: 50%;
+      z-index: 1;
+      width: 184px;
+      height: 184px;
+      transform: translate(-50%, -38%);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      background:
+        radial-gradient(circle at 38% 26%, rgba(255, 255, 255, 0.2), transparent 30%),
+        linear-gradient(145deg, rgba(23, 192, 147, 0.28), rgba(244, 185, 66, 0.12));
+      border: 1px solid rgba(224, 255, 244, 0.26);
+      box-shadow: 0 30px 86px rgba(0, 0, 0, 0.3);
+    }
+
+    .loop-center strong {
+      display: block;
+      padding: 0 22px;
+      font-size: 20px;
+      line-height: 1.16;
+      letter-spacing: 0;
+    }
+
+    .loop-center small {
+      display: block;
+      margin-top: 12px;
+      color: rgba(248, 255, 249, 0.72);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .node {
+      position: absolute;
+      z-index: 2;
+      width: min(292px, 42vw);
+      min-height: 128px;
+      padding: 16px;
+      border-radius: 12px;
+      background: rgba(10, 35, 30, 0.84);
+      border: 1px solid rgba(207, 239, 228, 0.18);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(18px);
+    }
+
+    .node:nth-of-type(1) {
+      top: 42px;
+      left: 18px;
+    }
+
+    .node:nth-of-type(2) {
+      top: 50px;
+      right: 10px;
+    }
+
+    .node:nth-of-type(3) {
+      right: 30px;
+      bottom: 40px;
+    }
+
+    .node:nth-of-type(4) {
+      left: 0;
+      bottom: 62px;
+    }
+
+    .node-label {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: rgba(248, 255, 249, 0.68);
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .node-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 7px rgba(23, 192, 147, 0.13);
+    }
+
+    .node h3 {
+      margin: 13px 0 8px;
+      font-size: 20px;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+
+    .node p {
+      margin: 0;
+      color: rgba(248, 255, 249, 0.76);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .code-line {
+      display: inline-block;
+      margin-top: 12px;
+      max-width: 100%;
+      padding: 8px 10px;
+      border-radius: 7px;
+      color: #ccfff0;
+      background: rgba(0, 0, 0, 0.2);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .section {
+      padding: 76px clamp(24px, 7vw, 120px);
+    }
+
+    .section h2 {
+      margin: 0;
+      max-width: 980px;
+      font-size: clamp(38px, 5vw, 70px);
+      line-height: 1.02;
+      letter-spacing: 0;
+      font-weight: 820;
+    }
+
+    .section-intro {
+      margin: 18px 0 0;
+      max-width: 820px;
+      color: var(--muted);
+      font-size: 19px;
+      line-height: 1.65;
+    }
+
+    .process {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0;
+      margin-top: 42px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .step {
+      min-height: 280px;
+      padding: 28px;
+      border-right: 1px solid var(--line);
+    }
+
+    .step:last-child {
+      border-right: 0;
+    }
+
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      color: #06201a;
+      background: var(--green);
+      font-weight: 780;
+      box-shadow: 0 12px 26px rgba(23, 192, 147, 0.24);
+    }
+
+    .step h3 {
+      margin: 26px 0 12px;
+      font-size: 26px;
+      line-height: 1.16;
+      letter-spacing: 0;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.62;
+    }
+
+    .proof {
+      display: grid;
+      grid-template-columns: minmax(0, 0.98fr) minmax(0, 1.02fr);
+      gap: 36px;
+      align-items: stretch;
+      margin-top: 34px;
+    }
+
+    .evidence-panel,
+    .impact-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      padding: 30px;
+    }
+
+    .evidence-panel {
+      display: grid;
+      gap: 14px;
+    }
+
+    .signal-row {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .signal-row:last-child {
+      border-bottom: 0;
+    }
+
+    .signal-row span {
+      color: var(--faint);
+      font-weight: 720;
+      font-size: 13px;
+    }
+
+    .signal-row strong {
+      display: block;
+      font-size: 17px;
+      line-height: 1.35;
+    }
+
+    .impact-panel {
+      color: #f8fff9;
+      background:
+        linear-gradient(135deg, rgba(23, 192, 147, 0.18), rgba(244, 185, 66, 0.11)),
+        var(--deep);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .impact-panel h3 {
+      margin: 0 0 18px;
+      font-size: 34px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .impact-list {
+      display: grid;
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .impact-item {
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr);
+      gap: 13px;
+      align-items: start;
+      color: rgba(248, 255, 249, 0.78);
+      line-height: 1.55;
+    }
+
+    .impact-item::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-top: 6px;
+      background: var(--green);
+      box-shadow: 0 0 0 7px rgba(23, 192, 147, 0.13);
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 38px;
+    }
+
+    .value-card {
+      min-height: 228px;
+      padding: 26px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+
+    .value-card h3 {
+      margin: 0 0 12px;
+      font-size: 26px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .value-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.62;
+      font-size: 16px;
+    }
+
+    .cta-band {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 28px;
+      align-items: center;
+      margin-top: 50px;
+      padding: 34px;
+      color: #f8fff9;
+      background: var(--deep);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: var(--shadow);
+    }
+
+    .cta-band h2 {
+      font-size: clamp(31px, 4vw, 52px);
+    }
+
+    .cta-band p {
+      margin: 12px 0 0;
+      max-width: 760px;
+      color: rgba(248, 255, 249, 0.76);
+      font-size: 17px;
+      line-height: 1.6;
+    }
+
+    .mini-console {
+      min-width: 330px;
+      padding: 16px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .console-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.13);
+      color: rgba(248, 255, 249, 0.72);
+      font-size: 13px;
+    }
+
+    .console-line:last-child {
+      border-bottom: 0;
+    }
+
+    .console-line strong {
+      color: #f8fff9;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+    }
+
+    @media (max-width: 1500px) {
+      .cycle-duo {
+        grid-template-columns: 1fr;
+      }
+
+      .cycle-card {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 1100px) {
+      .hero {
+        grid-template-columns: 1fr;
+        padding-top: 110px;
+      }
+
+      .hero-copy {
+        padding-top: 20px;
+      }
+
+      .loop-stage {
+        min-height: 620px;
+      }
+
+      .flow-row,
+      .loop-strip,
+      .analysis-grid,
+      .loop-preview,
+      .solution-grid,
+      .cycle-duo {
+        grid-template-columns: 1fr;
+      }
+
+      .flow-step {
+        min-height: auto;
+        border-right: 0;
+        border-bottom: 1px solid rgba(207, 239, 228, 0.18);
+      }
+
+      .flow-step:last-child {
+        border-bottom: 0;
+      }
+
+      .cycle-card {
+        min-height: auto;
+      }
+
+      .agent-steps {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+      }
+
+      .agent-steps span {
+        min-height: 34px;
+        padding: 7px 8px;
+        font-size: 11px;
+      }
+
+      .solution-card,
+      .value-card {
+        min-height: auto;
+      }
+
+      .solution-card {
+        padding: 24px;
+      }
+
+      .value-card {
+        padding: 22px;
+      }
+
+      .cycle-diagram {
+        --cycle-size: min(360px, calc(100% - 300px));
+        --node-width: 220px;
+        --node-side-offset: calc(var(--cycle-size) * 0.26);
+        --node-vertical-offset: calc(var(--cycle-size) * 0.38);
+        --arrow-gap: 22px;
+        height: 540px;
+      }
+
+      .cycle-core {
+        width: 104px;
+        height: 104px;
+      }
+
+      .cycle-node {
+        width: var(--node-width);
+      }
+
+      .process,
+      .compare,
+      .proof,
+      .cta-band {
+        grid-template-columns: 1fr;
+      }
+
+      .step {
+        min-height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .step:last-child {
+        border-bottom: 0;
+      }
+
+      .mini-console {
+        min-width: 0;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .hero {
+        min-height: auto;
+        padding: 96px 18px 44px;
+      }
+
+      .nav {
+        left: 18px;
+        right: 18px;
+        top: 18px;
+      }
+
+      .nav-actions button {
+        display: none;
+      }
+
+      .hero-copy h1 {
+        font-size: 42px;
+      }
+
+      .hero-copy p {
+        font-size: 17px;
+      }
+
+      .loop-stage {
+        min-height: auto;
+        display: grid;
+        gap: 14px;
+        padding-top: 26px;
+      }
+
+      .product-board {
+        margin-top: 0;
+        padding: 12px;
+      }
+
+      .board-header {
+        display: grid;
+      }
+
+      .board-header h2 {
+        font-size: 24px;
+      }
+
+      .project-key {
+        width: fit-content;
+      }
+
+      .stream-line {
+        grid-template-columns: 1fr;
+        gap: 5px;
+      }
+
+      .loop-orbit,
+      .loop-center {
+        display: none;
+      }
+
+      .node,
+      .node:nth-of-type(1),
+      .node:nth-of-type(2),
+      .node:nth-of-type(3),
+      .node:nth-of-type(4) {
+        position: relative;
+        inset: auto;
+        width: 100%;
+      }
+
+      .section {
+        padding: 54px 18px;
+      }
+
+      .section h2 {
+        font-size: 38px;
+      }
+
+      .section-intro {
+        font-size: 17px;
+      }
+
+      .signal-row {
+        grid-template-columns: 1fr;
+        gap: 7px;
+      }
+
+      .evidence-panel,
+      .impact-panel,
+      .value-card,
+      .cta-band {
+        padding: 22px;
+      }
+
+      .value-card {
+        min-height: auto;
+      }
+
+      .hero-actions {
+        align-items: stretch;
+      }
+
+      .primary,
+      .secondary {
+        width: 100%;
+      }
+
+      .solution-card {
+        min-height: auto;
+      }
+
+      .cycle-card {
+        padding: 22px;
+      }
+
+      .cycle-card h3 {
+        font-size: 28px;
+      }
+
+      .cycle-diagram {
+        --cycle-size: 132px;
+        --node-width: 104px;
+        --node-side-offset: calc(var(--cycle-size) * 0.34);
+        --node-vertical-offset: calc(var(--cycle-size) * 0.54);
+        --arrow-gap: 5px;
+        height: 350px;
+      }
+
+      .cycle-core {
+        width: 56px;
+        height: 56px;
+        font-size: 13px;
+      }
+
+      .cycle-node {
+        width: var(--node-width);
+        padding: 8px;
+        font-size: 11px;
+        line-height: 1.25;
+      }
+
+      .cycle-node span {
+        width: 20px;
+        height: 20px;
+        margin-right: 5px;
+        font-size: 11px;
+      }
+
+      .cycle-arrow {
+        width: 26px;
+        height: 26px;
+        font-size: 13px;
+      }
+
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <header class="nav" aria-label="TraceMind demo navigation">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M5 17V7l5.2 5.2L19 5v12" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 18h8" stroke="#17c093" stroke-width="2.8" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <span>TraceMind</span>
+        </div>
+        <div class="nav-actions">
+          <select aria-label="Language">
+            <option>中文</option>
+            <option>English</option>
+          </select>
+          <button type="button">进入控制台</button>
+        </div>
+      </header>
+
+      <div class="hero-copy">
+        <h1>让 AI 看懂真实用户行为</h1>
+        <p>TraceMind 是面向 AI Coding Agent 的产品行为分析层。你只需要一句话指挥 Coding Agent 完成接入，TraceMind 就能把真实行为整理成产品证据，并通过 MCP 交给 AI 发现问题、分析问题、推动解决。</p>
+        <div class="hero-actions">
+          <button class="primary" type="button">让 Agent 接入</button>
+          <button class="secondary" type="button">查看接入文档</button>
+        </div>
+        <div class="trust-strip" aria-label="Safety guarantees">
+          <span>一句话接入</span>
+          <span>AI 分析产品</span>
+          <span>发现 / 分析 / 解决</span>
+          <span>深度了解用户</span>
+        </div>
+      </div>
+
+      <div class="product-board" aria-label="TraceMind product mechanism">
+        <div class="command-card">
+          <div class="board-header">
+            <div>
+              <h2>一句话指挥 Coding Agent 自动接入</h2>
+              <p>无需手动找入口、复制代码、判断验证方式。Agent 会根据你的项目自动完成接入和验证。</p>
+            </div>
+            <div class="project-key">tm_proj_xxx</div>
+          </div>
+          <div class="command-bubble">“帮我把 TraceMind 接入当前项目，并验证用户行为是否采集成功。”</div>
+          <div class="agent-steps">
+            <span>读取接入配置</span>
+            <span>修改项目入口</span>
+            <span>运行本地验证</span>
+            <span>查询采集结果</span>
+          </div>
+        </div>
+        <div class="analysis-grid">
+          <article class="analysis-card">
+            <span>AI + MCP 高效分析</span>
+            <strong>AI 自动发现、分析并给出下一步</strong>
+            <ul>
+              <li>自动识别注册、付费、留存路径里的卡点。</li>
+              <li>自动关联行为证据，还原问题上下文。</li>
+              <li>高效生成修复建议、补充埋点或优化方向。</li>
+            </ul>
+          </article>
+          <article class="analysis-card">
+            <span>AI 用户洞察</span>
+            <strong>自动沉淀用户路径和使用偏好</strong>
+            <ul>
+              <li>自动汇总路径、设备来源和活跃区间。</li>
+              <li>高效比较功能使用、人群差异和转化表现。</li>
+              <li>减少人工翻报表、拼数据和猜原因的时间。</li>
+            </ul>
+          </article>
+        </div>
+        <div class="evidence-stream">
+          <div class="stream-line"><span>用户路径</span><strong>/pricing -> signup -> submit failed</strong></div>
+          <div class="stream-line"><span>语义事件</span><strong>user_reached_pricing_without_signup</strong></div>
+          <div class="stream-line"><span>Agent 提问</span><strong>哪些用户到了价格页但没有提交？为什么？</strong></div>
+        </div>
+        <div class="loop-preview">
+          <div class="mini-cycle" aria-hidden="true"></div>
+          <div>
+            <h3>反馈闭环让分析能力持续进化</h3>
+            <p>AI 先帮助你优化产品；带证据的反馈会继续优化 TraceMind，让下一次分析更快、更准。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>让 AI 自动完成高效产品迭代</h2>
+      <p class="section-intro">TraceMind 不只是多一个报表，而是把真实行为证据交给 AI，让它自动发现问题、定位原因，并生成可执行的下一步。</p>
+      <div class="solution-grid">
+        <article class="solution-card">
+          <div class="solution-icon">1</div>
+          <h3>自动发现问题</h3>
+          <p>AI 从真实路径中识别流失、卡点、异常行为和低转化步骤，省去人工筛查和猜测。</p>
+        </article>
+        <article class="solution-card">
+          <div class="solution-icon">2</div>
+          <h3>高效分析原因</h3>
+          <p>AI 结合页面、事件、来源、设备、人群和时间窗口，快速还原问题发生时的完整上下文。</p>
+        </article>
+        <article class="solution-card">
+          <div class="solution-icon">3</div>
+          <h3>自动推动解决</h3>
+          <p>Coding Agent 可以基于证据生成修复建议、补充埋点、优化页面，或提交结构化反馈。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>两个 AI 驱动循环，让产品越用越强</h2>
+      <p class="section-intro">一个循环帮助你更快优化产品体验；另一个循环让你的反馈反哺 TraceMind，让分析能力、SDK 和 Agent 指导持续进化。</p>
+      <div class="cycle-duo">
+        <article class="cycle-card">
+          <h3>你的产品增长循环</h3>
+          <p>TraceMind 把真实使用证据交给 AI，把人工看报表、拼数据、猜原因的过程自动化。</p>
+          <div class="cycle-diagram">
+            <div class="cycle-ring" aria-hidden="true"></div>
+            <div class="cycle-core">AI<br>驱动</div>
+            <div class="cycle-node node-1"><span>1</span>真实用户行为</div>
+            <div class="cycle-node node-2"><span>2</span>TraceMind 自动整理证据</div>
+            <div class="cycle-node node-3"><span>3</span>Agent 自动分析并建议</div>
+            <div class="cycle-node node-4"><span>4</span>产品优化后体验提升</div>
+            <div class="cycle-arrow a">→</div>
+            <div class="cycle-arrow b">→</div>
+            <div class="cycle-arrow c">→</div>
+            <div class="cycle-arrow d">→</div>
+          </div>
+        </article>
+        <article class="cycle-card dark">
+          <h3>TraceMind 智能进化循环</h3>
+          <p>你的反馈带着证据回流，TraceMind 会持续优化分析模型、SDK 和 Agent 指导。</p>
+          <div class="cycle-diagram">
+            <div class="cycle-ring" aria-hidden="true"></div>
+            <div class="cycle-core">AI<br>优化</div>
+            <div class="cycle-node node-1"><span>1</span>你的问题反馈</div>
+            <div class="cycle-node node-2"><span>2</span>MCP 带证据反馈</div>
+            <div class="cycle-node node-3"><span>3</span>优化 TraceMind 分析 / SDK / guidance</div>
+            <div class="cycle-node node-4"><span>4</span>下一次分析更快更准</div>
+            <div class="cycle-arrow a">→</div>
+            <div class="cycle-arrow b">→</div>
+            <div class="cycle-arrow c">→</div>
+            <div class="cycle-arrow d">→</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>反馈不再是聊天记录，而是可执行的产品证据</h2>
+      <div class="proof">
+        <div class="evidence-panel">
+          <div class="signal-row">
+            <span>用户路径</span>
+            <strong>/pricing -> signup -> submit failed</strong>
+          </div>
+          <div class="signal-row">
+            <span>行为证据</span>
+            <strong>click、input、submit、route_change、online segment</strong>
+          </div>
+          <div class="signal-row">
+            <span>MCP 反馈</span>
+            <strong>用户到达价格页但没有完成注册，需检查注册表单失败路径。</strong>
+          </div>
+          <div class="signal-row">
+            <span>优化结果</span>
+            <strong>改进 signup funnel 识别、补充 Agent guidance、让下次回答直接定位失败步骤。</strong>
+          </div>
+        </div>
+        <div class="impact-panel">
+          <h3>为什么这个闭环比传统 analytics 更快？</h3>
+          <div class="impact-list">
+            <div class="impact-item">反馈自带证据，不再靠截图、主观描述或事后猜测还原问题。</div>
+            <div class="impact-item">AI 可以直接追问行为上下文，给出可复核的分析和改进建议。</div>
+            <div class="impact-item">每次带证据的反馈都会反哺 TraceMind 的 SDK、语义层、MCP 工具和 Agent 指导。</div>
+            <div class="impact-item">优化结果最终体现在你的问题定位速度、分析质量和接入体验上。</div>
+          </div>
+        </div>
+      </div>
+      <div class="compare">
+        <article class="value-card">
+          <h3>减少猜测</h3>
+          <p>反馈自带行为路径和时间窗口，你的团队不需要先花时间还原现场。</p>
+        </article>
+        <article class="value-card">
+          <h3>更快迭代</h3>
+          <p>Agent 可以把现象、证据和改进方向整理成结构化反馈，TraceMind 团队能更快判断优先级。</p>
+        </article>
+        <article class="value-card">
+          <h3>持续复利</h3>
+          <p>一次优化不只解决一个具体问题，也会持续改善后续分析能力和接入体验。</p>
+        </article>
+      </div>
+      <div class="cta-band">
+        <div>
+          <h2>AI 看懂行为，反馈进入闭环，产品持续变好</h2>
+          <p>MCP 分析工具默认只读；反馈提交需要开发者确认；TraceMind 不采集输入内容、prompt、token、源码 diff 或完整 URL。</p>
+        </div>
+        <div class="mini-console" aria-label="TraceMind console summary">
+          <div class="console-line"><span>public key</span><strong>tm_proj_xxx</strong></div>
+          <div class="console-line"><span>MCP write path</span><strong>submit_feedback</strong></div>
+          <div class="console-line"><span>evidence state</span><strong>reviewable</strong></div>
+          <div class="console-line"><span>privacy</span><strong>filtered</strong></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
