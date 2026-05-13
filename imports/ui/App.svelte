@@ -5,7 +5,9 @@
   import { untrack } from "svelte";
   import { get } from "svelte/store";
   import packageInfo from "../../package.json";
+  import AuthPanel from "./AuthPanel.svelte";
   import { buildAgentInstallPrompt } from "./agent_setup";
+  import ConsoleStatePanel from "./ConsoleStatePanel.svelte";
   import { resolveConsoleState } from "./console_state";
   import EventStreamPanel from "./EventStreamPanel.svelte";
   import IntroSections from "./IntroSections.svelte";
@@ -925,42 +927,21 @@
     </div>
 
     {#if consoleState === "signed-out"}
-      <div class="auth-panel card-panel">
-        <label class="field-label">
-          <span>{$t("Email")}</span>
-          <input id="email" name="email" bind:value={email} type="email" placeholder={$t("you@example.com")} autocomplete="email" />
-        </label>
-        <div class="auth-actions">
-          <button type="button" onclick={requestCode} disabled={loading}>{$t("Send code")}</button>
-        </div>
-        <label class="field-label">
-          <span>{$t("Verification code")}</span>
-          <input id="login-code" name="code" bind:value={code} inputmode="numeric" placeholder={$t("123456")} />
-        </label>
-        <button type="button" onclick={verifyCode} disabled={loading}>{$t("Log in")}</button>
-      </div>
-    {:else if consoleState === "restoring-session"}
-      <div class="console-state-panel card-panel" role="status" aria-live="polite">
-        <span class="tm-badge tm-badge-signal">{$t("Developer console")}</span>
-        <strong>{$t("Checking your session...")}</strong>
-      </div>
-    {:else if consoleState === "loading-dashboard"}
-      <div class="console-state-panel card-panel" role="status" aria-live="polite">
-        <span class="tm-badge tm-badge-signal">{$t("Developer console")}</span>
-        <strong>{$t("Loading your console...")}</strong>
-      </div>
-    {:else if consoleState === "dashboard-error"}
-      <div class="console-state-panel card-panel" role="alert">
-        <span class="tm-badge tm-badge-amber">{$t("Developer console")}</span>
-        <strong>{$t("Could not load your console.")}</strong>
-        <p>{dashboardLoadError}</p>
-        <div class="console-state-actions">
-          <button type="button" onclick={retryDashboard} disabled={dashboardLoading}>
-            {dashboardLoading ? $t("Loading your console...") : $t("Retry")}
-          </button>
-          <button class="ghost" type="button" onclick={logout}>{$t("Log out")}</button>
-        </div>
-      </div>
+      <AuthPanel
+        bind:email
+        bind:code
+        {loading}
+        {requestCode}
+        {verifyCode}
+      />
+    {:else if consoleState === "restoring-session" || consoleState === "loading-dashboard" || consoleState === "dashboard-error"}
+      <ConsoleStatePanel
+        state={consoleState}
+        {dashboardLoadError}
+        {dashboardLoading}
+        {retryDashboard}
+        {logout}
+      />
     {:else}
       <div class="dashboard-grid">
         <div class="account-panel card-panel">
