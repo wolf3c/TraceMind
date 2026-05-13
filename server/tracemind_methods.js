@@ -20,13 +20,14 @@ import {
   summarizePresenceSessions,
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
-import { reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
+import { reportDateBounds, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 
 const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
-const PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT = 200;
 const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
 const PROJECT_SUMMARY_PRESENCE_LIMIT = 500;
 const PROJECT_SUMMARY_DELIVERY_REPORT_LIMIT = 500;
+const PROJECT_EVENTS_PAGE_SIZE = 20;
+const PROJECT_EVENTS_MAX_PAGE_SIZE = 50;
 
 function newToken(prefix) {
   return `${prefix}_${Random.secret(32)}`;
@@ -48,6 +49,31 @@ function normalizeMcpTokenName(nameInput) {
 
 function normalizeProjectName(nameInput) {
   return String(nameInput || 'Untitled Web App').trim().slice(0, 80) || 'Untitled Web App';
+}
+
+function normalizeEventPageOptions(options = {}) {
+  const offset = Math.max(0, Math.floor(Number(options.offset) || 0));
+  const requestedLimit = Math.floor(Number(options.limit) || PROJECT_EVENTS_PAGE_SIZE);
+  const limit = Math.min(PROJECT_EVENTS_MAX_PAGE_SIZE, Math.max(1, requestedLimit));
+  return { offset, limit };
+}
+
+function summaryFromHealth(health = {}) {
+  const current = health.current || {};
+  return {
+    totalEvents: Number(current.eventCount || 0),
+    uniqueUsers: Number(current.activeUsers || 0),
+    uniqueDevices: (current.deviceDistribution || []).length,
+    dailyActiveUsers: [],
+    topEvents: (current.topEvents || []).map((item) => ({
+      eventType: item.label,
+      count: item.count,
+    })),
+    topPaths: (current.sessionPaths || []).map((item) => ({
+      path: item.path,
+      count: item.count,
+    })),
+  };
 }
 
 function ensureMailUrlFromSettings() {
@@ -118,10 +144,6 @@ async function buildProjectSummary(project, selectedDateInput) {
   const selectedDate = String(selectedDateInput || today) > today ? today : selectedDateInput || today;
   const rawCount = await RawBehaviors.find({ projectId: project._id }).countAsync();
   const semanticCount = await SemanticEvents.find({ projectId: project._id }).countAsync();
-  const events = await SemanticEvents.find(
-    { projectId: project._id },
-    { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT },
-  ).fetchAsync();
   const rawBehaviors = await RawBehaviors.find(
     { projectId: project._id },
     { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT },
@@ -137,11 +159,11 @@ async function buildProjectSummary(project, selectedDateInput) {
     rawCount,
     semanticCount,
     summaryWindow: {
-      semanticEventLimit: PROJECT_SUMMARY_SEMANTIC_EVENT_LIMIT,
+      eventStreamPageSize: PROJECT_EVENTS_PAGE_SIZE,
       rawBehaviorLimit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT,
       presenceSessionLimit: PROJECT_SUMMARY_PRESENCE_LIMIT,
       deliveryReportLimit: PROJECT_SUMMARY_DELIVERY_REPORT_LIMIT,
-      semanticEventSampleSize: events.length,
+      semanticEventSampleSize: 0,
       rawBehaviorSampleSize: rawBehaviors.length,
       presenceSessionSampleSize: presenceSessions.length,
       deliveryReportSampleSize: report?.delivery?.reportCount || 0,
@@ -151,11 +173,11 @@ async function buildProjectSummary(project, selectedDateInput) {
       reportTimezone: report?.timezone || 'Asia/Shanghai',
     },
     health,
-    summary: summarizeSemanticEvents(events),
+    summary: summaryFromHealth(health),
     presence: summarizePresenceSessions(presenceSessions),
     delivery: report?.delivery || {},
     sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
-    recentEvents: events.slice(0, 30).map(publicSemanticEvent),
+    recentEvents: [],
   };
 }
 
@@ -415,6 +437,41 @@ Meteor.methods({
       throw new Meteor.Error('not-found', 'Project not found.');
     }
     return buildProjectSummary(project, selectedDate);
+  },
+
+  async 'tracemind.project.events'(projectId, selectedDateInput, options = {}) {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const project = await findProjectForDeveloper(projectId, developer._id);
+    if (!project) {
+      throw new Meteor.Error('not-found', 'Project not found.');
+    }
+
+    const now = new Date();
+    const today = reportDateForDate(now);
+    const selectedDate = String(selectedDateInput || today) > today ? today : selectedDateInput || today;
+    const { startAt, endAt } = reportDateBounds(selectedDate);
+    const { offset, limit } = normalizeEventPageOptions(options);
+    const events = await SemanticEvents.find(
+      {
+        projectId: project._id,
+        occurredAt: { $gte: startAt, $lt: endAt },
+      },
+      {
+        sort: { occurredAt: -1 },
+        skip: offset,
+        limit: limit + 1,
+      },
+    ).fetchAsync();
+    const pageEvents = events.slice(0, limit);
+
+    return {
+      events: pageEvents.map(publicSemanticEvent),
+      offset,
+      limit,
+      nextOffset: offset + pageEvents.length,
+      hasMore: events.length > limit,
+      reportDate: selectedDate,
+    };
   },
 
   async 'tracemind.project.summaryByToken'(authToken, projectId, selectedDate) {

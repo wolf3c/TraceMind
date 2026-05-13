@@ -24,6 +24,7 @@
   const newProjectOption = "__new_project__";
   const appVersion = packageInfo.version || "dev";
   const reportTimezoneOffsetMs = 8 * 60 * 60 * 1000;
+  const eventStreamPageSize = 20;
 
   let email = $state("");
   let code = $state("");
@@ -50,6 +51,13 @@
   let projectSummaryError = $state("");
   let projectSummaryRequestId = $state(0);
   let projectSummaryLastLoadedAt = $state(null);
+  let showEventStream = $state(false);
+  let eventStreamEvents = $state([]);
+  let eventStreamLoading = $state(false);
+  let eventStreamError = $state("");
+  let eventStreamNextOffset = $state(0);
+  let eventStreamHasMore = $state(true);
+  let eventStreamRequestId = $state(0);
   let selectedReportDate = $state(reportDateForDate());
   let refreshAgeTick = $state(Date.now());
   let dashboardLoadPromise = null;
@@ -71,14 +79,13 @@
   let healthCurrent = $derived(health?.current || {});
   let delivery = $derived(selectedProjectSummary?.delivery || {});
   let deliveryDropped = $derived(Number(delivery.droppedOldest || 0) + Number(delivery.droppedStorage || 0));
-  let displayedRecentEvents = $derived((selectedProjectSummary?.recentEvents || []).slice(0, 15));
-  let hiddenRecentEventCount = $derived(Math.max(0, (selectedProjectSummary?.recentEvents || []).length - displayedRecentEvents.length));
+  let displayedRecentEvents = $derived(eventStreamEvents);
   let projectSummaryRefreshAge = $derived(formatRefreshAge(projectSummaryLastLoadedAt, refreshAgeTick, selectedLocale));
   let todayReportDate = $derived(reportDateForDate(refreshAgeTick));
   let yesterdayReportDate = $derived(addReportDays(todayReportDate, -1));
   let dayBeforeReportDate = $derived(addReportDays(todayReportDate, -2));
-  let topEventType = $derived(summary?.topEvents?.[0]?.eventType || "none");
-  let topPath = $derived(summary?.topPaths?.[0]?.path || "/");
+  let topEventType = $derived(healthCurrent?.topEvents?.[0]?.label || summary?.topEvents?.[0]?.eventType || "none");
+  let topPath = $derived(healthCurrent?.sessionPaths?.[0]?.path || summary?.topPaths?.[0]?.path || "/");
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
   let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
   let agentSnippetUrl = $derived(`${currentOrigin()}/agents/tracemind/AGENTS_SNIPPET.md`);
@@ -135,6 +142,16 @@
     return reportDateForDate(startMs + days * 24 * 60 * 60 * 1000);
   }
 
+  function resetEventStream({ collapse = true } = {}) {
+    eventStreamRequestId += 1;
+    if (collapse) showEventStream = false;
+    eventStreamEvents = [];
+    eventStreamLoading = false;
+    eventStreamError = "";
+    eventStreamNextOffset = 0;
+    eventStreamHasMore = true;
+  }
+
   function syncSelectedProject(nextDashboard) {
     const projects = nextDashboard?.projects || [];
     const nextSelectedProjectId = resolveSelectedProjectId(projects, selectedProjectId);
@@ -142,9 +159,11 @@
       selectedProjectId = "";
       ({ selectedProjectSummary, projectSummaryLoading, projectSummaryError } = resolveInitialProjectSummaryState());
       projectSummaryLastLoadedAt = null;
+      resetEventStream();
     } else if (nextSelectedProjectId !== selectedProjectId) {
       selectedProjectId = nextSelectedProjectId;
       projectSummaryLastLoadedAt = null;
+      resetEventStream();
     }
   }
 
@@ -203,6 +222,76 @@
         projectSummaryLoading = false;
       }
     }
+  }
+
+  async function loadProjectEvents({ reset = false } = {}) {
+    const requestUserId = Meteor.userId();
+    const projectId = selectedProjectId;
+    const reportDate = selectedReportDate;
+    if (!requestUserId || !projectId || !reportDate) return null;
+
+    const requestId = eventStreamRequestId + 1;
+    eventStreamRequestId = requestId;
+    eventStreamLoading = true;
+    eventStreamError = "";
+    const offset = reset ? 0 : eventStreamNextOffset;
+    if (reset) {
+      eventStreamEvents = [];
+      eventStreamNextOffset = 0;
+      eventStreamHasMore = true;
+    }
+
+    try {
+      const result = await callMethod("tracemind.project.events", projectId, reportDate, {
+        offset,
+        limit: eventStreamPageSize,
+      });
+      if (
+        requestId !== eventStreamRequestId
+        || requestUserId !== Meteor.userId()
+        || projectId !== selectedProjectId
+        || reportDate !== selectedReportDate
+      ) {
+        return null;
+      }
+      eventStreamEvents = reset
+        ? result.events || []
+        : [...eventStreamEvents, ...(result.events || [])];
+      eventStreamNextOffset = result.nextOffset || eventStreamEvents.length;
+      eventStreamHasMore = Boolean(result.hasMore);
+      return result;
+    } catch (error) {
+      if (
+        requestId === eventStreamRequestId
+        && requestUserId === Meteor.userId()
+        && projectId === selectedProjectId
+        && reportDate === selectedReportDate
+      ) {
+        eventStreamError = errorMessage(error);
+      }
+      throw error;
+    } finally {
+      if (
+        requestId === eventStreamRequestId
+        && requestUserId === Meteor.userId()
+        && projectId === selectedProjectId
+        && reportDate === selectedReportDate
+      ) {
+        eventStreamLoading = false;
+      }
+    }
+  }
+
+  function openEventStream() {
+    showEventStream = true;
+    if (!eventStreamEvents.length && eventStreamHasMore && !eventStreamLoading) {
+      loadProjectEvents({ reset: true }).catch(() => {});
+    }
+  }
+
+  function loadMoreEvents() {
+    if (!eventStreamHasMore || eventStreamLoading) return;
+    loadProjectEvents().catch(() => {});
   }
 
   function requestLoginToken(options) {
@@ -306,6 +395,7 @@
 
   async function retryProjectSummary() {
     status = "";
+    resetEventStream();
     try {
       await loadProjectSummary();
     } catch (error) {
@@ -318,6 +408,7 @@
     selectedReportDate = reportDate;
     selectedProjectSummary = null;
     projectSummaryLastLoadedAt = null;
+    resetEventStream();
     loadProjectSummary().catch(() => {});
   }
 
@@ -338,6 +429,7 @@
     selectedProjectId = nextProjectId;
     selectedProjectSummary = null;
     projectSummaryLastLoadedAt = null;
+    resetEventStream();
     showProjectCreate = false;
     showProjectActions = false;
     showProjectRename = false;
@@ -381,6 +473,7 @@
     try {
       const createdProject = await callMethod("tracemind.project.create", name);
       selectedProjectId = createdProject._id;
+      resetEventStream();
       projectName = "";
       showProjectCreate = false;
       showProjectActions = false;
@@ -430,6 +523,7 @@
       projectSummaryError = "";
       projectSummaryLastLoadedAt = null;
       selectedProjectId = "";
+      resetEventStream();
       showProjectActions = false;
       showProjectRename = false;
       showProjectCreate = false;
@@ -612,6 +706,7 @@
     selectedProjectSummary = null;
     projectSummaryLastLoadedAt = null;
     selectedProjectId = "";
+    resetEventStream();
     showProjectCreate = false;
     showProjectActions = false;
     showProjectRename = false;
@@ -761,6 +856,7 @@
             selectedProjectSummary = null;
             projectSummaryLastLoadedAt = null;
             selectedProjectId = "";
+            resetEventStream();
             showProjectCreate = false;
             showProjectActions = false;
             showProjectRename = false;
@@ -1485,13 +1581,13 @@
           </div>
         {:else if projectSummaryLoading && !selectedProjectSummary}
           <p class="empty">{$t("Loading project events...")}</p>
-        {:else if displayedRecentEvents.length}
+        {:else}
           <div class="event-stream-header">
             <div class="event-stream-title">
               <span>{$t("Detailed event stream")}</span>
-              <p>{$t("Recent behavior evidence from the selected project. Showing the latest {{count}} rows.", {
-                count: displayedRecentEvents.length,
-              })}</p>
+              <p>{showEventStream
+                ? $t("Recent behavior evidence from the selected project. Showing {{count}} loaded rows.", { count: displayedRecentEvents.length })
+                : $t("Open the event stream to load behavior evidence for the selected day.")}</p>
             </div>
             <div class="event-stream-total" aria-label={$t("Selected day")}>
               <span>{$t("Selected day")}</span>
@@ -1500,31 +1596,50 @@
               })}</strong>
             </div>
           </div>
-          <div class="event-list" role="list">
-            {#each displayedRecentEvents as event (event._id)}
-              <article class="event-row" role="listitem">
-                <div class="event-row-main">
-                  <div class="event-row-title">
-                    <strong>{event.title}</strong>
+          {#if !showEventStream}
+            <div class="event-stream-collapsed">
+              <button class="ghost" type="button" onclick={openEventStream} disabled={!primaryProject || eventStreamLoading} aria-expanded={showEventStream}>
+                {eventStreamLoading ? $t("Loading project events...") : $t("Open event stream")}
+              </button>
+            </div>
+          {:else if eventStreamError}
+            <div class="inline-error" role="alert">
+              <strong>{$t("Could not load current project events.")}</strong>
+              <span>{eventStreamError}</span>
+            </div>
+          {:else if eventStreamLoading && !displayedRecentEvents.length}
+            <p class="empty">{$t("Loading project events...")}</p>
+          {:else if displayedRecentEvents.length}
+            <div class="event-list" role="list">
+              {#each displayedRecentEvents as event (event._id)}
+                <article class="event-row" role="listitem">
+                  <div class="event-row-main">
+                    <div class="event-row-title">
+                      <strong>{event.title}</strong>
+                    </div>
+                    <p>{event.meaning}</p>
                   </div>
-                  <p>{event.meaning}</p>
-                </div>
-                <div class="event-row-meta">
-                  <span>{compactDate(event.occurredAt)}</span>
-                  <span>{eventSourceLabel(event)}</span>
-                  <span>{eventActorLabel(event)}</span>
-                </div>
-              </article>
-            {/each}
-          </div>
-          {#if hiddenRecentEventCount}
-            <p class="event-list-note">{$t("Showing the latest {{shown}} events. {{hidden}} older events are hidden in this console view.", {
-              shown: displayedRecentEvents.length,
-              hidden: hiddenRecentEventCount,
-            })}</p>
+                  <div class="event-row-meta">
+                    <span>{compactDate(event.occurredAt)}</span>
+                    <span>{eventSourceLabel(event)}</span>
+                    <span>{eventActorLabel(event)}</span>
+                  </div>
+                </article>
+              {/each}
+            </div>
+            <div class="event-list-footer">
+              <p class="event-list-note">{$t("Loaded {{count}} events.", {
+                count: formatNumber(displayedRecentEvents.length),
+              })}</p>
+              {#if eventStreamHasMore}
+                <button class="ghost" type="button" onclick={loadMoreEvents} disabled={eventStreamLoading}>
+                  {eventStreamLoading ? $t("Loading project events...") : $t("Load more")}
+                </button>
+              {/if}
+            </div>
+          {:else}
+            <p class="empty">{$t("No current project events yet. Add the script to this project, generate behavior, then refresh.")}</p>
           {/if}
-        {:else}
-          <p class="empty">{$t("No current project events yet. Add the script to this project, generate behavior, then refresh.")}</p>
         {/if}
       </div>
     {/if}
