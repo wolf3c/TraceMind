@@ -96,6 +96,15 @@ button:disabled {
   pointer-events: none;
 }
 
+.hero-collapsed {
+  min-height: 0;
+  padding-bottom: 28px;
+}
+
+.hero-collapsed::before {
+  display: none;
+}
+
 .nav,
 .hero-grid,
 .workflow,
@@ -111,6 +120,11 @@ button:disabled {
 
 .workflow {
   max-width: 1760px;
+}
+
+.intro-anchor {
+  display: block;
+  height: 0;
 }
 
 .nav {
@@ -133,6 +147,28 @@ button:disabled {
   gap: 10px;
   align-items: center;
   font-weight: 750;
+}
+
+.intro-toggle {
+  margin-left: 8px;
+  border: 1px solid rgba(255, 253, 248, 0.3);
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: #fffdf8;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.86rem;
+  font-weight: 720;
+}
+
+.intro-toggle:hover {
+  border-color: rgba(255, 253, 248, 0.5);
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.intro-toggle[aria-expanded="true"] {
+  color: #071b18;
+  background: var(--signal);
+  border-color: var(--signal);
 }
 
 .brand-mark {

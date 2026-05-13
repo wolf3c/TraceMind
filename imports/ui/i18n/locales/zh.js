@@ -6,6 +6,8 @@ export default {
   "AI-native behavior intelligence": "AI 原生行为智能平台",
   "Remote MCP ready": "远程 MCP 就绪",
   "Let AI agents understand": "让 AI 看懂",
+  "Introduction": "介绍",
+  "Hide introduction": "隐藏介绍",
   "real user behavior.": "真实用户行为",
   "real user behavior": "真实用户行为",
   "TraceMind gives AI Coding Agents a product behavior analytics layer. Auto Capture turns real paths, clicks, forms, and active time into evidence that agents can analyze through MCP.": "TraceMind 为 AI Coding Agent 提供产品行为分析层。Auto Capture 把真实路径、点击、表单和活跃时长转成可通过 MCP 分析的产品证据。",

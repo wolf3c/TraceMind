@@ -52,6 +52,7 @@
   let projectSummaryLastLoadedAt = $state(null);
   let selectedReportDate = $state(reportDateForDate());
   let refreshAgeTick = $state(Date.now());
+  let showIntro = $state(false);
   let dashboardLoadPromise = null;
   let copiedTargetTimer = null;
 
@@ -61,6 +62,7 @@
     loggingIn,
     dashboardLoadError,
   }));
+  let shouldShowIntro = $derived(consoleState === "signed-out" || showIntro);
   let primaryProject = $derived(
     dashboard?.projects?.find((project) => project._id === selectedProjectId) || dashboard?.projects?.[0],
   );
@@ -617,6 +619,7 @@
     showProjectRename = false;
     userId = null;
     loggingIn = false;
+    showIntro = false;
     dashboard = null;
     Meteor.logout(() => {
       userId = null;
@@ -626,6 +629,10 @@
 
   function changeLocale() {
     locale.set(selectedLocale);
+  }
+
+  function toggleIntro() {
+    showIntro = !showIntro;
   }
 
   function formatDate(value) {
@@ -788,7 +795,7 @@
 </script>
 
 <main class="shell">
-  <section class="hero">
+  <section class:hero-collapsed={!shouldShowIntro} class="hero">
     <nav class="nav">
       <div class="brand">
         <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
@@ -798,6 +805,11 @@
           <circle cx="47" cy="47" r="3.6" fill="#F2B84B"/>
         </svg>
         <span>TraceMind</span>
+        {#if userId}
+          <button class="intro-toggle" type="button" aria-expanded={showIntro} onclick={toggleIntro}>
+            {showIntro ? $t("Hide introduction") : $t("Introduction")}
+          </button>
+        {/if}
       </div>
       <div class="nav-actions">
         <label class="language-label" for="locale-select">
@@ -814,6 +826,7 @@
       </div>
     </nav>
 
+    {#if shouldShowIntro}
     <div class="hero-grid">
       <div class="hero-copy">
         <h1>
@@ -879,8 +892,10 @@
         </div>
       </div>
     </div>
+    {/if}
   </section>
 
+  {#if shouldShowIntro}
   <section id="how" class="workflow">
     <div>
       <p class="section-label">{$t("AI-driven Vibe Analytics")}</p>
@@ -1031,6 +1046,9 @@
       </div>
     </div>
   </section>
+  {:else}
+    <span id="how" class="intro-anchor" aria-hidden="true"></span>
+  {/if}
 
   <section id="console" class="console">
     <div class="console-header">
