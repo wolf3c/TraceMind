@@ -7,7 +7,10 @@
   import packageInfo from "../../package.json";
   import { buildAgentInstallPrompt } from "./agent_setup";
   import { resolveConsoleState } from "./console_state";
+  import EventStreamPanel from "./EventStreamPanel.svelte";
   import { locale, locales, t } from "./i18n/i18n";
+  import ProjectHealthPanel from "./ProjectHealthPanel.svelte";
+  import ProjectSetupPanel from "./ProjectSetupPanel.svelte";
   import {
     mergeProjectIntoDashboard,
     resolveInitialProjectSummaryState,
@@ -547,6 +550,16 @@
 
   function replaceProject(updatedProject) {
     dashboard = mergeProjectIntoDashboard(dashboard, updatedProject);
+  }
+
+  function updateMcpTokenName(tokenId, name) {
+    if (!primaryProject) return;
+    replaceProject({
+      ...primaryProject,
+      mcpTokens: primaryProject.mcpTokens.map((token) => (
+        token.id === tokenId ? { ...token, name } : token
+      )),
+    });
   }
 
   async function createMcpToken() {
@@ -1202,464 +1215,93 @@
           </p>
         </div>
 
-        <div class="setup-panel card-panel">
-          {#if primaryProject}
-            <div class="project-console-header">
-              <div class="project-title">
-                <span>{$t("Current project")}</span>
-                <strong>{primaryProject.name}</strong>
-              </div>
-              <div class="project-console-signals" aria-label="Current project signal summary">
-                <span>{topEventType}</span>
-                <span>{topPath}</span>
-              </div>
-            </div>
-            <div class="project-toolbar">
-              <label class="field-label project-selector" for="selected-project">
-                <span>{$t("Switch project")}</span>
-                <select id="selected-project" name="selectedProject" value={selectedProjectId} onchange={changeSelectedProject}>
-                  {#each dashboard.projects as project}
-                    <option value={project._id}>{project.name}</option>
-                  {/each}
-                  <option value={newProjectOption}>{$t("New project")}</option>
-                </select>
-              </label>
-              <div class="project-action-menu">
-                <button class="ghost project-more-button" type="button" onclick={toggleProjectActions} aria-expanded={showProjectActions} aria-label={$t("Project actions")}>
-                  ⋯
-                </button>
-                {#if showProjectActions}
-                  <div class="project-action-popover">
-                    <button class="ghost" type="button" onclick={startProjectRename} disabled={loading}>
-                      {$t("Rename project")}
-                    </button>
-                    <button class="ghost danger" type="button" onclick={removeProject} disabled={loading}>
-                      {$t("Delete project")}
-                    </button>
-                  </div>
-                {/if}
-              </div>
-            </div>
-            {#if showProjectCreate}
-              <div class="project-create-row">
-                <input id="project-name" name="projectName" bind:value={projectName} placeholder={$t("Production Web App")} />
-                <button type="button" onclick={createProject} disabled={loading || !projectName.trim()}>
-                  {$t("Create")}
-                </button>
-                <button class="ghost" type="button" onclick={cancelProjectCreate} disabled={loading}>
-                  {$t("Cancel")}
-                </button>
-              </div>
-            {/if}
-            {#if showProjectRename}
-              <div class="project-create-row">
-                <input id="project-rename" name="projectRename" bind:value={renameProjectName} placeholder={$t("Project name")} />
-                <button type="button" onclick={renameProject} disabled={loading || !renameProjectName.trim()}>
-                  {$t("Save")}
-                </button>
-                <button class="ghost" type="button" onclick={cancelProjectRename} disabled={loading}>
-                  {$t("Cancel")}
-                </button>
-              </div>
-            {/if}
-            <label class="field-label">
-              <span>{$t("Project key")}</span>
-              <div class="field-copy-group">
-                <input id="project-key" name="projectKey" readonly value={primaryProject.projectKey} />
-                <button class:copied={copiedTarget === "project-key"} class="ghost compact-copy" type="button" onclick={() => copyText("project-key", primaryProject.projectKey, "Project key copied.")}>
-                  {copiedLabel("project-key")}
-                </button>
-              </div>
-            </label>
-            <div class="agent-setup-panel">
-              <div class="agent-setup-header">
-                <div>
-                  <span>{$t("Coding Agent Setup")}</span>
-                  <strong>{$t("Copy the install prompt and send it to your coding agent.")}</strong>
-                </div>
-                <button class:copied={copiedTarget === "agent-install-prompt"} class="ghost" type="button" onclick={copyAgentInstallPrompt} disabled={!agentInstallPrompt}>
-                  {copiedTarget === "agent-install-prompt" ? $t("Copied install prompt") : $t("Copy install prompt")}
-                </button>
-              </div>
-              {#if !agentInstallPrompt}
-                <p class="empty">{$t("Create an MCP token before generating the coding agent setup prompt.")}</p>
-              {/if}
-            </div>
-
-            <details class="disclosure-panel">
-              <summary>
-                <span>{$t("Manage MCP tokens")}</span>
-              </summary>
-              <div class="mcp-token-panel">
-                <div class="mcp-token-header">
-                  <div>
-                    <span>{$t("MCP Tokens")}</span>
-                    <strong>{$t("Assign independent MCP credentials to members or agents")}</strong>
-                  </div>
-                  <div class="mcp-token-create">
-                    <input id="mcp-token-name" name="mcpTokenName" bind:value={mcpTokenName} placeholder={$t("Cursor / Claude / teammate")} />
-                    <button type="button" onclick={createMcpToken} disabled={loading}>{$t("Add")}</button>
-                  </div>
-                </div>
-                {#if primaryProject.mcpTokens.length}
-                  <div class="mcp-token-list">
-                    {#each primaryProject.mcpTokens as token (token.id)}
-                      <div class="mcp-token-row">
-                        <label class="field-label">
-                          <span>{$t("Name")}</span>
-                          <input id={`mcp-token-name-${token._id}`} name={`mcpTokenName-${token._id}`} bind:value={token.name} />
-                        </label>
-                        <label class="field-label">
-                          <span>{$t("Token")}</span>
-                          <input id={`mcp-token-value-${token._id}`} name={`mcpTokenValue-${token._id}`} readonly value={token.token} />
-                        </label>
-                        <div class="mcp-url-copy">
-                          <span>{$t("MCP URL")}</span>
-                          <button class:copied={copiedTarget === `mcp-url-${token.id}`} class="ghost compact-copy" type="button" onclick={() => copyText(`mcp-url-${token.id}`, `${currentOrigin()}/mcp?mcpToken=${token.token}`, "MCP URL copied.")}>
-                            {copiedLabel(`mcp-url-${token.id}`)}
-                          </button>
-                        </div>
-                        <div class="mcp-token-actions">
-                          <button class="ghost" type="button" onclick={() => renameMcpToken(token)} disabled={loading}>
-                            {$t("Save name")}
-                          </button>
-                          <button class="ghost" type="button" onclick={() => refreshMcpToken(token)} disabled={loading}>
-                            {$t("Refresh")}
-                          </button>
-                          <button class="ghost danger" type="button" onclick={() => removeMcpToken(token)} disabled={loading}>
-                            {$t("Delete")}
-                          </button>
-                        </div>
-                      </div>
-                    {/each}
-                  </div>
-                {:else}
-                  <p class="empty">{$t("This project has no MCP token. Add one so AI agents can read semantic events and submit developer feedback.")}</p>
-                {/if}
-              </div>
-            </details>
-
-            <details class="disclosure-panel source-disclosure">
-              <summary>
-                <span>{$t("Source statistics")}</span>
-              </summary>
-              <div class="source-panel">
-                <p class="disclosure-description">{$t("See recent sources writing to this project key")}</p>
-                {#if sourceSummary.length}
-                  <div class="source-list">
-                    {#each sourceSummary as source (`${source.sourceType}:${source.sourceKey}`)}
-                      <div class:blocked={source.blocked} class="source-row">
-                        <div>
-                          <strong>{source.sourceLabel || source.sourceKey}</strong>
-                          <span>{source.sourceType} / {source.sourceKey}</span>
-                        </div>
-                        <div>
-                          <span>{$t("Events")}</span>
-                          <strong>{source.count}</strong>
-                        </div>
-                        <div>
-                          <span>{$t("Last seen")}</span>
-                          <strong>{formatDate(source.lastSeenAt)}</strong>
-                        </div>
-                        {#if source.blocked}
-                          <button class="ghost" type="button" onclick={() => unblockSource(source)} disabled={loading}>
-                            {$t("Unblock")}
-                          </button>
-                        {:else}
-                          <button class="ghost danger" type="button" onclick={() => blockSource(source)} disabled={loading}>
-                            {$t("Block")}
-                          </button>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {:else}
-                  <p class="empty">{$t("No source data yet. Source statistics will appear after events are captured.")}</p>
-                {/if}
-              </div>
-            </details>
-
-          {/if}
-        </div>
+        <ProjectSetupPanel
+          {primaryProject}
+          {dashboard}
+          {selectedProjectId}
+          {newProjectOption}
+          {loading}
+          bind:projectName
+          bind:renameProjectName
+          bind:mcpTokenName
+          {showProjectCreate}
+          {showProjectActions}
+          {showProjectRename}
+          {copiedTarget}
+          {agentInstallPrompt}
+          {sourceSummary}
+          {topEventType}
+          {topPath}
+          {currentOrigin}
+          {copiedLabel}
+          {changeSelectedProject}
+          {toggleProjectActions}
+          {startProjectRename}
+          {removeProject}
+          {createProject}
+          {cancelProjectCreate}
+          {renameProject}
+          {cancelProjectRename}
+          {copyText}
+          {copyAgentInstallPrompt}
+          {createMcpToken}
+          {renameMcpToken}
+          {refreshMcpToken}
+          {removeMcpToken}
+          {updateMcpTokenName}
+          {formatDate}
+          {blockSource}
+          {unblockSource}
+        />
       </div>
 
       <div class="events card-panel">
-        <div class="events-header">
-          <div>
-            <div class="health-title-row">
-              <span>{$t("Project health overview")}</span>
-              <strong class={`health-status ${health?.status === "needs_attention" ? "needs-attention" : ""}`}>
-                {health?.status === "needs_attention" ? $t("Needs attention") : $t("Normal")}
-              </strong>
-            </div>
-            <h3>{primaryProject?.name || $t("Project")}</h3>
-            <p>{$t("Daily report compared with the previous day.")}</p>
-            <div class="report-date-control" aria-label={$t("Project health report date")}>
-              <button class:active={selectedReportDate === todayReportDate} type="button" onclick={() => selectReportDate(todayReportDate)}>
-                {$t("Today")}
-              </button>
-              <button class:active={selectedReportDate === yesterdayReportDate} type="button" onclick={() => selectReportDate(yesterdayReportDate)}>
-                {$t("Yesterday")}
-              </button>
-              <button class:active={selectedReportDate === dayBeforeReportDate} type="button" onclick={() => selectReportDate(dayBeforeReportDate)}>
-                {$t("Day before")}
-              </button>
-              <input type="date" value={selectedReportDate} max={todayReportDate} onchange={changeReportDate} aria-label={$t("Select report date")} />
-            </div>
-            {#if health?.attentionSummary}
-              <p class="health-attention">{$t("Needs attention")}: {health.attentionSummary}</p>
-            {/if}
-          </div>
-          <div class="refresh-control">
-            <span class="refresh-age">{projectSummaryRefreshAge}</span>
-            <button class="ghost" type="button" onclick={retryProjectSummary} disabled={projectSummaryLoading || !primaryProject}>
-              {projectSummaryLoading ? $t("Loading project events...") : $t("Refresh")}
-            </button>
-          </div>
-        </div>
-        <div class="event-metrics health-metrics" aria-label="Current project health summary">
-          <details class="health-card">
-            <summary>
-              <span>{$t("Active users")}</span>
-              <strong>{formatNumber(healthCurrent.activeUsers)}</strong>
-              <small class={trendClass(health?.trends?.activeUsers)}>{formatTrend(health?.trends?.activeUsers)}</small>
-              <em>{formatNumber(healthCurrent.newUsers)} {$t("new users")}</em>
-            </summary>
-            <dl class="health-detail-list">
-              <div><dt>{$t("New users")}</dt><dd>{formatNumber(healthCurrent.newUsers)}</dd></div>
-              <div><dt>{$t("D2 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d2)}</dd></div>
-              <div><dt>{$t("D3 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d3)}</dd></div>
-              <div><dt>{$t("D7 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d7)}</dd></div>
-              <div><dt>{$t("D30 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d30)}</dd></div>
-              <div><dt>{$t("User regions")}</dt><dd>{topCountText(healthCurrent.userRegions?.[0])}</dd></div>
-              <div><dt>{$t("User devices")}</dt><dd>{topCountText(healthCurrent.deviceDistribution?.[0])}</dd></div>
-            </dl>
-          </details>
-          <details class="health-card">
-            <summary>
-              <span>{$t("Active sessions")}</span>
-              <strong>{formatNumber(healthCurrent.sessionCount)}</strong>
-              <small class={trendClass(health?.trends?.sessions)}>{formatTrend(health?.trends?.sessions)}</small>
-              <em>{formatDecimal(healthCurrent.averageSessionEvents)} {$t("events/session")}</em>
-            </summary>
-            <dl class="health-detail-list">
-              <div><dt>{$t("Session sources")}</dt><dd>{topCountText(healthCurrent.sessionSources?.[0])}</dd></div>
-              <div><dt>{$t("Session pages")}</dt><dd>{healthCurrent.sessionPaths?.[0] ? `${healthCurrent.sessionPaths[0].path} · ${formatNumber(healthCurrent.sessionPaths[0].count)}` : $t("No data")}</dd></div>
-              <div><dt>{$t("Average session events")}</dt><dd>{formatDecimal(healthCurrent.averageSessionEvents)}</dd></div>
-            </dl>
-          </details>
-          <details class="health-card">
-            <summary>
-              <span class="health-card-title">
-                {$t("Average active time per user")}
-                <button
-                  class="health-info-button"
-                  type="button"
-                  aria-expanded={showActiveTimeTip}
-                  aria-label={$t("Active time collection logic")}
-                  onclick={toggleActiveTimeTip}
-                >i</button>
-                {#if showActiveTimeTip}
-                  <span class="health-info-popover" role="tooltip">
-                    {$t("Active time counts when the app is in the foreground and the user has recent interaction. Web also requires the page to be visible and the browser window focused; missing legacy active-time data is counted as 0.")}
-                  </span>
-                {/if}
-              </span>
-              <strong>{formatDuration(healthCurrent.averageActiveDurationMs)}</strong>
-              <small class={trendClass(health?.trends?.averageActiveDuration)}>{formatTrend(health?.trends?.averageActiveDuration)}</small>
-              <em>{$t("averaged by active users")}</em>
-            </summary>
-            <dl class="health-detail-list">
-              <div><dt>{$t("Average active time per user")}</dt><dd>{formatDuration(healthCurrent.averageActiveDurationMs)}</dd></div>
-              <div class="health-detail-row-stacked">
-                <dt>{$t("Longest users Top 3")}</dt>
-                <dd>
-                  {#if healthCurrent.topDurationUsers?.length}
-                    <ol class="health-top-list" aria-label={$t("Longest users Top 3")}>
-                      {#each healthCurrent.topDurationUsers as item, index (`duration-user-${index}-${topItemLabel(item)}-${item.durationMs}`)}
-                        <li class="health-top-item">
-                          <span class="health-top-rank">{index + 1}</span>
-                          <span class="health-top-label">{topItemLabel(item)}</span>
-                          <strong>{formatDuration(item.durationMs)}</strong>
-                        </li>
-                      {/each}
-                    </ol>
-                  {:else}
-                    {$t("No data")}
-                  {/if}
-                </dd>
-              </div>
-              <div class="health-detail-row-stacked">
-                <dt>{$t("Longest pages Top 3")}</dt>
-                <dd>
-                  {#if healthCurrent.topDurationPaths?.length}
-                    <ol class="health-top-list" aria-label={$t("Longest pages Top 3")}>
-                      {#each healthCurrent.topDurationPaths as item, index (`duration-path-${index}-${topItemLabel(item)}-${item.durationMs}`)}
-                        <li class="health-top-item">
-                          <span class="health-top-rank">{index + 1}</span>
-                          <span class="health-top-label">{topItemLabel(item)}</span>
-                          <strong>{formatDuration(item.durationMs)}</strong>
-                        </li>
-                      {/each}
-                    </ol>
-                  {:else}
-                    {$t("No data")}
-                  {/if}
-                </dd>
-              </div>
-              <div class="health-detail-row-stacked">
-                <dt>{$t("Bounce pages Top 3")}</dt>
-                <dd>
-                  {#if healthCurrent.topBouncePages?.length}
-                    <ol class="health-top-list" aria-label={$t("Bounce pages Top 3")}>
-                      {#each healthCurrent.topBouncePages as item, index (`bounce-page-${index}-${topItemLabel(item)}-${item.bounces}-${item.sessions}`)}
-                        <li class="health-top-item">
-                          <span class="health-top-rank">{index + 1}</span>
-                          <span class="health-top-label">{topItemLabel(item)}</span>
-                          <strong class="health-top-metric">{bouncePageMetricText(item)}</strong>
-                        </li>
-                      {/each}
-                    </ol>
-                  {:else}
-                    {$t("No data")}
-                  {/if}
-                </dd>
-              </div>
-              <div class="health-detail-row-stacked">
-                <dt>{$t("Top events Top 3")}</dt>
-                <dd>
-                  {#if healthCurrent.topEvents?.length}
-                    <ol class="health-top-list" aria-label={$t("Top events Top 3")}>
-                      {#each healthCurrent.topEvents as item, index (`event-${index}-${topItemLabel(item)}-${item.count}`)}
-                        <li class="health-top-item">
-                          <span class="health-top-rank">{index + 1}</span>
-                          <span class="health-top-label">{topItemLabel(item)}</span>
-                          <strong>{formatNumber(item.count)}</strong>
-                        </li>
-                      {/each}
-                    </ol>
-                  {:else}
-                    {$t("No data")}
-                  {/if}
-                </dd>
-              </div>
-            </dl>
-          </details>
-          <details class="health-card">
-            <summary>
-              <span>{$t("Total events")}</span>
-              <strong>{formatNumber(healthCurrent.eventCount)}</strong>
-              <small class={trendClass(health?.trends?.events)}>{formatTrend(health?.trends?.events)}</small>
-              <em>{$t("user behavior events on selected day")}</em>
-            </summary>
-            <dl class="health-detail-list">
-              <div class="health-detail-row-stacked">
-                <dt>{$t("Top events Top 3")}</dt>
-                <dd>
-                  {#if healthCurrent.topEvents?.length}
-                    <ol class="health-top-list" aria-label={$t("Top events Top 3")}>
-                      {#each healthCurrent.topEvents as item, index (`event-${index}-${topItemLabel(item)}-${item.count}`)}
-                        <li class="health-top-item">
-                          <span class="health-top-rank">{index + 1}</span>
-                          <span class="health-top-label">{topItemLabel(item)}</span>
-                          <strong>{formatNumber(item.count)}</strong>
-                        </li>
-                      {/each}
-                    </ol>
-                  {:else}
-                    {$t("No data")}
-                  {/if}
-                </dd>
-              </div>
-              <div><dt>{$t("Needs attention")}</dt><dd>{health?.attentionItems?.map((item) => item.message).join(" / ") || $t("No attention items")}</dd></div>
-            </dl>
-          </details>
-          <details class="health-card">
-            <summary>
-              <span>{$t("Delivery health")}</span>
-              <strong>{formatNumber(deliveryDropped)}</strong>
-              <small class={delivery.failedFlushes ? "trend-negative" : "trend-flat"}>
-                {delivery.failedFlushes ? `${formatNumber(delivery.failedFlushes)} ${$t("failed flushes")}` : $t("No failed flushes")}
-              </small>
-              <em>{$t("dropped queue records")}</em>
-            </summary>
-            <dl class="health-detail-list">
-              <div><dt>{$t("Accepted uploads")}</dt><dd>{formatNumber(delivery.accepted)}</dd></div>
-              <div><dt>{$t("Ignored uploads")}</dt><dd>{formatNumber(delivery.ignored)}</dd></div>
-              <div><dt>{$t("Retry count")}</dt><dd>{formatNumber(delivery.retryCount)}</dd></div>
-              <div><dt>{$t("Coalesced presence")}</dt><dd>{formatNumber(delivery.coalescedPresence)}</dd></div>
-              <div><dt>{$t("Max queue depth")}</dt><dd>{formatNumber(delivery.maxQueueDepth)}</dd></div>
-              <div><dt>{$t("Last successful flush")}</dt><dd>{delivery.lastSuccessfulFlushAt ? compactDate(delivery.lastSuccessfulFlushAt) : $t("No data")}</dd></div>
-            </dl>
-          </details>
-        </div>
-        {#if projectSummaryError}
-          <div class="inline-error" role="alert">
-            <strong>{$t("Could not load current project events.")}</strong>
-            <span>{projectSummaryError}</span>
-          </div>
-        {:else if projectSummaryLoading && !selectedProjectSummary}
-          <p class="empty">{$t("Loading project events...")}</p>
-        {:else}
-          <div class="event-stream-header">
-            <div class="event-stream-title">
-              <span>{$t("Detailed event stream")}</span>
-              <p>{showEventStream
-                ? $t("Recent behavior evidence from the selected project. Showing {{count}} loaded rows.", { count: displayedRecentEvents.length })
-                : $t("Open the event stream to load behavior evidence for the selected day.")}</p>
-            </div>
-            <div class="event-stream-total" aria-label={$t("Selected day")}>
-              <span>{$t("Selected day")}</span>
-              <strong>{$t("{{count}} events", {
-                count: formatNumber(healthCurrent.eventCount),
-              })}</strong>
-            </div>
-          </div>
-          {#if !showEventStream}
-            <div class="event-stream-collapsed">
-              <button class="ghost" type="button" onclick={openEventStream} disabled={!primaryProject || eventStreamLoading} aria-expanded={showEventStream}>
-                {eventStreamLoading ? $t("Loading project events...") : $t("Open event stream")}
-              </button>
-            </div>
-          {:else if eventStreamError}
-            <div class="inline-error" role="alert">
-              <strong>{$t("Could not load current project events.")}</strong>
-              <span>{eventStreamError}</span>
-            </div>
-          {:else if eventStreamLoading && !displayedRecentEvents.length}
-            <p class="empty">{$t("Loading project events...")}</p>
-          {:else if displayedRecentEvents.length}
-            <div class="event-list" role="list">
-              {#each displayedRecentEvents as event (event._id)}
-                <article class="event-row" role="listitem">
-                  <div class="event-row-main">
-                    <div class="event-row-title">
-                      <strong>{event.title}</strong>
-                    </div>
-                    <p>{event.meaning}</p>
-                  </div>
-                  <div class="event-row-meta">
-                    <span>{compactDate(event.occurredAt)}</span>
-                    <span>{eventSourceLabel(event)}</span>
-                    <span>{eventActorLabel(event)}</span>
-                  </div>
-                </article>
-              {/each}
-            </div>
-            <div class="event-list-footer">
-              <p class="event-list-note">{$t("Loaded {{count}} events.", {
-                count: formatNumber(displayedRecentEvents.length),
-              })}</p>
-              {#if eventStreamHasMore}
-                <button class="ghost" type="button" onclick={loadMoreEvents} disabled={eventStreamLoading}>
-                  {eventStreamLoading ? $t("Loading project events...") : $t("Load more")}
-                </button>
-              {/if}
-            </div>
-          {:else}
-            <p class="empty">{$t("No current project events yet. Add the script to this project, generate behavior, then refresh.")}</p>
-          {/if}
-        {/if}
+        <ProjectHealthPanel
+          {primaryProject}
+          {health}
+          {healthCurrent}
+          {delivery}
+          {deliveryDropped}
+          {selectedReportDate}
+          {todayReportDate}
+          {yesterdayReportDate}
+          {dayBeforeReportDate}
+          {projectSummaryRefreshAge}
+          {projectSummaryLoading}
+          {showActiveTimeTip}
+          {selectReportDate}
+          {changeReportDate}
+          {retryProjectSummary}
+          {toggleActiveTimeTip}
+          {formatNumber}
+          {formatDecimal}
+          {formatDuration}
+          {compactDate}
+          {formatTrend}
+          {trendClass}
+          {retentionText}
+          {topCountText}
+          {topItemLabel}
+          {bouncePageMetricText}
+        />
+        <EventStreamPanel
+          {primaryProject}
+          {healthCurrent}
+          {projectSummaryError}
+          {projectSummaryLoading}
+          {selectedProjectSummary}
+          {showEventStream}
+          {eventStreamError}
+          {eventStreamLoading}
+          {eventStreamHasMore}
+          {displayedRecentEvents}
+          {openEventStream}
+          {loadMoreEvents}
+          {formatNumber}
+          {compactDate}
+          {eventSourceLabel}
+          {eventActorLabel}
+        />
       </div>
     {/if}
 
