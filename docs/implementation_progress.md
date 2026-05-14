@@ -68,12 +68,12 @@ Then add the capture snippet to a small test web page, generate several interact
 ### Completed
 
 - Aligned the developer console UI more closely with `DESIGN.md`: compacted the hero status treatment, moved MCP readiness into the live-data panel, added a selected-project console header, and changed recent project events from a loose text list into dense behavior-evidence rows with event type, time, path, source, and actor metadata.
-- Extended `tracemind.capture_setup` with platform-specific setup output for Web, iOS, Android, and React Native while keeping Web as the default.
+- Extended `tracemind.capture_setup` with platform-specific setup output for Web, iOS, macOS, Android, and React Native while keeping Web as the default.
 - Expanded TraceMind coding-agent guidance so native setup uses structured MCP fields for install commands, files to edit, initialization location, idempotency checks, verification commands, source model, and privacy constraints.
 - Added `/api/capture` batch ingestion for SDK queues using `{ projectKey, events: [...] }`, with per-event source normalization and source blocking.
 - Added initial native SDK packages under `sdk/ios`, `sdk/android`, and `sdk/react-native`, including one-line `TraceMind.start(...)` entrypoints, target hashing, sensitive-field filtering, local queueing, and batch flush paths.
 - Added native manual capture parity with Web: `TraceMind.identify(...)`, primitive string/number/boolean properties and context, user identity persistence, and React Native bridge forwarding.
-- Added independent user presence sessions for Web, iOS, Android, and React Native: `/api/presence`, `tracemind_presence_sessions`, 5-second foreground heartbeat, route/screen/background segment boundaries, and dashboard/MCP online-duration summaries without polluting raw or semantic events.
+- Added independent user presence sessions for Web, iOS, macOS, Android, and React Native: `/api/presence`, `tracemind_presence_sessions`, 5-second foreground heartbeat, route/screen/window/background segment boundaries, and dashboard/MCP online-duration summaries without polluting raw or semantic events.
 - Simplified the developer console setup panel so environment-specific install and usage instructions live in documentation, while the console keeps only the project key, setup docs link, and Coding Agent entrypoint.
 - Updated Auto Capture, semantic event, MCP, README, and coding-agent documentation for cross-platform capture and native manual capture guidance.
 - Extended TraceMind setup planning to third-party MCP server and Agent Skill instrumentation with new `mcp_node`, `mcp_python`, and `agent_skill` setup surfaces, safe MCP runtime event types, and SDK test coverage for MCP tool/resource/prompt metadata capture.
@@ -85,7 +85,7 @@ Then add the capture snippet to a small test web page, generate several interact
 - Automatic network hook, crash reporting, session replay, screenshots, or native view snapshots.
 - Published package manager distribution for SwiftPM, Gradle, or npm.
 - Generic server request Auto Capture, request/response logging, HTTP hooks, database hooks, crash reporting, and log capture.
-- Device-lab integration smoke tests against real iOS/Android/React Native sample apps.
+- Device-lab integration smoke tests against real iOS/macOS/Android/React Native sample apps.
 
 ## 2026-05-09
 
@@ -97,7 +97,7 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added stable Auto Capture target identity and action aggregation: Web now resolves interactive ancestors, prefers existing engineering identifiers, emits `targetIdentity`, `identityConfidence`, `actionKey`, and keeps raw `target` details for investigation.
 - Completed core Web signal coverage for product analysis: debounced input edits, change events, submit intent, `replaceState`, `hashchange`, and query-free event paths.
 - Added manual capture compatibility fields (`relatedActionKey`, `relatedTargetHash`, `correlationId`) so business-result events can be correlated with auto-captured actions without overriding manual `eventName`.
-- Aligned native SDK payloads with the Web action model and improved capture targets: iOS now hooks `UIControl` actions, Android resolves the touched view instead of relying only on focus, and React Native preserves native platform behavior while marking framework metadata.
+- Aligned native SDK payloads with the Web action model and improved capture targets: iOS now hooks `UIControl` actions, macOS records AppKit app/window screen changes, Android resolves the touched view instead of relying only on focus, and React Native preserves native platform behavior while marking framework metadata.
 
 ## 2026-05-11
 

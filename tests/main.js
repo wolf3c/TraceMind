@@ -178,6 +178,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.mcp.tools.includes('tracemind.project_info'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
       assert.ok(manifest.mcp.tools.includes('tracemind.submit_feedback'));
+      assert.ok(manifest.platforms.includes('macos'));
       assert.ok(manifest.platforms.includes('mcp_node'));
       assert.ok(manifest.platforms.includes('mcp_python'));
       assert.ok(manifest.platforms.includes('agent_skill'));
@@ -728,9 +729,9 @@ describe('TraceMind', function () {
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
-      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
-      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.'));
+      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
@@ -999,9 +1000,14 @@ describe('TraceMind', function () {
       };
 
       const setupTool = mcpTools(project).find((tool) => tool.name === 'tracemind.capture_setup');
+      const feedbackTool = mcpTools(project).find((tool) => tool.name === 'tracemind.submit_feedback');
       assert.strictEqual(setupTool.inputSchema.properties.platform.type, 'string');
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('macos'));
+      assert.ok(feedbackTool.inputSchema.properties.environment.properties.platform.enum.includes('macos'));
+      assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('macos'));
 
       const ios = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'ios' });
+      const macos = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'macos' });
       const android = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'android' });
       const reactNative = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'react_native' });
 
@@ -1019,6 +1025,24 @@ describe('TraceMind', function () {
       assert.ok(ios.structuredContent.manualCaptureExamples.some((example) => example.includes('"amount": 29')));
       assert.ok(ios.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
       assert.ok(ios.structuredContent.networkRestrictionChecks.some((check) => check.includes('NSAppTransportSecurity')));
+
+      assert.strictEqual(macos.structuredContent.platform, 'macos');
+      assert.strictEqual(macos.structuredContent.eventPlatform, 'macos');
+      assert.ok(macos.structuredContent.install.includes('Swift Package'));
+      assert.ok(macos.structuredContent.installCommands.some((step) => step.includes('sdk/ios')));
+      assert.ok(macos.structuredContent.filesToEdit.includes('App.swift'));
+      assert.ok(macos.structuredContent.initLocation.includes('user window'));
+      assert.ok(macos.structuredContent.idempotencyChecks.some((check) => check.includes('TraceMind.start(')));
+      assert.ok(macos.structuredContent.initSnippet.includes('TraceMind.start(projectKey: "tm_proj_native")'));
+      assert.ok(macos.structuredContent.source.type === 'macos');
+      assert.ok(macos.structuredContent.source.key.includes('bundle id'));
+      assert.ok(macos.structuredContent.sourceModel.includes('platform remains macos'));
+      assert.ok(macos.structuredContent.autoCapturedSignals.includes('window or main-window change'));
+      assert.ok(!macos.structuredContent.autoCapturedSignals.includes('input changed without input values'));
+      assert.ok(macos.structuredContent.verificationCommands.includes('swift test --package-path sdk/ios'));
+      assert.ok(macos.structuredContent.identifySnippet.includes('TraceMind.identify'));
+      assert.ok(macos.structuredContent.manualCaptureExamples.some((example) => example.includes('TraceMind.setScreen')));
+      assert.ok(macos.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
 
       assert.strictEqual(android.structuredContent.platform, 'android');
       assert.ok(android.structuredContent.install.includes('Gradle'));
@@ -1060,6 +1084,12 @@ describe('TraceMind', function () {
         assert.ok(result.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
         assert.ok(!JSON.stringify(result.structuredContent).includes('tm_mcp_'));
       });
+      assert.strictEqual(macos.structuredContent.tokenType, 'public_auto_capture_project_key');
+      assert.deepStrictEqual(macos.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
+      assert.ok(macos.structuredContent.manualCaptureWorkflow.some((step) => step.includes('tracemind.validate_event_payload')));
+      assert.ok(macos.structuredContent.privacyConstraints.some((constraint) => constraint.includes('Do not capture input values')));
+      assert.ok(macos.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
+      assert.ok(!JSON.stringify(macos.structuredContent).includes('tm_mcp_'));
     });
 
     it('returns third-party MCP and agent skill setup snippets through MCP', async function () {
@@ -1665,12 +1695,22 @@ describe('TraceMind', function () {
       },
     );
 
-    assert.deepStrictEqual(
+      assert.deepStrictEqual(
       normalizeCaptureSource({ platform: 'ios', source: { key: 'com.example.app', label: 'Example iOS' } }),
       {
         sourceType: 'ios',
         sourceKey: 'com.example.app',
         sourceLabel: 'Example iOS',
+        sourceDetails: {},
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({ platform: 'macos', source: { key: 'com.example.mac', label: 'Example macOS' } }),
+      {
+        sourceType: 'macos',
+        sourceKey: 'com.example.mac',
+        sourceLabel: 'Example macOS',
         sourceDetails: {},
       },
     );

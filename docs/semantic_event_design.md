@@ -2,7 +2,7 @@
 
 ## 目标
 
-把 Web、iOS、Android、MCP server、Agent Skill hook 和普通服务端手动埋点统一抽取为稳定的语义事件，让 LLM/MCP 能直接按业务含义、时间、用户、设备、路径等维度查询分析。
+把 Web、iOS、macOS、Android、MCP server、Agent Skill hook 和普通服务端手动埋点统一抽取为稳定的语义事件，让 LLM/MCP 能直接按业务含义、时间、用户、设备、路径等维度查询分析。
 
 ## 当前链路
 
@@ -11,7 +11,7 @@
 3. `buildSemanticEvent()` 对每条原始行为生成一条语义事件。
 4. 原始行为标记为 `processed`，并保存 `semanticEventId`，方便从语义事件回溯原始日志。
 
-在线时长不走这条链路。Web、iOS、Android 和 React Native 通过 `/api/presence` upsert `tracemind_presence_sessions`，用于当前在线和停留时长统计；presence 不生成 raw behavior 或 semantic event。`durationMs` 保留前台/可见 presence 停留时长，Dashboard 健康里的活跃时长使用严格 `activeDurationMs`：前台/可见、Web 焦点窗口、且最近 60 秒内有交互，旧记录缺字段按 0 处理。
+在线时长不走这条链路。Web、iOS、macOS、Android 和 React Native 通过 `/api/presence` upsert `tracemind_presence_sessions`，用于当前在线和停留时长统计；presence 不生成 raw behavior 或 semantic event。`durationMs` 保留前台/可见 presence 停留时长，Dashboard 健康里的活跃时长使用严格 `activeDurationMs`：前台/可见、Web 焦点窗口、且最近 60 秒内有交互，旧记录缺字段按 0 处理。
 
 ## 语义事件字段
 
@@ -91,12 +91,12 @@
 - `deviceId` 是本地持久设备 ID，和 `sessionId` 一起用于跨 session 识别同一设备。
 - `deviceFingerprint` 是基于稳定设备信息计算的轻量指纹，只作为辅助去重字段，不替代登录用户 ID。
 - DAU 口径使用 `userId || anonymousId` 按自然日去重。
-- Web、iOS、Android 和 React Native 都支持 `identify`。Native SDK 会把 `userId` 持久化到本地身份存储，并让后续自动采集和手动 `custom` 事件带上同一个 `userId`。
+- Web、iOS、macOS、Android 和 React Native 都支持 `identify`。Native SDK 会把 `userId` 持久化到本地身份存储，并让后续自动采集和手动 `custom` 事件带上同一个 `userId`。
 
 ## 设备、IP 与地理信息
 
 - Web 自动采集会发送 `deviceInfo`，包括 UA、语言、平台、时区、屏幕、viewport、硬件并发、内存和 referrer。
-- iOS/Android 自动采集会发送平台、系统、框架、bundle id/package name、app label 和 SDK 框架来源；React Native 保持原生 `platform`，并用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记 `react_native`。
+- iOS/macOS/Android 自动采集会发送平台、系统、框架、bundle id/package name、app label 和 SDK 框架来源；macOS 上 `deviceInfo.os` 为 `macOS`，`platform/sourceType` 为 `macos`；React Native 保持原生 `platform`，并用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记 `react_native`。
 - 设备指纹只使用较稳定字段，避免 viewport/referrer 变化导致同一设备被频繁重算。
 - 服务端通过请求头采集 IP，包括 `x-forwarded-for`、`cf-connecting-ip`、`x-real-ip` 和 socket 地址。
 - 地理信息使用无感请求头来源，例如 Cloudflare、Vercel、CloudFront、App Engine 注入的国家、地区、城市字段；后续可接入 IP geo 数据库，但不需要改变事件表结构。
@@ -132,24 +132,24 @@
 
 | eventType | 名称 | 含义 | 常见字段 | 平台 |
 | --- | --- | --- | --- | --- |
-| `page_view` | 页面浏览 | 用户打开或刷新页面，或进入 Native screen/activity/controller，用于分析访问量、落地页、路径入口和页面级留存。 | `title`, `path`, `referrer` | Web, iOS, Android, Server |
-| `click` | 元素点击 | 用户点击 Web 元素或 Native 控件，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度；不保存输入值。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `submit` | 表单提交 | 用户提交表单、点击确认或触发 Native keyboard done/search/send，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, Android |
-| `route_change` | 页面跳转 | 用户在 Web SPA 或 Native app 内发生页面切换，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, Android |
-| `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` | Web, iOS, Android, Server |
+| `page_view` | 页面浏览 | 用户打开或刷新页面，或进入 Native screen/activity/controller/window，用于分析访问量、落地页、路径入口和页面级留存。 | `title`, `path`, `referrer` | Web, iOS, macOS, Android, Server |
+| `click` | 元素点击 | 用户点击 Web 元素或 Native 控件，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, macOS, Android |
+| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度；不保存输入值。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, macOS, Android |
+| `submit` | 表单提交 | 用户提交表单、点击确认或触发 Native keyboard done/search/send，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, macOS, Android |
+| `route_change` | 页面跳转 | 用户在 Web SPA 或 Native app 内发生页面切换，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, macOS, Android |
+| `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` | Web, iOS, macOS, Android, Server |
 | `tool_call` | MCP 工具调用 | MCP server 记录工具调用完成情况，用于分析工具使用量、失败率和耗时。 | `toolName`, `status`, `durationMs`, `errorType`, `resultSizeBucket` | Server |
 | `resource_read` | MCP 资源读取 | MCP server 记录资源读取完成情况，用于分析资源访问、失败率和耗时。 | `resourceName`, `uriScheme`, `uriTemplateHash`, `status`, `durationMs` | Server |
 | `prompt_request` | MCP Prompt 请求 | MCP server 记录 prompt 请求完成情况，用于分析 prompt 使用、失败率和耗时。 | `promptName`, `status`, `durationMs` | Server |
 | `skill_lifecycle` | Agent Skill 生命周期 | 宿主 agent runtime 记录 Skill started/completed/failed 等生命周期信号。 | `skillName`, `version`, `phase`, `success`, `durationMs` | Server |
-| `custom` | 自定义事件 | 开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。 | `eventName`, `properties`, `context` | Web, iOS, Android, Server |
+| `custom` | 自定义事件 | 开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。 | `eventName`, `properties`, `context` | Web, iOS, macOS, Android, Server |
 
 这张表同时暴露给 MCP 的 `tracemind.event_definitions`，用于帮助 LLM 判断应该查询哪个事件。
 
 ## 跨平台扩展原则
 
-- 表结构保持平台无关：`platform` 区分 `web`、`ios`、`android`、`server`，平台差异写入 `deviceInfo`、`sourceDetails`、`properties` 和 `context`。
-- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源；iOS 使用 bundle id；Android 使用 package name；MCP server 使用 server/package 名；普通后端服务使用 `server_app` + service name；Agent Skill 使用 Skill 名或宿主 runtime skill id。
+- 表结构保持平台无关：`platform` 区分 `web`、`ios`、`macos`、`android`、`server`，平台差异写入 `deviceInfo`、`sourceDetails`、`properties` 和 `context`。
+- 来源使用 `sourceType + sourceKey`，避免把 Web-only 的 `hostname` 做成通用字段名。Web 优先使用请求 `Origin` / `Referer` 归一化来源；iOS/macOS 使用 bundle id；Android 使用 package name；MCP server 使用 server/package 名；普通后端服务使用 `server_app` + service name；Agent Skill 使用 Skill 名或宿主 runtime skill id。
 - 自动采集字段和手动埋点字段共用同一事件模型，避免未来增加移动端 SDK 时迁移 Mongo 集合。
 - 移动端可复用 `sessionId`、`anonymousId`、`userId`、`deviceId`、`deviceFingerprint`、`sourceType`、`sourceKey`、`eventType`、`eventName`、`properties`、`context`。
 - 移动端 `target` 统一保存 class/type、accessibility id、resource id、test id、label 摘要、screen 和短层级 path；`targetIdentity` 优先复用 test id、accessibility id、resource id，再回退到 label/path/class；`targetHash` 仍使用 `tm_target_` 前缀。

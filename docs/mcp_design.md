@@ -164,7 +164,7 @@ Input:
 }
 ```
 
-`platform` 可省略，默认 `web`；也可传 `ios`、`android`、`react_native`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。
+`platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。
 
 Output:
 
@@ -240,11 +240,38 @@ Native 示例：
 }
 ```
 
+macOS 示例：
+
+```json
+{
+  "ok": true,
+  "projectKey": "tm_proj_xxx",
+  "platform": "macos",
+  "eventPlatform": "macos",
+  "install": "Add the TraceMind Swift Package from sdk/ios, then initialize TraceMind once from the macOS app bootstrap.",
+  "installCommands": [
+    "Add the TraceMind Swift Package from the TraceMind SDK distribution; in this repo the package is sdk/ios.",
+    "Import TraceMind in App.swift, AppDelegate.swift, or the app startup file that owns launch."
+  ],
+  "initSnippet": "TraceMind.start(projectKey: \"tm_proj_xxx\")",
+  "identifySnippet": "try? TraceMind.identify(\"user_123\", traits: [\"plan\": \"pro\"])",
+  "manualCaptureExamples": [
+    "try? TraceMind.capture(\"custom\", eventName: approvedEventName, path: \"CheckoutWindow\", properties: [\"plan\": \"pro\", \"amount\": 29, \"trial\": true], context: [\"source\": \"pricing\"])",
+    "TraceMind.setScreen(\"CheckoutWindow\")"
+  ],
+  "source": {
+    "type": "macos",
+    "key": "macOS bundle id, for example com.example.app"
+  },
+  "sourceModel": "platform remains macos; sourceKey is the macOS bundle id; sourceDetails.framework is swift."
+}
+```
+
 Native 和 React Native 返回还包含：
 
-- `autoCapturedSignals`: app/session start、screen/page view、tap/click、input changed、submit 等自动采集口径。
+- `autoCapturedSignals`: 平台对应的自动采集口径。iOS/Android/React Native 覆盖 app/session start、screen/page view、tap/click、input changed、submit；macOS v1 覆盖 app/session start、screen/window view 和 window/main-window change。
 - `privacyConstraints`: 不采集输入值、截图、DOM/native snapshot、session replay、secret、token、raw prompt、raw user content 或完整 query URL。
-- `sourceModel`: iOS 使用 bundle id，Android 使用 package name，React Native 保持 `platform` 为 `ios` 或 `android` 并标记 `react_native` framework。
+- `sourceModel`: iOS 和 macOS 使用 bundle id，Android 使用 package name，React Native 保持 `platform` 为 `ios` 或 `android` 并标记 `react_native` framework。
 - `identifySnippet`: 登录成功后绑定稳定业务 `userId` 的示例。
 - `manualCaptureExamples`: 自动采集无法稳定表达业务结果时才使用的 `custom` 示例。
 - `supportedPropertyTypes`: 手动 `properties` / `context` 支持的值类型，目前为 string、number、boolean。

@@ -130,7 +130,7 @@
       <article>
         <span class="tm-badge tm-badge-signal">{$t("Auto Capture")}</span>
         <h3>{$t("Auto capture")}</h3>
-        <p>{$t("TraceMind automatically records page views, clicks, inputs, form submits, route changes, and active time after setup.")}</p>
+        <p>{$t("TraceMind automatically records Web pages, iOS/Android interactions, macOS windows, route changes, and active time after setup.")}</p>
       </article>
       <article>
         <span class="tm-badge tm-badge-amber">{$t("AI-driven")}</span>
@@ -269,4 +269,3 @@
   {:else}
     <span id="how" class="intro-anchor" aria-hidden="true"></span>
   {/if}
-

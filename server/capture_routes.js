@@ -199,7 +199,7 @@ export function mcpTools(project) {
         properties: {
           platform: {
             type: 'string',
-            enum: ['web', 'ios', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'],
+            enum: ['web', 'ios', 'macos', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'],
             description: '要接入的平台；省略时返回 Web 脚本。',
           },
         },
@@ -226,7 +226,7 @@ export function mcpTools(project) {
         properties: {
           intent: { type: 'string', description: '准备记录的用户行为或业务结果。' },
           context: { type: 'string', description: '相关代码或产品流程摘要。' },
-          platform: { type: 'string', description: 'web、ios、android、react_native、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
+          platform: { type: 'string', description: 'web、ios、macos、android、react_native、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
         },
       },
     },
@@ -303,8 +303,8 @@ export function mcpTools(project) {
           environment: {
             type: 'object',
             properties: {
-              platform: { type: 'string', enum: ['web', 'ios', 'android', 'server', 'unknown'] },
-              sourceType: { type: 'string', enum: ['web', 'ios', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown'] },
+              platform: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'server', 'unknown'] },
+              sourceType: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown'] },
               sourceKey: { type: 'string' },
             },
           },
@@ -447,9 +447,9 @@ function guidanceResult(extra = {}) {
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
-      'Call tracemind.capture_setup with platform web, ios, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
+      'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
-      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.',
+      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
@@ -911,6 +911,52 @@ function platformSetup(project, platform) {
     };
   }
 
+  if (platform === 'macos') {
+    return {
+      ...common,
+      platform: 'macos',
+      eventPlatform: 'macos',
+      install: 'Add the TraceMind Swift Package from sdk/ios, then initialize TraceMind once from the macOS app bootstrap.',
+      installCommands: [
+        'Add the TraceMind Swift Package from the TraceMind SDK distribution; in this repo the package is sdk/ios.',
+        'Import TraceMind in App.swift, AppDelegate.swift, or the app startup file that owns launch.',
+      ],
+      filesToEdit: [
+        'Package.swift or the Xcode Swift Package dependency list',
+        'App.swift',
+        'AppDelegate.swift',
+        'SceneDelegate.swift if it owns startup in an older AppKit app',
+      ],
+      initLocation: 'Run once during app startup, before the first user window is shown.',
+      idempotencyChecks: [
+        'Search the app for TraceMind.start(',
+        'Check Package.swift or the Xcode project for an existing TraceMind package dependency.',
+      ],
+      initSnippet: `TraceMind.start(projectKey: "${project.projectKey}")`,
+      source: {
+        type: 'macos',
+        key: 'macOS bundle id, for example com.example.app',
+      },
+      sourceModel: 'platform remains macos; sourceKey is the macOS bundle id; sourceDetails.framework is swift.',
+      autoCapturedSignals: [
+        'app/session start',
+        'screen or window view',
+        'window or main-window change',
+      ],
+      networkRestrictionChecks: IOS_NETWORK_RESTRICTION_CHECKS,
+      verificationCommands: [
+        'swift test --package-path sdk/ios',
+        'Run the app, trigger launch/window focus/screen changes, then query TraceMind raw behaviors or semantic events.',
+      ],
+      identifySnippet: 'try? TraceMind.identify("user_123", traits: ["plan": "pro"])',
+      manualCaptureExamples: [
+        'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutWindow", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "pricing"])',
+        'TraceMind.setScreen("CheckoutWindow")',
+      ],
+      manualCaptureExample: 'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutWindow", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "pricing"])',
+    };
+  }
+
   if (platform === 'android') {
     return {
       ...common,
@@ -1045,7 +1091,7 @@ function captureSetupResult(project, args = {}) {
   }
 
   const requestedPlatform = String(args.platform || '').toLowerCase().replace('-', '_');
-  const platform = ['ios', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http', 'web'].includes(requestedPlatform)
+  const platform = ['ios', 'macos', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http', 'web'].includes(requestedPlatform)
     ? requestedPlatform
     : 'web';
 
@@ -1091,8 +1137,8 @@ function privacyFindings(fields = {}) {
 }
 
 const FEEDBACK_TYPES = new Set(['issue', 'idea']);
-const FEEDBACK_PLATFORMS = new Set(['web', 'ios', 'android', 'server', 'unknown']);
-const FEEDBACK_SOURCE_TYPES = new Set(['web', 'ios', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown']);
+const FEEDBACK_PLATFORMS = new Set(['web', 'ios', 'macos', 'android', 'server', 'unknown']);
+const FEEDBACK_SOURCE_TYPES = new Set(['web', 'ios', 'macos', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown']);
 const FEEDBACK_ARRAY_LIMIT = 20;
 const FEEDBACK_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const FEEDBACK_RATE_WINDOW_MS = 60 * 1000;

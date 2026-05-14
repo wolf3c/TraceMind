@@ -313,21 +313,22 @@ public final class TraceMindClient {
   ) throws -> TraceMindPayload {
     let targetIdentity = target.map { Self.targetIdentity($0) }
     let targetHash = try target.map { try Self.hashTarget($0, identity: targetIdentity) }
-    let actionKey = targetIdentity.map { Self.actionKey(platform: "ios", path: path, type: type, identity: $0) }
+    let platform = Self.platformKey
+    let actionKey = targetIdentity.map { Self.actionKey(platform: platform, path: path, type: type, identity: $0) }
     return TraceMindPayload(
       projectKey: configuration.projectKey,
       sessionId: identityStore.sessionId,
       anonymousId: identityStore.anonymousId,
       deviceId: identityStore.deviceId,
       userId: identityStore.userId,
-      deviceFingerprint: Self.hash("ios:\(configuration.sourceKey):\(identityStore.deviceId)", prefix: "tm_fp_"),
-      platform: "ios",
+      deviceFingerprint: Self.hash("\(platform):\(configuration.sourceKey):\(identityStore.deviceId)", prefix: "tm_fp_"),
+      platform: platform,
       deviceInfo: [
-        "os": "iOS",
+        "os": Self.osName,
         "framework": configuration.framework,
       ],
       source: TraceMindSource(
-        type: "ios",
+        type: platform,
         bundleId: configuration.sourceKey,
         packageName: nil,
         label: configuration.sourceLabel,
@@ -369,14 +370,14 @@ public final class TraceMindClient {
       anonymousId: identityStore.anonymousId,
       deviceId: identityStore.deviceId,
       userId: identityStore.userId,
-      deviceFingerprint: Self.hash("ios:\(configuration.sourceKey):\(identityStore.deviceId)", prefix: "tm_fp_"),
-      platform: "ios",
+      deviceFingerprint: Self.hash("\(Self.platformKey):\(configuration.sourceKey):\(identityStore.deviceId)", prefix: "tm_fp_"),
+      platform: Self.platformKey,
       deviceInfo: [
-        "os": "iOS",
+        "os": Self.osName,
         "framework": configuration.framework,
       ],
       source: TraceMindSource(
-        type: "ios",
+        type: Self.platformKey,
         bundleId: configuration.sourceKey,
         packageName: nil,
         label: configuration.sourceLabel,
@@ -549,6 +550,26 @@ public final class TraceMindClient {
 
   private static func actionKey(platform: String, path: String, type: String, identity: TraceMindTargetIdentity) -> String {
     "\(platform):\(path):\(type):\(identity.key)"
+  }
+
+  private static var platformKey: String {
+#if canImport(UIKit)
+    return "ios"
+#elseif canImport(AppKit)
+    return "macos"
+#else
+    return "ios"
+#endif
+  }
+
+  private static var osName: String {
+#if canImport(UIKit)
+    return "iOS"
+#elseif canImport(AppKit)
+    return "macOS"
+#else
+    return "iOS"
+#endif
   }
 
   static func hash(_ value: String, prefix: String) -> String {
@@ -808,6 +829,111 @@ private extension UIControl {
   @objc func tracemind_sendAction(_ action: Selector, to target: Any?, for event: UIEvent?) {
     TraceMindAutoCapture.recordTap(view: self)
     tracemind_sendAction(action, to: target, for: event)
+  }
+}
+#elseif canImport(AppKit)
+import AppKit
+
+final class TraceMindAutoCapture {
+  private static weak var client: TraceMindClient?
+  private static var heartbeatTimer: Timer?
+  private static var currentScreen = "Application"
+  private static var isPresenceActive = false
+  private static var observers: [NSObjectProtocol] = []
+
+  static func start(client: TraceMindClient) {
+    self.client = client
+    installObservers()
+    if NSApplication.shared.isActive {
+      appDidBecomeActive()
+    }
+  }
+
+  static func setScreen(_ screen: String) {
+    switchScreen(normalizedScreen(screen))
+  }
+
+  private static func installObservers() {
+    if !observers.isEmpty { return }
+    let center = NotificationCenter.default
+    observers = [
+      center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+        appDidBecomeActive()
+      },
+      center.addObserver(forName: NSApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
+        appWillResignActive()
+      },
+      center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { notification in
+        guard let window = notification.object as? NSWindow else { return }
+        switchScreen(screenName(for: window))
+      },
+      center.addObserver(forName: NSWindow.didBecomeMainNotification, object: nil, queue: .main) { notification in
+        guard let window = notification.object as? NSWindow else { return }
+        switchScreen(screenName(for: window))
+      },
+    ]
+  }
+
+  private static func appDidBecomeActive() {
+    let screen = screenName(for: NSApplication.shared.keyWindow ?? NSApplication.shared.mainWindow)
+    currentScreen = screen
+    client?.setScreen(screen)
+    try? client?.capture(type: "page_view", path: screen, title: screen)
+    isPresenceActive = true
+    startPresence("foreground")
+  }
+
+  private static func appWillResignActive() {
+    stopPresence("background")
+  }
+
+  private static func switchScreen(_ screen: String) {
+    let nextScreen = normalizedScreen(screen)
+    if nextScreen == currentScreen { return }
+    currentScreen = nextScreen
+    try? client?.capture(type: "route_change", path: nextScreen, title: nextScreen)
+    if isPresenceActive {
+      Task { try? await client?.switchPresenceScreen(nextScreen) }
+    } else {
+      client?.setScreen(nextScreen)
+    }
+  }
+
+  private static func startPresence(_ state: String) {
+    heartbeatTimer?.invalidate()
+    Task { try? await client?.sendPresence(state: state, path: currentScreen, title: currentScreen) }
+    heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+      Task { try? await client?.sendPresence(state: "heartbeat", path: currentScreen, title: currentScreen) }
+    }
+  }
+
+  private static func stopPresence(_ state: String) {
+    if !isPresenceActive { return }
+    isPresenceActive = false
+    heartbeatTimer?.invalidate()
+    heartbeatTimer = nil
+    Task { try? await client?.sendPresence(state: state, path: currentScreen, title: currentScreen) }
+  }
+
+  private static func screenName(for window: NSWindow?) -> String {
+    guard let window else { return "Application" }
+    if let title = nonEmpty(window.title) {
+      return title
+    }
+    if let controller = window.contentViewController {
+      return String(describing: type(of: controller))
+    }
+    return "Application"
+  }
+
+  private static func nonEmpty(_ value: String?) -> String? {
+    guard let value, !value.isEmpty else { return nil }
+    return value
+  }
+
+  private static func normalizedScreen(_ screen: String) -> String {
+    let next = String(screen.prefix(160))
+    return next.isEmpty ? "Application" : next
   }
 }
 #else

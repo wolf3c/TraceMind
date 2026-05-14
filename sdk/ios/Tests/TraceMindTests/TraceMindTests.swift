@@ -18,6 +18,17 @@ final class RecordingTransport: TraceMindTransport {
   }
 }
 
+#if canImport(UIKit)
+private let expectedSDKPlatform = "ios"
+private let expectedSDKOSName = "iOS"
+#elseif canImport(AppKit)
+private let expectedSDKPlatform = "macos"
+private let expectedSDKOSName = "macOS"
+#else
+private let expectedSDKPlatform = "ios"
+private let expectedSDKOSName = "iOS"
+#endif
+
 final class TraceMindTests: XCTestCase {
   func testBuildsIosPayloadWithoutInputValues() throws {
     let client = TraceMindClient(
@@ -48,15 +59,16 @@ final class TraceMindTests: XCTestCase {
     )
 
     XCTAssertEqual(payload.projectKey, "tm_proj_ios")
-    XCTAssertEqual(payload.platform, "ios")
-    XCTAssertEqual(payload.source.type, "ios")
+    XCTAssertEqual(payload.platform, expectedSDKPlatform)
+    XCTAssertEqual(payload.deviceInfo["os"], expectedSDKOSName)
+    XCTAssertEqual(payload.source.type, expectedSDKPlatform)
     XCTAssertEqual(payload.source.bundleId, "com.example.ios")
     XCTAssertEqual(payload.source.details["framework"], "swift")
     XCTAssertEqual(payload.targetHash?.hasPrefix("tm_target_"), true)
     XCTAssertEqual(payload.targetIdentity?.key, "target:accessibilityId:checkout-primary")
     XCTAssertEqual(payload.identitySource, "accessibilityId")
     XCTAssertEqual(payload.identityConfidence, "high")
-    XCTAssertEqual(payload.actionKey, "ios:CheckoutViewController:click:target:accessibilityId:checkout-primary")
+    XCTAssertEqual(payload.actionKey, "\(expectedSDKPlatform):CheckoutViewController:click:target:accessibilityId:checkout-primary")
     XCTAssertNil(payload.properties["enteredText"])
     XCTAssertEqual(payload.properties["plan"], .string("pro"))
   }
@@ -243,8 +255,9 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(transport.lastPresenceEndpoint?.absoluteString, "https://tracemind.example.com/api/presence")
     XCTAssertEqual(presence.projectKey, "tm_proj_ios")
     XCTAssertEqual(presence.userId, "user_123")
-    XCTAssertEqual(presence.platform, "ios")
-    XCTAssertEqual(presence.source.type, "ios")
+    XCTAssertEqual(presence.platform, expectedSDKPlatform)
+    XCTAssertEqual(presence.deviceInfo["os"], expectedSDKOSName)
+    XCTAssertEqual(presence.source.type, expectedSDKPlatform)
     XCTAssertEqual(presence.path, "CheckoutViewController")
     XCTAssertEqual(presence.screen, "CheckoutViewController")
     XCTAssertEqual(presence.state, "heartbeat")
@@ -253,6 +266,37 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(presence.activeState, "inactive")
     XCTAssertEqual(presence.idleTimeoutMs, 60_000)
   }
+
+#if canImport(AppKit)
+  func testBuildsMacOSPayloadWithMacOSSourceType() throws {
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_macos",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        sourceKey: "com.example.macos",
+        sourceLabel: "Example macOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore()
+    )
+
+    let payload = try client.makePayload(
+      type: "click",
+      path: "MainWindow",
+      target: TraceMindTarget(accessibilityId: "settings-button", screen: "MainWindow")
+    )
+    let presence = client.makePresencePayload(state: "heartbeat", path: "MainWindow")
+
+    XCTAssertEqual(payload.platform, "macos")
+    XCTAssertEqual(payload.deviceInfo["os"], "macOS")
+    XCTAssertEqual(payload.source.type, "macos")
+    XCTAssertEqual(payload.source.bundleId, "com.example.macos")
+    XCTAssertEqual(payload.actionKey, "macos:MainWindow:click:target:accessibilityId:settings-button")
+    XCTAssertEqual(presence.platform, "macos")
+    XCTAssertEqual(presence.deviceInfo["os"], "macOS")
+    XCTAssertEqual(presence.source.type, "macos")
+  }
+#endif
 
   func testSwitchPresenceScreenEndsOldSegmentAndStartsNewSegment() async throws {
     let transport = RecordingTransport()
@@ -279,6 +323,31 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(transport.presences[1].presenceId, homePresenceId)
     XCTAssertEqual(transport.presences[2].path, "CheckoutViewController")
     XCTAssertNotEqual(transport.presences[2].presenceId, homePresenceId)
+  }
+
+  func testPresenceScreenSwitchUsesCurrentClientScreen() async throws {
+    let transport = RecordingTransport()
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        presenceEndpoint: URL(string: "https://tracemind.example.com/api/presence")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore(userId: "user_123"),
+      transport: transport
+    )
+
+    client.setScreen("MainWindow")
+    try await client.sendPresence(state: "foreground", path: "MainWindow", title: "MainWindow")
+    try await client.switchPresenceScreen("NextWindow")
+
+    XCTAssertEqual(transport.presences.map(\.state), ["foreground", "end", "start"])
+    XCTAssertEqual(transport.presences[0].path, "MainWindow")
+    XCTAssertEqual(transport.presences[1].path, "MainWindow")
+    XCTAssertEqual(transport.presences[2].path, "NextWindow")
   }
 
   func testStrictActiveDurationStopsAtIdleWindowAndBackground() async throws {

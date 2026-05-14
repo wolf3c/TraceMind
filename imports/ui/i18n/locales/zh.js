@@ -87,7 +87,7 @@ export default {
   "Setup command": "接入指令",
   "Tell your Coding Agent: connect TraceMind to the current project and verify behavior capture.": "告诉你的 Coding Agent：把 TraceMind 接入当前项目，并验证行为采集是否成功。",
   "Auto Capture": "Auto Capture",
-  "TraceMind automatically records page views, clicks, inputs, form submits, route changes, and active time after setup.": "接入后，TraceMind 自动记录页面访问、点击、输入、表单提交、路径变化和活跃时长。",
+  "TraceMind automatically records Web pages, iOS/Android interactions, macOS windows, route changes, and active time after setup.": "接入后，TraceMind 自动记录 Web 页面、iOS/Android 交互、macOS 窗口、路径变化和活跃时长。",
   "TraceMind keeps raw behavior, extracts semantic events, and exposes reviewable MCP evidence so agents can analyze product usage directly.": "TraceMind 保留原始行为，提取语义事件，并通过 MCP 提供可复核证据，让 Agent 直接分析产品使用情况。",
   "AI + MCP analysis": "AI + MCP 分析",
   "Let AI automatically complete efficient product iteration": "让 AI 自动完成高效产品迭代",

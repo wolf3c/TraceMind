@@ -40,42 +40,42 @@ export const EVENT_DEFINITIONS = [
     name: '页面浏览',
     meaning: '用户打开或刷新了一个页面，用于分析访问量、落地页、路径入口和页面级留存。',
     typicalProperties: ['title', 'path', 'referrer'],
-    platforms: ['web', 'ios', 'android', 'server'],
+    platforms: ['web', 'ios', 'android', 'macos', 'server'],
   },
   {
     eventType: 'click',
     name: '元素点击',
     meaning: '用户点击了页面或客户端界面上的元素，用于分析功能入口、按钮转化和交互兴趣。',
     typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
-    platforms: ['web', 'ios', 'android'],
+    platforms: ['web', 'ios', 'android', 'macos'],
   },
   {
     eventType: 'input',
     name: '输入变化',
     meaning: '用户修改了输入控件，用于分析表单填写、设置修改和关键流程参与度。',
     typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
-    platforms: ['web', 'ios', 'android'],
+    platforms: ['web', 'ios', 'android', 'macos'],
   },
   {
     eventType: 'submit',
     name: '表单提交',
     meaning: '用户提交了表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。',
     typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
-    platforms: ['web', 'ios', 'android'],
+    platforms: ['web', 'ios', 'android', 'macos'],
   },
   {
     eventType: 'route_change',
     name: '页面跳转',
     meaning: '用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。',
     typicalProperties: ['path', 'referrer'],
-    platforms: ['web', 'ios', 'android'],
+    platforms: ['web', 'ios', 'android', 'macos'],
   },
   {
     eventType: 'api_call',
     name: '接口调用',
     meaning: '客户端或服务端记录了一次接口调用，用于分析接口失败、关键后端流程和服务端埋点。',
     typicalProperties: ['method', 'status', 'path'],
-    platforms: ['web', 'ios', 'android', 'server'],
+    platforms: ['web', 'ios', 'android', 'macos', 'server'],
   },
   {
     eventType: 'tool_call',
@@ -110,7 +110,7 @@ export const EVENT_DEFINITIONS = [
     name: '自定义事件',
     meaning: '开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。',
     typicalProperties: ['eventName', 'properties', 'context'],
-    platforms: ['web', 'ios', 'android', 'server'],
+    platforms: ['web', 'ios', 'android', 'macos', 'server'],
   },
 ];
 
@@ -161,7 +161,7 @@ function parseUrl(value) {
 
 function normalizeSourceType(value) {
   const sourceType = cleanString(value, 40).toLowerCase();
-  return ['web', 'ios', 'android', 'server', 'mcp_server', 'agent_skill', 'server_app'].includes(sourceType) ? sourceType : 'unknown';
+  return ['web', 'ios', 'android', 'macos', 'server', 'mcp_server', 'agent_skill', 'server_app'].includes(sourceType) ? sourceType : 'unknown';
 }
 
 export function normalizeCaptureSource(payload = {}, headers = {}) {

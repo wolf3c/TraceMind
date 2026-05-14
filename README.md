@@ -1,6 +1,6 @@
 # TraceMind
 
-TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、Android、React Native、MCP server、普通后端服务和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题，也可以在开发者确认后上报问题或想法反馈。
+TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、macOS、Android、React Native、MCP server、普通后端服务和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题，也可以在开发者确认后上报问题或想法反馈。
 
 ## 1 分钟接入
 
@@ -19,7 +19,7 @@ Web 应用把下面这行代码放到页面的 `<head>` 或 `</body>` 前：
 开发者控制台支持中英文切换，右上角选择语言后会保存在当前浏览器中。
 控制台只展示当前项目的 `projectKey`、接入文档入口和 Coding Agent 接入入口；各环境的安装步骤与使用方式以本文档为准。
 
-移动应用先通过包管理器安装对应 SDK，然后业务代码只需要一行初始化：
+Native 应用先通过包管理器安装对应 SDK，然后业务代码只需要一行初始化：
 
 ```swift
 TraceMind.start(projectKey: "tm_proj_xxx")
@@ -40,7 +40,7 @@ TraceMind.start({ projectKey: "tm_proj_xxx" });
 - `input`: 输入控件发生变化，不采集输入值。
 - `submit`: 表单提交。
 - `route_change`: SPA 路由变化或原生页面切换。
-- 在线时长：Web、iOS、Android 和 React Native 独立上报前台在线区间；5 秒 heartbeat 只更新在线区间，不进入最近事件列表。
+- 在线时长：Web、iOS、macOS、Android 和 React Native 独立上报前台在线区间；5 秒 heartbeat 只更新在线区间，不进入最近事件列表。
 
 ## Web 接入方式
 
@@ -83,6 +83,24 @@ TraceMind.start(projectKey: "tm_proj_xxx")
 ```
 
 iOS SDK 会使用 bundle id 作为 `sourceKey`，自动记录应用激活、页面/控制器路径、点击、输入变化和提交类行为；不会采集输入值或截图。
+
+## macOS 接入方式
+
+macOS 复用 `sdk/ios` Swift Package，不需要单独的包。加入依赖后在 App 入口初始化：
+
+```swift
+import TraceMind
+
+TraceMind.start(projectKey: "tm_proj_xxx")
+```
+
+macOS SDK 会使用 bundle id 作为 `sourceKey`，上报 `platform: "macos"` 和 `source.type: "macos"`。Auto Capture 第一版记录应用激活、窗口/主窗口变化和 screen 在线区间；如果应用有更稳定的业务 screen 名称，可以主动调用：
+
+```swift
+TraceMind.setScreen("CheckoutWindow")
+```
+
+手动业务事件继续使用同一套 `TraceMind.capture(...)` API，适合记录自动采集无法推断的业务结果。
 
 ## Android 接入方式
 
@@ -271,7 +289,7 @@ window.TraceMind.capture("custom", {
 - `context`: 上报上下文，例如来源、实验分组、trace id、feature flag。
 - `userId`: 业务用户 ID。前端已调用 `identify()` 时可省略。
 
-Native 手动埋点保持同样字段。`properties` 和 `context` 只保留 string、number、boolean；SDK 会丢弃 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value 和带 query 的完整 URL。
+Native 手动埋点保持同样字段，iOS 和 macOS 都使用 Swift API，macOS 事件会携带 `platform: "macos"`。`properties` 和 `context` 只保留 string、number、boolean；SDK 会丢弃 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value 和带 query 的完整 URL。
 
 ```swift
 try? TraceMind.capture(
@@ -369,7 +387,7 @@ TraceMindMCP.capture(
 
 ## 在线时长
 
-Web、iOS、Android 和 React Native SDK 会向 `/api/presence` 上报在线区间：
+Web、iOS、macOS、Android 和 React Native SDK 会向 `/api/presence` 上报在线区间：
 
 ```json
 {
@@ -535,6 +553,6 @@ connect-src https://tracemind.sandbox.galaxycloud.app
 
 `data-tracemind-token` 是公开项目 token，不是开发者密钥。但它会暴露在前端，因此服务端必须把它当作公开标识处理，不能把它当作私密凭证。
 
-TraceMind 会记录采集来源并在控制台展示来源统计。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；MCP server 使用 `sourceType: "mcp_server"`；普通后端服务使用 `sourceType: "server_app"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
+TraceMind 会记录采集来源并在控制台展示来源统计。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；macOS 使用 bundle id 并上报 `sourceType: "macos"`；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；MCP server 使用 `sourceType: "mcp_server"`；普通后端服务使用 `sourceType: "server_app"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
 
 MCP Token 是查询凭证，不要放到前端页面里。为不同成员或 Agent 使用不同 MCP Token，泄露时只刷新或删除对应 token。

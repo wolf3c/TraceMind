@@ -186,6 +186,7 @@ TraceMind 自动采集：
 
 - Web 使用一行 `<script>`。
 - iOS 使用一行 `TraceMind.start(projectKey: ...)`。
+- macOS 复用 Swift Package，使用一行 `TraceMind.start(projectKey: ...)`，自动记录应用激活和窗口/屏幕变化。
 - Android 使用一行 `TraceMind.start(application, projectKey = ...)`。
 - React Native 使用一行 `TraceMind.start({ projectKey })`，底层复用 iOS/Android 原生采集。
 
