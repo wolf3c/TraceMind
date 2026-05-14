@@ -576,6 +576,8 @@ analytics 能力弱
 是否功能更强
 ```
 
+早期获客策略见：[Early Customer Acquisition Strategy](./early_customer_acquisition.md)。
+
 ---
 
 # 12. 最终产品愿景
