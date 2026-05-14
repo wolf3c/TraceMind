@@ -184,6 +184,8 @@ export default {
   "Selected project": "当前项目",
   "Current project": "当前项目",
   "Switch project": "切换项目",
+  "Expand setup details": "展开配置信息",
+  "Collapse setup details": "收起配置信息",
   "New project": "新建项目",
   "Project actions": "项目操作",
   "Rename project": "修改项目名",

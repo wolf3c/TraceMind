@@ -126,3 +126,10 @@ Then add the capture snippet to a small test web page, generate several interact
 - Expanded startup index creation for the current hot paths: project key capture writes, MCP token lookup, developer ownership, presence upserts, pending semantic extraction, MCP feedback dedupe/rate-limit checks, and common event/raw drilldowns by event name, event type, action key, and target hash. The index set stays focused on existing query paths to avoid unnecessary write overhead.
 - Split the dashboard event stream from selected-project health loading. The event stream now starts collapsed, loads the selected day on demand in 20-event pages, and uses a "load more" control instead of bundling recent events into the health summary response.
 - Moved developer profile and project setup metadata to owner-scoped Meteor pub/sub. The console now reuses Minimongo for account/project switching, project keys, MCP token controls, and blocked-source state, while mutation paths remain server methods.
+
+## 2026-05-14
+
+### Completed
+
+- Collapsed the authenticated project setup panel by default so returning developers see the selected project's health data sooner.
+- Kept the collapsed setup header intentionally minimal: the project switcher, a specific setup-details toggle, and a project-count hint only for multi-project accounts are the only visible setup controls until the developer opens the panel.

@@ -126,8 +126,6 @@
   let todayReportDate = $derived(reportDateForDate(refreshAgeTick));
   let yesterdayReportDate = $derived(addReportDays(todayReportDate, -1));
   let dayBeforeReportDate = $derived(addReportDays(todayReportDate, -2));
-  let topEventType = $derived(healthCurrent?.topEvents?.[0]?.label || summary?.topEvents?.[0]?.eventType || "none");
-  let topPath = $derived(healthCurrent?.sessionPaths?.[0]?.path || summary?.topPaths?.[0]?.path || "/");
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
   let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
   let agentSnippetUrl = $derived(`${currentOrigin()}/agents/tracemind/AGENTS_SNIPPET.md`);
@@ -1083,11 +1081,6 @@
         <div class="account-panel card-panel">
           <span class="tm-badge tm-badge-signal">{$t("Current account")}</span>
           <strong>{dashboard.developer.email}</strong>
-          <p>
-            {$t("{{projects}} projects.", {
-              projects: dashboard.projects.length,
-            })}
-          </p>
         </div>
 
         <ProjectSetupPanel
@@ -1105,8 +1098,6 @@
           {copiedTarget}
           {agentInstallPrompt}
           {sourceSummary}
-          {topEventType}
-          {topPath}
           {currentOrigin}
           {copiedLabel}
           {changeSelectedProject}

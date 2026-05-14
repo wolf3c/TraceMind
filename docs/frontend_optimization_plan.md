@@ -218,6 +218,25 @@
 - Run `npm test` if the local Meteor environment is available.
 - Start the app and visually verify desktop and mobile hierarchy, event rows, copy states, and disclosure panels.
 
+## 2026-05-14 Collapsed Project Setup Pass
+
+### Current Behavior
+
+- The authenticated console shows the current-project setup panel expanded by default.
+- Returning developers see project key, Coding Agent setup, MCP token controls, and source statistics before the project health data.
+
+### Target Behavior
+
+- Collapse project setup by default for signed-in users with an existing project.
+- Keep the collapsed header limited to the current project switcher, an expand/collapse control, and a project-count hint only when there is more than one project.
+- Preserve the existing setup details, project creation, rename/delete actions, copy actions, MCP token management, and source blocking after expansion.
+
+### Verification Plan
+
+- Run Svelte diagnostics after the markup change.
+- Run the existing test suite to catch regressions in project/account helper logic.
+- Visually check desktop and mobile widths so the compact project switcher and expand control do not crowd out the health overview.
+
 ## 2026-05-08 Product Feature Section Simplification
 
 ### Current Behavior

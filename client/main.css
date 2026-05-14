@@ -1376,7 +1376,6 @@ code {
 .account-panel > *,
 .agent-setup-header > *,
 .field-copy-group > *,
-.project-toolbar > *,
 .project-create-row > *,
 .event-metrics > *,
 .source-row > *,
@@ -1398,63 +1397,65 @@ code {
   gap: 14px;
 }
 
-.account-panel > span,
-.project-title span {
+.account-panel > span {
   color: #708179;
   font-size: 0.85rem;
 }
 
-.account-panel > strong,
-.project-title strong {
+.account-panel > strong {
   overflow-wrap: anywhere;
 }
 
 .setup-panel {
   display: grid;
-  gap: 16px;
-}
-
-.project-console-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
-  align-items: end;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #e5ded2;
 }
 
-.project-console-signals {
-  display: flex;
-  max-width: 360px;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.project-console-signals span {
-  max-width: 170px;
-  overflow: hidden;
-  border: 1px solid #d9e3de;
-  border-radius: 999px;
-  padding: 5px 9px;
-  color: var(--deep);
-  background: #eef5f1;
-  font-size: 0.76rem;
-  font-weight: 700;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-toolbar {
+.project-compact-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: end;
+  align-items: center;
 }
 
-.project-selector {
+.project-count {
+  grid-column: 1 / -1;
+  color: #708179;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.project-switch-compact {
   margin: 0;
+}
+
+.project-switch-compact select {
+  min-height: 46px;
+  padding: 10px 40px 10px 14px;
+  color: var(--deep);
+  font-size: 1.02rem;
+  font-weight: 760;
+}
+
+.setup-toggle {
+  min-height: 46px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.project-setup-details {
+  display: grid;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e5ded2;
+}
+
+.project-setup-details[hidden] {
+  display: none;
+}
+
+.project-setup-details > .project-action-menu {
+  justify-self: end;
 }
 
 .project-action-menu {
@@ -2282,7 +2283,6 @@ code {
   .cta-band,
   .agent-setup-header,
   .field-copy-group,
-  .project-console-header,
   .project-create-row,
   .event-metrics,
   .event-row,
@@ -2291,10 +2291,6 @@ code {
   .source-row,
   .setup-docs-row {
     grid-template-columns: 1fr;
-  }
-
-  .project-toolbar {
-    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .compact-copy {
@@ -2318,13 +2314,8 @@ code {
     grid-template-columns: 1fr;
   }
 
-  .signal-panel-header > code,
-  .project-console-signals {
+  .signal-panel-header > code {
     justify-self: stretch;
-  }
-
-  .project-console-signals {
-    justify-content: flex-start;
   }
 
   .event-row-meta {
