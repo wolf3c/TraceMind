@@ -884,37 +884,56 @@ function emptyHealthWindow() {
   };
 }
 
-function attentionItemsForHealth(current, previous, now) {
+function attentionWindowLabels(comparisonWindow) {
+  if (comparisonWindow === 'day') {
+    return {
+      currentWindow: '所选日期',
+      previousWindow: '前一天',
+      previousFullWindow: '前一天',
+      trailingWindow: '所选日期最后 3 小时',
+    };
+  }
+
+  return {
+    currentWindow: '近 24h',
+    previousWindow: '前 24h',
+    previousFullWindow: '前一个 24h',
+    trailingWindow: '最近 3 小时',
+  };
+}
+
+function attentionItemsForHealth(current, previous, now, { comparisonWindow = 'rolling_24h' } = {}) {
   const items = [];
+  const labels = attentionWindowLabels(comparisonWindow);
   const activeUsersChange = percentChange(current.activeUsers, previous.activeUsers);
   const sessionsChange = percentChange(current.sessionCount, previous.sessionCount);
   const eventsChange = percentChange(current.eventCount, previous.eventCount);
 
   if (previous.eventCount > 0 && current.eventCount === 0) {
-    items.push({ code: 'event_stream_stopped', severity: 'high', message: '近 24h 没有新事件，但前一个 24h 有事件。' });
+    items.push({ code: 'event_stream_stopped', severity: 'high', message: `${labels.currentWindow}没有新事件，但${labels.previousFullWindow}有事件。` });
   }
   if (current.lastEventAt && now.getTime() - current.lastEventAt.getTime() >= 3 * 60 * 60 * 1000 && previous.eventCount > 0) {
-    items.push({ code: 'no_recent_events', severity: 'medium', message: '最近 3 小时没有收到新事件。' });
+    items.push({ code: 'no_recent_events', severity: 'medium', message: `${labels.trailingWindow}没有收到新事件。` });
   }
   if (previous.activeUsers >= 3 && activeUsersChange <= -0.4) {
-    items.push({ code: 'active_users_dropped', severity: 'medium', message: `近 24h 活跃用户较前 24h 下降 ${formatPercentForMessage(activeUsersChange)}。` });
+    items.push({ code: 'active_users_dropped', severity: 'medium', message: `${labels.currentWindow}活跃用户较${labels.previousWindow}下降 ${formatPercentForMessage(activeUsersChange)}。` });
   }
   if (previous.sessionCount >= 3 && sessionsChange <= -0.4) {
-    items.push({ code: 'sessions_dropped', severity: 'medium', message: `近 24h 活跃会话较前 24h 下降 ${formatPercentForMessage(sessionsChange)}。` });
+    items.push({ code: 'sessions_dropped', severity: 'medium', message: `${labels.currentWindow}活跃会话较${labels.previousWindow}下降 ${formatPercentForMessage(sessionsChange)}。` });
   }
   if (previous.eventCount >= 5 && eventsChange <= -0.4) {
-    items.push({ code: 'events_dropped', severity: 'medium', message: `近 24h 用户行为事件较前 24h 下降 ${formatPercentForMessage(eventsChange)}。` });
+    items.push({ code: 'events_dropped', severity: 'medium', message: `${labels.currentWindow}用户行为事件较${labels.previousWindow}下降 ${formatPercentForMessage(eventsChange)}。` });
   }
   if (previous.eventCount >= 5 && eventsChange >= 1) {
-    items.push({ code: 'events_spiked', severity: 'low', message: `近 24h 用户行为事件较前 24h 上升 ${formatPercentForMessage(eventsChange)}。` });
+    items.push({ code: 'events_spiked', severity: 'low', message: `${labels.currentWindow}用户行为事件较${labels.previousWindow}上升 ${formatPercentForMessage(eventsChange)}。` });
   }
   if (current.failureEventCount > previous.failureEventCount && current.failureEventCount > 0) {
-    items.push({ code: 'failure_events_increased', severity: 'high', message: `近 24h 失败或错误事件 ${current.failureEventCount} 条，高于前一个 24h。` });
+    items.push({ code: 'failure_events_increased', severity: 'high', message: `${labels.currentWindow}失败或错误事件 ${current.failureEventCount} 条，高于${labels.previousFullWindow}。` });
   }
 
   const topEvent = current.topEvents[0];
   if (topEvent && current.eventCount >= 10 && topEvent.count / current.eventCount >= 0.8) {
-    items.push({ code: 'top_event_concentration', severity: 'low', message: `近 24h 高频事件 ${topEvent.label} 占比过高。` });
+    items.push({ code: 'top_event_concentration', severity: 'low', message: `${labels.currentWindow}高频事件 ${topEvent.label} 占比过高。` });
   }
 
   return items;
@@ -1020,7 +1039,9 @@ export function summarizeProjectHealthFromDailyReports({
   const currentEnd = validDate(currentReport?.sourceWindow?.endAt);
   const previousStart = validDate(previousReport?.sourceWindow?.startAt);
   const previousEnd = validDate(previousReport?.sourceWindow?.endAt);
-  const attentionItems = attentionItemsForHealth(current, previous, currentEnd || new Date());
+  const attentionItems = attentionItemsForHealth(current, previous, currentEnd || new Date(), {
+    comparisonWindow: 'day',
+  });
 
   return {
     window: {

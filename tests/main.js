@@ -19,6 +19,7 @@ import {
   summarizeBehaviorSources,
   summarizeCaptureDelivery,
   summarizeProjectHealth,
+  summarizeProjectHealthFromDailyReports,
   summarizePresenceSessions,
 } from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
@@ -1257,7 +1258,6 @@ describe('TraceMind', function () {
       'Recent users',
       'Recent DAU',
       'Recent devices',
-      'Past 24 hours',
       '{{count}} events',
       'Recent behavior evidence from the selected project. Showing the latest {{count}} rows.',
     ];
@@ -1569,6 +1569,45 @@ describe('TraceMind', function () {
     assert.deepStrictEqual(health.current.topEvents[0], { label: 'page_view', count: 3 });
     assert.deepStrictEqual(health.current.userRegions[0], { label: 'US', count: 1 });
     assert.ok(health.attentionItems.some((item) => item.code === 'failure_events_increased'));
+    assert.ok(health.attentionSummary.includes('近 24h'));
+  });
+
+  it('formats daily report health attention copy by selected day', function () {
+    const health = summarizeProjectHealthFromDailyReports({
+      currentReport: {
+        reportDate: '2026-05-12',
+        sourceWindow: {
+          startAt: new Date('2026-05-11T16:00:00.000Z'),
+          endAt: new Date('2026-05-12T16:00:00.000Z'),
+        },
+        current: {
+          activeUsers: 1,
+          eventCount: 1,
+          sessionCount: 1,
+          failureEventCount: 0,
+          lastEventAt: new Date('2026-05-12T15:30:00.000Z'),
+        },
+      },
+      previousReport: {
+        reportDate: '2026-05-11',
+        sourceWindow: {
+          startAt: new Date('2026-05-10T16:00:00.000Z'),
+          endAt: new Date('2026-05-11T16:00:00.000Z'),
+        },
+        current: {
+          activeUsers: 4,
+          eventCount: 10,
+          sessionCount: 4,
+          failureEventCount: 0,
+        },
+      },
+    });
+    const messages = health.attentionItems.map((item) => item.message);
+
+    assert.strictEqual(health.window.granularity, 'day');
+    assert.strictEqual(health.attentionSummary, '所选日期活跃用户较前一天下降 75%。');
+    assert.ok(messages.some((message) => message === '所选日期用户行为事件较前一天下降 90%。'));
+    assert.ok(messages.every((message) => !message.includes('24h')));
   });
 
   it('uses strict active duration for health time metrics', function () {
