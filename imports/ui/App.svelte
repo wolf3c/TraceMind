@@ -132,7 +132,7 @@
   let yesterdayReportDate = $derived(addReportDays(todayReportDate, -1));
   let dayBeforeReportDate = $derived(addReportDays(todayReportDate, -2));
   let isSelectedReportToday = $derived(selectedReportDate === todayReportDate);
-  let recentOnlineRefreshAge = $derived(formatRefreshAge(recentOnlineLastLoadedAt, refreshAgeTick, selectedLocale));
+  let recentOnlineRefreshAge = $derived(formatRefreshAge(recentOnlineLastLoadedAt, refreshAgeTick, selectedLocale, true));
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
   let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
   let agentSnippetUrl = $derived(`${currentOrigin()}/agents/tracemind/AGENTS_SNIPPET.md`);
@@ -917,18 +917,18 @@
     return `${seconds}s`;
   }
 
-  function formatRefreshAge(value, nowValue = Date.now(), localeValue = selectedLocale) {
+  function formatRefreshAge(value, nowValue = Date.now(), localeValue = selectedLocale, compact = false) {
     if (!value) return translateNow("Not refreshed yet");
     const elapsedMs = Math.max(0, Number(nowValue) - new Date(value).getTime());
     const elapsedMinutes = Math.floor(elapsedMs / 60000);
 
-    if (elapsedMinutes < 1) return translateNow("Last refreshed just now");
+    if (elapsedMinutes < 1) return translateNow(compact ? "just now" : "Last refreshed just now");
     if (elapsedMinutes < 60) {
-      return translateNow("Last refreshed {{count}} min ago", { count: elapsedMinutes });
+      return translateNow(compact ? "{{count}} min ago" : "Last refreshed {{count}} min ago", { count: elapsedMinutes });
     }
 
     const elapsedHours = Math.floor(elapsedMinutes / 60);
-    return translateNow("Last refreshed {{count}} hr ago", { count: elapsedHours });
+    return translateNow(compact ? "{{count}} hr ago" : "Last refreshed {{count}} hr ago", { count: elapsedHours });
   }
 
   function formatNumber(value) {

@@ -82,16 +82,21 @@
   {#if selectedReportDate === todayReportDate}
     <details class="health-card realtime-online-card">
       <summary>
-        <span>{$t("Online users in last 30 minutes")}</span>
-        <strong>{recentOnline ? formatNumber(recentOnline.totalOnlineUsers) : "..."}</strong>
-        <small class={recentOnlineError ? "trend-negative" : "trend-flat"}>
-          {recentOnlineError || (recentOnline ? recentOnlineRefreshAge : (recentOnlineLoading ? $t("Loading asynchronously") : $t("Scheduled lazy load")))}
-        </small>
+        <div class="realtime-card-head">
+          <span>
+            {$t("Online users in last 30 minutes")}
+            <small class={recentOnlineError ? "trend-negative" : "trend-flat"}>
+              {recentOnlineError || (recentOnline ? recentOnlineRefreshAge : (recentOnlineLoading ? $t("Loading asynchronously") : $t("Scheduled lazy load")))}
+            </small>
+          </span>
+          <strong>{recentOnline ? formatNumber(recentOnline.totalOnlineUsers) : "..."}</strong>
+        </div>
         <em>{$t("5-minute online users")}</em>
         <div class="realtime-bar-chart" aria-label={$t("5-minute online users")}>
           {#if recentOnlineBuckets.length}
             {#each recentOnlineBuckets as bucket, index (`recent-online-${index}-${bucket.startAt}`)}
               <div class="realtime-bar">
+                <strong class="realtime-bar-value">{formatNumber(bucket.onlineUsers)}</strong>
                 <div class="realtime-bar-track" title={`${formatTime(bucket.startAt)} · ${formatNumber(bucket.onlineUsers)} ${$t("users")}`}>
                   <span style={`height: ${recentOnlineBarHeight(bucket)}`}></span>
                 </div>
