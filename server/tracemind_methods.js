@@ -8,6 +8,7 @@ import {
   PresenceSessions,
   ProjectDailyReports,
   Projects,
+  RECENT_ONLINE_WINDOW_MS,
   RawBehaviors,
   SemanticEvents,
   isSourceBlocked,
@@ -16,6 +17,7 @@ import {
   normalizeToken,
   publicProject,
   publicSemanticEvent,
+  summarizeRecentOnlineActivity,
   summarizeBehaviorSources,
   summarizePresenceSessions,
 } from '/imports/api/tracemind';
@@ -180,6 +182,36 @@ async function buildProjectSummary(project, selectedDateInput) {
     sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
     recentEvents: [],
   };
+}
+
+async function buildProjectRecentOnline(project) {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - RECENT_ONLINE_WINDOW_MS);
+  const events = await SemanticEvents.find(
+    {
+      projectId: project._id,
+      occurredAt: { $gte: windowStart, $lt: now },
+    },
+    { sort: { occurredAt: -1 } },
+  ).fetchAsync();
+  const presenceSessions = await PresenceSessions.find(
+    {
+      projectId: project._id,
+      startedAt: { $lt: now },
+      $or: [
+        { endedAt: { $gte: windowStart } },
+        { lastSeenAt: { $gte: windowStart } },
+        { endedAt: { $exists: false }, lastSeenAt: { $exists: false } },
+      ],
+    },
+    { sort: { lastSeenAt: -1 } },
+  ).fetchAsync();
+
+  return summarizeRecentOnlineActivity({
+    events,
+    presenceSessions,
+    now,
+  });
 }
 
 async function userEmail(userId) {
@@ -444,6 +476,15 @@ Meteor.methods({
       throw new Meteor.Error('not-found', 'Project not found.');
     }
     return buildProjectSummary(project, selectedDate);
+  },
+
+  async 'tracemind.project.recentOnline'(projectId) {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const project = await findProjectForDeveloper(projectId, developer._id);
+    if (!project) {
+      throw new Meteor.Error('not-found', 'Project not found.');
+    }
+    return buildProjectRecentOnline(project);
   },
 
   async 'tracemind.project.dailyReports.refresh'(projectId, selectedDate) {

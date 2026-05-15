@@ -59,6 +59,11 @@
   let showProjectActions = $state(false);
   let showProjectRename = $state(false);
   let showActiveTimeTip = $state(false);
+  let recentOnline = $state(null);
+  let recentOnlineLoading = $state(false);
+  let recentOnlineError = $state("");
+  let recentOnlineRequestId = $state(0);
+  let recentOnlineLastLoadedAt = $state(null);
   let selectedProjectSummary = $state(null);
   let projectSummaryLoading = $state(false);
   let projectSummaryError = $state("");
@@ -126,6 +131,8 @@
   let todayReportDate = $derived(reportDateForDate(refreshAgeTick));
   let yesterdayReportDate = $derived(addReportDays(todayReportDate, -1));
   let dayBeforeReportDate = $derived(addReportDays(todayReportDate, -2));
+  let isSelectedReportToday = $derived(selectedReportDate === todayReportDate);
+  let recentOnlineRefreshAge = $derived(formatRefreshAge(recentOnlineLastLoadedAt, refreshAgeTick, selectedLocale));
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
   let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
   let agentSnippetUrl = $derived(`${currentOrigin()}/agents/tracemind/AGENTS_SNIPPET.md`);
@@ -238,6 +245,14 @@
     eventStreamHasMore = true;
   }
 
+  function resetRecentOnline() {
+    recentOnlineRequestId += 1;
+    recentOnline = null;
+    recentOnlineLoading = false;
+    recentOnlineError = "";
+    recentOnlineLastLoadedAt = null;
+  }
+
   function syncSelectedProject(nextDashboard) {
     const projects = nextDashboard?.projects || [];
     const nextSelectedProjectId = resolveSelectedProjectId(projects, selectedProjectId);
@@ -246,10 +261,12 @@
       ({ selectedProjectSummary, projectSummaryLoading, projectSummaryError } = resolveInitialProjectSummaryState());
       projectSummaryLastLoadedAt = null;
       resetEventStream();
+      resetRecentOnline();
     } else if (nextSelectedProjectId !== selectedProjectId) {
       selectedProjectId = nextSelectedProjectId;
       projectSummaryLastLoadedAt = null;
       resetEventStream();
+      resetRecentOnline();
     }
   }
 
@@ -368,6 +385,56 @@
     }
   }
 
+  async function loadRecentOnline(projectId = selectedProjectId, reportDate = selectedReportDate) {
+    const requestUserId = Meteor.userId();
+    if (!requestUserId || !projectId || reportDate !== todayReportDate) {
+      return null;
+    }
+
+    const requestId = recentOnlineRequestId + 1;
+    recentOnlineRequestId = requestId;
+    recentOnlineLoading = true;
+    recentOnlineError = "";
+
+    try {
+      const result = await callMethod("tracemind.project.recentOnline", projectId);
+      if (
+        requestId !== recentOnlineRequestId
+        || requestUserId !== Meteor.userId()
+        || projectId !== selectedProjectId
+        || reportDate !== selectedReportDate
+        || reportDate !== todayReportDate
+      ) {
+        return null;
+      }
+      recentOnline = result;
+      recentOnlineLastLoadedAt = new Date();
+      refreshAgeTick = Date.now();
+      return result;
+    } catch (error) {
+      if (
+        requestId === recentOnlineRequestId
+        && requestUserId === Meteor.userId()
+        && projectId === selectedProjectId
+        && reportDate === selectedReportDate
+        && reportDate === todayReportDate
+      ) {
+        recentOnlineError = errorMessage(error);
+      }
+      throw error;
+    } finally {
+      if (
+        requestId === recentOnlineRequestId
+        && requestUserId === Meteor.userId()
+        && projectId === selectedProjectId
+        && reportDate === selectedReportDate
+        && reportDate === todayReportDate
+      ) {
+        recentOnlineLoading = false;
+      }
+    }
+  }
+
   function openEventStream() {
     showEventStream = true;
     if (!eventStreamEvents.length && eventStreamHasMore && !eventStreamLoading) {
@@ -480,9 +547,13 @@
   async function retryProjectSummary() {
     status = "";
     resetEventStream();
+    resetRecentOnline();
     try {
       requestDailyReportRefresh();
       await loadProjectSummary();
+      if (isSelectedReportToday) {
+        loadRecentOnline().catch(() => {});
+      }
     } catch (error) {
       status = errorMessage(error);
     }
@@ -492,6 +563,7 @@
     if (!reportDate || reportDate === selectedReportDate) return;
     selectedReportDate = reportDate;
     resetEventStream();
+    resetRecentOnline();
     requestDailyReportRefresh(selectedProjectId, reportDate);
   }
 
@@ -513,6 +585,7 @@
     selectedProjectSummary = null;
     projectSummaryLastLoadedAt = null;
     resetEventStream();
+    resetRecentOnline();
     showProjectCreate = false;
     showProjectActions = false;
     showProjectRename = false;
@@ -557,6 +630,7 @@
       const createdProject = await callMethod("tracemind.project.create", name);
       selectedProjectId = createdProject._id;
       resetEventStream();
+      resetRecentOnline();
       projectName = "";
       showProjectCreate = false;
       showProjectActions = false;
@@ -605,6 +679,7 @@
       projectSummaryLastLoadedAt = null;
       selectedProjectId = "";
       resetEventStream();
+      resetRecentOnline();
       showProjectActions = false;
       showProjectRename = false;
       showProjectCreate = false;
@@ -787,6 +862,7 @@
     projectSummaryLastLoadedAt = null;
     selectedProjectId = "";
     resetEventStream();
+    resetRecentOnline();
     showProjectCreate = false;
     showProjectActions = false;
     showProjectRename = false;
@@ -818,6 +894,14 @@
     return new Date(value).toLocaleString(selectedLocale === "zh" ? "zh-CN" : "en-US", {
       month: "2-digit",
       day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function formatTime(value) {
+    if (!value) return translateNow("Unknown");
+    return new Date(value).toLocaleTimeString(selectedLocale === "zh" ? "zh-CN" : "en-US", {
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -988,6 +1072,30 @@
   });
 
   $effect(() => {
+    const requestUserId = userId;
+    const projectId = selectedProjectId;
+    const reportDate = selectedReportDate;
+    const shouldLoadRecentOnline = Boolean(requestUserId && projectId && reportDate === todayReportDate);
+
+    if (!shouldLoadRecentOnline) {
+      untrack(() => {
+        if (recentOnline || recentOnlineLoading || recentOnlineError) resetRecentOnline();
+      });
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      untrack(() => {
+        if (!recentOnline && !recentOnlineLoading) {
+          loadRecentOnline(projectId, reportDate).catch(() => {});
+        }
+      });
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  });
+
+  $effect(() => {
     const computation = Tracker.autorun(() => {
       untrack(() => {
         const nextUserId = Meteor.userId();
@@ -1015,6 +1123,7 @@
             publishedProjectHealth = null;
             selectedProjectId = "";
             resetEventStream();
+            resetRecentOnline();
             showProjectCreate = false;
             showProjectActions = false;
             showProjectRename = false;
@@ -1135,6 +1244,10 @@
           {projectSummaryRefreshAge}
           {projectSummaryLoading}
           {showActiveTimeTip}
+          {recentOnline}
+          {recentOnlineLoading}
+          {recentOnlineError}
+          {recentOnlineRefreshAge}
           {selectReportDate}
           {changeReportDate}
           {retryProjectSummary}
@@ -1142,6 +1255,7 @@
           {formatNumber}
           {formatDecimal}
           {formatDuration}
+          {formatTime}
           {compactDate}
           {formatTrend}
           {trendClass}

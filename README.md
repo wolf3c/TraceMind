@@ -411,6 +411,8 @@ Presence 数据写入 `tracemind_presence_sessions`，同一个 `presenceId` 只
 
 Dashboard 健康概览里的活跃时长使用更严格的 `activeDurationMs`：Web 必须页面可见且浏览器窗口获得焦点，并且最近 60 秒内有加载、focus、click、input、change、submit、keydown、scroll、touch 或 pointer 交互；切到其他桌面 App 时立即停止严格活跃计时，但 presence heartbeat 可继续更新前台在线区间。iOS/Android/RN 必须 App 处于前台，tap、text、screen 变化刷新 60 秒活跃窗口。旧 presence 记录缺少 `activeDurationMs` 时按 0 处理，不回填旧 `durationMs`。
 
+当健康概览选择“今天”时，控制台会延迟异步加载“近 30 分钟在线人数”卡片。它不阻塞日报告卡片，单独统计过去半小时的去重在线用户、每 5 分钟在线人数、地区分布 Top3、活跃时长最长页面 Top3 和高频事件 Top3。
+
 ## Semantic Event 事件说明
 
 TraceMind 会先保存原始行为日志，再抽取为语义事件，方便 LLM/MCP 按业务含义查询。

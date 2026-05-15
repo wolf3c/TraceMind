@@ -22,6 +22,7 @@ import {
   summarizeProjectHealthFromDailyReports,
   summarizePresenceSessions,
 } from '../imports/api/tracemind';
+import * as TraceMindApi from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
 import { resolveConsoleState } from '../imports/ui/console_state';
 import {
@@ -1642,6 +1643,48 @@ describe('TraceMind', function () {
     assert.strictEqual(health.current.activeUsers, 1);
     assert.strictEqual(health.current.sessionCount, 2);
     assert.deepStrictEqual(health.current.topDurationUsers[0], { label: 'device-1', durationMs: 120000 });
+  });
+
+  it('summarizes recent online activity in 5 minute buckets for the dashboard', function () {
+    assert.strictEqual(typeof TraceMindApi.summarizeRecentOnlineActivity, 'function');
+
+    const now = new Date('2026-05-09T12:00:00.000Z');
+    const recentOnline = TraceMindApi.summarizeRecentOnlineActivity({
+      now,
+      events: [
+        { eventType: 'page_view', eventName: 'page_view', userId: 'user-1', geo: { country: 'US' }, occurredAt: new Date('2026-05-09T11:35:00.000Z') },
+        { eventType: 'click', eventName: 'cta_clicked', userId: 'user-1', geo: { country: 'US' }, occurredAt: new Date('2026-05-09T11:45:00.000Z') },
+        { eventType: 'custom', eventName: 'signup_completed', anonymousId: 'anon-2', geo: { country: 'CN' }, occurredAt: new Date('2026-05-09T11:55:00.000Z') },
+        { eventType: 'click', eventName: 'cta_clicked', userId: 'user-1', geo: { country: 'US' }, occurredAt: new Date('2026-05-09T11:56:00.000Z') },
+        { eventType: 'click', eventName: 'cta_clicked', userId: 'old-user', geo: { country: 'CA' }, occurredAt: new Date('2026-05-09T11:20:00.000Z') },
+      ],
+      presenceSessions: [
+        { presenceId: 'presence-1', userId: 'user-1', path: '/pricing', geo: { country: 'US' }, startedAt: new Date('2026-05-09T11:32:00.000Z'), lastSeenAt: new Date('2026-05-09T11:47:00.000Z'), activeDurationMs: 600000 },
+        { presenceId: 'presence-2', anonymousId: 'anon-2', path: '/signup', geo: { country: 'CN' }, startedAt: new Date('2026-05-09T11:50:00.000Z'), lastSeenAt: new Date('2026-05-09T11:59:00.000Z'), activeDurationMs: 240000 },
+        { presenceId: 'presence-3', deviceId: 'device-3', path: '/pricing', geo: { country: 'US' }, startedAt: new Date('2026-05-09T11:58:00.000Z'), lastSeenAt: new Date('2026-05-09T12:00:00.000Z'), activeDurationMs: 60000 },
+        { presenceId: 'presence-old', userId: 'old-user', path: '/old', geo: { country: 'CA' }, startedAt: new Date('2026-05-09T11:00:00.000Z'), lastSeenAt: new Date('2026-05-09T11:20:00.000Z'), activeDurationMs: 1200000 },
+      ],
+    });
+
+    assert.strictEqual(recentOnline.totalOnlineUsers, 3);
+    assert.strictEqual(recentOnline.buckets.length, 6);
+    assert.deepStrictEqual(
+      recentOnline.buckets.map((bucket) => bucket.onlineUsers),
+      [1, 1, 1, 1, 1, 2],
+    );
+    assert.deepStrictEqual(recentOnline.topRegions, [
+      { label: 'US', count: 2 },
+      { label: 'CN', count: 1 },
+    ]);
+    assert.deepStrictEqual(recentOnline.topDurationPaths, [
+      { path: '/pricing', durationMs: 660000, sessions: 2 },
+      { path: '/signup', durationMs: 240000, sessions: 1 },
+    ]);
+    assert.deepStrictEqual(recentOnline.topEvents, [
+      { label: 'cta_clicked', count: 2 },
+      { label: 'page_view', count: 1 },
+      { label: 'signup_completed', count: 1 },
+    ]);
   });
 
   it('summarizes top bounce pages by session-level presence and interactions', function () {

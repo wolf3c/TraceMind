@@ -13,6 +13,8 @@ export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
 export const ACTIVE_IDLE_TIMEOUT_MS = 60 * 1000;
 export const HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const RECENT_ONLINE_WINDOW_MS = 30 * 60 * 1000;
+export const RECENT_ONLINE_BUCKET_MS = 5 * 60 * 1000;
 export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
 export const DAILY_REPORT_TIMEZONE = 'Asia/Shanghai';
 export const DAILY_REPORT_DRAFT_MIN_REFRESH_MS = 60 * 1000;
@@ -629,6 +631,95 @@ function topDurations(map, limit = 3) {
       || String(left.label || left.path).localeCompare(String(right.label || right.path))
     ))
     .slice(0, limit);
+}
+
+function presenceEnd(session = {}, now = new Date()) {
+  return validDate(session.endedAt) || validDate(session.lastSeenAt) || validDate(session.startedAt) || now;
+}
+
+export function summarizeRecentOnlineActivity({
+  events = [],
+  presenceSessions = [],
+  now = new Date(),
+  windowMs = RECENT_ONLINE_WINDOW_MS,
+  bucketMs = RECENT_ONLINE_BUCKET_MS,
+} = {}) {
+  const windowEnd = validDate(now) || new Date();
+  const resolvedBucketMs = Math.max(60 * 1000, Number(bucketMs) || RECENT_ONLINE_BUCKET_MS);
+  const resolvedWindowMs = Math.max(resolvedBucketMs, Number(windowMs) || RECENT_ONLINE_WINDOW_MS);
+  const windowStart = new Date(windowEnd.getTime() - resolvedWindowMs);
+  const bucketCount = Math.ceil(resolvedWindowMs / resolvedBucketMs);
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const startAt = new Date(windowStart.getTime() + index * resolvedBucketMs);
+    const endAt = new Date(Math.min(startAt.getTime() + resolvedBucketMs, windowEnd.getTime()));
+    return { startAt, endAt, users: new Set() };
+  });
+  const onlineUsers = new Set();
+  const actorRegions = new Map();
+  const eventCounts = new Map();
+  const durationPaths = new Map();
+
+  presenceSessions.forEach((session) => {
+    const startedAt = sessionStart(session);
+    const endedAt = presenceEnd(session, windowEnd);
+    if (!overlapsWindow(startedAt, endedAt, windowStart, windowEnd)) return;
+
+    const actorId = actorIdForHealthPresence(session);
+    const region = regionLabel(session);
+    const path = session.path || session.screen || '/';
+    const durationMs = Math.min(
+      activeDurationMsForPresence(session),
+      clippedDurationMs(session, windowStart, windowEnd, windowEnd),
+    );
+
+    if (actorId) {
+      onlineUsers.add(actorId);
+      if (region && !actorRegions.has(actorId)) actorRegions.set(actorId, region);
+      buckets.forEach((bucket) => {
+        if (overlapsWindow(startedAt, endedAt, bucket.startAt, bucket.endAt)) {
+          bucket.users.add(actorId);
+        }
+      });
+    }
+
+    const pathItem = durationPaths.get(path) || { path, durationMs: 0, sessions: 0 };
+    pathItem.durationMs += durationMs;
+    pathItem.sessions += 1;
+    durationPaths.set(path, pathItem);
+  });
+
+  events.forEach((event) => {
+    const occurredAt = eventTime(event);
+    if (!occurredAt || occurredAt < windowStart || occurredAt >= windowEnd) return;
+
+    increment(eventCounts, eventLabel(event));
+    const actorId = actorIdForEvent(event);
+    const region = regionLabel(event);
+    if (actorId && onlineUsers.has(actorId) && region && !actorRegions.has(actorId)) {
+      actorRegions.set(actorId, region);
+    }
+  });
+
+  const regionCounts = new Map();
+  actorRegions.forEach((region) => increment(regionCounts, region));
+
+  return {
+    window: {
+      startAt: windowStart,
+      endAt: windowEnd,
+      windowMs: resolvedWindowMs,
+      bucketMs: resolvedBucketMs,
+    },
+    totalOnlineUsers: onlineUsers.size,
+    buckets: buckets.map((bucket) => ({
+      startAt: bucket.startAt,
+      endAt: bucket.endAt,
+      onlineUsers: bucket.users.size,
+    })),
+    topRegions: topCounts(regionCounts, 3),
+    topDurationPaths: topDurations(durationPaths, 3),
+    topEvents: topCounts(eventCounts, 3),
+  };
 }
 
 function topBouncePagesForSessions(sessionsByKey, limit = 3) {

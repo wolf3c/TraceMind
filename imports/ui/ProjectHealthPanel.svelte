@@ -14,6 +14,10 @@
     projectSummaryRefreshAge,
     projectSummaryLoading,
     showActiveTimeTip,
+    recentOnline,
+    recentOnlineLoading,
+    recentOnlineError,
+    recentOnlineRefreshAge,
     selectReportDate,
     changeReportDate,
     retryProjectSummary,
@@ -21,6 +25,7 @@
     formatNumber,
     formatDecimal,
     formatDuration,
+    formatTime,
     compactDate,
     formatTrend,
     trendClass,
@@ -29,6 +34,15 @@
     topItemLabel,
     bouncePageMetricText,
   } = $props();
+
+  let recentOnlineBuckets = $derived(recentOnline?.buckets || []);
+  let recentOnlineMaxBucket = $derived(Math.max(1, ...recentOnlineBuckets.map((bucket) => Number(bucket.onlineUsers || 0))));
+
+  function recentOnlineBarHeight(bucket) {
+    const value = Number(bucket?.onlineUsers || 0);
+    if (!value) return "2px";
+    return `${Math.max(8, Math.round((value / recentOnlineMaxBucket) * 100))}%`;
+  }
 </script>
 
 <div class="events-header">
@@ -65,6 +79,91 @@
   </div>
 </div>
 <div class="event-metrics health-metrics" aria-label="Current project health summary">
+  {#if selectedReportDate === todayReportDate}
+    <details class="health-card realtime-online-card">
+      <summary>
+        <span>{$t("Online users in last 30 minutes")}</span>
+        <strong>{recentOnline ? formatNumber(recentOnline.totalOnlineUsers) : "..."}</strong>
+        <small class={recentOnlineError ? "trend-negative" : "trend-flat"}>
+          {recentOnlineError || (recentOnline ? recentOnlineRefreshAge : (recentOnlineLoading ? $t("Loading asynchronously") : $t("Scheduled lazy load")))}
+        </small>
+        <em>{$t("5-minute online users")}</em>
+        <div class="realtime-bar-chart" aria-label={$t("5-minute online users")}>
+          {#if recentOnlineBuckets.length}
+            {#each recentOnlineBuckets as bucket, index (`recent-online-${index}-${bucket.startAt}`)}
+              <div class="realtime-bar">
+                <div class="realtime-bar-track" title={`${formatTime(bucket.startAt)} · ${formatNumber(bucket.onlineUsers)} ${$t("users")}`}>
+                  <span style={`height: ${recentOnlineBarHeight(bucket)}`}></span>
+                </div>
+                <small>{formatTime(bucket.startAt)}</small>
+              </div>
+            {/each}
+          {:else}
+            <p class="realtime-placeholder">
+              {recentOnlineLoading ? $t("Loading asynchronously") : $t("Waiting for lazy load")}
+            </p>
+          {/if}
+        </div>
+      </summary>
+      <dl class="health-detail-list">
+        <div><dt>{$t("Online users in last 30 minutes")}</dt><dd>{recentOnline ? formatNumber(recentOnline.totalOnlineUsers) : $t("No data")}</dd></div>
+        <div class="health-detail-row-stacked">
+          <dt>{$t("Region distribution Top 3")}</dt>
+          <dd>
+            {#if recentOnline?.topRegions?.length}
+              <ol class="health-top-list" aria-label={$t("Region distribution Top 3")}>
+                {#each recentOnline.topRegions as item, index (`recent-region-${index}-${topItemLabel(item)}-${item.count}`)}
+                  <li class="health-top-item">
+                    <span class="health-top-rank">{index + 1}</span>
+                    <span class="health-top-label">{topItemLabel(item)}</span>
+                    <strong>{formatNumber(item.count)}</strong>
+                  </li>
+                {/each}
+              </ol>
+            {:else}
+              {$t("No data")}
+            {/if}
+          </dd>
+        </div>
+        <div class="health-detail-row-stacked">
+          <dt>{$t("Longest pages Top 3")}</dt>
+          <dd>
+            {#if recentOnline?.topDurationPaths?.length}
+              <ol class="health-top-list" aria-label={$t("Longest pages Top 3")}>
+                {#each recentOnline.topDurationPaths as item, index (`recent-page-${index}-${topItemLabel(item)}-${item.durationMs}`)}
+                  <li class="health-top-item">
+                    <span class="health-top-rank">{index + 1}</span>
+                    <span class="health-top-label">{topItemLabel(item)}</span>
+                    <strong>{formatDuration(item.durationMs)}</strong>
+                  </li>
+                {/each}
+              </ol>
+            {:else}
+              {$t("No data")}
+            {/if}
+          </dd>
+        </div>
+        <div class="health-detail-row-stacked">
+          <dt>{$t("Top events Top 3")}</dt>
+          <dd>
+            {#if recentOnline?.topEvents?.length}
+              <ol class="health-top-list" aria-label={$t("Top events Top 3")}>
+                {#each recentOnline.topEvents as item, index (`recent-event-${index}-${topItemLabel(item)}-${item.count}`)}
+                  <li class="health-top-item">
+                    <span class="health-top-rank">{index + 1}</span>
+                    <span class="health-top-label">{topItemLabel(item)}</span>
+                    <strong>{formatNumber(item.count)}</strong>
+                  </li>
+                {/each}
+              </ol>
+            {:else}
+              {$t("No data")}
+            {/if}
+          </dd>
+        </div>
+      </dl>
+    </details>
+  {/if}
   <details class="health-card">
     <summary>
       <span>{$t("Active users")}</span>
