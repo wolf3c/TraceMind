@@ -2,7 +2,7 @@
 
 ## 目标
 
-让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入独立反馈库。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问用户流失、功能使用和转化问题：默认查询语义事件，需要复核时再查询原始日志。
+让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入独立反馈库。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问今天产品是否正常、用户在做什么、哪里值得改：Agent 默认先读取项目健康日报，再下钻语义事件，需要复核时再查询原始日志。
 
 ## Endpoint
 
@@ -149,6 +149,73 @@ Output:
   "projectId": "abc123",
   "projectName": "我的 Web App",
   "mcpServerName": "tracemind-abc123"
+}
+```
+
+### `tracemind.project_health`
+
+读取当前 MCP token 绑定项目的自然日健康报告，帮助 Agent 先回答“今天产品是否正常、哪里需要关注、较前一天发生了什么变化”，再决定是否下钻到语义事件或原始行为。工具只返回项目级健康、趋势、关注项和上报健康，不返回内部 actor hash 字段。
+
+Input:
+
+```json
+{
+  "reportDate": "2026-05-15"
+}
+```
+
+`reportDate` 可省略，默认今天。历史日期只读取已有日报；缺少日报时返回 `status: "missing"` 和空健康结构，不触发大量历史回填。
+
+Output:
+
+```json
+{
+  "ok": true,
+  "project": {
+    "_id": "abc123",
+    "name": "我的 Web App"
+  },
+  "reportDate": "2026-05-15",
+  "previousReportDate": "2026-05-14",
+  "timezone": "Asia/Shanghai",
+  "status": "draft",
+  "computedAt": "2026-05-15T08:30:00.000Z",
+  "sourceWindow": {
+    "startAt": "2026-05-14T16:00:00.000Z",
+    "endAt": "2026-05-15T15:59:59.999Z"
+  },
+  "health": {
+    "status": "needs_attention",
+    "attentionSummary": "所选日期活跃会话较前一天下降 53%。",
+    "current": {
+      "activeUsers": 14,
+      "sessionCount": 95,
+      "eventCount": 239
+    },
+    "previous": {
+      "activeUsers": 17,
+      "sessionCount": 203,
+      "eventCount": 884
+    },
+    "trends": {
+      "activeUsers": -0.18,
+      "sessions": -0.53,
+      "events": -0.73
+    },
+    "attentionItems": [
+      {
+        "code": "sessions_dropped",
+        "severity": "medium",
+        "message": "所选日期活跃会话较前一天下降 53%。"
+      }
+    ]
+  },
+  "delivery": {
+    "accepted": 120,
+    "failedFlushes": 0,
+    "droppedOldest": 0,
+    "droppedStorage": 0
+  }
 }
 ```
 
@@ -444,11 +511,18 @@ Input:
 
 ## 推荐 LLM 查询顺序
 
-1. 调用 `tracemind.event_definitions` 理解事件含义和字段。
-2. 调用 `tracemind.summary` 获取时间窗口内的概览、DAU/设备数和 presence 在线时长。
-3. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
-4. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。
-5. 当开发者发现问题或提出想法时，先询问是否需要上报；若开发者明确要求上报，收集脱敏摘要和证据引用后调用 `tracemind.submit_feedback`。
+1. 调用 `tracemind.project_info` 确认当前 MCP 绑定项目。
+2. 调用 `tracemind.project_health` 获取日报健康、较前一日变化、需关注项和上报健康。
+3. 调用 `tracemind.summary` 获取相关时间窗口内的概览、DAU/设备数和 presence 在线时长。
+4. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
+5. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。
+6. 当开发者发现问题或提出想法时，先询问是否需要上报；若开发者明确要求上报，收集脱敏摘要和证据引用后调用 `tracemind.submit_feedback`。
+
+固定产品分析任务：
+
+- 今日健康检查：先读 `project_health`，总结 `attentionItems`、`trends` 和 `delivery`，再用 `summary` 或 `query_events` 解释变化来源。
+- 功能使用分析：先用 `project_health` 判断大盘是否正常，再用 `summary` 和 `query_events` 按路径、事件名、设备来源或用户分组分析功能使用。
+- 异常或下降原因分析：先确认日报中的下降指标和时间窗口，再下钻相关路径、事件和 session；只有语义证据不足时才查询原始行为。
 
 当同一页面存在多个相同文案的按钮或输入框时，不要只按 `targetText` 判断。先查看事件里的 `targetIdentity`、`identityConfidence`、`target.path`、`target.id`、`target.name`、`target.testId`，优先用 `actionKey` 聚合同一动作，再用 `targetHash` 精确查询同一元素。低置信度 identity 适合 session 复核，不适合直接作为长期漏斗节点。
 
@@ -469,6 +543,7 @@ Input:
   "protocol": "tracemind-mcp-preview",
   "tools": [
     { "name": "tracemind.event_definitions" },
+    { "name": "tracemind.project_health" },
     { "name": "tracemind.summary" },
     { "name": "tracemind.query_events" },
     { "name": "tracemind.query_raw_behaviors" }

@@ -50,10 +50,10 @@
     <div class="hero-grid">
       <div class="hero-copy">
         <h1>
-          <span>{$t("Let AI agents understand")}</span>
-          <span>{$t("real user behavior")}</span>
+          <span>{$t("Let Coding Agents understand")}</span>
+          <span>{$t("daily product behavior")}</span>
         </h1>
-        <p class="lede">{$t("TraceMind gives AI Coding Agents a product behavior analytics layer. Auto Capture turns real paths, clicks, forms, and active time into evidence that agents can analyze through MCP.")}</p>
+        <p class="lede">{$t("TraceMind turns real user behavior into daily health, AI-readable evidence, and MCP tools so your Coding Agent can see what changed, what users did, and what to improve next.")}</p>
         <div class="hero-actions">
           <a href="#console" class="button">{$t("Let Agent set it up")}</a>
           <a href={setupDocsUrl} class="button secondary" target="_blank" rel="noreferrer">{$t("View setup docs")}</a>
@@ -65,49 +65,49 @@
         <div class="command-card">
           <div class="board-header">
             <div>
-              <h2>{$t("Prompt your Coding Agent to set it up automatically")}</h2>
-              <p>{$t("No need to find the entry point, copy code, or decide how to verify setup. The Agent adapts to your project and verifies the integration.")}</p>
+              <h2>{$t("Ask your Coding Agent for today's product health")}</h2>
+              <p>{$t("The Agent reads the daily health report first, then drills into summaries, semantic events, and raw evidence only when needed.")}</p>
             </div>
             <div class="project-key">tm_proj_xxx</div>
           </div>
-          <div class="command-bubble">“{$t("Help me connect TraceMind to this project and verify behavior capture is working.")}”</div>
+          <div class="command-bubble">“{$t("Check whether product behavior is healthy today and explain what changed.")}”</div>
           <div class="agent-steps">
-            <span>{$t("Read setup config")}</span>
-            <span>{$t("Modify project entry")}</span>
-            <span>{$t("Run local verification")}</span>
-            <span>{$t("Query capture result")}</span>
+            <span>{$t("Read project health")}</span>
+            <span>{$t("Find attention item")}</span>
+            <span>{$t("Drill into evidence")}</span>
+            <span>{$t("Suggest next step")}</span>
           </div>
         </div>
         <div class="analysis-grid">
           <article class="analysis-card">
-            <span>{$t("AI + MCP efficient analysis")}</span>
-            <strong>{$t("AI automatically discovers, analyzes, and gives the next step")}</strong>
+            <span>{$t("Health first")}</span>
+            <strong>{$t("Start from the daily report, not a blank query")}</strong>
             <ul>
-              <li>{$t("Automatically identify stuck points in signup, payment, and retention paths.")}</li>
-              <li>{$t("Connect behavior evidence and reconstruct the problem context.")}</li>
-              <li>{$t("Generate fix suggestions, missing instrumentation, or optimization direction.")}</li>
+              <li>{$t("See attention reasons and changes versus the previous day.")}</li>
+              <li>{$t("Separate product usage drops from delivery or capture health issues.")}</li>
+              <li>{$t("Move from headline metrics into reviewable behavior evidence.")}</li>
             </ul>
           </article>
           <article class="analysis-card">
-            <span>{$t("AI user insight")}</span>
-            <strong>{$t("Automatically preserve user paths and usage preferences")}</strong>
+            <span>{$t("Agent drilldown")}</span>
+            <strong>{$t("Answer feature usage and anomaly questions with evidence")}</strong>
             <ul>
-              <li>{$t("Summarize paths, device sources, and active windows automatically.")}</li>
-              <li>{$t("Compare feature usage, cohort differences, and conversion performance efficiently.")}</li>
-              <li>{$t("Reduce time spent reading reports, joining data, and guessing causes.")}</li>
+              <li>{$t("Analyze usage by path, semantic event, device, user, or session.")}</li>
+              <li>{$t("Explain drops with the exact window and behavior trail.")}</li>
+              <li>{$t("Use raw behavior only when semantic evidence is not enough.")}</li>
             </ul>
           </article>
         </div>
         <div class="evidence-stream">
-          <div class="stream-line"><span>{$t("User path")}</span><strong>/pricing -> signup -> submit failed</strong></div>
-          <div class="stream-line"><span>{$t("Semantic event")}</span><strong>user_reached_pricing_without_signup</strong></div>
+          <div class="stream-line"><span>{$t("Project health")}</span><strong>{$t("Active sessions down 53% vs previous day")}</strong></div>
           <div class="stream-line"><span>{$t("Agent question")}</span><strong>{$t("Which users reached pricing but did not submit? Why?")}</strong></div>
+          <div class="stream-line"><span>{$t("Evidence drilldown")}</span><strong>/pricing -> signup -> submit failed</strong></div>
         </div>
         <div class="loop-preview">
           <div class="mini-cycle" aria-hidden="true"></div>
           <div>
-            <h3>{$t("Feedback loops keep analysis quality improving")}</h3>
-            <p>{$t("AI first helps you improve your product. Evidence-backed feedback keeps improving TraceMind so the next analysis is faster and more accurate.")}</p>
+            <h3>{$t("Feedback stays a secondary, confirmed action")}</h3>
+            <p>{$t("The main flow is read-only analysis. submit_feedback is used only after the Agent finds an issue and the developer confirms it should be reported.")}</p>
           </div>
         </div>
       </div>
@@ -143,24 +143,24 @@
   <section class="workflow product-iteration">
     <div>
       <p class="section-label">{$t("AI + MCP analysis")}</p>
-      <h2>{$t("Let AI automatically complete efficient product iteration")}</h2>
-      <p class="section-intro">{$t("TraceMind is not just another report. It gives real behavior evidence to AI so it can automatically discover problems, analyze causes, and produce an actionable next step.")}</p>
+      <h2>{$t("Let Coding Agents answer product health questions directly")}</h2>
+      <p class="section-intro">{$t("TraceMind is not just another report. It gives daily health, real behavior evidence, and MCP query tools to AI so it can explain changes and produce an actionable next step.")}</p>
     </div>
     <div class="solution-grid">
       <article class="solution-card">
         <div class="solution-icon">1</div>
-        <h3>{$t("Automatically discover problems")}</h3>
-        <p>{$t("AI identifies drop-off, stuck points, abnormal behavior, and low-conversion steps from real paths, reducing manual screening and guesswork.")}</p>
+        <h3>{$t("Start with today's health")}</h3>
+        <p>{$t("AI reads attention reasons, trend changes, active usage, event volume, and delivery health before choosing a drilldown path.")}</p>
       </article>
       <article class="solution-card">
         <div class="solution-icon">2</div>
-        <h3>{$t("Efficiently analyze causes")}</h3>
-        <p>{$t("AI combines pages, events, sources, devices, cohorts, and time windows to quickly reconstruct the full context of a problem.")}</p>
+        <h3>{$t("Analyze feature usage")}</h3>
+        <p>{$t("AI combines pages, events, sources, devices, cohorts, and time windows to explain which workflows users actually touched.")}</p>
       </article>
       <article class="solution-card">
         <div class="solution-icon">3</div>
-        <h3>{$t("Automatically drive resolution")}</h3>
-        <p>{$t("Coding Agents can generate fix suggestions, add missing instrumentation, optimize pages, or submit structured feedback based on evidence.")}</p>
+        <h3>{$t("Investigate drops and anomalies")}</h3>
+        <p>{$t("Coding Agents can move from a falling metric to the exact path, event, session, or capture issue that explains it.")}</p>
       </article>
     </div>
   </section>
@@ -208,12 +208,16 @@
 
   <section class="workflow proof-section">
     <div>
-      <h2>{$t("Feedback is no longer a chat log. It becomes executable product evidence")}</h2>
+      <h2>{$t("Daily health becomes agent-readable product evidence")}</h2>
     </div>
     <div class="proof-grid">
       <div class="evidence-panel">
         <div class="signal-row">
-          <span>{$t("User path")}</span>
+          <span>{$t("Health signal")}</span>
+          <strong>{$t("Active sessions dropped versus the previous day")}</strong>
+        </div>
+        <div class="signal-row">
+          <span>{$t("Agent drilldown")}</span>
           <strong>/pricing -> signup -> submit failed</strong>
         </div>
         <div class="signal-row">
@@ -221,21 +225,17 @@
           <strong>click, input, submit, route_change, online segment</strong>
         </div>
         <div class="signal-row">
-          <span>{$t("MCP feedback")}</span>
-          <strong>{$t("Users reached pricing but did not complete signup, so the signup form failure path needs review.")}</strong>
-        </div>
-        <div class="signal-row">
-          <span>{$t("Optimization result")}</span>
-          <strong>{$t("Improve signup funnel recognition, add Agent guidance, and let the next answer locate the failed step directly.")}</strong>
+          <span>{$t("Next step")}</span>
+          <strong>{$t("Review the signup failure path, then confirm whether to submit structured feedback.")}</strong>
         </div>
       </div>
       <div class="impact-panel">
-        <h3>{$t("Why is this loop faster than traditional analytics?")}</h3>
+        <h3>{$t("Why is this faster than traditional analytics?")}</h3>
         <div class="impact-list">
-          <div class="impact-item">{$t("Feedback carries evidence, so you no longer rely on screenshots, subjective descriptions, or after-the-fact guessing.")}</div>
+          <div class="impact-item">{$t("The Agent starts from a computed daily health report instead of inventing a query plan from scratch.")}</div>
           <div class="impact-item">{$t("AI can ask directly about behavior context and return reviewable analysis and improvement suggestions.")}</div>
-          <div class="impact-item">{$t("Every evidence-backed feedback item improves TraceMind SDKs, the semantic layer, MCP tools, and Agent guidance.")}</div>
-          <div class="impact-item">{$t("The result shows up in issue-location speed, analysis quality, and setup experience.")}</div>
+          <div class="impact-item">{$t("Attention reasons, trends, delivery health, and behavior evidence stay in one MCP workflow.")}</div>
+          <div class="impact-item">{$t("Feedback submission remains opt-in, so the default analysis path stays read-only.")}</div>
         </div>
       </div>
     </div>

@@ -12,17 +12,28 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 1. If the project instruction file contains a TraceMind Project Binding, use the expected MCP server and call `tracemind.project_info`; continue only if the returned `projectId` matches the bound Project ID.
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
-3. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-4. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
-5. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
-6. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
-7. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
-8. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
-9. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
-10. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
-11. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
-12. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
-13. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
+3. For product behavior analysis, call `tracemind.project_health` first to read the daily project health report, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
+4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
+5. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
+6. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
+7. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
+8. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
+9. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
+10. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
+11. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+12. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
+13. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
+14. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
+
+## Product Behavior Analysis Workflows
+
+Use these workflows when a developer asks what is happening in their product:
+
+- Daily health check: call `tracemind.project_info`, then `tracemind.project_health` for the selected day. Report whether the project is normal, what changed versus the previous day, and the first attention item to inspect.
+- Feature usage analysis: call `tracemind.project_health`, then `tracemind.summary` with relevant time, path, event, `actionKey`, or `targetHash` filters. Use `tracemind.query_events` to show reviewable evidence.
+- Anomaly or drop investigation: start with `tracemind.project_health`, identify the dropped metric or upload-health issue, then query affected events and paths. Use `tracemind.query_raw_behaviors` only when semantic evidence is not enough.
+
+Only call `tracemind.submit_feedback` after the developer confirms they want to submit an issue or idea.
 
 ## Auto Capture Setup Workflow
 

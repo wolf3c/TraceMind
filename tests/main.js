@@ -70,6 +70,9 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('优先读取 MCP tools/list 的描述或调用 `tracemind.project_info`'));
       assert.ok(prompt.includes('必须使用 MCP server `tracemind-abc123`'));
       assert.ok(prompt.includes('返回的 `projectId` 等于 `project-中文-ABC123`'));
+      assert.ok(prompt.includes('安装完成后，优先调用 `tracemind.project_health` 做今日健康检查'));
+      assert.ok(prompt.includes('功能使用分析'));
+      assert.ok(prompt.includes('异常或下降原因分析'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
       assert.ok(prompt.includes('通过 `tracemind.capture_setup` 获取 Web Auto Capture 接入脚本'));
       assert.ok(!prompt.includes('如果只能使用全局配置，请先告诉我并等待确认'));
@@ -113,6 +116,9 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('Prefer MCP tools/list descriptions or call `tracemind.project_info`'));
       assert.ok(prompt.includes('use MCP server `tracemind-xyz789`'));
       assert.ok(prompt.includes('returned `projectId` is `project-XYZ789`'));
+      assert.ok(prompt.includes('After installation, call `tracemind.project_health` first for a daily health check'));
+      assert.ok(prompt.includes('feature usage analysis'));
+      assert.ok(prompt.includes('anomaly or drop investigation'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
       assert.ok(prompt.includes('Call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
       assert.ok(!prompt.includes('If only global configuration is available, tell me first and wait for confirmation'));
@@ -152,6 +158,11 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('## Instrumenting Agent Skills'));
       assert.ok(skill.includes('## Instrumenting Server Applications'));
       assert.ok(skill.includes('## Developer Feedback Submission'));
+      assert.ok(skill.includes('## Product Behavior Analysis Workflows'));
+      assert.ok(skill.includes('tracemind.project_health'));
+      assert.ok(skill.includes('Daily health check'));
+      assert.ok(skill.includes('Feature usage analysis'));
+      assert.ok(skill.includes('Anomaly or drop investigation'));
       assert.ok(skill.includes('tracemind.submit_feedback'));
       assert.ok(skill.includes('ordinary server applications use manual capture first'));
       assert.ok(skill.includes('static Skill file cannot auto-capture'));
@@ -171,6 +182,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('mcp_node'));
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
+      assert.ok(snippet.includes('tracemind.project_health'));
       assert.ok(snippet.includes('tracemind.submit_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.strictEqual(manifest.guidanceVersion, '2026.05.09.1');
@@ -178,6 +190,7 @@ describe('TraceMind', function () {
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
       assert.ok(manifest.mcp.tools.includes('tracemind.project_info'));
+      assert.ok(manifest.mcp.tools.includes('tracemind.project_health'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
       assert.ok(manifest.mcp.tools.includes('tracemind.submit_feedback'));
       assert.ok(manifest.platforms.includes('macos'));
@@ -694,6 +707,7 @@ describe('TraceMind', function () {
       const toolNames = mcpTools().map((tool) => tool.name);
       assert.ok(toolNames.includes('tracemind.agent_guidance'));
       assert.ok(toolNames.includes('tracemind.project_info'));
+      assert.ok(toolNames.includes('tracemind.project_health'));
       assert.ok(toolNames.includes('tracemind.capture_setup'));
       assert.ok(toolNames.includes('tracemind.validate_event_payload'));
       assert.ok(toolNames.includes('tracemind.validate_instrumentation_diff'));
@@ -702,6 +716,11 @@ describe('TraceMind', function () {
       const projectTools = mcpTools(project);
       assert.ok(projectTools.some((tool) => (
         tool.name === 'tracemind.summary'
+        && tool.title.includes('Agent Guidance Project')
+        && tool.description.includes('Agent Guidance Project')
+      )));
+      assert.ok(projectTools.some((tool) => (
+        tool.name === 'tracemind.project_health'
         && tool.title.includes('Agent Guidance Project')
         && tool.description.includes('Agent Guidance Project')
       )));
@@ -736,6 +755,9 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
+      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Daily health check'));
+      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Feature usage analysis'));
+      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Anomaly or drop investigation'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_proj_'));
 
@@ -793,6 +815,152 @@ describe('TraceMind', function () {
       assert.strictEqual(mcpAutoDiffValidation.structuredContent.ok, true);
       assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.path === 'eventName'));
       assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.message.includes('promptName')));
+    });
+
+    it('returns materialized project health through MCP without internal actor hashes', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const projectId = `project-mcp-health-${Date.now()}`;
+      const otherProjectId = `${projectId}-other`;
+      const project = {
+        _id: projectId,
+        name: 'MCP Health Project',
+        mcpTokens: [{ id: 'mcp_health', name: 'Codex Agent', token: 'tm_mcp_health' }],
+      };
+
+      await ProjectDailyReports.removeAsync({ projectId: { $in: [projectId, otherProjectId] } });
+      await ProjectDailyReports.insertAsync({
+        projectId,
+        reportDate: '2026-05-11',
+        timezone: 'Asia/Shanghai',
+        status: 'final',
+        computedAt: new Date('2026-05-11T16:30:00.000Z'),
+        sourceWindow: {
+          startAt: new Date('2026-05-10T16:00:00.000Z'),
+          endAt: new Date('2026-05-11T16:00:00.000Z'),
+          fullEndAt: new Date('2026-05-11T16:00:00.000Z'),
+        },
+        current: {
+          eventCount: 20,
+          activeUsers: 10,
+          sessionCount: 8,
+          averageActiveDurationMs: 60000,
+          topEvents: [{ label: 'signup_started', count: 10 }],
+          newUsers: 2,
+        },
+        delivery: {
+          reportCount: 1,
+          accepted: 22,
+          droppedOldest: 0,
+          droppedStorage: 0,
+        },
+        activeActorKeys: ['internal-previous-active'],
+        newActorKeys: ['internal-previous-new'],
+        firstSeenActorKeys: ['internal-previous-first'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await ProjectDailyReports.insertAsync({
+        projectId,
+        reportDate: '2026-05-12',
+        timezone: 'Asia/Shanghai',
+        status: 'final',
+        computedAt: new Date('2026-05-12T16:30:00.000Z'),
+        sourceWindow: {
+          startAt: new Date('2026-05-11T16:00:00.000Z'),
+          endAt: new Date('2026-05-12T16:00:00.000Z'),
+          fullEndAt: new Date('2026-05-12T16:00:00.000Z'),
+        },
+        current: {
+          eventCount: 6,
+          activeUsers: 4,
+          sessionCount: 3,
+          averageActiveDurationMs: 30000,
+          failureEventCount: 1,
+          topEvents: [{ label: 'signup_failed', count: 4 }],
+          newUsers: 1,
+          retention: { d2: { sampleSize: 1, retainedUsers: 1, rate: 1 } },
+        },
+        delivery: {
+          reportCount: 2,
+          accepted: 7,
+          retryCount: 1,
+          droppedOldest: 1,
+          droppedStorage: 0,
+        },
+        activeActorKeys: ['internal-current-active'],
+        newActorKeys: ['internal-current-new'],
+        firstSeenActorKeys: ['internal-current-first'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await ProjectDailyReports.insertAsync({
+        projectId: otherProjectId,
+        reportDate: '2026-05-12',
+        timezone: 'Asia/Shanghai',
+        status: 'final',
+        computedAt: new Date('2026-05-12T16:30:00.000Z'),
+        sourceWindow: {
+          startAt: new Date('2026-05-11T16:00:00.000Z'),
+          endAt: new Date('2026-05-12T16:00:00.000Z'),
+        },
+        current: {
+          eventCount: 999,
+          activeUsers: 999,
+          sessionCount: 999,
+        },
+        delivery: { accepted: 999 },
+        activeActorKeys: ['other-active'],
+        newActorKeys: ['other-new'],
+        firstSeenActorKeys: ['other-first'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const health = await callMcpTool(project, 'tracemind.project_health', { reportDate: '2026-05-12' });
+      const structured = health.structuredContent;
+
+      assert.ok(mcpTools(project).some((tool) => tool.name === 'tracemind.project_health'));
+      assert.strictEqual(structured.ok, true);
+      assert.strictEqual(structured.project._id, projectId);
+      assert.strictEqual(structured.project.name, 'MCP Health Project');
+      assert.strictEqual(structured.reportDate, '2026-05-12');
+      assert.strictEqual(structured.previousReportDate, '2026-05-11');
+      assert.strictEqual(structured.timezone, 'Asia/Shanghai');
+      assert.strictEqual(structured.status, 'final');
+      assert.strictEqual(structured.health.current.eventCount, 6);
+      assert.strictEqual(structured.health.previous.eventCount, 20);
+      assert.strictEqual(structured.health.trends.events, -0.7);
+      assert.strictEqual(structured.delivery.accepted, 7);
+      assert.ok(structured.health.attentionItems.some((item) => item.code === 'active_users_dropped'));
+      assert.ok(JSON.stringify(structured).includes('signup_failed'));
+      assert.ok(!JSON.stringify(structured).includes('internal-current-active'));
+      assert.ok(!JSON.stringify(structured).includes('internal-current-new'));
+      assert.ok(!JSON.stringify(structured).includes('internal-current-first'));
+      assert.ok(!JSON.stringify(structured).includes('other-active'));
+      assert.notStrictEqual(structured.project._id, otherProjectId);
+      assert.notStrictEqual(structured.health.current.eventCount, 999);
+      assert.notStrictEqual(structured.delivery.accepted, 999);
+    });
+
+    it('returns an empty MCP project health result when a daily report is missing', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const projectId = `project-mcp-health-missing-${Date.now()}`;
+      const project = { _id: projectId, name: 'Missing Health Project' };
+
+      await ProjectDailyReports.removeAsync({ projectId });
+
+      const health = await callMcpTool(project, 'tracemind.project_health', { reportDate: '2026-04-01' });
+      const structured = health.structuredContent;
+
+      assert.strictEqual(structured.ok, true);
+      assert.strictEqual(structured.reportDate, '2026-04-01');
+      assert.strictEqual(structured.status, 'missing');
+      assert.strictEqual(structured.health.current.eventCount, 0);
+      assert.strictEqual(structured.health.previous.eventCount, 0);
+      assert.deepStrictEqual(structured.delivery, {});
+      assert.ok(!JSON.stringify(structured).includes('activeActorKeys'));
+      assert.ok(!JSON.stringify(structured).includes('newActorKeys'));
+      assert.ok(!JSON.stringify(structured).includes('firstSeenActorKeys'));
     });
 
     it('submits sanitized developer feedback through MCP without creating behavior events', async function () {

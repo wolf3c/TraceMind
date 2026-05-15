@@ -2,6 +2,16 @@
 
 TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者只需要添加一行初始化代码，TraceMind 就会把 Web、iOS、macOS、Android、React Native、MCP server、普通后端服务和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题，也可以在开发者确认后上报问题或想法反馈。
 
+## Coding Agent 产品分析路径
+
+TraceMind 的 MCP 查询路径面向三个高频客户问题：
+
+- 今天产品是否正常：先调用 `tracemind.project_info` 确认项目，再调用 `tracemind.project_health` 读取今日健康、较前一日变化、需关注项和上报健康。
+- 用户在做什么：在日报判断大盘后，用 `tracemind.summary` 和 `tracemind.query_events` 按路径、事件名、设备来源、用户或 session 下钻功能使用。
+- 为什么下降或哪里卡住：先用 `project_health` 锁定下降指标和时间窗口，再查 `query_events`，只有语义证据不足或需要排查采集问题时才查 `query_raw_behaviors`。
+
+`tracemind.submit_feedback` 不是主分析入口；只有 Agent 发现问题或想法，并且开发者明确确认上报后，才把脱敏摘要和证据引用写入反馈库。
+
 ## 1 分钟接入
 
 Web 应用把下面这行代码放到页面的 `<head>` 或 `</body>` 前：

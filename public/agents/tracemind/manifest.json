@@ -24,6 +24,7 @@
     "tools": [
       "tracemind.project_info",
       "tracemind.agent_guidance",
+      "tracemind.project_health",
       "tracemind.capture_setup",
       "tracemind.search_event_names",
       "tracemind.suggest_instrumentation",

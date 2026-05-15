@@ -21,6 +21,7 @@ import {
   summarizePresenceSessions,
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
+import { queueProjectDailyHealthRefresh, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
@@ -188,6 +189,20 @@ export function mcpTools(project) {
       inputSchema: {
         type: 'object',
         properties: {},
+      },
+    },
+    {
+      name: 'tracemind.project_health',
+      title: projectScopedTitle('TraceMind Project Health', project),
+      description: projectScopedDescription('读取按自然日物化的项目健康报告，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          reportDate: {
+            type: 'string',
+            description: 'YYYY-MM-DD，自然日报告日期；省略时使用今天。',
+          },
+        },
       },
     },
     {
@@ -431,6 +446,42 @@ async function loadProjectPresenceSessions(project, limit = 500) {
   ).fetchAsync();
 }
 
+function normalizeMcpReportDate(reportDateInput) {
+  const reportDate = String(reportDateInput || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(reportDate) ? reportDate : reportDateForDate(new Date());
+}
+
+function projectHealthResult(project, reportDate, report, health = {}) {
+  return {
+    ok: true,
+    project: { _id: project._id, name: project.name },
+    reportDate,
+    previousReportDate: health.window?.previousReportDate || '',
+    timezone: report?.timezone || health.window?.timezone || 'Asia/Shanghai',
+    status: report?.status || 'missing',
+    computedAt: report?.computedAt || null,
+    sourceWindow: report?.sourceWindow || null,
+    health: {
+      window: health.window || {},
+      status: health.status || 'normal',
+      attentionSummary: health.attentionSummary || '',
+      attentionItems: health.attentionItems || [],
+      current: health.current || {},
+      previous: health.previous || {},
+      trends: health.trends || {},
+    },
+    delivery: report?.delivery || {},
+  };
+}
+
+async function readProjectHealth(project, args = {}) {
+  const reportDate = normalizeMcpReportDate(args.reportDate);
+  const now = new Date();
+  queueProjectDailyHealthRefresh(project._id, reportDate, { now });
+  const { report, health } = await resolveProjectDailyHealth(project._id, reportDate, { now });
+  return projectHealthResult(project, reportDate, report, health);
+}
+
 function textResult(text, structuredContent) {
   return {
     content: [{ type: 'text', text }],
@@ -444,9 +495,27 @@ function guidanceResult(extra = {}) {
     ok: true,
     guidanceVersion: AGENT_GUIDANCE_VERSION,
     resources: AGENT_GUIDANCE_RESOURCES,
+    analysisWorkflows: [
+      {
+        name: 'Daily health check',
+        prompt: 'Check whether the product is healthy today, what changed versus the previous day, and which attention item should be handled first.',
+        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary', 'tracemind.query_events if drilldown is needed'],
+      },
+      {
+        name: 'Feature usage analysis',
+        prompt: 'Analyze whether a feature is actually being used, who uses it, and which paths or actions lead to it.',
+        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary with event/path filters', 'tracemind.query_events by path, actionKey, targetHash, or eventName'],
+      },
+      {
+        name: 'Anomaly or drop investigation',
+        prompt: 'Investigate why active users, sessions, events, conversion intent, or upload health dropped for a selected day.',
+        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.query_events for affected window', 'tracemind.query_raw_behaviors only when semantic evidence is insufficient'],
+      },
+    ],
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
+      'For product behavior analysis, call tracemind.project_health first to read the daily health report, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.',
@@ -1656,6 +1725,16 @@ export async function callMcpTool(project, name, args = {}, options = {}) {
 
   if (name === 'tracemind.submit_feedback') {
     return submitFeedbackReport(project, args, options);
+  }
+
+  if (name === 'tracemind.project_health') {
+    const health = await readProjectHealth(project, args);
+    return textResult(
+      health.status === 'missing'
+        ? `TraceMind 没有找到 ${health.reportDate} 的项目健康日报。`
+        : `TraceMind ${health.reportDate} 项目健康状态：${health.health.status === 'needs_attention' ? '需关注' : '正常'}。${health.health.attentionSummary || ''}`.trim(),
+      health,
+    );
   }
 
   if (name === 'tracemind.summary') {
