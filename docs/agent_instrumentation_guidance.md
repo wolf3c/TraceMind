@@ -44,15 +44,17 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 Agent 分析产品行为时应先按只读路径使用 MCP：
 
 1. `tracemind.project_info`：先确认当前 MCP 对应的 TraceMind 项目，并与项目级 instruction 中的 expected `projectId` 比对；不匹配时停止。
-2. `tracemind.project_health`：先读取项目日报，回答今天是否正常、较前一日变化、需关注项和上报健康。
-3. `tracemind.summary`：在日报指向的时间窗口内看概览、DAU/设备数和 presence 在线时长。
-4. `tracemind.query_events`：按路径、事件名、用户、session、`actionKey` 或 `targetHash` 下钻语义证据。
-5. `tracemind.query_raw_behaviors`：只有语义证据不足或需要排查采集问题时才使用。
-6. `tracemind.submit_feedback`：只有开发者明确确认上报后，才提交脱敏摘要和证据引用。
+2. `tracemind.project_health`：读取项目日报，回答今天是否正常、较前一日变化、需关注项和上报健康。
+3. `tracemind.recent_online`：读取近 30 分钟实时在线态势，回答现在是否有人在线、用户集中在哪些页面/地区和最近高频事件。
+4. `tracemind.summary`：在日报或实时态势指向的时间窗口内看概览、DAU/设备数和 presence 在线时长。
+5. `tracemind.query_events`：按路径、事件名、用户、session、`actionKey` 或 `targetHash` 下钻语义证据。
+6. `tracemind.query_raw_behaviors`：只有语义证据不足或需要排查采集问题时才使用。
+7. `tracemind.submit_feedback`：只有开发者明确确认上报后，才提交脱敏摘要和证据引用。
 
 固定分析任务：
 
 - 今日健康检查：报告 `project_health.health.attentionItems`、`trends`、`delivery` 和需要继续下钻的指标。
+- 实时在线态势：报告 `recent_online.totalOnlineUsers`、5 分钟在线桶、地区 Top3、活跃页面 Top3 和高频事件 Top3。
 - 功能使用分析：从日报判断大盘，再按路径、事件名、设备来源、用户或 session 分析功能使用。
 - 异常或下降原因分析：先确认下降指标和自然日窗口，再用语义事件解释变化；必要时复核原始行为。
 

@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.09.1
+version: 2026.05.15.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -12,7 +12,7 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 1. If the project instruction file contains a TraceMind Project Binding, use the expected MCP server and call `tracemind.project_info`; continue only if the returned `projectId` matches the bound Project ID.
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
-3. For product behavior analysis, call `tracemind.project_health` first to read the daily project health report, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
+3. For product behavior analysis, use `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
 4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
 5. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
 6. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
@@ -30,6 +30,7 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 Use these workflows when a developer asks what is happening in their product:
 
 - Daily health check: call `tracemind.project_info`, then `tracemind.project_health` for the selected day. Report whether the project is normal, what changed versus the previous day, and the first attention item to inspect.
+- Recent online status: call `tracemind.project_info`, then `tracemind.recent_online` to inspect the last 30 minutes. Report online users, 5-minute buckets, top regions, active pages, and high-frequency events.
 - Feature usage analysis: call `tracemind.project_health`, then `tracemind.summary` with relevant time, path, event, `actionKey`, or `targetHash` filters. Use `tracemind.query_events` to show reviewable evidence.
 - Anomaly or drop investigation: start with `tracemind.project_health`, identify the dropped metric or upload-health issue, then query affected events and paths. Use `tracemind.query_raw_behaviors` only when semantic evidence is not enough.
 

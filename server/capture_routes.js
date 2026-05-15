@@ -22,11 +22,11 @@ import {
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 import { queueProjectDailyHealthRefresh, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
-import { resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
+import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.09.1';
+const AGENT_GUIDANCE_VERSION = '2026.05.15.1';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -203,6 +203,15 @@ export function mcpTools(project) {
             description: 'YYYY-MM-DD，自然日报告日期；省略时使用今天。',
           },
         },
+      },
+    },
+    {
+      name: 'tracemind.recent_online',
+      title: projectScopedTitle('TraceMind Recent Online', project),
+      description: projectScopedDescription('读取近 30 分钟实时在线态势，帮助 agent 判断现在是否有人在线、用户集中在哪些页面或地区，以及最近高频事件。', project),
+      inputSchema: {
+        type: 'object',
+        properties: {},
       },
     },
     {
@@ -482,6 +491,37 @@ async function readProjectHealth(project, args = {}) {
   return projectHealthResult(project, reportDate, report, health);
 }
 
+function recentOnlineResult(project, recentOnline = {}) {
+  return {
+    ok: true,
+    project: { _id: project._id, name: project.name },
+    window: recentOnline.window || {},
+    totalOnlineUsers: safeCount(recentOnline.totalOnlineUsers),
+    buckets: (recentOnline.buckets || []).map((bucket) => ({
+      startAt: bucket.startAt,
+      endAt: bucket.endAt,
+      onlineUsers: safeCount(bucket.onlineUsers),
+    })),
+    topRegions: (recentOnline.topRegions || []).map((item) => ({
+      label: safeString(item.label, 120, 'Unknown'),
+      count: safeCount(item.count),
+    })),
+    topDurationPaths: (recentOnline.topDurationPaths || []).map((item) => ({
+      path: safeString(item.path, 300, '/'),
+      durationMs: safeCount(item.durationMs),
+      sessions: safeCount(item.sessions),
+    })),
+    topEvents: (recentOnline.topEvents || []).map((item) => ({
+      label: safeString(item.label, 160, 'unknown_event'),
+      count: safeCount(item.count),
+    })),
+  };
+}
+
+async function readRecentOnline(project) {
+  return recentOnlineResult(project, await buildProjectRecentOnline(project));
+}
+
 function textResult(text, structuredContent) {
   return {
     content: [{ type: 'text', text }],
@@ -502,6 +542,11 @@ function guidanceResult(extra = {}) {
         steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary', 'tracemind.query_events if drilldown is needed'],
       },
       {
+        name: 'Recent online status',
+        prompt: 'Check whether users are online right now, where they are active, and which events are happening in the last 30 minutes.',
+        steps: ['tracemind.project_info', 'tracemind.recent_online', 'tracemind.query_events if drilldown is needed'],
+      },
+      {
         name: 'Feature usage analysis',
         prompt: 'Analyze whether a feature is actually being used, who uses it, and which paths or actions lead to it.',
         steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary with event/path filters', 'tracemind.query_events by path, actionKey, targetHash, or eventName'],
@@ -515,7 +560,7 @@ function guidanceResult(extra = {}) {
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
-      'For product behavior analysis, call tracemind.project_health first to read the daily health report, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
+      'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.',
@@ -1734,6 +1779,14 @@ export async function callMcpTool(project, name, args = {}, options = {}) {
         ? `TraceMind 没有找到 ${health.reportDate} 的项目健康日报。`
         : `TraceMind ${health.reportDate} 项目健康状态：${health.health.status === 'needs_attention' ? '需关注' : '正常'}。${health.health.attentionSummary || ''}`.trim(),
       health,
+    );
+  }
+
+  if (name === 'tracemind.recent_online') {
+    const recentOnline = await readRecentOnline(project);
+    return textResult(
+      `TraceMind 近 30 分钟在线用户数：${recentOnline.totalOnlineUsers}。`,
+      recentOnline,
     );
   }
 

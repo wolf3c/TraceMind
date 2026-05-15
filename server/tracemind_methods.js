@@ -184,7 +184,7 @@ async function buildProjectSummary(project, selectedDateInput) {
   };
 }
 
-async function buildProjectRecentOnline(project) {
+export async function buildProjectRecentOnline(project) {
   const now = new Date();
   const windowStart = new Date(now.getTime() - RECENT_ONLINE_WINDOW_MS);
   const events = await SemanticEvents.find(

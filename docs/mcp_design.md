@@ -219,6 +219,47 @@ Output:
 }
 ```
 
+### `tracemind.recent_online`
+
+读取当前 MCP token 绑定项目最近 30 分钟的实时在线态势，帮助 Agent 回答“现在是否有人在用、用户集中在哪些页面或地区、最近高频事件是什么”。它是实时窗口工具，不并入自然日日报，也不替代 `tracemind.project_health`。
+
+Input:
+
+```json
+{}
+```
+
+Output:
+
+```json
+{
+  "ok": true,
+  "project": {
+    "_id": "abc123",
+    "name": "我的 Web App"
+  },
+  "window": {
+    "startAt": "2026-05-15T09:00:00.000Z",
+    "endAt": "2026-05-15T09:30:00.000Z",
+    "windowMs": 1800000,
+    "bucketMs": 300000
+  },
+  "totalOnlineUsers": 4,
+  "buckets": [
+    {
+      "startAt": "2026-05-15T09:00:00.000Z",
+      "endAt": "2026-05-15T09:05:00.000Z",
+      "onlineUsers": 1
+    }
+  ],
+  "topRegions": [{ "label": "US", "count": 2 }],
+  "topDurationPaths": [{ "path": "/pricing", "durationMs": 120000, "sessions": 1 }],
+  "topEvents": [{ "label": "pricing_viewed", "count": 3 }]
+}
+```
+
+返回值不包含 actor id、session id、presence id、device fingerprint 或原始用户识别字段。
+
 ### `tracemind.capture_setup`
 
 返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
@@ -512,7 +553,7 @@ Input:
 ## 推荐 LLM 查询顺序
 
 1. 调用 `tracemind.project_info` 确认当前 MCP 绑定项目。
-2. 调用 `tracemind.project_health` 获取日报健康、较前一日变化、需关注项和上报健康。
+2. 调用 `tracemind.project_health` 获取日报健康、较前一日变化、需关注项和上报健康；需要实时态势时并列调用 `tracemind.recent_online`。
 3. 调用 `tracemind.summary` 获取相关时间窗口内的概览、DAU/设备数和 presence 在线时长。
 4. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
 5. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。
@@ -521,6 +562,7 @@ Input:
 固定产品分析任务：
 
 - 今日健康检查：先读 `project_health`，总结 `attentionItems`、`trends` 和 `delivery`，再用 `summary` 或 `query_events` 解释变化来源。
+- 实时在线态势：读 `recent_online`，总结在线用户、5 分钟桶、地区、活跃页面和高频事件，再用 `query_events` 复核具体行为。
 - 功能使用分析：先用 `project_health` 判断大盘是否正常，再用 `summary` 和 `query_events` 按路径、事件名、设备来源或用户分组分析功能使用。
 - 异常或下降原因分析：先确认日报中的下降指标和时间窗口，再下钻相关路径、事件和 session；只有语义证据不足时才查询原始行为。
 
@@ -544,6 +586,7 @@ Input:
   "tools": [
     { "name": "tracemind.event_definitions" },
     { "name": "tracemind.project_health" },
+    { "name": "tracemind.recent_online" },
     { "name": "tracemind.summary" },
     { "name": "tracemind.query_events" },
     { "name": "tracemind.query_raw_behaviors" }

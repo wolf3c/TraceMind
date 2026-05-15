@@ -71,6 +71,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('必须使用 MCP server `tracemind-abc123`'));
       assert.ok(prompt.includes('返回的 `projectId` 等于 `project-中文-ABC123`'));
       assert.ok(prompt.includes('安装完成后，优先调用 `tracemind.project_health` 做今日健康检查'));
+      assert.ok(prompt.includes('`tracemind.recent_online` 查看实时在线态势'));
       assert.ok(prompt.includes('功能使用分析'));
       assert.ok(prompt.includes('异常或下降原因分析'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
@@ -117,6 +118,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('use MCP server `tracemind-xyz789`'));
       assert.ok(prompt.includes('returned `projectId` is `project-XYZ789`'));
       assert.ok(prompt.includes('After installation, call `tracemind.project_health` first for a daily health check'));
+      assert.ok(prompt.includes('`tracemind.recent_online` for real-time online status'));
       assert.ok(prompt.includes('feature usage analysis'));
       assert.ok(prompt.includes('anomaly or drop investigation'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
@@ -146,7 +148,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.09.1'));
+      assert.ok(skill.includes('version: 2026.05.15.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Platform Loading And Network Restrictions'));
@@ -160,7 +162,9 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('## Developer Feedback Submission'));
       assert.ok(skill.includes('## Product Behavior Analysis Workflows'));
       assert.ok(skill.includes('tracemind.project_health'));
+      assert.ok(skill.includes('tracemind.recent_online'));
       assert.ok(skill.includes('Daily health check'));
+      assert.ok(skill.includes('Recent online status'));
       assert.ok(skill.includes('Feature usage analysis'));
       assert.ok(skill.includes('Anomaly or drop investigation'));
       assert.ok(skill.includes('tracemind.submit_feedback'));
@@ -183,14 +187,16 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
       assert.ok(snippet.includes('tracemind.project_health'));
+      assert.ok(snippet.includes('tracemind.recent_online'));
       assert.ok(snippet.includes('tracemind.submit_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.09.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.15.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
       assert.ok(manifest.mcp.tools.includes('tracemind.project_info'));
       assert.ok(manifest.mcp.tools.includes('tracemind.project_health'));
+      assert.ok(manifest.mcp.tools.includes('tracemind.recent_online'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
       assert.ok(manifest.mcp.tools.includes('tracemind.submit_feedback'));
       assert.ok(manifest.platforms.includes('macos'));
@@ -708,6 +714,7 @@ describe('TraceMind', function () {
       assert.ok(toolNames.includes('tracemind.agent_guidance'));
       assert.ok(toolNames.includes('tracemind.project_info'));
       assert.ok(toolNames.includes('tracemind.project_health'));
+      assert.ok(toolNames.includes('tracemind.recent_online'));
       assert.ok(toolNames.includes('tracemind.capture_setup'));
       assert.ok(toolNames.includes('tracemind.validate_event_payload'));
       assert.ok(toolNames.includes('tracemind.validate_instrumentation_diff'));
@@ -721,6 +728,11 @@ describe('TraceMind', function () {
       )));
       assert.ok(projectTools.some((tool) => (
         tool.name === 'tracemind.project_health'
+        && tool.title.includes('Agent Guidance Project')
+        && tool.description.includes('Agent Guidance Project')
+      )));
+      assert.ok(projectTools.some((tool) => (
+        tool.name === 'tracemind.recent_online'
         && tool.title.includes('Agent Guidance Project')
         && tool.description.includes('Agent Guidance Project')
       )));
@@ -746,7 +758,7 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.09.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.15.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
@@ -756,6 +768,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Daily health check'));
+      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Recent online status'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Feature usage analysis'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Anomaly or drop investigation'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
@@ -961,6 +974,112 @@ describe('TraceMind', function () {
       assert.ok(!JSON.stringify(structured).includes('activeActorKeys'));
       assert.ok(!JSON.stringify(structured).includes('newActorKeys'));
       assert.ok(!JSON.stringify(structured).includes('firstSeenActorKeys'));
+    });
+
+    it('returns recent online activity through MCP without internal identifiers', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const now = new Date();
+      const projectId = `project-mcp-recent-online-${Date.now()}`;
+      const otherProjectId = `${projectId}-other`;
+      const project = {
+        _id: projectId,
+        name: 'MCP Recent Online Project',
+        mcpTokens: [{ id: 'mcp_recent_online', name: 'Codex Agent', token: 'tm_mcp_recent_online' }],
+      };
+
+      await PresenceSessions.removeAsync({ projectId: { $in: [projectId, otherProjectId] } });
+      await SemanticEvents.removeAsync({ projectId: { $in: [projectId, otherProjectId] } });
+      await PresenceSessions.insertAsync({
+        projectId,
+        presenceId: 'tm_presence_recent_should_not_leak',
+        sessionId: 'tm_sess_recent_should_not_leak',
+        userId: 'user_recent_should_not_leak',
+        anonymousId: 'tm_anon_recent_should_not_leak',
+        deviceId: 'tm_dev_recent_should_not_leak',
+        deviceFingerprint: 'fingerprint_recent_should_not_leak',
+        platform: 'web',
+        path: '/pricing',
+        state: 'heartbeat',
+        activeDurationMs: 120000,
+        startedAt: new Date(now.getTime() - 20 * 60 * 1000),
+        lastSeenAt: new Date(now.getTime() - 60 * 1000),
+        geo: { country: 'US' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await PresenceSessions.insertAsync({
+        projectId: otherProjectId,
+        presenceId: 'tm_presence_sibling_should_not_leak',
+        sessionId: 'tm_sess_sibling_should_not_leak',
+        userId: 'user_sibling_should_not_leak',
+        platform: 'web',
+        path: '/sibling-should-not-leak',
+        state: 'heartbeat',
+        activeDurationMs: 999000,
+        startedAt: new Date(now.getTime() - 10 * 60 * 1000),
+        lastSeenAt: new Date(now.getTime() - 60 * 1000),
+        geo: { country: 'GB' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'pricing_viewed',
+        occurredAt: new Date(now.getTime() - 5 * 60 * 1000),
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId: otherProjectId,
+        eventType: 'custom',
+        eventName: 'sibling_event_should_not_leak',
+        occurredAt: new Date(now.getTime() - 5 * 60 * 1000),
+        createdAt: new Date(),
+      });
+
+      const recentOnline = await callMcpTool(project, 'tracemind.recent_online', {});
+      const structured = recentOnline.structuredContent;
+      const serialized = JSON.stringify(structured);
+
+      assert.ok(mcpTools(project).some((tool) => tool.name === 'tracemind.recent_online'));
+      assert.strictEqual(structured.ok, true);
+      assert.strictEqual(structured.project._id, projectId);
+      assert.strictEqual(structured.project.name, 'MCP Recent Online Project');
+      assert.strictEqual(structured.totalOnlineUsers, 1);
+      assert.strictEqual(structured.buckets.length, 6);
+      assert.ok(structured.buckets.some((bucket) => bucket.onlineUsers === 1));
+      assert.deepStrictEqual(structured.topRegions, [{ label: 'US', count: 1 }]);
+      assert.deepStrictEqual(structured.topDurationPaths, [{ path: '/pricing', durationMs: 120000, sessions: 1 }]);
+      assert.deepStrictEqual(structured.topEvents, [{ label: 'pricing_viewed', count: 1 }]);
+      assert.ok(!serialized.includes('tm_presence_recent_should_not_leak'));
+      assert.ok(!serialized.includes('tm_sess_recent_should_not_leak'));
+      assert.ok(!serialized.includes('user_recent_should_not_leak'));
+      assert.ok(!serialized.includes('tm_anon_recent_should_not_leak'));
+      assert.ok(!serialized.includes('tm_dev_recent_should_not_leak'));
+      assert.ok(!serialized.includes('fingerprint_recent_should_not_leak'));
+      assert.ok(!serialized.includes('sibling_should_not_leak'));
+      assert.notStrictEqual(structured.project._id, otherProjectId);
+    });
+
+    it('returns an empty MCP recent online result when no users are online', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const projectId = `project-mcp-recent-online-empty-${Date.now()}`;
+      const project = { _id: projectId, name: 'Empty Recent Online Project' };
+
+      await PresenceSessions.removeAsync({ projectId });
+      await SemanticEvents.removeAsync({ projectId });
+
+      const recentOnline = await callMcpTool(project, 'tracemind.recent_online', {});
+      const structured = recentOnline.structuredContent;
+
+      assert.strictEqual(structured.ok, true);
+      assert.strictEqual(structured.project._id, projectId);
+      assert.strictEqual(structured.totalOnlineUsers, 0);
+      assert.strictEqual(structured.buckets.length, 6);
+      assert.ok(structured.buckets.every((bucket) => bucket.onlineUsers === 0));
+      assert.deepStrictEqual(structured.topRegions, []);
+      assert.deepStrictEqual(structured.topDurationPaths, []);
+      assert.deepStrictEqual(structured.topEvents, []);
     });
 
     it('submits sanitized developer feedback through MCP without creating behavior events', async function () {

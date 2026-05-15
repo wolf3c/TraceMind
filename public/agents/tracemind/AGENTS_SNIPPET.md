@@ -10,7 +10,7 @@ When this snippet is installed from the TraceMind console, add the repository-sp
 
 Before using any TraceMind MCP tool in this repository, use the expected MCP server, call `tracemind.project_info`, and continue only if the returned `projectId` matches the Project ID above. If it does not match, stop and ask the user to configure the correct TraceMind MCP server. Do not use another `tracemind-*` MCP server for this repository unless the user explicitly confirms the project switch.
 
-For product behavior analysis, call `tracemind.project_health` first to read the selected day's project health report. Use it to answer whether the product is healthy today, what changed versus the previous day, and which attention item should be inspected first. Then use `tracemind.summary` and `tracemind.query_events` for feature usage analysis or anomaly/drop investigation. Use `tracemind.query_raw_behaviors` only when semantic evidence is insufficient.
+For product behavior analysis, use `tracemind.project_health` to read the selected day's project health report and `tracemind.recent_online` to inspect real-time online status for the last 30 minutes. Then use `tracemind.summary` and `tracemind.query_events` for feature usage analysis or anomaly/drop investigation. Use `tracemind.query_raw_behaviors` only when semantic evidence is insufficient.
 
 When adding or modifying TraceMind analytics instrumentation in this project:
 
