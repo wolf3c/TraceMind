@@ -34,6 +34,32 @@ final class TraceMindModule: NSObject {
     TraceMind.setScreen(screen)
   }
 
+  @objc func submitFeedback(_ payload: NSDictionary) {
+    guard let messageInput = payload["message"] as? NSDictionary else { return }
+    let contactInput = messageInput["contact"] as? NSDictionary
+    let contact = TraceMindFeedbackContact(
+      name: contactInput?["name"] as? String,
+      email: contactInput?["email"] as? String,
+      phone: contactInput?["phone"] as? String,
+      preferredChannel: contactInput?["preferredChannel"] as? String,
+      consent: contactInput?["consent"] as? Bool ?? false
+    )
+    let message = TraceMindFeedbackMessage(
+      kind: messageInput["kind"] as? String ?? "other",
+      title: messageInput["title"] as? String,
+      body: messageInput["body"] as? String ?? "",
+      contact: contact,
+      fields: Self.traceMindFields(messageInput["fields"])
+    )
+    Task {
+      try? await TraceMind.submitFeedback(
+        message: message,
+        path: payload["path"] as? String,
+        title: payload["title"] as? String
+      )
+    }
+  }
+
   private static func traceMindFields(_ value: Any?) -> TraceMindFields {
     guard let fields = value as? NSDictionary else { return [:] }
     var next: TraceMindFields = [:]

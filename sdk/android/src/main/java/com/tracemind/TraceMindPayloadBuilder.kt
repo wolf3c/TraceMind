@@ -82,6 +82,44 @@ data class TraceMindPresencePayload(
   val occurredAt: String = Instant.now().toString()
 )
 
+data class TraceMindFeedbackContact(
+  val name: String? = null,
+  val email: String? = null,
+  val phone: String? = null,
+  val preferredChannel: String? = null,
+  val consent: Boolean = false
+)
+
+data class TraceMindFeedbackAttachment(
+  val name: String
+)
+
+data class TraceMindFeedbackMessage(
+  val formatVersion: Int = 1,
+  val kind: String = "other",
+  val title: String? = null,
+  val body: String,
+  val contact: TraceMindFeedbackContact = TraceMindFeedbackContact(),
+  val fields: Map<String, Any?> = emptyMap(),
+  val attachments: List<TraceMindFeedbackAttachment> = emptyList()
+)
+
+data class TraceMindUserFeedbackPayload(
+  val projectKey: String,
+  val sessionId: String,
+  val anonymousId: String,
+  val deviceId: String,
+  val userId: String? = null,
+  val deviceFingerprint: String,
+  val platform: String,
+  val deviceInfo: Map<String, String>,
+  val source: TraceMindSource,
+  val path: String,
+  val title: String? = null,
+  val message: TraceMindFeedbackMessage,
+  val occurredAt: String = Instant.now().toString()
+)
+
 interface TraceMindIdentityStore {
   val sessionId: String
   val anonymousId: String
@@ -215,6 +253,34 @@ class TraceMindPayloadBuilder(
     )
   }
 
+  fun userFeedbackPayload(
+    message: TraceMindFeedbackMessage,
+    path: String,
+    title: String? = null,
+    occurredAt: String = Instant.now().toString()
+  ): TraceMindUserFeedbackPayload {
+    return TraceMindUserFeedbackPayload(
+      projectKey = projectKey,
+      sessionId = identityStore.sessionId,
+      anonymousId = identityStore.anonymousId,
+      deviceId = identityStore.deviceId,
+      userId = identityStore.userId,
+      deviceFingerprint = hash("android:$packageName:${identityStore.deviceId}", "tm_fp_"),
+      platform = "android",
+      deviceInfo = mapOf("os" to "Android", "framework" to framework),
+      source = TraceMindSource(
+        type = "android",
+        packageName = packageName,
+        label = appLabel,
+        details = mapOf("framework" to framework)
+      ),
+      path = path,
+      title = title,
+      message = sanitizeFeedbackMessage(message),
+      occurredAt = occurredAt
+    )
+  }
+
   private fun sanitize(fields: Map<String, Any?>): Map<String, Any> {
     return fields.mapNotNull { (key, value) ->
       val normalized = normalizeFieldKey(key)
@@ -234,9 +300,52 @@ class TraceMindPayloadBuilder(
     }.toMap()
   }
 
+  private fun sanitizeFeedbackMessage(message: TraceMindFeedbackMessage): TraceMindFeedbackMessage {
+    val kind = if (message.kind in setOf("issue", "idea", "question", "other")) message.kind else "other"
+    return message.copy(
+      kind = kind,
+      title = message.title?.take(160),
+      body = message.body.take(4000),
+      contact = if (message.contact.consent) message.contact else TraceMindFeedbackContact(consent = false),
+      fields = sanitizeFeedbackFields(message.fields),
+      attachments = emptyList()
+    )
+  }
+
+  private fun sanitizeFeedbackFields(fields: Map<String, Any?>): Map<String, Any> {
+    return fields.mapNotNull { (key, value) ->
+      val normalized = normalizeFieldKey(key)
+      if (normalized.contains("rawprompt")
+        || normalized.contains("rawusercontent")
+        || normalized.contains("rawrequestbody")
+        || normalized.contains("requestbody")
+        || normalized.contains("rawresponsebody")
+        || normalized.contains("responsebody")
+        || normalized.contains("headers")
+        || normalized.contains("cookies")
+        || normalized.contains("authorization")
+        || normalized.contains("tok" + "en")
+        || normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("sourcecode")
+        || normalized.contains("sourcediff")
+        || normalized.contains("codediff")
+        || normalized.contains("toolarguments")
+        || normalized.contains("toolresult")
+        || normalized.contains("resourcecontent")) {
+        return@mapNotNull null
+      }
+      val nextValue = sanitizeValue(value) ?: return@mapNotNull null
+      if (nextValue is String && Regex("""https?://[^\s?#]+[^\s]*\?[^\s"'<>)]*|\b(bearer\s+\S+|api[_-]?key|access[_-]?token|secret[_-]?token|raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body)\b""", RegexOption.IGNORE_CASE).containsMatchIn(nextValue)) {
+        return@mapNotNull null
+      }
+      key to nextValue
+    }.toMap()
+  }
+
   private fun sanitizeValue(value: Any?): Any? {
     return when (value) {
-      is String -> if (Regex("^https?://\\S+\\?\\S+").containsMatchIn(value)) null else value
+      is String -> if (Regex("""https?://[^\s?#]+[^\s]*\?[^\s"'<>)]*""").containsMatchIn(value)) null else value
       is Double -> if (value.isFinite()) value else null
       is Float -> if (value.isFinite()) value else null
       is Number -> value

@@ -120,3 +120,98 @@ test('singleton TraceMindServer starts and flushes', async () => {
 
   assert.equal(batches[0].events[0].source.type, 'server_app');
 });
+
+test('submits structured user feedback through the dedicated endpoint', async () => {
+  const feedbackBodies = [];
+  const client = createTraceMindServerClient({
+    projectKey: 'tm_proj_server_node',
+    sourceKey: 'billing-api',
+    endpoint: 'https://tracemind.example.com/api/capture',
+    feedbackTransport: async (body) => feedbackBodies.push(body),
+  });
+
+  await client.submitFeedback({
+    userId: 'user_123',
+    path: '/billing',
+    message: {
+      kind: 'issue',
+      title: 'Invoice export failed',
+      body: 'The export button did not finish.',
+      contact: { email: 'buyer@example.com', consent: true },
+      fields: {
+        plan: 'pro',
+        accessToken: 'do not send',
+        returnUrl: 'Open https://example.com/callback?token=secret to debug',
+      },
+      attachments: [{ name: 'future.png' }],
+    },
+  });
+
+  assert.equal(feedbackBodies.length, 1);
+  assert.equal(feedbackBodies[0].projectKey, 'tm_proj_server_node');
+  assert.equal(feedbackBodies[0].source.type, 'server_app');
+  assert.equal(feedbackBodies[0].path, '/billing');
+  assert.equal(feedbackBodies[0].message.kind, 'issue');
+  assert.equal(feedbackBodies[0].message.contact.email, 'buyer@example.com');
+  assert.deepEqual(feedbackBodies[0].message.fields, { plan: 'pro' });
+  assert.deepEqual(feedbackBodies[0].message.attachments, []);
+  assert.equal(JSON.stringify(feedbackBodies[0]).includes('do not send'), false);
+  assert.equal(JSON.stringify(feedbackBodies[0]).includes('callback?token'), false);
+});
+
+test('uses default user feedback endpoint when capture endpoint cannot derive it', async () => {
+  const calls = [];
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    return {
+      ok: true,
+      json: async () => ({ ok: true }),
+    };
+  };
+
+  try {
+    const client = createTraceMindServerClient({
+      projectKey: 'tm_proj_server_node',
+      endpoint: 'https://collector.example.com/ingest',
+    });
+    await client.submitFeedback({
+      message: { body: 'Feedback from a custom collector.' },
+    });
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback');
+});
+
+test('derives user feedback endpoint only from capture endpoint paths', async () => {
+  const calls = [];
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    return {
+      ok: true,
+      json: async () => ({ ok: true }),
+    };
+  };
+
+  try {
+    const derived = createTraceMindServerClient({
+      projectKey: 'tm_proj_server_node',
+      endpoint: 'https://collector.example.com/base/api/capture?debug=true',
+    });
+    const fallback = createTraceMindServerClient({
+      projectKey: 'tm_proj_server_node',
+      endpoint: 'https://collector.example.com/base/api/capture-v2',
+    });
+    await derived.submitFeedback({ message: { body: 'Derived endpoint.' } });
+    await fallback.submitFeedback({ message: { body: 'Fallback endpoint.' } });
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.equal(calls[0].url, 'https://collector.example.com/base/api/user-feedback');
+  assert.equal(calls[1].url, 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback');
+});

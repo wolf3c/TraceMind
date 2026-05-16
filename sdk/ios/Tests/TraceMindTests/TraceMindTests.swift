@@ -4,8 +4,10 @@ import XCTest
 final class RecordingTransport: TraceMindTransport {
   var lastBatch: TraceMindBatch?
   var lastPresence: TraceMindPresencePayload?
+  var lastFeedback: TraceMindUserFeedbackPayload?
   var presences: [TraceMindPresencePayload] = []
   var lastPresenceEndpoint: URL?
+  var lastFeedbackEndpoint: URL?
 
   func send(batch: TraceMindBatch, endpoint: URL) async throws {
     lastBatch = batch
@@ -15,6 +17,11 @@ final class RecordingTransport: TraceMindTransport {
     lastPresence = payload
     presences.append(payload)
     lastPresenceEndpoint = endpoint
+  }
+
+  func sendUserFeedback(payload: TraceMindUserFeedbackPayload, endpoint: URL) async throws {
+    lastFeedback = payload
+    lastFeedbackEndpoint = endpoint
   }
 }
 
@@ -230,6 +237,64 @@ final class TraceMindTests: XCTestCase {
     XCTAssertNil(event.properties["access" + "Token"])
     XCTAssertEqual(event.context["source"], .string("pricing"))
     XCTAssertEqual(event.context["retry"], .bool(false))
+  }
+
+  func testSubmitFeedbackUsesDedicatedPayloadAndAllowsConsentedContact() async throws {
+    let transport = RecordingTransport()
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        feedbackEndpoint: URL(string: "https://tracemind.example.com/api/user-feedback")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore(userId: "user_123"),
+      transport: transport
+    )
+
+    try await client.submitFeedback(message: TraceMindFeedbackMessage(
+      kind: "issue",
+      title: "Upgrade failed",
+      body: "The upgrade button did not finish.",
+      contact: TraceMindFeedbackContact(email: "user@example.com", consent: true),
+      fields: [
+        "plan": "pro",
+        ("access" + "Token"): "do not send",
+        "returnUrl": "Open https://example.com/callback?token=secret to debug",
+      ],
+      attachments: [TraceMindFeedbackAttachment(name: "future.png")]
+    ), path: "CheckoutViewController")
+
+    let feedback = try XCTUnwrap(transport.lastFeedback)
+    XCTAssertEqual(transport.lastFeedbackEndpoint?.absoluteString, "https://tracemind.example.com/api/user-feedback")
+    XCTAssertEqual(feedback.projectKey, "tm_proj_ios")
+    XCTAssertEqual(feedback.userId, "user_123")
+    XCTAssertEqual(feedback.platform, expectedSDKPlatform)
+    XCTAssertEqual(feedback.message.kind, "issue")
+    XCTAssertEqual(feedback.message.contact.email, "user@example.com")
+    XCTAssertEqual(feedback.message.fields["plan"], .string("pro"))
+    XCTAssertNil(feedback.message.fields["access" + "Token"])
+    XCTAssertNil(feedback.message.fields["returnUrl"])
+    XCTAssertEqual(feedback.message.attachments.count, 0)
+  }
+
+  func testFeedbackEndpointFallsBackWhenCaptureEndpointCannotDeriveIt() throws {
+    let fallback = try XCTUnwrap(URL(string: "https://tracemind.sandbox.galaxycloud.app/api/user-feedback"))
+    let derived = TraceMind.derivedEndpoint(
+      from: try XCTUnwrap(URL(string: "https://collector.example.com/base/api/capture?debug=true")),
+      replacing: "/api/user-feedback",
+      fallback: fallback
+    )
+    let similarPath = TraceMind.derivedEndpoint(
+      from: try XCTUnwrap(URL(string: "https://collector.example.com/base/api/capture-v2")),
+      replacing: "/api/user-feedback",
+      fallback: fallback
+    )
+
+    XCTAssertEqual(derived.absoluteString, "https://collector.example.com/base/api/user-feedback")
+    XCTAssertEqual(similarPath.absoluteString, fallback.absoluteString)
   }
 
   func testPresencePayloadUsesDedicatedEndpointAndScreen() async throws {

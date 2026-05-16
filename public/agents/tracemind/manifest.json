@@ -32,8 +32,10 @@
       "tracemind.validate_event_payload",
       "tracemind.validate_instrumentation_diff",
       "tracemind.privacy_check",
-      "tracemind.submit_feedback"
+      "tracemind.submit_feedback",
+      "tracemind.query_user_feedback",
+      "tracemind.update_user_feedback"
     ]
   },
-  "updatePolicy": "Check tracemind.agent_guidance before changing TraceMind instrumentation. In multi-project setups, use tracemind.project_info or MCP tool metadata to confirm the project before adding events. Ask the user before updating local skill or instruction files. Ask before calling tracemind.submit_feedback unless the developer explicitly requested submission."
+  "updatePolicy": "Check tracemind.agent_guidance before changing TraceMind instrumentation. In multi-project setups, use tracemind.project_info or MCP tool metadata to confirm the project before adding events. Ask the user before updating local skill or instruction files. Ask before calling tracemind.submit_feedback unless the developer explicitly requested submission. Use submitFeedback, query_user_feedback, and update_user_feedback for terminal user feedback workflows."
 }

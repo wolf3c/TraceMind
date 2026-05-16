@@ -11,6 +11,7 @@ import {
   RECENT_ONLINE_WINDOW_MS,
   RawBehaviors,
   SemanticEvents,
+  UserFeedbackReports,
   isSourceBlocked,
   normalizeEmail,
   normalizeBlockedSource,
@@ -371,6 +372,7 @@ Meteor.methods({
     await PresenceSessions.removeAsync({ projectId: project._id });
     await CaptureDeliveryReports.removeAsync({ projectId: project._id });
     await FeedbackReports.removeAsync({ projectId: project._id });
+    await UserFeedbackReports.removeAsync({ projectId: project._id });
     await ProjectDailyReports.removeAsync({ projectId: project._id });
     await Projects.removeAsync(project._id);
     return { removed: true, projectId: project._id };

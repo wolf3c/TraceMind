@@ -4,6 +4,7 @@ public struct TraceMindConfiguration {
   public let projectKey: String
   public let endpoint: URL
   public let presenceEndpoint: URL
+  public let feedbackEndpoint: URL
   public let sourceKey: String
   public let sourceLabel: String
   public let framework: String
@@ -12,6 +13,7 @@ public struct TraceMindConfiguration {
     projectKey: String,
     endpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/capture")!,
     presenceEndpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/presence")!,
+    feedbackEndpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/user-feedback")!,
     sourceKey: String = Bundle.main.bundleIdentifier ?? "unknown",
     sourceLabel: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? Bundle.main.bundleIdentifier ?? "unknown",
     framework: String = "swift"
@@ -19,6 +21,7 @@ public struct TraceMindConfiguration {
     self.projectKey = projectKey
     self.endpoint = endpoint
     self.presenceEndpoint = presenceEndpoint
+    self.feedbackEndpoint = feedbackEndpoint
     self.sourceKey = sourceKey
     self.sourceLabel = sourceLabel
     self.framework = framework
@@ -183,6 +186,80 @@ public struct TraceMindPresencePayload: Codable {
   public let occurredAt: String
 }
 
+public struct TraceMindFeedbackContact: Codable, Equatable {
+  public let name: String?
+  public let email: String?
+  public let phone: String?
+  public let preferredChannel: String?
+  public let consent: Bool
+
+  public init(
+    name: String? = nil,
+    email: String? = nil,
+    phone: String? = nil,
+    preferredChannel: String? = nil,
+    consent: Bool = false
+  ) {
+    self.name = name
+    self.email = email
+    self.phone = phone
+    self.preferredChannel = preferredChannel
+    self.consent = consent
+  }
+}
+
+public struct TraceMindFeedbackAttachment: Codable, Equatable {
+  public let name: String
+
+  public init(name: String) {
+    self.name = name
+  }
+}
+
+public struct TraceMindFeedbackMessage: Codable, Equatable {
+  public let formatVersion: Int
+  public let kind: String
+  public let title: String?
+  public let body: String
+  public let contact: TraceMindFeedbackContact
+  public let fields: TraceMindFields
+  public let attachments: [TraceMindFeedbackAttachment]
+
+  public init(
+    formatVersion: Int = 1,
+    kind: String = "other",
+    title: String? = nil,
+    body: String,
+    contact: TraceMindFeedbackContact = TraceMindFeedbackContact(),
+    fields: TraceMindFields = [:],
+    attachments: [TraceMindFeedbackAttachment] = []
+  ) {
+    self.formatVersion = formatVersion
+    self.kind = ["issue", "idea", "question", "other"].contains(kind) ? kind : "other"
+    self.title = title.map { String($0.prefix(160)) }
+    self.body = String(body.prefix(4000))
+    self.contact = contact.consent ? contact : TraceMindFeedbackContact(consent: false)
+    self.fields = TraceMindClient.sanitizeFeedbackFields(fields)
+    self.attachments = []
+  }
+}
+
+public struct TraceMindUserFeedbackPayload: Codable {
+  public let projectKey: String
+  public let sessionId: String
+  public let anonymousId: String
+  public let deviceId: String
+  public let userId: String?
+  public let deviceFingerprint: String
+  public let platform: String
+  public let deviceInfo: [String: String]
+  public let source: TraceMindSource
+  public let path: String
+  public let title: String?
+  public let message: TraceMindFeedbackMessage
+  public let occurredAt: String
+}
+
 public protocol TraceMindIdentityStore {
   var sessionId: String { get }
   var anonymousId: String { get }
@@ -249,10 +326,19 @@ public final class UserDefaultsIdentityStore: TraceMindIdentityStore {
 public protocol TraceMindTransport {
   func send(batch: TraceMindBatch, endpoint: URL) async throws
   func sendPresence(payload: TraceMindPresencePayload, endpoint: URL) async throws
+  func sendUserFeedback(payload: TraceMindUserFeedbackPayload, endpoint: URL) async throws
 }
 
 public extension TraceMindTransport {
   func sendPresence(payload: TraceMindPresencePayload, endpoint: URL) async throws {
+    var request = URLRequest(url: endpoint)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try JSONEncoder.traceMind.encode(payload)
+    _ = try await URLSession.shared.data(for: request)
+  }
+
+  func sendUserFeedback(payload: TraceMindUserFeedbackPayload, endpoint: URL) async throws {
     var request = URLRequest(url: endpoint)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -394,6 +480,47 @@ public final class TraceMindClient {
       idleTimeoutMs: activeIdleTimeoutMs,
       occurredAt: ISO8601DateFormatter.traceMind.string(from: now)
     )
+  }
+
+  public func makeUserFeedbackPayload(
+    message: TraceMindFeedbackMessage,
+    path: String? = nil,
+    title: String? = nil
+  ) -> TraceMindUserFeedbackPayload {
+    let platform = Self.platformKey
+    return TraceMindUserFeedbackPayload(
+      projectKey: configuration.projectKey,
+      sessionId: identityStore.sessionId,
+      anonymousId: identityStore.anonymousId,
+      deviceId: identityStore.deviceId,
+      userId: identityStore.userId,
+      deviceFingerprint: Self.hash("\(platform):\(configuration.sourceKey):\(identityStore.deviceId)", prefix: "tm_fp_"),
+      platform: platform,
+      deviceInfo: [
+        "os": Self.osName,
+        "framework": configuration.framework,
+      ],
+      source: TraceMindSource(
+        type: platform,
+        bundleId: configuration.sourceKey,
+        packageName: nil,
+        label: configuration.sourceLabel,
+        details: ["framework": configuration.framework]
+      ),
+      path: path ?? currentScreen,
+      title: title,
+      message: message,
+      occurredAt: ISO8601DateFormatter.traceMind.string(from: clock())
+    )
+  }
+
+  public func submitFeedback(
+    message: TraceMindFeedbackMessage,
+    path: String? = nil,
+    title: String? = nil
+  ) async throws {
+    let payload = makeUserFeedbackPayload(message: message, path: path, title: title)
+    try await transport.sendUserFeedback(payload: payload, endpoint: configuration.feedbackEndpoint)
   }
 
   public func sendPresence(state: String, path: String? = nil, title: String? = nil) async throws {
@@ -595,7 +722,40 @@ public final class TraceMindClient {
         return false
       }
       if case .string(let stringValue) = value {
-        return stringValue.range(of: #"^https?://\S+\?\S+"#, options: .regularExpression) == nil
+        return stringValue.range(of: #"https?://[^\s?#]+[^\s]*\?[^\s"'<>)]*"#, options: .regularExpression) == nil
+      }
+      if case .number(let numberValue) = value {
+        return numberValue.isFinite
+      }
+      return true
+    }
+  }
+
+  static func sanitizeFeedbackFields(_ fields: TraceMindFields) -> TraceMindFields {
+    fields.filter { key, value in
+      let normalized = normalizeFieldKey(key)
+      if normalized.contains("rawprompt")
+        || normalized.contains("rawusercontent")
+        || normalized.contains("rawrequestbody")
+        || normalized.contains("requestbody")
+        || normalized.contains("rawresponsebody")
+        || normalized.contains("responsebody")
+        || normalized.contains("headers")
+        || normalized.contains("cookies")
+        || normalized.contains("authorization")
+        || normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("sourcecode")
+        || normalized.contains("sourcediff")
+        || normalized.contains("codediff")
+        || normalized.contains("toolarguments")
+        || normalized.contains("toolresult")
+        || normalized.contains("resourcecontent") {
+        return false
+      }
+      if case .string(let stringValue) = value {
+        return stringValue.range(of: #"https?://[^\s?#]+[^\s]*\?[^\s"'<>)]*|\b(bearer\s+\S+|api[_-]?key|access[_-]?token|secret[_-]?token|raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body)\b"#, options: [.regularExpression, .caseInsensitive]) == nil
       }
       if case .number(let numberValue) = value {
         return numberValue.isFinite
@@ -616,17 +776,29 @@ public final class TraceMindClient {
 
 public enum TraceMind {
   private static var client: TraceMindClient?
+  private static let defaultPresenceEndpoint = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/presence")!
+  private static let defaultFeedbackEndpoint = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/user-feedback")!
+
+  static func derivedEndpoint(from endpoint: URL, replacing replacement: String, fallback: URL) -> URL {
+    guard endpoint.path.hasSuffix("/api/capture") else { return fallback }
+    var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)
+    components?.path = String(endpoint.path.dropLast("/api/capture".count)) + replacement
+    components?.query = nil
+    components?.fragment = nil
+    return components?.url ?? fallback
+  }
 
   public static func start(
     projectKey: String,
     endpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/capture")!
   ) {
-    let presenceEndpoint = URL(string: endpoint.absoluteString.replacingOccurrences(of: "/api/capture", with: "/api/presence"))
-      ?? URL(string: "https://tracemind.sandbox.galaxycloud.app/api/presence")!
+    let presenceEndpoint = derivedEndpoint(from: endpoint, replacing: "/api/presence", fallback: defaultPresenceEndpoint)
+    let feedbackEndpoint = derivedEndpoint(from: endpoint, replacing: "/api/user-feedback", fallback: defaultFeedbackEndpoint)
     let nextClient = TraceMindClient(configuration: TraceMindConfiguration(
       projectKey: projectKey,
       endpoint: endpoint,
-      presenceEndpoint: presenceEndpoint
+      presenceEndpoint: presenceEndpoint,
+      feedbackEndpoint: feedbackEndpoint
     ))
     client = nextClient
     TraceMindAutoCapture.start(client: nextClient)
@@ -653,6 +825,14 @@ public enum TraceMind {
 
   public static func identify(_ userId: String, traits: TraceMindFields = [:]) throws {
     try client?.identify(userId, traits: traits)
+  }
+
+  public static func submitFeedback(
+    message: TraceMindFeedbackMessage,
+    path: String? = nil,
+    title: String? = nil
+  ) async throws {
+    try await client?.submitFeedback(message: message, path: path, title: title)
   }
 }
 

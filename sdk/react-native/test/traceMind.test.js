@@ -138,6 +138,42 @@ test('updates the native presence screen when available', () => {
   assert.deepEqual(calls, [['setScreen', 'Checkout']]);
 });
 
+test('submits user feedback through the native SDK bridge', () => {
+  const calls = [];
+  const client = createTraceMindClient({
+    nativeModule: {
+      submitFeedback(payload) {
+        calls.push(['submitFeedback', payload]);
+      },
+    },
+    platform: 'ios',
+  });
+
+  client.submitFeedback({
+    message: {
+      kind: 'issue',
+      title: 'Upgrade failed',
+      body: 'The upgrade button did not finish.',
+      contact: { email: 'user@example.com', consent: true },
+      fields: {
+        plan: 'pro',
+        accessToken: 'do not send',
+        returnUrl: 'Open https://example.com/callback?token=secret to debug',
+      },
+      attachments: [{ name: 'future.png' }],
+    },
+  });
+
+  assert.equal(calls[0][0], 'submitFeedback');
+  assert.equal(calls[0][1].message.kind, 'issue');
+  assert.equal(calls[0][1].message.contact.email, 'user@example.com');
+  assert.deepEqual(calls[0][1].message.fields, { plan: 'pro' });
+  assert.deepEqual(calls[0][1].message.attachments, []);
+  assert.deepEqual(calls[0][1].deviceInfo, { framework: 'react_native' });
+  assert.equal(JSON.stringify(calls[0][1]).includes('do not send'), false);
+  assert.equal(JSON.stringify(calls[0][1]).includes('callback?token'), false);
+});
+
 test('keeps React Native as a native SDK proxy without its own platform value', () => {
   const calls = [];
   const client = createTraceMindClient({

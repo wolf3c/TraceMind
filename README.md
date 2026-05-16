@@ -77,11 +77,34 @@ TraceMind 会在页面上暴露：
 ```js
 window.TraceMind.capture(type, data);
 window.TraceMind.identify(userId, traits);
+window.TraceMind.openFeedback();
+window.TraceMind.submitFeedback({ message });
 window.TraceMind.flush();
 window.TraceMind.status();
 ```
 
 Web 自动采集会先写入内存队列，并尽量同步持久化到 `localStorage`。队列会批量发送行为事件和在线区间，网络失败时保留事件并指数退避重试；页面隐藏、关闭、恢复联网或调用 `TraceMind.flush()` 时都会尝试 flush。`TraceMind.status()` 返回队列长度、丢弃计数、重试次数和最近错误等非敏感诊断摘要，可用于排查跨境网络或 CSP/connect-src 导致的上报稀疏问题。
+
+## 终端用户反馈
+
+客户 app 可以通过 TraceMind SDK 直接收集终端用户反馈，不需要自己新建服务端。用户反馈写入独立的 `tracemind_user_feedback_reports` 集合，不进入 raw behaviors，也不是 `custom` event。
+
+```js
+window.TraceMind.submitFeedback({
+  message: {
+    kind: "issue",
+    title: "Cannot upgrade",
+    body: "The upgrade button did not finish.",
+    contact: { email: "user@example.com", consent: true },
+    fields: { plan: "pro" },
+    attachments: []
+  }
+});
+```
+
+Native 和 server SDK 使用同名能力：iOS/macOS `TraceMind.submitFeedback(message:)`、Android `TraceMind.submitFeedback(message)`、React Native `TraceMind.submitFeedback({ message })`、Node/Python server SDK `TraceMindServer.submitFeedback(...)` / `submit_feedback(...)`。
+
+联系方式只允许来自用户主动提交的 feedback payload；自动采集仍然不读取输入值、邮箱、手机号、prompt、token、源码 diff、请求/响应 body 或完整 query URL。v1 不做公开反馈板、投票、roadmap、changelog、截图、录屏或附件上传，`attachments` 只保留为空数组用于未来兼容。Coding agent 实现用户反馈入口时必须使用 `submitFeedback`，不能用 `/api/capture`、`capture("custom")` 或 `tracemind.submit_feedback` 替代。
 
 ## iOS 接入方式
 
@@ -487,7 +510,7 @@ window.TraceMind.capture("custom", {
 
 ## 远程 MCP 授权
 
-MCP 使用独立 token，格式为 `tm_mcp_xxx`。它和 Auto Capture 的公开 `tm_proj_xxx` 项目 token 分离，项目 token 只能写入采集数据，不能查询 MCP。MCP token 可读取项目行为证据，并允许通过 `tracemind.submit_feedback` 提交开发者反馈；除反馈提交外，分析工具保持只读。
+MCP 使用独立 token，格式为 `tm_mcp_xxx`。它和 Auto Capture 的公开 `tm_proj_xxx` 项目 token 分离，项目 token 只能写入采集数据，不能查询 MCP。MCP token 可读取项目行为证据和用户反馈，并允许通过 `tracemind.submit_feedback` 提交开发者反馈、通过 `tracemind.update_user_feedback` 标记终端用户反馈状态；不能修改用户原始反馈内容。
 
 控制台里可以为同一个项目创建多个 MCP Token，分别发给不同成员或 Agent。泄露后可以刷新单个 token，刷新后旧 token 立即失效；也可以删除不再使用的 token。
 

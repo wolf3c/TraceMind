@@ -50,6 +50,7 @@ Agent 分析产品行为时应先按只读路径使用 MCP：
 5. `tracemind.query_events`：按路径、事件名、用户、session、`actionKey` 或 `targetHash` 下钻语义证据。
 6. `tracemind.query_raw_behaviors`：只有语义证据不足或需要排查采集问题时才使用。
 7. `tracemind.submit_feedback`：只有开发者明确确认上报后，才提交脱敏摘要和证据引用。
+8. `tracemind.query_user_feedback` / `tracemind.update_user_feedback`：处理终端用户反馈时使用，前者查询反馈和证据引用，后者只更新状态、备注、解决说明、关联 issue 或重复关系，不修改用户原始 message。
 
 固定分析任务：
 
@@ -81,7 +82,9 @@ MCP 只返回建议和 findings，不写入用户项目，也不把 draft event 
 - React Native 常见入口是 `index.js`、`App.js`、`App.tsx` 或 app bootstrap，并检查 native bridge 是否已连接。
 - 修改前执行 `idempotencyChecks`，避免重复添加 SDK 依赖或 `TraceMind.start(...)`。
 - 手动业务事件前使用 `manualCaptureWorkflow`：先搜索已有事件，再校验 payload，最后写入 `TraceMind.identify(...)` 和 `TraceMind.capture("custom", ...)`。
+- 实现终端用户反馈入口时使用平台 SDK 的 `submitFeedback`：Web `window.TraceMind.submitFeedback({ message })`、iOS/macOS `TraceMind.submitFeedback(message:)`、Android `TraceMind.submitFeedback(message)`、React Native `TraceMind.submitFeedback({ message })`、服务端 `TraceMindServer.submitFeedback(...)` / `submit_feedback(...)`。不要用 `/api/capture`、`capture("custom")` 或 `tracemind.submit_feedback` 替代。
 - `properties` 和 `context` 只使用 `supportedPropertyTypes` 返回的 string、number、boolean，不传 null、嵌套对象、数组、PII、credential values、raw prompt/content、input value 或完整 query URL。
+- 用户反馈 `message.contact` 可以包含用户主动提交且 consented 的联系方式；Auto Capture 和普通手动埋点仍然不能采集输入值、邮箱、手机号、prompt、token、源码 diff、请求/响应 body 或完整 query URL。
 - React Native 不新增 `platform: "react_native"`；事件保持 `ios` 或 `android`，并通过 framework metadata 标记来源。
 - 完成后运行适用的 `verificationCommands`，再用 TraceMind MCP 查询 raw behaviors 或 semantic events。
 

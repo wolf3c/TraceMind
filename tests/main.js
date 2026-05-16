@@ -160,6 +160,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('## Instrumenting Agent Skills'));
       assert.ok(skill.includes('## Instrumenting Server Applications'));
       assert.ok(skill.includes('## Developer Feedback Submission'));
+      assert.ok(skill.includes('## End-User Feedback Capture'));
       assert.ok(skill.includes('## Product Behavior Analysis Workflows'));
       assert.ok(skill.includes('tracemind.project_health'));
       assert.ok(skill.includes('tracemind.recent_online'));
@@ -168,6 +169,9 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('Feature usage analysis'));
       assert.ok(skill.includes('Anomaly or drop investigation'));
       assert.ok(skill.includes('tracemind.submit_feedback'));
+      assert.ok(skill.includes('submitFeedback'));
+      assert.ok(skill.includes('tracemind.query_user_feedback'));
+      assert.ok(skill.includes('tracemind.update_user_feedback'));
       assert.ok(skill.includes('ordinary server applications use manual capture first'));
       assert.ok(skill.includes('static Skill file cannot auto-capture'));
       assert.ok(skill.includes('installCommands'));
@@ -189,6 +193,9 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_health'));
       assert.ok(snippet.includes('tracemind.recent_online'));
       assert.ok(snippet.includes('tracemind.submit_feedback'));
+      assert.ok(snippet.includes('submitFeedback'));
+      assert.ok(snippet.includes('tracemind.query_user_feedback'));
+      assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.strictEqual(manifest.guidanceVersion, '2026.05.15.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
@@ -199,6 +206,8 @@ describe('TraceMind', function () {
       assert.ok(manifest.mcp.tools.includes('tracemind.recent_online'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
       assert.ok(manifest.mcp.tools.includes('tracemind.submit_feedback'));
+      assert.ok(manifest.mcp.tools.includes('tracemind.query_user_feedback'));
+      assert.ok(manifest.mcp.tools.includes('tracemind.update_user_feedback'));
       assert.ok(manifest.platforms.includes('macos'));
       assert.ok(manifest.platforms.includes('mcp_node'));
       assert.ok(manifest.platforms.includes('mcp_python'));
@@ -244,12 +253,18 @@ describe('TraceMind', function () {
       assert.ok(script.includes('MAX_QUEUE_EVENTS = 300'));
       assert.ok(script.includes('CAPTURE_BATCH_SIZE = 20'));
       assert.ok(script.includes('PRESENCE_BATCH_SIZE = 20'));
+      assert.ok(script.includes('/api/user-feedback'));
+      assert.ok(script.includes('FEEDBACK_BATCH_SIZE = 5'));
       assert.ok(script.includes('function loadQueue()'));
       assert.ok(script.includes('function persistQueue()'));
       assert.ok(script.includes('function enqueue(kind, payload)'));
       assert.ok(script.includes('function coalescePresenceHeartbeat(record)'));
       assert.ok(script.includes('function flushQueue(reason, unloadMode)'));
       assert.ok(script.includes('function sendBatch(endpoint, body, unloadMode)'));
+      assert.ok(script.includes('function buildFeedbackPayload(input)'));
+      assert.ok(script.includes('function submitFeedback(input)'));
+      assert.ok(script.includes('openFeedback: openFeedback'));
+      assert.ok(script.includes('submitFeedback: submitFeedback'));
       assert.ok(script.includes('deliveryStats'));
       assert.ok(script.includes('flush: function ()'));
       assert.ok(script.includes('status: queueStatus'));
@@ -332,6 +347,92 @@ describe('TraceMind', function () {
       assert.strictEqual(presenceBody.events.length, 1);
       assert.strictEqual(captureBody.deliveryStats.sent, 1);
       assert.strictEqual(presenceBody.deliveryStats.sent, 1);
+    });
+
+    it('queues web user feedback separately from capture and presence events', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const fetchCalls = [];
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind feedback page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener() {},
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/pricing', pathname: '/pricing', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch(endpoint, options) {
+          fetchCalls.push({ endpoint, body: options.body });
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      sandbox.window.TraceMind.submitFeedback({
+        message: {
+          kind: 'issue',
+          title: 'Upgrade failed',
+          body: 'The upgrade button did not finish.',
+          contact: { email: 'user@example.com', consent: true },
+          fields: { plan: 'pro' },
+        },
+      });
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      const queued = JSON.parse(storage.get(queueKey));
+      const feedbackRecord = queued.find((record) => record.kind === 'feedback');
+
+      assert.ok(feedbackRecord);
+      assert.strictEqual(feedbackRecord.payload.message.kind, 'issue');
+      assert.strictEqual(feedbackRecord.payload.message.contact.email, 'user@example.com');
+      assert.strictEqual(feedbackRecord.payload.path, '/pricing');
+
+      await sandbox.window.TraceMind.flush();
+      const feedbackBody = JSON.parse(fetchCalls.find((call) => call.endpoint.endsWith('/api/user-feedback')).body);
+
+      assert.strictEqual(feedbackBody.events.length, 1);
+      assert.strictEqual(feedbackBody.events[0].message.title, 'Upgrade failed');
+      assert.ok(!fetchCalls.find((call) => call.endpoint.endsWith('/api/capture')).body.includes('Upgrade failed'));
     });
 
     it('tracks strict web active duration and stops it on window blur', async function () {
@@ -1245,6 +1346,249 @@ describe('TraceMind', function () {
       assert.strictEqual(limited.structuredContent.ok, false);
       assert.ok(limited.structuredContent.findings.some((finding) => finding.code === 'feedback_rate_limited'));
       assert.strictEqual(await FeedbackReports.find({ projectId }).countAsync(), 5);
+    });
+
+    it('submits end-user feedback with structured message and evidence without behavior events', async function () {
+      const { ingestUserFeedbackPayload, callMcpTool } = await import('../server/capture_routes');
+      const UserFeedbackReports = TraceMindApi.UserFeedbackReports;
+      const projectId = `project-user-feedback-${Date.now()}`;
+      const projectKey = `tm_proj_user_feedback_${Date.now()}`;
+      const occurredAt = new Date('2026-05-16T10:00:00.000Z');
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-user-feedback',
+        name: 'User Feedback Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+      const rawId = await RawBehaviors.insertAsync({
+        projectId,
+        type: 'click',
+        sessionId: 'tm_sess_feedback',
+        userId: 'user_123',
+        anonymousId: 'tm_anon_feedback',
+        deviceId: 'tm_dev_feedback',
+        platform: 'web',
+        path: '/pricing',
+        actionKey: 'web:/pricing:click:target:data-testid:upgrade',
+        targetHash: 'tm_target_upgrade',
+        occurredAt: new Date(occurredAt.getTime() - 30 * 1000),
+        createdAt: new Date(),
+      });
+      const eventId = await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'click',
+        eventName: 'click',
+        sessionId: 'tm_sess_feedback',
+        userId: 'user_123',
+        anonymousId: 'tm_anon_feedback',
+        deviceId: 'tm_dev_feedback',
+        platform: 'web',
+        path: '/pricing',
+        actionKey: 'web:/pricing:click:target:data-testid:upgrade',
+        targetHash: 'tm_target_upgrade',
+        occurredAt: new Date(occurredAt.getTime() - 20 * 1000),
+        createdAt: new Date(),
+      });
+      const rawBefore = await RawBehaviors.find({ projectId }).countAsync();
+      const semanticBefore = await SemanticEvents.find({ projectId }).countAsync();
+
+      const result = await ingestUserFeedbackPayload({
+        projectKey,
+        sessionId: 'tm_sess_feedback',
+        anonymousId: 'tm_anon_feedback',
+        userId: 'user_123',
+        deviceId: 'tm_dev_feedback',
+        platform: 'web',
+        path: '/pricing',
+        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        occurredAt: occurredAt.toISOString(),
+        message: {
+          formatVersion: 1,
+          kind: 'issue',
+          title: 'Cannot upgrade',
+          body: 'The upgrade button did not finish.',
+          contact: {
+            name: 'Alex',
+            email: 'alex@example.com',
+            preferredChannel: 'email',
+            consent: true,
+          },
+          fields: {
+            plan: 'pro',
+            urgency: 'high',
+          },
+          attachments: [{ name: 'future.png' }],
+        },
+      }, { headers: {}, socket: {} });
+
+      assert.strictEqual(result.ok, true);
+      assert.ok(result.userFeedbackId);
+      const report = await UserFeedbackReports.findOneAsync(result.userFeedbackId);
+      assert.strictEqual(report.projectId, projectId);
+      assert.strictEqual(report.status, 'new');
+      assert.strictEqual(report.message.kind, 'issue');
+      assert.strictEqual(report.message.contact.email, 'alex@example.com');
+      assert.strictEqual(report.message.fields.plan, 'pro');
+      assert.deepStrictEqual(report.message.attachments, []);
+      assert.strictEqual(report.evidence.sessionIds[0], 'tm_sess_feedback');
+      assert.strictEqual(report.evidence.eventIds[0], eventId);
+      assert.strictEqual(report.evidence.rawBehaviorIds[0], rawId);
+      assert.strictEqual(report.evidence.actionKeys[0], 'web:/pricing:click:target:data-testid:upgrade');
+      assert.strictEqual(report.evidence.targetHashes[0], 'tm_target_upgrade');
+      assert.strictEqual(report.environment.sourceKey, 'app.example.com');
+      assert.ok(report.searchText.includes('pro'));
+      const fieldQuery = await callMcpTool({ _id: projectId, name: 'User Feedback Project' }, 'tracemind.query_user_feedback', {
+        keyword: 'pro',
+      });
+      assert.strictEqual(fieldQuery.structuredContent.ok, true);
+      assert.strictEqual(fieldQuery.structuredContent.feedback[0]._id, result.userFeedbackId);
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), rawBefore);
+      assert.strictEqual(await SemanticEvents.find({ projectId }).countAsync(), semanticBefore);
+    });
+
+    it('rejects sensitive end-user feedback fields while allowing consented contact fields', async function () {
+      const { ingestUserFeedbackPayload } = await import('../server/capture_routes');
+      const UserFeedbackReports = TraceMindApi.UserFeedbackReports;
+      const projectId = `project-user-feedback-invalid-${Date.now()}`;
+      const projectKey = `tm_proj_user_feedback_invalid_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-user-feedback-invalid',
+        name: 'Invalid User Feedback Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const sensitive = await ingestUserFeedbackPayload({
+        projectKey,
+        sessionId: 'tm_sess_feedback_invalid',
+        source: { type: 'web', url: 'https://app.example.com/settings' },
+        message: {
+          kind: 'issue',
+          title: 'Settings issue',
+          body: 'Please inspect Bearer secret_token and raw prompt.',
+          contact: { email: 'alex@example.com', consent: true },
+          fields: {
+            accessToken: 'secret',
+            plan: 'pro',
+          },
+        },
+      }, { headers: {}, socket: {} });
+
+      assert.strictEqual(sensitive.ok, false);
+      assert.ok(sensitive.findings.some((finding) => finding.code === 'forbidden_user_feedback_field'));
+      assert.strictEqual(await UserFeedbackReports.find({ projectId }).countAsync(), 0);
+
+      const embeddedUrl = await ingestUserFeedbackPayload({
+        projectKey,
+        sessionId: 'tm_sess_feedback_invalid',
+        source: { type: 'web', url: 'https://app.example.com/settings' },
+        message: {
+          kind: 'issue',
+          title: 'Settings issue',
+          body: 'This happens after opening https://app.example.com/settings?token=secret.',
+        },
+      }, { headers: {}, socket: {} });
+
+      assert.strictEqual(embeddedUrl.ok, false);
+      assert.ok(embeddedUrl.findings.some((finding) => finding.code === 'forbidden_user_feedback_field'));
+      assert.strictEqual(await UserFeedbackReports.find({ projectId }).countAsync(), 0);
+
+      const contactWithoutConsent = await ingestUserFeedbackPayload({
+        projectKey,
+        sessionId: 'tm_sess_feedback_invalid',
+        source: { type: 'web', url: 'https://app.example.com/settings' },
+        message: {
+          kind: 'question',
+          title: 'Can you contact me?',
+          body: 'Reach out when this is fixed.',
+          contact: { email: 'alex@example.com', consent: false },
+        },
+      }, { headers: {}, socket: {} });
+
+      assert.strictEqual(contactWithoutConsent.ok, true);
+      const report = await UserFeedbackReports.findOneAsync(contactWithoutConsent.userFeedbackId);
+      assert.deepStrictEqual(report.message.contact, { consent: false });
+    });
+
+    it('queries and updates end-user feedback through MCP without editing the original message', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const UserFeedbackReports = TraceMindApi.UserFeedbackReports;
+      const projectId = `project-user-feedback-mcp-${Date.now()}`;
+      const project = {
+        _id: projectId,
+        name: 'User Feedback MCP Project',
+        mcpTokens: [{ id: 'mcp_user_feedback', name: 'Codex Agent', token: 'tm_mcp_user_feedback' }],
+      };
+      const feedbackId = await UserFeedbackReports.insertAsync({
+        projectId,
+        projectName: project.name,
+        status: 'new',
+        message: {
+          formatVersion: 1,
+          kind: 'issue',
+          title: 'Upgrade failed',
+          body: 'The upgrade button did not finish.',
+          contact: { email: 'alex@example.com', consent: true },
+          fields: { plan: 'pro' },
+          attachments: [],
+        },
+        evidence: {
+          paths: ['/pricing'],
+          sessionIds: ['tm_sess_feedback_mcp'],
+          eventIds: ['event_user_feedback_mcp'],
+          rawBehaviorIds: ['raw_user_feedback_mcp'],
+          actionKeys: ['web:/pricing:click:target:data-testid:upgrade'],
+          targetHashes: ['tm_target_upgrade'],
+        },
+        environment: { platform: 'web', sourceType: 'web', sourceKey: 'app.example.com' },
+        hasContact: true,
+        createdAt: new Date('2026-05-16T10:00:00.000Z'),
+        updatedAt: new Date('2026-05-16T10:00:00.000Z'),
+      });
+
+      const query = await callMcpTool(project, 'tracemind.query_user_feedback', {
+        status: 'new',
+        kind: 'issue',
+        path: '/pricing',
+        hasContact: true,
+        keyword: 'upgrade',
+      }, { mcpToken: 'tm_mcp_user_feedback' });
+      assert.strictEqual(query.structuredContent.ok, true);
+      assert.strictEqual(query.structuredContent.feedback.length, 1);
+      assert.strictEqual(query.structuredContent.feedback[0]._id, feedbackId);
+      assert.strictEqual(query.structuredContent.feedback[0].message.body, undefined);
+      assert.strictEqual(query.structuredContent.feedback[0].message.preview, 'The upgrade button did not finish.');
+
+      const detail = await callMcpTool(project, 'tracemind.query_user_feedback', {
+        id: feedbackId,
+        includeMessage: true,
+      }, { mcpToken: 'tm_mcp_user_feedback' });
+      assert.strictEqual(detail.structuredContent.feedback[0].message.body, 'The upgrade button did not finish.');
+
+      const updated = await callMcpTool(project, 'tracemind.update_user_feedback', {
+        id: feedbackId,
+        status: 'resolved',
+        note: 'Fixed disabled state in checkout form.',
+        resolution: 'Patched upgrade submit handler.',
+        linkedIssueUrl: 'https://linear.app/acme/issue/TR-123',
+      }, { mcpToken: 'tm_mcp_user_feedback' });
+      assert.strictEqual(updated.structuredContent.ok, true);
+      assert.strictEqual(updated.structuredContent.feedback.status, 'resolved');
+
+      const report = await UserFeedbackReports.findOneAsync(feedbackId);
+      assert.strictEqual(report.message.body, 'The upgrade button did not finish.');
+      assert.strictEqual(report.status, 'resolved');
+      assert.strictEqual(report.resolution, 'Patched upgrade submit handler.');
+      assert.strictEqual(report.linkedIssueUrl, 'https://linear.app/acme/issue/TR-123');
+      assert.strictEqual(report.activityLog.length, 1);
+      assert.strictEqual(report.activityLog[0].mcpTokenId, 'mcp_user_feedback');
+      assert.strictEqual(report.activityLog[0].note, 'Fixed disabled state in checkout form.');
     });
 
     it('returns the current project web auto capture setup through MCP', async function () {
@@ -2259,6 +2603,7 @@ describe('TraceMind', function () {
       const presenceIndexes = await indexNames(PresenceSessions);
       const deliveryIndexes = await indexNames(CaptureDeliveryReports);
       const feedbackIndexes = await indexNames(FeedbackReports);
+      const userFeedbackIndexes = await indexNames(TraceMindApi.UserFeedbackReports);
       const reportIndexes = await indexNames(ProjectDailyReports);
 
       [
@@ -2294,6 +2639,12 @@ describe('TraceMind', function () {
         'feedback_project_token_fingerprint_time',
         'feedback_project_token_time',
       ].forEach((name) => assert.ok(feedbackIndexes.has(name), `missing ${name}`));
+      [
+        'user_feedback_project_status_time',
+        'user_feedback_project_kind_time',
+        'user_feedback_project_actor_time',
+        'user_feedback_project_fingerprint_time',
+      ].forEach((name) => assert.ok(userFeedbackIndexes.has(name), `missing ${name}`));
       assert.ok(reportIndexes.has('projectId_1_reportDate_1'));
     });
 
@@ -2914,6 +3265,18 @@ describe('TraceMind', function () {
         submittedVia: 'mcp',
         createdAt: new Date(),
       });
+      await TraceMindApi.UserFeedbackReports.insertAsync({
+        projectId: removedProjectId,
+        status: 'new',
+        message: { kind: 'issue', title: 'Removed user feedback', body: 'For removed project.' },
+        createdAt: new Date(),
+      });
+      await TraceMindApi.UserFeedbackReports.insertAsync({
+        projectId: siblingProject._id,
+        status: 'new',
+        message: { kind: 'idea', title: 'Sibling user feedback', body: 'For sibling project.' },
+        createdAt: new Date(),
+      });
       await ProjectDailyReports.insertAsync({
         projectId: removedProjectId,
         reportDate: '2026-05-12',
@@ -2941,12 +3304,14 @@ describe('TraceMind', function () {
       assert.strictEqual(await SemanticEvents.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await PresenceSessions.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await FeedbackReports.find({ projectId: removedProjectId }).countAsync(), 0);
+      assert.strictEqual(await TraceMindApi.UserFeedbackReports.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await ProjectDailyReports.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.ok(await Projects.findOneAsync(siblingProject._id));
       assert.strictEqual(await RawBehaviors.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await SemanticEvents.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await PresenceSessions.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await FeedbackReports.find({ projectId: siblingProject._id }).countAsync(), 1);
+      assert.strictEqual(await TraceMindApi.UserFeedbackReports.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await ProjectDailyReports.find({ projectId: siblingProject._id }).countAsync(), 1);
     });
 

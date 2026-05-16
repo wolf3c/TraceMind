@@ -59,6 +59,7 @@ Add this server according to the current coding agent's MCP configuration method
 Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md, Skill, README, source code, or any other rules file that may be committed to the repository; only write it into the agent MCP configuration.
 After MCP is configured, Call \`tracemind.capture_setup\` to retrieve the Web Auto Capture script for the current project. For iOS, macOS, Android, or React Native projects, pass the matching \`platform\` argument and use the returned one-line initialization code. Use the returned public projectKey only for capture writes; never use the MCP token in frontend code.
 After installation, call \`tracemind.project_health\` first for a daily health check and \`tracemind.recent_online\` for real-time online status. Then use \`tracemind.summary\` and \`tracemind.query_events\` for feature usage analysis or anomaly or drop investigation. Use \`tracemind.query_raw_behaviors\` only when semantic evidence is insufficient.
+When implementing an end-user feedback entry in the app, use TraceMind SDK \`submitFeedback\` methods. Do not use \`/api/capture\`, \`capture("custom")\`, or \`tracemind.submit_feedback\` for terminal user feedback. Use \`tracemind.query_user_feedback\` and \`tracemind.update_user_feedback\` to triage submitted user reports.
 
 Existing configuration handling:
 - If TraceMind Skill or TraceMind rules already exist, do not append a duplicate full block. Check the existing version and content, then add only missing guidance.
@@ -116,6 +117,7 @@ MCP server:
 不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md、Skill、README、源码或其他会进入仓库的规则文件；只能写入 agent 的 MCP 配置。
 MCP 配好后，通过 \`tracemind.capture_setup\` 获取 Web Auto Capture 接入脚本。对于 iOS、macOS、Android 或 React Native 项目，传入对应 \`platform\` 并使用返回的一行初始化代码。只把返回的公开 projectKey 用于采集写入，不要把 MCP token 写进前端代码。
 安装完成后，优先调用 \`tracemind.project_health\` 做今日健康检查，并调用 \`tracemind.recent_online\` 查看实时在线态势。然后使用 \`tracemind.summary\` 和 \`tracemind.query_events\` 做功能使用分析、异常或下降原因分析。只有语义证据不足时，才调用 \`tracemind.query_raw_behaviors\` 复核原始行为。
+如果要在客户 app 里实现终端用户反馈入口，必须使用 TraceMind SDK 的 \`submitFeedback\` 方法；不要使用 \`/api/capture\`、\`capture("custom")\` 或 \`tracemind.submit_feedback\` 上传终端用户反馈。处理用户反馈时使用 \`tracemind.query_user_feedback\` 查询，并使用 \`tracemind.update_user_feedback\` 标记状态、备注和解决方式。
 
 已有配置处理：
 - 如果已经安装过 TraceMind Skill 或已经追加过 TraceMind rules，不要重复追加完整内容；只检查版本和规则内容，缺什么补什么。

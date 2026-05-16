@@ -119,6 +119,70 @@ class TraceMindServerTest(unittest.TestCase):
 
         self.assertEqual(batches[0]["events"][0]["source"]["type"], "server_app")
 
+    def test_submits_structured_user_feedback_through_dedicated_endpoint(self):
+        feedback_bodies = []
+        client = create_tracemind_server_client(
+            project_key="tm_proj_server_python",
+            source_key="billing-api",
+            endpoint="https://tracemind.example.com/api/capture",
+            feedback_transport=lambda body: feedback_bodies.append(body),
+        )
+
+        client.submit_feedback(
+            user_id="user_123",
+            path="/billing",
+            message={
+                "kind": "issue",
+                "title": "Invoice export failed",
+                "body": "The export button did not finish.",
+                "contact": {"email": "buyer@example.com", "consent": True},
+                "fields": {
+                    "plan": "pro",
+                    "accessToken": "do not send",
+                    "returnUrl": "Open https://example.com/callback?token=secret to debug",
+                },
+                "attachments": [{"name": "future.png"}],
+            },
+        )
+
+        self.assertEqual(len(feedback_bodies), 1)
+        self.assertEqual(feedback_bodies[0]["projectKey"], "tm_proj_server_python")
+        self.assertEqual(feedback_bodies[0]["source"]["type"], "server_app")
+        self.assertEqual(feedback_bodies[0]["path"], "/billing")
+        self.assertEqual(feedback_bodies[0]["message"]["kind"], "issue")
+        self.assertEqual(feedback_bodies[0]["message"]["contact"]["email"], "buyer@example.com")
+        self.assertEqual(feedback_bodies[0]["message"]["fields"], {"plan": "pro"})
+        self.assertEqual(feedback_bodies[0]["message"]["attachments"], [])
+        self.assertNotIn("do not send", str(feedback_bodies[0]))
+        self.assertNotIn("callback?token", str(feedback_bodies[0]))
+
+    def test_uses_default_feedback_endpoint_when_capture_endpoint_cannot_derive(self):
+        fallback_client = create_tracemind_server_client(
+            project_key="tm_proj_server_python",
+            endpoint="https://collector.example.com/ingest",
+        )
+        derived_client = create_tracemind_server_client(
+            project_key="tm_proj_server_python",
+            endpoint="https://collector.example.com/base/api/capture?debug=true",
+        )
+        similar_path_client = create_tracemind_server_client(
+            project_key="tm_proj_server_python",
+            endpoint="https://collector.example.com/base/api/capture-v2",
+        )
+
+        self.assertEqual(
+            fallback_client.feedback_endpoint,
+            "https://tracemind.sandbox.galaxycloud.app/api/user-feedback",
+        )
+        self.assertEqual(
+            derived_client.feedback_endpoint,
+            "https://collector.example.com/base/api/user-feedback",
+        )
+        self.assertEqual(
+            similar_path_client.feedback_endpoint,
+            "https://tracemind.sandbox.galaxycloud.app/api/user-feedback",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

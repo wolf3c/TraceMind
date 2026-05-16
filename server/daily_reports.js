@@ -12,6 +12,7 @@ import {
   Projects,
   RawBehaviors,
   SemanticEvents,
+  UserFeedbackReports,
   summarizeCaptureDelivery,
   summarizeProjectHealthForWindow,
   summarizeProjectHealthFromDailyReports,
@@ -302,6 +303,26 @@ export async function ensureTraceMindIndexes() {
     FeedbackReports.rawCollection().createIndex(
       { projectId: 1, mcpTokenId: 1, createdAt: -1 },
       { name: 'feedback_project_token_time' },
+    ),
+    UserFeedbackReports.rawCollection().createIndex(
+      { projectId: 1, status: 1, createdAt: -1 },
+      { name: 'user_feedback_project_status_time' },
+    ),
+    UserFeedbackReports.rawCollection().createIndex(
+      { projectId: 1, 'message.kind': 1, createdAt: -1 },
+      { name: 'user_feedback_project_kind_time' },
+    ),
+    UserFeedbackReports.rawCollection().createIndex(
+      { projectId: 1, actorKey: 1, createdAt: -1 },
+      { name: 'user_feedback_project_actor_time' },
+    ),
+    UserFeedbackReports.rawCollection().createIndex(
+      { projectId: 1, actorKey: 1, feedbackFingerprint: 1, createdAt: -1 },
+      { name: 'user_feedback_project_fingerprint_time' },
+    ),
+    UserFeedbackReports.rawCollection().createIndex(
+      { projectId: 1, rateKeys: 1, createdAt: -1 },
+      { name: 'user_feedback_project_rate_keys_time' },
     ),
   ]);
 }

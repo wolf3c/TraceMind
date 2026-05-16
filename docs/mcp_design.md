@@ -2,7 +2,7 @@
 
 ## 目标
 
-让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入独立反馈库。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问今天产品是否正常、用户在做什么、哪里值得改：Agent 默认先读取项目健康日报，再下钻语义事件，需要复核时再查询原始日志。
+让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入开发者反馈、`tracemind.update_user_feedback` 更新终端用户反馈处理状态和备注。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问今天产品是否正常、用户在做什么、哪里值得改：Agent 默认先读取项目健康日报，再下钻语义事件，需要复核时再查询原始日志。
 
 ## Endpoint
 
@@ -17,7 +17,7 @@ POST /mcp?mcpToken=MCP_TOKEN
 Authorization: Bearer MCP_TOKEN
 ```
 
-`MCP_TOKEN` 是独立 MCP 凭证，格式为 `tm_mcp_xxx`。它不同于 Auto Capture 使用的公开 `projectKey`，项目 key 不能访问 MCP。MCP token 可读取项目行为证据，并允许通过 `tracemind.submit_feedback` 提交开发者反馈；除反馈提交外，分析工具保持只读。
+`MCP_TOKEN` 是独立 MCP 凭证，格式为 `tm_mcp_xxx`。它不同于 Auto Capture 使用的公开 `projectKey`，项目 key 不能访问 MCP。MCP token 可读取项目行为证据和终端用户反馈，并允许通过 `tracemind.submit_feedback` 提交开发者反馈、通过 `tracemind.update_user_feedback` 更新用户反馈处理信息；它不能修改用户原始反馈 message。
 
 ## 多项目识别
 
@@ -550,6 +550,41 @@ Input:
 
 服务端要求 `type`、`title` 和 `summary`，`type` 只能是 `issue` 或 `idea`。提交内容会被截断、数组会被限制长度，并通过隐私检查拒绝 PII、token、raw prompt、原始用户内容、源码 diff、请求/响应 body、headers、cookies、authorization 值和带 query 的完整 URL。服务端会按同一项目和 MCP token 对 24 小时内相同脱敏内容做去重，重复提交返回已有 `feedbackId` 和 `deduplicated: true`；非重复提交按同一项目和 MCP token 限制为每分钟最多 5 条、24 小时最多 100 条，超限返回 `feedback_rate_limited` 且不写入反馈库。成功返回值为 `{ ok, feedbackId, createdAt }`。
 
+### `tracemind.query_user_feedback`
+
+查询终端用户通过客户 app 主动提交的反馈。数据来自独立集合 `tracemind_user_feedback_reports`，不来自 raw behaviors 或 semantic events。默认列表返回摘要、状态、环境和证据引用；传入 `id` 或 `includeMessage: true` 时才返回完整 `message`，包括用户主动提交的 consented contact 和 custom fields。
+
+Input:
+
+```json
+{
+  "status": "new",
+  "kind": "issue",
+  "path": "/pricing",
+  "platform": "web",
+  "sessionId": "tm_sess_123",
+  "keyword": "upgrade",
+  "hasContact": true,
+  "limit": 20
+}
+```
+
+### `tracemind.update_user_feedback`
+
+更新终端用户反馈处理信息，写入 `activityLog`，记录当前 MCP token/agent 在什么时候做了什么。这个工具只能更新 `status`、`note`、`resolution`、`linkedIssueUrl` 和 `duplicateOf`，不能修改用户原始 `message`。
+
+Input:
+
+```json
+{
+  "id": "feedback_123",
+  "status": "resolved",
+  "note": "Fixed disabled state in checkout form.",
+  "resolution": "Patched upgrade submit handler.",
+  "linkedIssueUrl": "https://linear.app/acme/issue/TR-123"
+}
+```
+
 ## 推荐 LLM 查询顺序
 
 1. 调用 `tracemind.project_info` 确认当前 MCP 绑定项目。
@@ -558,6 +593,7 @@ Input:
 4. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
 5. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。
 6. 当开发者发现问题或提出想法时，先询问是否需要上报；若开发者明确要求上报，收集脱敏摘要和证据引用后调用 `tracemind.submit_feedback`。
+7. 当开发者要处理终端用户反馈时，调用 `tracemind.query_user_feedback` 查询，再调用 `tracemind.update_user_feedback` 标记状态、备注和解决方式。
 
 固定产品分析任务：
 

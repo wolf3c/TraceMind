@@ -195,6 +195,69 @@ class TraceMindPayloadBuilderTest {
   }
 
   @Test
+  fun submitFeedbackBuildsDedicatedPayloadWithConsentedContact() {
+    val feedbacks = mutableListOf<TraceMindUserFeedbackPayload>()
+    val client = TraceMindClient(
+      projectKey = "tm_proj_android",
+      endpoint = "https://tracemind.example.com/api/capture",
+      feedbackEndpoint = "https://tracemind.example.com/api/user-feedback",
+      packageName = "com.example.android",
+      appLabel = "Example Android",
+      identityStore = InMemoryIdentityStore(userId = "user_123"),
+      feedbackSender = { feedbacks.add(it) }
+    )
+
+    client.submitFeedback(
+      message = TraceMindFeedbackMessage(
+        kind = "issue",
+        title = "Upgrade failed",
+        body = "The upgrade button did not finish.",
+        contact = TraceMindFeedbackContact(email = "user@example.com", consent = true),
+        fields = mapOf(
+          "plan" to "pro",
+          ("access" + "Token") to "do not send",
+          "returnUrl" to "Open https://example.com/callback?token=secret to debug"
+        ),
+        attachments = listOf(TraceMindFeedbackAttachment(name = "future.png"))
+      ),
+      path = "CheckoutActivity"
+    )
+
+    val feedback = feedbacks.first()
+    val json = feedback.toJson()
+    assertEquals("tm_proj_android", feedback.projectKey)
+    assertEquals("user_123", feedback.userId)
+    assertEquals("android", feedback.platform)
+    assertEquals("issue", feedback.message.kind)
+    assertEquals("user@example.com", feedback.message.contact.email)
+    assertEquals("pro", feedback.message.fields["plan"])
+    assertFalse(feedback.message.fields.containsKey("access" + "Token"))
+    assertFalse(feedback.message.fields.containsKey("returnUrl"))
+    assertEquals(emptyList<TraceMindFeedbackAttachment>(), feedback.message.attachments)
+    assertTrue(json.contains(""""message""""))
+    assertFalse(json.contains("do not send"))
+  }
+
+  @Test
+  fun feedbackEndpointFallsBackWhenCaptureEndpointCannotDeriveIt() {
+    val derived = TraceMindClient(
+      projectKey = "tm_proj_android",
+      endpoint = "https://collector.example.com/base/api/capture?debug=true",
+      packageName = "com.example.android",
+      appLabel = "Example Android"
+    )
+    val fallback = TraceMindClient(
+      projectKey = "tm_proj_android",
+      endpoint = "https://collector.example.com/base/api/capture-v2",
+      packageName = "com.example.android",
+      appLabel = "Example Android"
+    )
+
+    assertEquals("https://collector.example.com/base/api/user-feedback", derived.feedbackEndpoint())
+    assertEquals("https://tracemind.sandbox.galaxycloud.app/api/user-feedback", fallback.feedbackEndpoint())
+  }
+
+  @Test
   fun buildsPresencePayloadForOnlineDuration() {
     val identityStore = InMemoryIdentityStore(userId = "user_123")
     val builder = TraceMindPayloadBuilder(

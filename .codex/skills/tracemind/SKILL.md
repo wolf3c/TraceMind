@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.09.1
+version: 2026.05.15.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -130,6 +130,18 @@ TraceMind MCP can submit developer feedback separately from analytics events. Us
 - Add optional `expected`, `actual`, `suggestion`, and short `reproductionSteps` when they clarify the report.
 - Prefer evidence references: event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, time window, session IDs, device IDs, and short sanitized examples.
 - Do not include PII, personal contact fields, secrets, token values, raw prompts, raw user content, source code, diffs, request/response bodies, headers, cookies, authorization values, tool arguments/results, resource content, or full query URLs.
+
+## End-User Feedback Capture
+
+TraceMind also supports terminal user feedback from the customer app. This is separate from developer feedback.
+
+- Use SDK `submitFeedback` for user feedback upload: Web `window.TraceMind.submitFeedback({ message })`, iOS/macOS `TraceMind.submitFeedback(message:)`, Android `TraceMind.submitFeedback(message)`, React Native `TraceMind.submitFeedback({ message })`, or server SDK `TraceMindServer.submitFeedback(...)`.
+- Do not send terminal user feedback through `/api/capture`, `capture("custom")`, or `tracemind.submit_feedback`.
+- Feedback `message` is structured and may include `kind`, `title`, `body`, consented `contact`, and primitive custom `fields`; attachments remain empty in v1.
+- Contact fields are allowed only when the end user explicitly submits them in the feedback payload. Auto Capture still must not collect input values, emails, phones, prompts, tokens, source diffs, request/response bodies, or full query URLs.
+- Use `tracemind.query_user_feedback` to read feedback by status, kind, path/screen, platform, user/session, keyword, or contact presence.
+- Use `tracemind.update_user_feedback` to update only status, note, resolution, linkedIssueUrl, or duplicateOf. Do not modify the original user message.
+- v1 does not include public feedback boards, voting, roadmap, changelog, screenshots, recordings, or attachment upload.
 
 ## Update Rule
 

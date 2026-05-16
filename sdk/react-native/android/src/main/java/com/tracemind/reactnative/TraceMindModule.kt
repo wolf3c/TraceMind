@@ -6,6 +6,8 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
 import com.tracemind.TraceMind
+import com.tracemind.TraceMindFeedbackContact
+import com.tracemind.TraceMindFeedbackMessage
 
 class TraceMindModule(
   private val reactContext: ReactApplicationContext
@@ -41,6 +43,29 @@ class TraceMindModule(
   @ReactMethod
   fun setScreen(screen: String) {
     TraceMind.setScreen(screen)
+  }
+
+  @ReactMethod
+  fun submitFeedback(payload: ReadableMap) {
+    val messageMap = if (payload.hasKey("message")) payload.getMap("message") else null
+    val contactMap = messageMap?.let { if (it.hasKey("contact")) it.getMap("contact") else null }
+    TraceMind.submitFeedback(
+      message = TraceMindFeedbackMessage(
+        kind = messageMap?.let { if (it.hasKey("kind")) it.getString("kind") else null } ?: "other",
+        title = messageMap?.let { if (it.hasKey("title")) it.getString("title") else null },
+        body = messageMap?.let { if (it.hasKey("body")) it.getString("body") else null } ?: "",
+        contact = TraceMindFeedbackContact(
+          name = contactMap?.let { if (it.hasKey("name")) it.getString("name") else null },
+          email = contactMap?.let { if (it.hasKey("email")) it.getString("email") else null },
+          phone = contactMap?.let { if (it.hasKey("phone")) it.getString("phone") else null },
+          preferredChannel = contactMap?.let { if (it.hasKey("preferredChannel")) it.getString("preferredChannel") else null },
+          consent = contactMap?.let { it.hasKey("consent") && it.getBoolean("consent") } ?: false
+        ),
+        fields = messageMap?.let { readPrimitiveMap(it, "fields") } ?: emptyMap()
+      ),
+      path = if (payload.hasKey("path")) payload.getString("path") ?: "ReactNative" else "ReactNative",
+      title = if (payload.hasKey("title")) payload.getString("title") else null
+    )
   }
 
   private fun readPrimitiveMap(payload: ReadableMap, key: String): Map<String, Any?> {

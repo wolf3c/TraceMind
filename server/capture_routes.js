@@ -11,6 +11,7 @@ import {
   PresenceSessions,
   RawBehaviors,
   SemanticEvents,
+  UserFeedbackReports,
   buildEventQuery,
   buildRawBehaviorQuery,
   isSourceBlocked,
@@ -337,6 +338,49 @@ export function mcpTools(project) {
       },
     },
     {
+      name: 'tracemind.query_user_feedback',
+      title: projectScopedTitle('TraceMind Query User Feedback', project),
+      description: projectScopedDescription('查询终端用户通过客户 app 主动提交的反馈，默认返回摘要和行为证据引用，详情查询可返回完整 message。', project),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '反馈记录 ID；提供后返回单条记录。' },
+          status: { type: 'string', enum: ['new', 'triaged', 'in_progress', 'resolved', 'wont_fix', 'duplicate'] },
+          kind: { type: 'string', enum: ['issue', 'idea', 'question', 'other'] },
+          startAt: { type: 'string', description: 'ISO 时间，提交时间起点。' },
+          endAt: { type: 'string', description: 'ISO 时间，提交时间终点。' },
+          path: { type: 'string', description: '页面 path 或 screen。' },
+          platform: { type: 'string', description: 'web、ios、macos、android、server 或 unknown。' },
+          sourceType: { type: 'string', description: '来源类型，例如 web、ios、android、server_app。' },
+          userId: { type: 'string' },
+          anonymousId: { type: 'string' },
+          sessionId: { type: 'string' },
+          deviceId: { type: 'string' },
+          keyword: { type: 'string', description: '标题、正文或自定义字段关键词。' },
+          hasContact: { type: 'boolean', description: '是否只查询包含用户主动联系方式的反馈。' },
+          includeMessage: { type: 'boolean', description: '是否返回完整 message；默认列表只返回摘要。' },
+          limit: { type: 'number', description: '最多返回多少条，默认 50。' },
+        },
+      },
+    },
+    {
+      name: 'tracemind.update_user_feedback',
+      title: projectScopedTitle('TraceMind Update User Feedback', project),
+      description: projectScopedDescription('仅更新终端用户反馈的处理状态、备注、解决说明或重复关联；不会修改用户原始反馈 message。', project),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '反馈记录 ID。' },
+          status: { type: 'string', enum: ['new', 'triaged', 'in_progress', 'resolved', 'wont_fix', 'duplicate'] },
+          note: { type: 'string', description: '处理备注。' },
+          resolution: { type: 'string', description: '解决说明。' },
+          linkedIssueUrl: { type: 'string', description: '关联 issue 或任务 URL。' },
+          duplicateOf: { type: 'string', description: '重复反馈的目标反馈 ID。' },
+        },
+        required: ['id'],
+      },
+    },
+    {
       name: 'tracemind.summary',
       title: projectScopedTitle('TraceMind Behavior Summary', project),
       description: projectScopedDescription('汇总当前 Web 产品最近的语义行为事件。', project),
@@ -570,6 +614,8 @@ function guidanceResult(extra = {}) {
       'When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.',
       'Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.',
       'Prefer evidence references over raw copied content, screenshots, source diffs, raw prompts, tool arguments, tool results, request bodies, response bodies, headers, cookies, authorization values, or full query URLs.',
+      'When implementing an end-user feedback entry in a customer app, use the SDK user feedback API: TraceMind.submitFeedback / window.TraceMind.submitFeedback / TraceMindServer.submitFeedback. Do not use /api/capture, capture("custom"), or tracemind.submit_feedback for terminal user feedback.',
+      'For terminal user feedback triage, use tracemind.query_user_feedback to read reports and tracemind.update_user_feedback to update status, notes, resolution, linkedIssueUrl, or duplicateOf.',
       'Ask the user before updating local skill or instruction files.',
     ],
     ...extra,
@@ -681,21 +727,40 @@ const MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS = [
 function commonSetup(project, platform) {
   const captureApiUrl = Meteor.absoluteUrl('/api/capture');
   const presenceApiUrl = Meteor.absoluteUrl('/api/presence');
+  const userFeedbackApiUrl = Meteor.absoluteUrl('/api/user-feedback');
   const notes = [
     'Use projectKey only for Auto Capture writes.',
     'Do not use the MCP token as data-tracemind-token.',
     'Do not put MCP tokens in frontend code.',
     'Do not capture input values, screenshots, secrets, raw prompts, raw user content, or full query URLs.',
   ];
+  const userFeedbackWorkflow = [
+    'Use TraceMind submitFeedback for terminal user feedback entries in the customer app.',
+    'Do not send terminal user feedback through /api/capture, capture("custom"), or tracemind.submit_feedback.',
+    'Contact fields are allowed only when the end user explicitly submits them in the feedback payload.',
+    'Keep attachments empty in v1; screenshots, recordings, public boards, voting, roadmap, and changelog are out of scope.',
+  ];
   return {
     platform,
     captureApiUrl,
     presenceApiUrl,
+    userFeedbackApiUrl,
     autoCapturedSignals: AUTO_CAPTURE_SIGNALS,
     privacyConstraints: PRIVACY_CONSTRAINTS,
     supportedPropertyTypes: SUPPORTED_MANUAL_PROPERTY_TYPES,
     manualCaptureWorkflow: MANUAL_CAPTURE_WORKFLOW,
     manualCaptureWarnings: MANUAL_CAPTURE_WARNINGS,
+    userFeedbackWorkflow,
+    userFeedbackMethods: {
+      web: 'window.TraceMind.submitFeedback({ message })',
+      ios: 'TraceMind.submitFeedback(message: feedbackMessage)',
+      macos: 'TraceMind.submitFeedback(message: feedbackMessage)',
+      android: 'TraceMind.submitFeedback(message)',
+      react_native: 'TraceMind.submitFeedback({ message })',
+      server_node: 'TraceMindServer.submitFeedback({ message, userId, sessionId })',
+      server_python: 'TraceMindServer.submit_feedback(message=message, user_id=user_id, session_id=session_id)',
+      server_http: `POST ${userFeedbackApiUrl}`,
+    },
     notes,
   };
 }
@@ -1459,6 +1524,497 @@ async function submitFeedbackReport(project, args = {}, options = {}) {
   );
 }
 
+const USER_FEEDBACK_KINDS = new Set(['issue', 'idea', 'question', 'other']);
+const USER_FEEDBACK_STATUSES = new Set(['new', 'triaged', 'in_progress', 'resolved', 'wont_fix', 'duplicate']);
+const USER_FEEDBACK_RATE_WINDOW_MS = 60 * 1000;
+const USER_FEEDBACK_RATE_LIMIT = 10;
+const USER_FEEDBACK_DAILY_LIMIT = 200;
+const USER_FEEDBACK_EVIDENCE_WINDOW_BEFORE_MS = 10 * 60 * 1000;
+const USER_FEEDBACK_EVIDENCE_WINDOW_AFTER_MS = 60 * 1000;
+const USER_FEEDBACK_FORBIDDEN_VALUE_PATTERN = /\b(bearer\s+\S+|api[_-]?key|access[_-]?token|secret[_-]?token|raw\s+prompt|raw\s+user\s+content|source\s+diff|code\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:|tool\s+arguments?|tool\s+results?|resource\s+content)\b|sk-[A-Za-z0-9_-]{12,}/i;
+const USER_FEEDBACK_FULL_QUERY_URL_PATTERN = /https?:\/\/[^\s?#]+[^\s]*\?[^\s"'<>)]*/i;
+
+function addUserFeedbackFinding(findings, code, message, path) {
+  addFinding(findings, 'error', code, message, path);
+}
+
+function userFeedbackText(value, max = 1000, fallback = '') {
+  return safeString(value, max, fallback).trim();
+}
+
+function isUserFeedbackPrimitive(value) {
+  return typeof value === 'string'
+    || typeof value === 'boolean'
+    || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function userFeedbackValueIsForbidden(value) {
+  if (typeof value !== 'string') return false;
+  return USER_FEEDBACK_FORBIDDEN_VALUE_PATTERN.test(value) || USER_FEEDBACK_FULL_QUERY_URL_PATTERN.test(value);
+}
+
+function validateUserFeedbackFreeText(findings, value, path) {
+  if (userFeedbackValueIsForbidden(value)) {
+    addUserFeedbackFinding(
+      findings,
+      'forbidden_user_feedback_field',
+      'User feedback must not include secrets, tokens, raw prompts, source diffs, request/response bodies, headers, cookies, authorization values, tool arguments/results, resource content, or full query URLs.',
+      path,
+    );
+  }
+}
+
+function isAllowedUserFeedbackKey(key) {
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/.test(String(key || ''));
+}
+
+function sanitizeUserFeedbackFields(fieldsInput, findings, pathPrefix = 'message.fields') {
+  const fields = safeObject(fieldsInput);
+  const sanitized = {};
+  Object.entries(fields).slice(0, 50).forEach(([key, value]) => {
+    const path = `${pathPrefix}.${key}`;
+    if (!isAllowedUserFeedbackKey(key) || isForbiddenAnalyticsKey(key)) {
+      addUserFeedbackFinding(findings, 'forbidden_user_feedback_field', 'User feedback custom field keys must be stable non-sensitive identifiers.', path);
+      return;
+    }
+    if (!isUserFeedbackPrimitive(value)) {
+      addUserFeedbackFinding(findings, 'invalid_user_feedback_field', 'User feedback custom fields only support string, number, and boolean values.', path);
+      return;
+    }
+    if (userFeedbackValueIsForbidden(value)) {
+      addUserFeedbackFinding(findings, 'forbidden_user_feedback_field', 'User feedback custom field values must not include secrets, tokens, raw prompts, source diffs, request/response bodies, or full query URLs.', path);
+      return;
+    }
+    sanitized[key] = typeof value === 'string' ? userFeedbackText(value, 500) : value;
+  });
+  return sanitized;
+}
+
+function sanitizeUserFeedbackContact(contactInput, findings) {
+  const contact = safeObject(contactInput);
+  if (contact.consent !== true) return { consent: false };
+
+  const sanitized = { consent: true };
+  [
+    ['name', 120],
+    ['email', 160],
+    ['phone', 80],
+    ['preferredChannel', 40],
+  ].forEach(([key, max]) => {
+    const value = userFeedbackText(contact[key], max);
+    if (!value) return;
+    if (userFeedbackValueIsForbidden(value)) {
+      addUserFeedbackFinding(findings, 'forbidden_user_feedback_field', 'Contact fields may contain user-submitted contact details, but not secrets, tokens, raw prompts, or full query URLs.', `message.contact.${key}`);
+      return;
+    }
+    sanitized[key] = value;
+  });
+  return sanitized;
+}
+
+function sanitizeUserFeedbackMessage(messageInput = {}) {
+  const findings = [];
+  const input = safeObject(messageInput, 12000);
+  const kind = userFeedbackText(input.kind, 20).toLowerCase();
+  const title = userFeedbackText(input.title, 160);
+  const body = userFeedbackText(input.body || input.text, 4000);
+
+  if (kind && !USER_FEEDBACK_KINDS.has(kind)) {
+    addUserFeedbackFinding(findings, 'invalid_user_feedback_kind', 'User feedback kind must be issue, idea, question, or other.', 'message.kind');
+  }
+  if (!title && !body) {
+    addUserFeedbackFinding(findings, 'missing_user_feedback_message', 'User feedback requires a title or body.', 'message.body');
+  }
+  validateUserFeedbackFreeText(findings, title, 'message.title');
+  validateUserFeedbackFreeText(findings, body, 'message.body');
+
+  const message = {
+    formatVersion: 1,
+    kind: USER_FEEDBACK_KINDS.has(kind) ? kind : 'other',
+    title,
+    body,
+    contact: sanitizeUserFeedbackContact(input.contact, findings),
+    fields: sanitizeUserFeedbackFields(input.fields, findings),
+    attachments: [],
+  };
+
+  return { message, findings };
+}
+
+function userFeedbackActorKey(payload = {}, req = {}, source = {}) {
+  return userFeedbackText(
+    payload.userId
+      || payload.anonymousId
+      || payload.sessionId
+      || payload.deviceId
+      || payload.deviceFingerprint
+      || clientIp(req)
+      || `${source.sourceType || 'unknown'}:${source.sourceKey || 'unknown'}`,
+    200,
+    'unknown',
+  );
+}
+
+function userFeedbackRateKeys(payload = {}, req = {}, source = {}) {
+  return uniqueFeedbackValues([
+    payload.userId ? `user:${payload.userId}` : '',
+    payload.anonymousId ? `anonymous:${payload.anonymousId}` : '',
+    payload.sessionId ? `session:${payload.sessionId}` : '',
+    payload.deviceId ? `device:${payload.deviceId}` : '',
+    payload.deviceFingerprint ? `fingerprint:${payload.deviceFingerprint}` : '',
+    clientIp(req) ? `ip:${clientIp(req)}` : '',
+    `${source.sourceType || 'unknown'}:${source.sourceKey || 'unknown'}`,
+  ], 20);
+}
+
+function uniqueFeedbackValues(values = [], max = 20) {
+  return [...new Set(values.map((value) => userFeedbackText(value, 500)).filter(Boolean))].slice(0, max);
+}
+
+function userFeedbackDate(value) {
+  const date = feedbackDate(value);
+  return date || new Date();
+}
+
+async function buildUserFeedbackEvidence(project, payload = {}, occurredAt) {
+  const startAt = new Date(occurredAt.getTime() - USER_FEEDBACK_EVIDENCE_WINDOW_BEFORE_MS);
+  const endAt = new Date(occurredAt.getTime() + USER_FEEDBACK_EVIDENCE_WINDOW_AFTER_MS);
+  const identityClauses = ['sessionId', 'userId', 'anonymousId', 'deviceId', 'deviceFingerprint']
+    .map((field) => {
+      const value = userFeedbackText(payload[field], 200);
+      return value ? { [field]: value } : null;
+    })
+    .filter(Boolean);
+  const path = userFeedbackText(payload.path || payload.screen, 500);
+  const baseQuery = {
+    projectId: project._id,
+    occurredAt: { $gte: startAt, $lte: endAt },
+  };
+  const matchQuery = identityClauses.length
+    ? { ...baseQuery, $or: identityClauses }
+    : { ...baseQuery, ...(path ? { path } : {}) };
+  const [events, rawBehaviors] = await Promise.all([
+    SemanticEvents.find(matchQuery, { sort: { occurredAt: -1 }, limit: 20 }).fetchAsync(),
+    RawBehaviors.find(matchQuery, { sort: { occurredAt: -1 }, limit: 20 }).fetchAsync(),
+  ]);
+
+  return {
+    startAt,
+    endAt,
+    paths: uniqueFeedbackValues([path, ...events.map((event) => event.path), ...rawBehaviors.map((behavior) => behavior.path)]),
+    eventIds: uniqueFeedbackValues(events.map((event) => event._id), 20),
+    rawBehaviorIds: uniqueFeedbackValues(rawBehaviors.map((behavior) => behavior._id), 20),
+    actionKeys: uniqueFeedbackValues([...events.map((event) => event.actionKey), ...rawBehaviors.map((behavior) => behavior.actionKey)]),
+    targetHashes: uniqueFeedbackValues([...events.map((event) => event.targetHash), ...rawBehaviors.map((behavior) => behavior.targetHash)]),
+    userIds: uniqueFeedbackValues([payload.userId, ...events.map((event) => event.userId), ...rawBehaviors.map((behavior) => behavior.userId)]),
+    anonymousIds: uniqueFeedbackValues([payload.anonymousId, ...events.map((event) => event.anonymousId), ...rawBehaviors.map((behavior) => behavior.anonymousId)]),
+    sessionIds: uniqueFeedbackValues([payload.sessionId, ...events.map((event) => event.sessionId), ...rawBehaviors.map((behavior) => behavior.sessionId)]),
+    deviceIds: uniqueFeedbackValues([payload.deviceId, ...events.map((event) => event.deviceId), ...rawBehaviors.map((behavior) => behavior.deviceId)]),
+  };
+}
+
+function sanitizeUserFeedbackEnvironment(source = {}, payload = {}) {
+  return {
+    platform: userFeedbackText(payload.platform, 40, 'unknown'),
+    sourceType: source.sourceType || 'unknown',
+    sourceKey: source.sourceKey || 'unknown',
+    sourceLabel: source.sourceLabel || source.sourceKey || 'unknown',
+    sourceDetails: safeObject(source.sourceDetails, 4096),
+  };
+}
+
+function hasUserFeedbackContact(message = {}) {
+  const contact = message.contact || {};
+  return contact.consent === true && ['name', 'email', 'phone', 'preferredChannel'].some((key) => !!contact[key]);
+}
+
+function userFeedbackSearchText(message = {}) {
+  const fields = safeObject(message.fields, 4096);
+  const fieldParts = [];
+  Object.entries(fields).forEach(([key, value]) => {
+    fieldParts.push(key);
+    if (isUserFeedbackPrimitive(value)) fieldParts.push(String(value));
+  });
+  return userFeedbackText([
+    message.kind,
+    message.title,
+    message.body,
+    ...fieldParts,
+  ].filter(Boolean).join(' '), 8000);
+}
+
+async function insertUserFeedbackEvent(project, payload = {}, req = {}) {
+  const { message, findings } = sanitizeUserFeedbackMessage(payload.message || payload);
+  if (findings.some((finding) => finding.severity === 'error')) {
+    return { ok: false, findings };
+  }
+
+  const source = normalizeCaptureSource(payload, req.headers || {});
+  if (isSourceBlocked(project, source)) return { ok: true, ignored: true };
+
+  const createdAt = new Date();
+  const occurredAt = userFeedbackDate(payload.occurredAt);
+  const actorKey = userFeedbackActorKey(payload, req, source);
+  const rateKeys = userFeedbackRateKeys(payload, req, source);
+  const fingerprint = feedbackFingerprint({
+    actorKey,
+    path: userFeedbackText(payload.path || payload.screen, 500),
+    message,
+  });
+  const dedupeAfter = new Date(createdAt.getTime() - FEEDBACK_DEDUPE_WINDOW_MS);
+  const duplicate = await UserFeedbackReports.findOneAsync({
+    projectId: project._id,
+    rateKeys: { $in: rateKeys },
+    feedbackFingerprint: fingerprint,
+    createdAt: { $gte: dedupeAfter },
+  }, { sort: { createdAt: -1 } });
+
+  if (duplicate) {
+    return {
+      ok: true,
+      deduplicated: true,
+      userFeedbackId: duplicate._id,
+      createdAt: duplicate.createdAt,
+    };
+  }
+
+  const rateWindowStart = new Date(createdAt.getTime() - USER_FEEDBACK_RATE_WINDOW_MS);
+  const dailyWindowStart = new Date(createdAt.getTime() - FEEDBACK_DEDUPE_WINDOW_MS);
+  const [recentCount, dailyCount] = await Promise.all([
+    UserFeedbackReports.find({ projectId: project._id, rateKeys: { $in: rateKeys }, createdAt: { $gte: rateWindowStart } }).countAsync(),
+    UserFeedbackReports.find({ projectId: project._id, rateKeys: { $in: rateKeys }, createdAt: { $gte: dailyWindowStart } }).countAsync(),
+  ]);
+  if (recentCount >= USER_FEEDBACK_RATE_LIMIT || dailyCount >= USER_FEEDBACK_DAILY_LIMIT) {
+    const rateFindings = [];
+    addUserFeedbackFinding(rateFindings, 'user_feedback_rate_limited', 'Too many user feedback reports were submitted from this actor. Retry later or consolidate repeated reports.');
+    return { ok: false, findings: rateFindings };
+  }
+
+  const evidence = await buildUserFeedbackEvidence(project, payload, occurredAt);
+  const environment = sanitizeUserFeedbackEnvironment(source, payload);
+  const userFeedbackId = await UserFeedbackReports.insertAsync({
+    projectId: project._id,
+    projectName: projectDisplayName(project),
+    submittedVia: 'sdk',
+    status: 'new',
+    actorKey,
+    rateKeys,
+    feedbackFingerprint: fingerprint,
+    sessionId: userFeedbackText(payload.sessionId, 120),
+    anonymousId: userFeedbackText(payload.anonymousId, 120),
+    userId: userFeedbackText(payload.userId, 160),
+    deviceId: userFeedbackText(payload.deviceId, 120),
+    deviceFingerprint: userFeedbackText(payload.deviceFingerprint, 120),
+    path: userFeedbackText(payload.path || payload.screen, 500),
+    platform: userFeedbackText(payload.platform, 40, 'unknown'),
+    ip: userFeedbackText(clientIp(req), 80),
+    geo: { ...geoFromHeaders(req), ...safeObject(payload.geo, 2048) },
+    message,
+    searchText: userFeedbackSearchText(message),
+    hasContact: hasUserFeedbackContact(message),
+    evidence,
+    environment,
+    activityLog: [],
+    occurredAt,
+    createdAt,
+    updatedAt: createdAt,
+  });
+
+  return { ok: true, userFeedbackId, createdAt };
+}
+
+export async function ingestUserFeedbackPayload(payload = {}, req = {}) {
+  payload = payload || {};
+  const project = await resolveProjectByKey(payload.projectKey);
+  if (!project) {
+    return { ok: false, statusCode: 401, error: 'invalid_project_key' };
+  }
+
+  if (Array.isArray(payload.events)) {
+    let accepted = 0;
+    let ignored = 0;
+    const results = [];
+    const sharedPayload = { ...payload };
+    delete sharedPayload.events;
+
+    for (const eventPayload of payload.events.slice(0, 50)) {
+      const result = await insertUserFeedbackEvent(project, {
+        ...sharedPayload,
+        ...safeObject(eventPayload, 12000),
+        projectKey: project.projectKey,
+      }, req);
+      results.push(result);
+      if (result.ignored) ignored += 1;
+      else if (result.ok) accepted += 1;
+    }
+
+    const firstError = results.find((result) => !result.ok);
+    const result = firstError && accepted === 0
+      ? { ok: false, findings: firstError.findings || [], accepted, ignored }
+      : { ok: true, accepted, ignored, results };
+    await recordDeliveryReport(project, payload, req, 'user_feedback', result);
+    return result;
+  }
+
+  const result = await insertUserFeedbackEvent(project, payload, req);
+  await recordDeliveryReport(project, payload, req, 'user_feedback', {
+    accepted: result.ok && !result.ignored ? 1 : 0,
+    ignored: result.ignored ? 1 : 0,
+  });
+  return result;
+}
+
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function publicUserFeedbackReport(report = {}, { includeMessage = false } = {}) {
+  const message = report.message || {};
+  const summaryMessage = includeMessage
+    ? message
+    : {
+      formatVersion: message.formatVersion || 1,
+      kind: message.kind || 'other',
+      title: message.title || '',
+      preview: userFeedbackText(message.body, 300),
+      hasContact: !!report.hasContact,
+      fields: safeObject(message.fields, 4096),
+    };
+  return {
+    _id: report._id,
+    projectId: report.projectId,
+    status: report.status || 'new',
+    submittedVia: report.submittedVia || 'sdk',
+    message: summaryMessage,
+    hasContact: !!report.hasContact,
+    evidence: report.evidence || {},
+    environment: report.environment || {},
+    path: report.path || '',
+    platform: report.platform || report.environment?.platform || 'unknown',
+    sessionId: report.sessionId || '',
+    userId: report.userId || '',
+    anonymousId: report.anonymousId || '',
+    deviceId: report.deviceId || '',
+    note: report.note || '',
+    resolution: report.resolution || '',
+    linkedIssueUrl: report.linkedIssueUrl || '',
+    duplicateOf: report.duplicateOf || '',
+    activityLog: includeMessage ? (report.activityLog || []) : undefined,
+    occurredAt: report.occurredAt,
+    createdAt: report.createdAt,
+    updatedAt: report.updatedAt,
+  };
+}
+
+function buildUserFeedbackQuery(project, args = {}) {
+  const query = { projectId: project._id };
+  const andClauses = [];
+  if (args.id) query._id = userFeedbackText(args.id, 120);
+  const status = userFeedbackText(args.status, 40);
+  if (USER_FEEDBACK_STATUSES.has(status)) query.status = status;
+  const kind = userFeedbackText(args.kind, 40);
+  if (USER_FEEDBACK_KINDS.has(kind)) query['message.kind'] = kind;
+  const startAt = feedbackDate(args.startAt);
+  const endAt = feedbackDate(args.endAt);
+  if (startAt || endAt) query.createdAt = {};
+  if (startAt) query.createdAt.$gte = startAt;
+  if (endAt) query.createdAt.$lte = endAt;
+  ['userId', 'anonymousId', 'sessionId', 'deviceId'].forEach((field) => {
+    const value = userFeedbackText(args[field], 200);
+    if (value) query[field] = value;
+  });
+  const platform = userFeedbackText(args.platform, 40);
+  if (platform) andClauses.push({ $or: [{ platform }, { 'environment.platform': platform }] });
+  const sourceType = userFeedbackText(args.sourceType, 40);
+  if (sourceType) query['environment.sourceType'] = sourceType;
+  if (typeof args.hasContact === 'boolean') query.hasContact = args.hasContact;
+  const path = userFeedbackText(args.path || args.screen, 500);
+  if (path) {
+    andClauses.push({ $or: [{ path }, { 'evidence.paths': path }] });
+  }
+  const keyword = userFeedbackText(args.keyword, 160);
+  if (keyword) {
+    const regex = new RegExp(escapeRegex(keyword), 'i');
+    andClauses.push({ $or: [
+      { 'message.title': regex },
+      { 'message.body': regex },
+      { searchText: regex },
+    ] });
+  }
+  if (andClauses.length === 1) {
+    Object.assign(query, andClauses[0]);
+  } else if (andClauses.length > 1) {
+    query.$and = andClauses;
+  }
+  return query;
+}
+
+async function queryUserFeedbackReports(project, args = {}) {
+  const includeMessage = args.includeMessage === true || !!args.id;
+  const reports = await UserFeedbackReports.find(
+    buildUserFeedbackQuery(project, args),
+    { sort: { createdAt: -1 }, limit: safeLimit(args.limit, args.id ? 1 : 50, 200) },
+  ).fetchAsync();
+  const feedback = reports.map((report) => publicUserFeedbackReport(report, { includeMessage }));
+  return textResult(
+    feedback.map((report) => `${report.createdAt?.toISOString?.() || report.createdAt} ${report.status} ${report.message.kind}: ${report.message.title || report.message.preview}`).join('\n') || '没有找到用户反馈。',
+    {
+      ok: true,
+      project: { _id: project._id, name: project.name },
+      feedback,
+    },
+  );
+}
+
+async function updateUserFeedbackReport(project, args = {}, options = {}) {
+  const id = userFeedbackText(args.id, 120);
+  if (!id) throw new Error('User feedback id is required.');
+  const existing = await UserFeedbackReports.findOneAsync({ _id: id, projectId: project._id });
+  if (!existing) throw new Error('User feedback not found.');
+
+  const set = { updatedAt: new Date() };
+  const status = userFeedbackText(args.status, 40);
+  if (status) {
+    if (!USER_FEEDBACK_STATUSES.has(status)) throw new Error(`Invalid user feedback status: ${status}`);
+    set.status = status;
+  }
+  const note = userFeedbackText(args.note, 2000);
+  const resolution = userFeedbackText(args.resolution, 2000);
+  const linkedIssueUrl = userFeedbackText(args.linkedIssueUrl, 500);
+  const duplicateOf = userFeedbackText(args.duplicateOf, 120);
+  if (note) set.note = note;
+  if (resolution) set.resolution = resolution;
+  if (linkedIssueUrl) set.linkedIssueUrl = linkedIssueUrl;
+  if (duplicateOf) set.duplicateOf = duplicateOf;
+
+  const activity = {
+    action: 'update_user_feedback',
+    ...feedbackTokenAttribution(project, options.mcpToken),
+    mcpTokenId: feedbackTokenScope(project, options.mcpToken),
+    status: set.status || existing.status || 'new',
+    note,
+    resolution,
+    linkedIssueUrl,
+    duplicateOf,
+    createdAt: set.updatedAt,
+  };
+  await UserFeedbackReports.updateAsync(
+    { _id: id, projectId: project._id },
+    {
+      $set: set,
+      $push: { activityLog: activity },
+    },
+  );
+  const report = await UserFeedbackReports.findOneAsync({ _id: id, projectId: project._id });
+  return textResult(
+    `TraceMind user feedback updated: ${id}.`,
+    {
+      ok: true,
+      feedback: publicUserFeedbackReport(report, { includeMessage: true }),
+    },
+  );
+}
+
 function normalizePrivacyKey(key) {
   return String(key || '').replace(/[^a-z0-9]+/gi, '').toLowerCase();
 }
@@ -1772,6 +2328,14 @@ export async function callMcpTool(project, name, args = {}, options = {}) {
     return submitFeedbackReport(project, args, options);
   }
 
+  if (name === 'tracemind.query_user_feedback') {
+    return queryUserFeedbackReports(project, args);
+  }
+
+  if (name === 'tracemind.update_user_feedback') {
+    return updateUserFeedbackReport(project, args, options);
+  }
+
   if (name === 'tracemind.project_health') {
     const health = await readProjectHealth(project, args);
     return textResult(
@@ -1835,6 +2399,7 @@ export function clientScript(host) {
   var projectKey = script && script.getAttribute('data-tracemind-token');
   var endpoint = (script && script.getAttribute('data-tracemind-endpoint')) || '${host}/api/capture';
   var presenceEndpoint = (script && script.getAttribute('data-tracemind-presence-endpoint')) || '${host}/api/presence';
+  var feedbackEndpoint = (script && script.getAttribute('data-tracemind-feedback-endpoint')) || '${host}/api/user-feedback';
   var staticUserId = script && script.getAttribute('data-tracemind-user-id');
   var userIdProvider = script && script.getAttribute('data-tracemind-user-id-provider');
 
@@ -1921,6 +2486,7 @@ export function clientScript(host) {
   var MAX_QUEUE_EVENTS = 300;
   var CAPTURE_BATCH_SIZE = 20;
   var PRESENCE_BATCH_SIZE = 20;
+  var FEEDBACK_BATCH_SIZE = 5;
   var MAX_UNLOAD_BATCH_BYTES = 60 * 1024;
   var RETRY_BASE_MS = 1000;
   var RETRY_MAX_MS = 60 * 1000;
@@ -1962,7 +2528,7 @@ export function clientScript(host) {
     try {
       var parsed = JSON.parse(readLocal(queueStorageKey) || '[]');
       return Array.isArray(parsed) ? parsed.filter(function (record) {
-        return record && record.id && (record.kind === 'capture' || record.kind === 'presence') && record.payload;
+        return record && record.id && (record.kind === 'capture' || record.kind === 'presence' || record.kind === 'feedback') && record.payload;
       }) : [];
     } catch (error) {
       deliveryStats.lastError = 'queue_load_failed';
@@ -2181,7 +2747,7 @@ export function clientScript(host) {
   function flushKind(kind, reason, unloadMode) {
     var records = dueRecords(
       kind,
-      kind === 'capture' ? CAPTURE_BATCH_SIZE : PRESENCE_BATCH_SIZE,
+      kind === 'capture' ? CAPTURE_BATCH_SIZE : (kind === 'presence' ? PRESENCE_BATCH_SIZE : FEEDBACK_BATCH_SIZE),
       unloadMode ? MAX_UNLOAD_BATCH_BYTES : Infinity
     );
     if (records.length === 0) return Promise.resolve();
@@ -2196,7 +2762,7 @@ export function clientScript(host) {
       events: records.map(function (record) { return record.payload; }),
       deliveryStats: deliveryReport(reason, records)
     };
-    var targetEndpoint = kind === 'capture' ? endpoint : presenceEndpoint;
+    var targetEndpoint = kind === 'capture' ? endpoint : (kind === 'presence' ? presenceEndpoint : feedbackEndpoint);
     var result = sendBatch(targetEndpoint, body, unloadMode);
     if (result === true) {
       removeRecords(records);
@@ -2225,6 +2791,7 @@ export function clientScript(host) {
     flushing = true;
     return flushKind('capture', reason, unloadMode)
       .then(function () { return flushKind('presence', reason, unloadMode); })
+      .then(function () { return flushKind('feedback', reason, unloadMode); })
       .then(function () {
         flushing = false;
         return queueStatus();
@@ -2426,9 +2993,52 @@ export function clientScript(host) {
     }, data || {});
   }
 
+  function buildFeedbackPayload(input) {
+    input = input || {};
+    return {
+      projectKey: projectKey,
+      sessionId: sessionId,
+      anonymousId: anonymousId,
+      userId: currentUserId(),
+      deviceId: deviceId,
+      deviceFingerprint: fingerprint,
+      platform: 'web',
+      deviceInfo: deviceInfo(),
+      source: currentSource(),
+      path: currentPath(),
+      title: document.title,
+      message: input.message || input,
+      occurredAt: new Date().toISOString()
+    };
+  }
+
   function send(type, data) {
     if (!projectKey) return;
     enqueue('capture', buildCapturePayload(type, data));
+  }
+
+  function submitFeedback(input) {
+    if (!projectKey) return { queued: false };
+    enqueue('feedback', buildFeedbackPayload(input));
+    return { queued: true };
+  }
+
+  function openFeedback(defaults) {
+    defaults = defaults || {};
+    if (typeof window.prompt !== 'function') return { queued: false };
+    var body = window.prompt(defaults.prompt || 'Feedback');
+    if (!body) return { queued: false };
+    return submitFeedback({
+      message: {
+        formatVersion: 1,
+        kind: defaults.kind || 'other',
+        title: defaults.title || '',
+        body: body,
+        contact: defaults.contact || { consent: false },
+        fields: defaults.fields || {},
+        attachments: []
+      }
+    });
   }
 
   function newPresenceId() {
@@ -2671,6 +3281,8 @@ export function clientScript(host) {
   window.TraceMind = {
     capture: send,
     presence: sendPresence,
+    openFeedback: openFeedback,
+    submitFeedback: submitFeedback,
     flush: function () {
       return flushQueue('manual', false);
     },
@@ -2954,6 +3566,34 @@ async function handlePresence(req, res) {
   sendJson(res, 202, { ok: true });
 }
 
+async function handleUserFeedback(req, res) {
+  if (req.method === 'OPTIONS') {
+    sendJson(res, 204, {});
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'method_not_allowed' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req));
+  } catch (error) {
+    sendJson(res, 400, { error: 'invalid_json' });
+    return;
+  }
+
+  const result = await ingestUserFeedbackPayload(payload, req);
+  if (!result.ok) {
+    sendJson(res, result.statusCode || 400, result.error ? { error: result.error } : { ok: false, findings: result.findings || [] });
+    return;
+  }
+
+  sendJson(res, 202, { ok: true, userFeedbackId: result.userFeedbackId, accepted: result.accepted });
+}
+
 async function handleMcpGet(req, res) {
   if (req.method === 'OPTIONS') {
     sendJson(res, 204, {});
@@ -3100,6 +3740,13 @@ export function registerTraceMindRoutes() {
     handlePresence(req, res).catch((error) => {
       console.error('[TraceMind] presence failed', error);
       sendJson(res, 500, { error: 'presence_failed' });
+    });
+  });
+
+  WebApp.handlers.use('/api/user-feedback', (req, res) => {
+    handleUserFeedback(req, res).catch((error) => {
+      console.error('[TraceMind] user feedback failed', error);
+      sendJson(res, 500, { error: 'user_feedback_failed' });
     });
   });
 

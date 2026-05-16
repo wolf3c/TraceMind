@@ -17,6 +17,23 @@ import java.net.URL
 import java.time.Instant
 import java.util.ArrayDeque
 
+private const val DEFAULT_CAPTURE_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/capture"
+private const val DEFAULT_PRESENCE_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/presence"
+private const val DEFAULT_FEEDBACK_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/user-feedback"
+
+private fun derivedEndpoint(endpoint: String, replacement: String, fallback: String): String {
+  val pathEnd = listOf(
+    endpoint.indexOf('?').takeIf { it >= 0 } ?: endpoint.length,
+    endpoint.indexOf('#').takeIf { it >= 0 } ?: endpoint.length
+  ).minOrNull() ?: endpoint.length
+  val pathValue = endpoint.substring(0, pathEnd)
+  return if (pathValue.endsWith("/api/capture")) {
+    pathValue.removeSuffix("/api/capture") + replacement
+  } else {
+    fallback
+  }
+}
+
 object TraceMind {
   private var client: TraceMindClient? = null
 
@@ -24,13 +41,15 @@ object TraceMind {
   fun start(
     application: Application,
     projectKey: String,
-    endpoint: String = "https://tracemind.sandbox.galaxycloud.app/api/capture",
-    presenceEndpoint: String = endpoint.replace("/api/capture", "/api/presence")
+    endpoint: String = DEFAULT_CAPTURE_ENDPOINT,
+    presenceEndpoint: String = derivedEndpoint(endpoint, "/api/presence", DEFAULT_PRESENCE_ENDPOINT),
+    feedbackEndpoint: String = derivedEndpoint(endpoint, "/api/user-feedback", DEFAULT_FEEDBACK_ENDPOINT)
   ) {
     client = TraceMindClient(
       projectKey = projectKey,
       endpoint = endpoint,
       presenceEndpoint = presenceEndpoint,
+      feedbackEndpoint = feedbackEndpoint,
       packageName = application.packageName,
       appLabel = application.applicationInfo.loadLabel(application.packageManager).toString(),
       identityStore = SharedPreferencesIdentityStore(
@@ -60,22 +79,34 @@ object TraceMind {
   ) {
     client?.capture(type = type, eventName = eventName, path = path, properties = properties, context = context)
   }
+
+  @JvmStatic
+  fun submitFeedback(
+    message: TraceMindFeedbackMessage,
+    path: String = "Application",
+    title: String? = null
+  ) {
+    client?.submitFeedback(message = message, path = path, title = title)
+  }
 }
 
 class TraceMindClient(
   projectKey: String,
   private val endpoint: String,
-  private val presenceEndpoint: String = endpoint.replace("/api/capture", "/api/presence"),
+  private val presenceEndpoint: String = derivedEndpoint(endpoint, "/api/presence", DEFAULT_PRESENCE_ENDPOINT),
+  private val feedbackEndpoint: String = derivedEndpoint(endpoint, "/api/user-feedback", DEFAULT_FEEDBACK_ENDPOINT),
   packageName: String,
   appLabel: String,
   identityStore: TraceMindIdentityStore? = null,
   private val maxQueueSize: Int = 100,
   private val presenceSender: ((TraceMindPresencePayload) -> Unit)? = null,
+  private val feedbackSender: ((TraceMindUserFeedbackPayload) -> Unit)? = null,
   private val clock: () -> Long = { System.currentTimeMillis() }
 ) {
   private val queue = ArrayDeque<TraceMindPayload>()
   private val transport = TraceMindHttpTransport(endpoint)
   private val presenceTransport = TraceMindHttpTransport(presenceEndpoint)
+  private val feedbackTransport = TraceMindHttpTransport(feedbackEndpoint)
   private val builder = TraceMindPayloadBuilder(
     projectKey = projectKey,
     packageName = packageName,
@@ -136,6 +167,22 @@ class TraceMindClient(
   fun endpoint(): String = endpoint
 
   fun presenceEndpoint(): String = presenceEndpoint
+
+  fun feedbackEndpoint(): String = feedbackEndpoint
+
+  fun submitFeedback(
+    message: TraceMindFeedbackMessage,
+    path: String = currentScreen,
+    title: String? = null
+  ) {
+    val payload = builder.userFeedbackPayload(
+      message = message,
+      path = path,
+      title = title,
+      occurredAt = Instant.ofEpochMilli(clock()).toString()
+    )
+    feedbackSender?.invoke(payload) ?: Thread { feedbackTransport.sendUserFeedback(payload) }.start()
+  }
 
   fun setScreen(screen: String) {
     val nextScreen = normalizedScreen(screen)
@@ -353,6 +400,21 @@ private class TraceMindHttpTransport(private val endpoint: String) {
       connection.disconnect()
     }
   }
+
+  fun sendUserFeedback(payload: TraceMindUserFeedbackPayload) {
+    val connection = (URL(endpoint).openConnection() as HttpURLConnection)
+    try {
+      connection.requestMethod = "POST"
+      connection.setRequestProperty("Content-Type", "application/json")
+      connection.doOutput = true
+      connection.outputStream.use { stream ->
+        stream.write(payload.toJson().toByteArray(Charsets.UTF_8))
+      }
+      connection.inputStream.close()
+    } finally {
+      connection.disconnect()
+    }
+  }
 }
 
 internal fun TraceMindBatch.toJson(): String {
@@ -411,6 +473,51 @@ private fun TraceMindPresencePayload.toJson(): String {
   screen?.let { fields.add(""""screen":"${it.escapeJson()}"""") }
   lastActiveAt?.let { fields.add(""""lastActiveAt":"${it.escapeJson()}"""") }
   return "{${fields.joinToString(",")}}"
+}
+
+internal fun TraceMindUserFeedbackPayload.toJson(): String {
+  val fields = mutableListOf(
+    """"projectKey":"${projectKey.escapeJson()}"""",
+    """"sessionId":"${sessionId.escapeJson()}"""",
+    """"anonymousId":"${anonymousId.escapeJson()}"""",
+    """"deviceId":"${deviceId.escapeJson()}"""",
+    """"deviceFingerprint":"${deviceFingerprint.escapeJson()}"""",
+    """"platform":"${platform.escapeJson()}"""",
+    """"path":"${path.escapeJson()}"""",
+    """"occurredAt":"${occurredAt.escapeJson()}"""",
+    """"deviceInfo":${deviceInfo.toJson()}""",
+    """"source":${source.toJson()}""",
+    """"message":${message.toJson()}"""
+  )
+  userId?.let { fields.add(""""userId":"${it.escapeJson()}"""") }
+  title?.let { fields.add(""""title":"${it.escapeJson()}"""") }
+  return "{${fields.joinToString(",")}}"
+}
+
+private fun TraceMindFeedbackMessage.toJson(): String {
+  val jsonFields = mutableListOf(
+    """"formatVersion":$formatVersion""",
+    """"kind":"${kind.escapeJson()}"""",
+    """"body":"${body.escapeJson()}"""",
+    """"contact":${contact.toJson()}""",
+    """"fields":${fields.toJson()}""",
+    """"attachments":[${attachments.joinToString(",") { it.toJson() }}]"""
+  )
+  title?.let { jsonFields.add(""""title":"${it.escapeJson()}"""") }
+  return "{${jsonFields.joinToString(",")}}"
+}
+
+private fun TraceMindFeedbackContact.toJson(): String {
+  val fields = mutableListOf(""""consent":$consent""")
+  name?.let { fields.add(""""name":"${it.escapeJson()}"""") }
+  email?.let { fields.add(""""email":"${it.escapeJson()}"""") }
+  phone?.let { fields.add(""""phone":"${it.escapeJson()}"""") }
+  preferredChannel?.let { fields.add(""""preferredChannel":"${it.escapeJson()}"""") }
+  return "{${fields.joinToString(",")}}"
+}
+
+private fun TraceMindFeedbackAttachment.toJson(): String {
+  return """{"name":"${name.escapeJson()}"}"""
 }
 
 private fun TraceMindSource.toJson(): String {
