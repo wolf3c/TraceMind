@@ -28,7 +28,40 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.17.2';
+const AGENT_GUIDANCE_VERSION = '2026.05.17.3';
+const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
+const MINI_PROGRAM_PROVIDERS = ['wechat', 'alipay', 'douyin', 'dingtalk'];
+const MINI_PROGRAM_PROVIDER_LABELS = {
+  wechat: 'WeChat',
+  alipay: 'Alipay',
+  douyin: 'Douyin',
+  dingtalk: 'DingTalk',
+};
+const MINI_PROGRAM_PROVIDER_API_NAMES = {
+  wechat: 'wx',
+  alipay: 'my',
+  douyin: 'tt',
+  dingtalk: 'dd',
+};
+const MINI_PROGRAM_PROVIDER_FILE_NAMES = {
+  wechat: 'app.js',
+  alipay: 'app.js',
+  douyin: 'app.js',
+  dingtalk: 'app.js',
+};
+const MINI_PROGRAM_PLATFORM_ALIASES = {
+  wechat_mini_program: 'wechat',
+  weixin_mini_program: 'wechat',
+  wx_mini_program: 'wechat',
+  alipay_mini_program: 'alipay',
+  ali_mini_program: 'alipay',
+  douyin_mini_program: 'douyin',
+  tt_mini_program: 'douyin',
+  bytedance_mini_program: 'douyin',
+  dingtalk_mini_program: 'dingtalk',
+  ding_mini_program: 'dingtalk',
+  dd_mini_program: 'dingtalk',
+};
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -225,8 +258,13 @@ export function mcpTools(project) {
         properties: {
           platform: {
             type: 'string',
-            enum: ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'],
-            description: '要接入的平台；省略时返回 Web 脚本。',
+            enum: CAPTURE_SETUP_PLATFORMS,
+            description: '要接入的平台；省略时返回 Web 脚本。小程序使用 mini_program，并用 provider 指定微信、支付宝、抖音或钉钉；也接受 wechat_mini_program 等别名。',
+          },
+          provider: {
+            type: 'string',
+            enum: MINI_PROGRAM_PROVIDERS,
+            description: 'platform 为 mini_program 时的小程序宿主：wechat、alipay、douyin 或 dingtalk。',
           },
         },
       },
@@ -252,7 +290,7 @@ export function mcpTools(project) {
         properties: {
           intent: { type: 'string', description: '准备记录的用户行为或业务结果。' },
           context: { type: 'string', description: '相关代码或产品流程摘要。' },
-          platform: { type: 'string', description: 'web、ios、macos、android、react_native、hybrid、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
+          platform: { type: 'string', description: 'web、ios、macos、android、react_native、hybrid、mini_program、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
         },
       },
     },
@@ -329,8 +367,8 @@ export function mcpTools(project) {
           environment: {
             type: 'object',
             properties: {
-              platform: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'server', 'unknown'] },
-              sourceType: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown'] },
+              platform: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'mini_program', 'server', 'unknown'] },
+              sourceType: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'mini_program', 'mcp_server', 'agent_skill', 'server_app', 'unknown'] },
               sourceKey: { type: 'string' },
             },
           },
@@ -624,10 +662,10 @@ function guidanceResult(extra = {}) {
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
-      'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
+      'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
-      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, and server egress/proxy/TLS policy.',
+      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
@@ -768,6 +806,26 @@ const HYBRID_NETWORK_RESTRICTION_CHECKS = [
   'Confirm WebView navigation, deeplink, and bridge code pass only sanitized route/source metadata and never raw input values, cookies, tokens, or page content.',
 ];
 
+const MINI_PROGRAM_AUTO_CAPTURE_SIGNALS = [
+  'mini program app/session start',
+  'app show/hide foreground and background lifecycle',
+  'page view and page show/hide',
+  'route/page path without query strings',
+  'presence heartbeat for foreground online intervals',
+  'tap/input/submit only when developers call helper functions from event handlers',
+];
+
+function miniProgramNetworkRestrictionChecks(provider = 'wechat') {
+  const apiName = MINI_PROGRAM_PROVIDER_API_NAMES[provider] || 'host';
+  const label = MINI_PROGRAM_PROVIDER_LABELS[provider] || 'Mini Program host';
+  return [
+    `Confirm ${label} request domain allowlist includes the TraceMind HTTPS endpoint before relying on ${apiName}.request uploads.`,
+    `Confirm ${apiName}.request is available in the mini program runtime and not blocked by dev/prod environment settings.`,
+    'Confirm local storage APIs are available so anonymous/device IDs and retry state can persist across launches.',
+    'Confirm lifecycle wrappers are installed in App and Page entrypoints before testing app/page show and hide events.',
+  ];
+}
+
 const SERVER_NETWORK_RESTRICTION_CHECKS = [
   'Check egress firewall, VPC, security group, DNS, proxy, and TLS CA bundle policy allow outbound HTTPS to the TraceMind capture endpoint.',
   'Check the backend HTTP client sets Content-Type: application/json, has reasonable timeout/retry behavior, and sends the sanitized payload returned by capture_setup.',
@@ -850,6 +908,16 @@ function trafficAttributionGuidance(platform = 'web') {
         'Install captureSnippet in the WebView document and TraceMind.start in the native shell startup.',
         'Call window.TraceMind.identify and native TraceMind.identify with the same stable internal userId after login.',
         'Use TraceMind.recordOpenURL or TraceMind.recordDeepLink in the native shell when the hybrid app opens from a link.',
+      ],
+    },
+    mini_program: {
+      platformNotes: [
+        'Mini Program SDKs do not receive browser referrer or DOM URLs; use setAttribution only with already-sanitized campaign, scene, QR, share, or channel metadata.',
+        'Mini Program page paths strip query strings before capture; sourceDetails.provider records the host such as wechat, alipay, douyin, or dingtalk.',
+      ],
+      setupExamples: [
+        'TraceMind.setAttribution({ source: "partner", medium: "mini_program", campaign: "launch", landingPath: "/pages/invite/index" })',
+        'TraceMind.capture("custom", { eventName: approvedEventName, properties: { success: true } })',
       ],
     },
     server_node: {
@@ -948,6 +1016,7 @@ function commonSetup(project, platform) {
       android: 'TraceMind.submitFeedback(message)',
       react_native: 'TraceMind.submitFeedback({ message })',
       hybrid: 'Use window.TraceMind.submitFeedback({ message }) from the WebView or the matching native TraceMind.submitFeedback(...) API from the shell.',
+      mini_program: 'TraceMind.submitFeedback({ message })',
       server_node: 'TraceMindServer.submitFeedback({ message, userId, sessionId })',
       server_python: 'TraceMindServer.submit_feedback(message=message, user_id=user_id, session_id=session_id)',
       server_http: `POST ${userFeedbackApiUrl}`,
@@ -956,8 +1025,74 @@ function commonSetup(project, platform) {
   };
 }
 
-function platformSetup(project, platform) {
+function miniProgramSetup(project, provider) {
+  const common = commonSetup(project, 'mini_program');
+  const providerLabel = MINI_PROGRAM_PROVIDER_LABELS[provider] || 'Mini Program';
+  const apiName = MINI_PROGRAM_PROVIDER_API_NAMES[provider] || 'host';
+  const exampleFile = MINI_PROGRAM_PROVIDER_FILE_NAMES[provider] || 'app.js';
+  return {
+    ...common,
+    platform: 'mini_program',
+    provider,
+    providerLabel,
+    eventPlatform: 'mini_program',
+    install: `Install @tracemind/mini-program once and configure provider: "${provider}" for ${providerLabel}.`,
+    installCommands: [
+      'Install @tracemind/mini-program from the TraceMind SDK distribution; in this repo the package is sdk/mini-program.',
+      `Initialize TraceMind once in ${exampleFile} with provider: "${provider}".`,
+      'Wrap App/Page lifecycle or call the returned lifecycle helpers from existing App and Page handlers.',
+      'Wire tap/input/submit helpers manually from existing event handlers; do not promise no-code interaction capture in v1.',
+    ],
+    filesToEdit: [
+      'package.json or mini program dependency manifest',
+      exampleFile,
+      'Page files that own page show/hide lifecycle',
+      'Event handler files for tap/input/submit helpers when business interaction evidence is needed',
+      'Mini program request domain/network allowlist configuration',
+    ],
+    initLocation: 'Run once in the mini program App bootstrap before the first Page is shown, then call lifecycle helpers from App/Page handlers.',
+    idempotencyChecks: [
+      'Search the mini program source for @tracemind/mini-program.',
+      'Search App and Page entrypoints for TraceMind.start(',
+      'Search event handlers for existing TraceMind.trackTap, TraceMind.trackInput, or TraceMind.trackSubmit calls before adding duplicates.',
+      `Confirm the host runtime exposes ${apiName}.request and storage APIs.`,
+    ],
+    initSnippet: `import { TraceMind } from "@tracemind/mini-program";\n\nTraceMind.start({\n  projectKey: "${project.projectKey}",\n  provider: "${provider}",\n  appId: "your-mini-program-app-id",\n  appName: "Your Mini Program"\n});`,
+    source: {
+      type: 'mini_program',
+      key: 'Mini program appId when available, otherwise developer configured sourceKey.',
+      details: { provider },
+    },
+    sourceModel: 'platform is mini_program; sourceType is mini_program; sourceKey is the mini program appId or configured sourceKey; sourceDetails.provider records wechat, alipay, douyin, or dingtalk.',
+    autoCapturedSignals: MINI_PROGRAM_AUTO_CAPTURE_SIGNALS,
+    privacyConstraints: PRIVACY_CONSTRAINTS,
+    networkRestrictionChecks: miniProgramNetworkRestrictionChecks(provider),
+    verificationCommands: [
+      'npm test --prefix sdk/mini-program',
+      'Run the mini program in the target provider dev tool, trigger launch/show/hide/page show/page hide, then query TraceMind raw behaviors or semantic events.',
+      'Trigger helper-wired tap/input/submit handlers and confirm payloads do not include input values or full query URLs.',
+    ],
+    identifySnippet: 'TraceMind.identify("user_123", { plan: "pro" })',
+    manualCaptureExamples: [
+      'TraceMind.trackTap("checkout_button", { path: "/pages/pricing/index", properties: { plan: "pro" } })',
+      'TraceMind.trackInput("phone_input", { path: "/pages/pricing/index", properties: { field: "phone" } })',
+      'TraceMind.trackSubmit("checkout_form", { path: "/pages/pricing/index", properties: { success: true } })',
+      'TraceMind.capture("custom", { eventName: approvedEventName, properties: { amount: 29, success: true } })',
+    ],
+    manualCaptureExample: 'TraceMind.capture("custom", { eventName: approvedEventName, properties: { amount: 29, success: true } })',
+    manualCaptureWarnings: [
+      ...MANUAL_CAPTURE_WARNINGS,
+      'Mini Program v1 does not do compile-time WXML/AXML/TTML rewriting or no-code tap/input/submit capture; use helpers from existing handlers.',
+    ],
+  };
+}
+
+function platformSetup(project, platform, options = {}) {
   const common = commonSetup(project, platform);
+
+  if (platform === 'mini_program') {
+    return miniProgramSetup(project, options.provider || 'wechat');
+  }
 
   if (platform === 'hybrid') {
     const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
@@ -1518,16 +1653,23 @@ function captureSetupResult(project, args = {}) {
     };
   }
 
-  const requestedPlatform = String(args.platform || '').toLowerCase().replace('-', '_');
-  const platform = ['ios', 'macos', 'android', 'react_native', 'hybrid', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http', 'web'].includes(requestedPlatform)
-    ? requestedPlatform
-    : 'web';
+  const requestedPlatform = String(args.platform || '').toLowerCase().replace(/-/g, '_');
+  const requestedProvider = String(args.provider || '').toLowerCase().replace(/-/g, '_');
+  const aliasProvider = MINI_PROGRAM_PLATFORM_ALIASES[requestedPlatform];
+  const provider = MINI_PROGRAM_PROVIDERS.includes(requestedProvider)
+    ? requestedProvider
+    : aliasProvider || 'wechat';
+  const platform = aliasProvider
+    ? 'mini_program'
+    : CAPTURE_SETUP_PLATFORMS.includes(requestedPlatform)
+      ? requestedPlatform
+      : 'web';
 
   return {
     ok: true,
     projectKey: project.projectKey,
     tokenType: 'public_auto_capture_project_key',
-    ...platformSetup(project, platform),
+    ...platformSetup(project, platform, { provider }),
   };
 }
 
@@ -1565,8 +1707,8 @@ function privacyFindings(fields = {}) {
 }
 
 const FEEDBACK_TYPES = new Set(['issue', 'idea']);
-const FEEDBACK_PLATFORMS = new Set(['web', 'ios', 'macos', 'android', 'server', 'unknown']);
-const FEEDBACK_SOURCE_TYPES = new Set(['web', 'ios', 'macos', 'android', 'mcp_server', 'agent_skill', 'server_app', 'unknown']);
+const FEEDBACK_PLATFORMS = new Set(['web', 'ios', 'macos', 'android', 'mini_program', 'server', 'unknown']);
+const FEEDBACK_SOURCE_TYPES = new Set(['web', 'ios', 'macos', 'android', 'mini_program', 'mcp_server', 'agent_skill', 'server_app', 'unknown']);
 const FEEDBACK_ARRAY_LIMIT = 20;
 const FEEDBACK_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const FEEDBACK_RATE_WINDOW_MS = 60 * 1000;

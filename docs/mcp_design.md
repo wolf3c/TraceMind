@@ -2,7 +2,7 @@
 
 ## 目标
 
-让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入开发者反馈、`tracemind.update_user_feedback` 更新终端用户反馈处理状态和备注。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问今天产品是否正常、用户在做什么、哪里值得改：Agent 默认先读取项目健康日报，再下钻语义事件，需要复核时再查询原始日志。
+让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入开发者反馈、`tracemind.update_user_feedback` 更新终端用户反馈处理状态和备注。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；小程序通过 `mini_program` 通用 SDK 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问今天产品是否正常、用户在做什么、哪里值得改：Agent 默认先读取项目健康日报，再下钻语义事件，需要复核时再查询原始日志。
 
 ## Endpoint
 
@@ -262,17 +262,18 @@ Output:
 
 ### `tracemind.capture_setup`
 
-返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
+返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
 
 Input:
 
 ```json
 {
-  "platform": "web"
+  "platform": "web",
+  "provider": "wechat"
 }
 ```
 
-`platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`hybrid`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。
+`platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`hybrid`、`mini_program`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。`mini_program` 可选 `provider`：`wechat`、`alipay`、`douyin`、`dingtalk`；别名 `wechat_mini_program`、`alipay_mini_program`、`douyin_mini_program`、`dingtalk_mini_program` 会归一为 `mini_program + provider`。
 
 Output:
 
@@ -384,6 +385,41 @@ Native 和 React Native 返回还包含：
 - `manualCaptureExamples`: 自动采集无法稳定表达业务结果时才使用的 `custom` 示例。
 - `supportedPropertyTypes`: 手动 `properties` / `context` 支持的值类型，目前为 string、number、boolean。
 - `manualCaptureWorkflow`: agent 添加手动埋点前必须执行的搜索、校验和 diff validation 流程。
+
+小程序示例：
+
+```json
+{
+  "ok": true,
+  "projectKey": "tm_proj_xxx",
+  "platform": "mini_program",
+  "provider": "wechat",
+  "eventPlatform": "mini_program",
+  "installCommands": [
+    "Install @tracemind/mini-program from the TraceMind SDK distribution; in this repo the package is sdk/mini-program.",
+    "Initialize TraceMind once in app.js with provider: \"wechat\"."
+  ],
+  "initSnippet": "import { TraceMind } from \"@tracemind/mini-program\";\n\nTraceMind.start({\n  projectKey: \"tm_proj_xxx\",\n  provider: \"wechat\",\n  appId: \"your-mini-program-app-id\",\n  appName: \"Your Mini Program\"\n});",
+  "autoCapturedSignals": [
+    "mini program app/session start",
+    "app show/hide foreground and background lifecycle",
+    "page view and page show/hide",
+    "route/page path without query strings",
+    "presence heartbeat for foreground online intervals",
+    "tap/input/submit only when developers call helper functions from event handlers"
+  ],
+  "sourceModel": "platform is mini_program; sourceType is mini_program; sourceKey is the mini program appId or configured sourceKey; sourceDetails.provider records wechat, alipay, douyin, or dingtalk.",
+  "manualCaptureExamples": [
+    "TraceMind.trackTap(\"checkout_button\", { path: \"/pages/pricing/index\", properties: { plan: \"pro\" } })",
+    "TraceMind.capture(\"custom\", { eventName: approvedEventName, properties: { amount: 29, success: true } })"
+  ],
+  "verificationCommands": [
+    "npm test --prefix sdk/mini-program"
+  ]
+}
+```
+
+小程序不复用 Web `capture.js`。V1 不做编译期 WXML/AXML/TTML 改写，也不承诺无侵入全自动 tap/input/submit 捕获；交互事件通过 helper 接到开发者已有 handler。
 
 MCP server 示例：
 

@@ -190,6 +190,7 @@ TraceMind 自动采集：
 - macOS 复用 Swift Package，使用一行 `TraceMind.start(projectKey: ...)`，自动记录应用激活和窗口/屏幕变化。
 - Android 使用一行 `TraceMind.start(application, projectKey = ...)`。
 - React Native 使用一行 `TraceMind.start({ projectKey })`，底层复用 iOS/Android 原生采集。
+- 小程序使用一行 `TraceMind.start({ projectKey, provider, appId })`，通过通用 SDK 支持微信、支付宝、抖音和钉钉。
 
 包安装、Gradle/Swift Package 配置属于平台依赖接入；进入业务代码的 TraceMind 初始化保持一行。
 
@@ -509,7 +510,7 @@ analytics 能力弱
 未来扩展：
 
 - POS
-- 小程序
+- 小程序更深入的编译期适配器
 - IoT
 - 线下行为
 - 现实世界行为分析

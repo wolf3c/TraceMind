@@ -154,3 +154,4 @@ Then add the capture snippet to a small test web page, generate several interact
 - Updated `tracemind.capture_setup`, public Skill guidance, agent snippets, and manifest so customer coding agents can both set source attribution during manual instrumentation and analyze source-related changes through MCP filters.
 - Clarified that capture source governance (`sourceType + sourceKey`) tracks apps and SDKs writing to a project key, while traffic attribution tracks where users arrived from.
 - Documented that old events cannot be reliably backfilled because full inbound query/referrer/deeplink context was intentionally not stored.
+- Added the generic `sdk/mini-program` runtime and `tracemind.capture_setup({ platform: "mini_program", provider })` so WeChat, Alipay, Douyin, and DingTalk mini programs share one SDK while preserving `sourceDetails.provider`.

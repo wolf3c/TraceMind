@@ -14,7 +14,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 - Meteor Accounts owns passwordless email login. TraceMind server owns project keys, capture ingestion, semantic extraction, and MCP responses.
 - Svelte client provides a landing page plus a small developer console.
 - MongoDB stores all MVP data in simple collections under `imports/api/tracemind.js`.
-- The event model keeps identity, session, device, platform, IP/geo, custom properties, and context fields stable so Web, iOS, Android, MCP, Agent Skill, and ordinary server manual events can share one schema.
+- The event model keeps identity, session, device, platform, IP/geo, custom properties, and context fields stable so Web, iOS, Android, Mini Program, MCP, Agent Skill, and ordinary server manual events can share one schema.
 - Semantic extraction starts with deterministic rules in `imports/api/semantic.js`. LLM enrichment can be added later without changing capture ingestion.
 
 ## Modules
@@ -32,7 +32,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 
 - Human login uses `accounts-passwordless` and Mailgun-backed Meteor `email`.
 - SDK capture uses a public project key. MCP access uses independent `tm_mcp_*` tokens, separate from both project keys and Meteor Accounts browser sessions. MCP tokens read behavior evidence and can write developer feedback reports through `tracemind.submit_feedback`; feedback writes are deduplicated and rate limited per project/token, and other analysis tools remain read-only.
-- User online duration uses a separate presence store. Web, iOS, macOS, Android, and React Native write `/api/presence` heartbeat updates into `tracemind_presence_sessions`; these records do not create raw behaviors or semantic events. Dashboard health active-time metrics use strict `activeDurationMs`, not foreground `durationMs`: Web requires visible + focused + a 60-second interaction window, while iOS/macOS/Android/RN require foreground app state plus recent tap/text/screen activity.
+- User online duration uses a separate presence store. Web, iOS, macOS, Android, React Native, and Mini Program write `/api/presence` heartbeat updates into `tracemind_presence_sessions`; these records do not create raw behaviors or semantic events. Dashboard health active-time metrics use strict `activeDurationMs`, not foreground `durationMs`: Web requires visible + focused + a 60-second interaction window, while iOS/macOS/Android/RN/Mini Program require foreground app state plus recent tap/text/screen activity.
 - Capture requests include cross-platform source fields. Project owners can block suspicious `sourceType + sourceKey` values after seeing them in the console; blocked events return ok but are not stored.
 - `/api/capture` accepts both single-event payloads and SDK batch payloads in `{ projectKey, events: [...] }` form.
 - Native SDK v1 targets stable Auto Capture basics: app/screen view, macOS window/screen changes, click/tap, input changed, submit, local queue, and batch flush. Automatic network hook, crash reporting, session replay, screenshots, and native snapshots are out of scope.
@@ -57,6 +57,7 @@ This deployment shape keeps `/capture.js`, `/api/capture`, and `/mcp` owned by T
 - `npm test` runs the Meteor Mocha suite once.
 - `npm run test:sdk:ios` runs the Swift SDK tests.
 - `npm run test:sdk:react-native` runs the React Native wrapper tests.
+- `npm run test:sdk:mini-program` runs the Mini Program SDK tests.
 - `npm run test:sdk:mcp-node` runs the Node MCP SDK tests.
 - `npm run test:sdk:mcp-python` runs the Python MCP SDK tests.
 - `npm run test:sdk:server-node` runs the Node server manual capture SDK tests.

@@ -151,7 +151,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.17.2'));
+      assert.ok(skill.includes('version: 2026.05.17.3'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -185,6 +185,8 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('recordOpenURL'));
       assert.ok(skill.includes('recordDeepLink'));
       assert.ok(skill.includes('{ "platform": "hybrid" }'));
+      assert.ok(skill.includes('{ "platform": "mini_program", "provider": "wechat" }'));
+      assert.ok(skill.includes('@tracemind/mini-program'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
@@ -199,6 +201,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('landingPath'));
       assert.ok(snippet.includes('mcp_node'));
       assert.ok(snippet.includes('hybrid'));
+      assert.ok(snippet.includes('mini_program'));
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
       assert.ok(snippet.includes('tracemind.project_health'));
@@ -208,7 +211,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
       assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.2');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.3');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -221,6 +224,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.mcp.tools.includes('tracemind.update_user_feedback'));
       assert.ok(manifest.platforms.includes('macos'));
       assert.ok(manifest.platforms.includes('hybrid'));
+      assert.ok(manifest.platforms.includes('mini_program'));
       assert.ok(manifest.platforms.includes('mcp_node'));
       assert.ok(manifest.platforms.includes('mcp_python'));
       assert.ok(manifest.platforms.includes('agent_skill'));
@@ -1053,13 +1057,13 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.2');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.3');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
-      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
-      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, and server egress/proxy/TLS policy.'));
+      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Daily health check'));
@@ -1833,8 +1837,12 @@ describe('TraceMind', function () {
       assert.strictEqual(setupTool.inputSchema.properties.platform.type, 'string');
       assert.ok(setupTool.inputSchema.properties.platform.enum.includes('macos'));
       assert.ok(setupTool.inputSchema.properties.platform.enum.includes('hybrid'));
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('mini_program'));
+      assert.deepStrictEqual(setupTool.inputSchema.properties.provider.enum, ['wechat', 'alipay', 'douyin', 'dingtalk']);
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.platform.enum.includes('macos'));
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('macos'));
+      assert.ok(feedbackTool.inputSchema.properties.environment.properties.platform.enum.includes('mini_program'));
+      assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('mini_program'));
 
       const ios = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'ios' });
       const macos = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'macos' });
@@ -1970,6 +1978,61 @@ describe('TraceMind', function () {
       assert.deepStrictEqual(hybrid.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
       assert.ok(hybrid.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
       assert.ok(!JSON.stringify(hybrid.structuredContent).includes('tm_mcp_'));
+    });
+
+    it('returns mini program setup guidance through MCP', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const project = {
+        _id: `project-mini-program-capture-setup-${Date.now()}`,
+        name: 'Mini Program Capture Setup Project',
+        projectKey: 'tm_proj_mini',
+      };
+
+      const setupTool = mcpTools(project).find((tool) => tool.name === 'tracemind.capture_setup');
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('mini_program'));
+      assert.deepStrictEqual(setupTool.inputSchema.properties.provider.enum, ['wechat', 'alipay', 'douyin', 'dingtalk']);
+
+      const wechat = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'mini_program', provider: 'wechat' });
+      const alipay = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'alipay_mini_program' });
+      const douyin = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'mini_program', provider: 'douyin' });
+      const dingtalk = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'dingtalk_mini_program' });
+
+      assert.strictEqual(wechat.structuredContent.ok, true);
+      assert.strictEqual(wechat.structuredContent.platform, 'mini_program');
+      assert.strictEqual(wechat.structuredContent.provider, 'wechat');
+      assert.strictEqual(wechat.structuredContent.eventPlatform, 'mini_program');
+      assert.ok(wechat.structuredContent.install.includes('@tracemind/mini-program'));
+      assert.ok(wechat.structuredContent.installCommands.some((step) => step.includes('provider: "wechat"')));
+      assert.ok(wechat.structuredContent.filesToEdit.some((file) => file.includes('app.js')));
+      assert.ok(wechat.structuredContent.initLocation.includes('App'));
+      assert.ok(wechat.structuredContent.idempotencyChecks.some((check) => check.includes('@tracemind/mini-program')));
+      assert.ok(wechat.structuredContent.initSnippet.includes('TraceMind.start({'));
+      assert.ok(wechat.structuredContent.initSnippet.includes('projectKey: "tm_proj_mini"'));
+      assert.ok(wechat.structuredContent.initSnippet.includes('provider: "wechat"'));
+      assert.ok(wechat.structuredContent.sourceModel.includes('platform is mini_program'));
+      assert.ok(wechat.structuredContent.sourceModel.includes('sourceType is mini_program'));
+      assert.ok(wechat.structuredContent.sourceModel.includes('sourceDetails.provider'));
+      assert.ok(wechat.structuredContent.autoCapturedSignals.some((signal) => signal.includes('mini program app/session start')));
+      assert.ok(wechat.structuredContent.autoCapturedSignals.some((signal) => signal.includes('presence heartbeat')));
+      assert.ok(wechat.structuredContent.privacyConstraints.some((constraint) => constraint.includes('Do not capture input values')));
+      assert.ok(wechat.structuredContent.networkRestrictionChecks.some((check) => check.includes('wx.request')));
+      assert.ok(wechat.structuredContent.verificationCommands.includes('npm test --prefix sdk/mini-program'));
+      assert.ok(wechat.structuredContent.identifySnippet.includes('TraceMind.identify'));
+      assert.ok(wechat.structuredContent.manualCaptureExamples.some((example) => example.includes('TraceMind.trackTap')));
+      assert.ok(wechat.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
+      assert.ok(wechat.structuredContent.trafficAttribution.platformNotes.some((note) => note.includes('Mini Program')));
+      assert.ok(wechat.structuredContent.trafficAttribution.setupExamples.some((example) => example.includes('TraceMind.setAttribution')));
+      assert.strictEqual(wechat.structuredContent.tokenType, 'public_auto_capture_project_key');
+      assert.deepStrictEqual(wechat.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
+      assert.ok(!JSON.stringify(wechat.structuredContent).includes('tm_mcp_'));
+
+      assert.strictEqual(alipay.structuredContent.provider, 'alipay');
+      assert.ok(alipay.structuredContent.initSnippet.includes('provider: "alipay"'));
+      assert.ok(alipay.structuredContent.networkRestrictionChecks.some((check) => check.includes('my.request')));
+      assert.strictEqual(douyin.structuredContent.provider, 'douyin');
+      assert.ok(douyin.structuredContent.networkRestrictionChecks.some((check) => check.includes('tt.request')));
+      assert.strictEqual(dingtalk.structuredContent.provider, 'dingtalk');
+      assert.ok(dingtalk.structuredContent.networkRestrictionChecks.some((check) => check.includes('dd.request')));
     });
 
     it('returns third-party MCP and agent skill setup snippets through MCP', async function () {
@@ -2126,7 +2189,7 @@ describe('TraceMind', function () {
       'Add one line of code and TraceMind turns clicks, paths, forms, and active time into product evidence that Codex, Claude Code, and Cursor can question through MCP.',
       '1-minute setup · public projectKey writes · independent MCP token authorization',
       'View setup docs',
-      'Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Server · MCP · Agent Skill',
+      'Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Mini Program (WeChat / Alipay / Douyin / DingTalk) · Server · MCP · Agent Skill',
       'Email',
       'Send code',
       'Checking your session...',
@@ -2884,6 +2947,44 @@ describe('TraceMind', function () {
         sourceKey: 'docs-indexer',
         sourceLabel: 'Docs Indexer Skill',
         sourceDetails: { version: '1.2.0' },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'mini_program',
+        source: {
+          type: 'mini_program',
+          appId: 'wx123',
+          label: 'Example Mini Program',
+          details: {
+            provider: 'wechat',
+            token: 'do-not-store',
+          },
+        },
+      }),
+      {
+        sourceType: 'mini_program',
+        sourceKey: 'wx123',
+        sourceLabel: 'Example Mini Program',
+        sourceDetails: { provider: 'wechat' },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'mini_program',
+        sourceKey: 'configured-mini-source',
+        sourceDetails: {
+          provider: 'alipay',
+          requestBody: 'do-not-store',
+        },
+      }),
+      {
+        sourceType: 'mini_program',
+        sourceKey: 'configured-mini-source',
+        sourceLabel: 'configured-mini-source',
+        sourceDetails: { provider: 'alipay' },
       },
     );
   });
