@@ -31,9 +31,35 @@ TraceMind 不应被包装成传统 analytics 看板。早期卖点是：
 
 ## 优先客户画像
 
+### A0 类：非技术/弱技术 vibe coding 独立开发者
+
+这是当前第一优先级。
+
+典型特征：
+
+- 个人或 2-3 人小团队，创始人通常不是专业工程师。
+- 使用 Lovable、Base44、Floot、Bolt、Replit、Cursor、Claude Code 等工具把产品做上线。
+- 产品已经有公开链接、早期用户、waitlist、Product Hunt / Indie Hackers / Reddit 反馈帖，或正在找前 10 个真实用户。
+- 还没有成熟 analytics 能力，也不想维护复杂看板和埋点体系。
+- 最关心的问题是：有没有人真的用、卡在哪、为什么不转化、改完有没有变好。
+
+高匹配场景：
+
+- 小型 AI 工具、内容工具、个人效率工具。
+- 面向 solopreneur、creator、小商家、coach、consultant 的 SaaS。
+- 用 AI app builder 快速做出的 MVP、waitlist app、付费小工具。
+- 已经在公开社区请求反馈、找 beta user 或找前 10 个真实用户的项目。
+
+核心痛点：
+
+- AI 已经能帮他们把产品做出来，但产品上线后不知道用户怎么用。
+- 不懂或不想维护 Mixpanel、PostHog、GA4 这类体系。
+- 每次产品没人用，都只能继续让 AI 改界面、加功能，而不知道真正卡点。
+- 需要一个更自然的方式：直接问 AI 用户行为，而不是学习数据分析工具。
+
 ### A 类：AI-native 小型产品团队
 
-这是第一优先级。
+这是第二优先级。
 
 典型特征：
 
@@ -60,7 +86,7 @@ TraceMind 不应被包装成传统 analytics 看板。早期卖点是：
 
 ### B 类：AI 应用工作室和外包型 AI builder
 
-这是第二优先级。
+这是第三优先级。
 
 典型特征：
 
@@ -76,7 +102,7 @@ TraceMind 不应被包装成传统 analytics 看板。早期卖点是：
 
 ### C 类：早期 B2B SaaS 和内部工具团队
 
-这是第三优先级。
+这是第四优先级。
 
 典型特征：
 
@@ -109,6 +135,14 @@ TraceMind 不应被包装成传统 analytics 看板。早期卖点是：
 
 优先找已经公开讨论这些关键词的人：
 
+- Lovable
+- Base44
+- Floot
+- Bolt
+- Replit Agent
+- vibe coding
+- no-code founder
+- non-technical founder
 - Cursor
 - Claude Code
 - Codex
@@ -124,11 +158,19 @@ TraceMind 不应被包装成传统 analytics 看板。早期卖点是：
 - X / Twitter。
 - 即刻。
 - V2EX。
+- Indie Hackers 的 vibe coding / launch / feedback 讨论。
 - Hacker News。
 - Indie Hackers。
 - Product Hunt。
 - Reddit 的 devtool、SaaS、side project、AI builder 圈子。
 - Discord / Slack / 微信里的 AI founder、AI builder、MCP、Cursor、Claude Code 群。
+
+第一批更优先从以下入口找：
+
+- Product Hunt 的 Lovable、Base44、Floot、Bolt、vibe coding 分类和 built-with 页面。
+- Indie Hackers 上明确写着 "zero coding experience"、"built with Lovable/Base44/Bolt"、"looking for first users" 的帖子。
+- Reddit / X 上公开求反馈的 vibe-coded app。
+- MakerPad 上 AI app builder 目录里非 devtool、非平台型的小产品。
 
 ### 2. GitHub 高信号项目
 
