@@ -34,6 +34,7 @@
 | Channel | Status | URL / Location | Notes |
 | --- | --- | --- | --- |
 | X / Twitter main post | posted | https://x.com/old_farmer_/status/2055893615612924388 | 用户手动确认已发布，已补充最终帖 URL。 |
+| X / Twitter Chinese post | posted | https://x.com/old_farmer_/status/2055922795939565621 | 已补充中文介绍帖，面向中文 AI-built / vibe coding 产品作者。 |
 | X Vibe Coding Community | posted | https://x.com/i/communities/1898129646782497027 | 按 `r/vibecoding` 规则加入社区并发布 TraceMind 工具介绍/审核申请。 |
 | Reddit `r/nocode` | awaiting_mod_approval | https://www.reddit.com/r/nocode/?created=t3_1tfhbv3&createdPostType=text&is_eligible_for_nudge_to_crosspost_modal=true | 已用问题/求反馈口吻提交，未放 TraceMind 链接；当前等待版主审核。 |
 | 即刻 | posted | https://web.okjike.com/following | 已发布中文试点招募帖，timeline 可见。 |
@@ -53,6 +54,7 @@
 - 没有点击 `Submit without editing`。
 - `r/nocode` 改为无链接、问题导向、价值讨论型内容，降低推广风险。
 - V2EX 按页面规则发布到 `分享创造`，避免发错节点。
+- X 中文帖为公开主帖，未发送私信，文案控制在单帖内并带官网链接。
 
 ### 下一步
 

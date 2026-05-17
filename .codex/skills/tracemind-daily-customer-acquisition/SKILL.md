@@ -32,6 +32,11 @@ Read these first, if present:
 
 Use the latest dated files when multiple exist. If no current workplan exists, create one before doing outbound work.
 
+## Operating Learnings
+
+- X communities can produce more attention than ordinary profile posts when the community is tightly matched to TraceMind's ICP. When a relevant X community is already covered by the plan, prioritize community-native posts and replies before standalone profile posts, while still following community rules and avoiding duplicate shilling. Record community engagement separately from main-profile X posts.
+- In X/community copy, lead with `Codex`, `Claude Code`, `Cursor`, and `Trae` because they have stronger recognition and larger user bases among AI coding builders. Treat `Lovable`, `Base44`, `Bolt`, and `Replit` as optional secondary examples for no-code or weak-technical vibe coding segments. Do not make Lovable/Base44/Bolt/Replit the main examples unless the day's ICP experiment explicitly targets those builders.
+
 ## Daily Workflow
 
 ### 1. Establish Today And Yesterday
@@ -75,7 +80,7 @@ Prioritize people who:
 - Have a product already launched.
 - Are actively asking for feedback or users.
 - Do not know where users get stuck.
-- Built with Lovable, Base44, Bolt, Replit, Cursor, Claude Code, or similar AI coding tools.
+- Built with Codex, Claude Code, Cursor, Trae, or similar AI coding agents; include Lovable, Base44, Bolt, and Replit when targeting no-code or weak-technical builders.
 - Are non-technical or weak-technical creators who shipped with vibe coding.
 
 Use short, specific replies. Anchor each reply in the other person's product before mentioning TraceMind.
@@ -105,17 +110,17 @@ If the plan calls for new outreach, search the planned channels.
 
 Default search prompts:
 
-- 即刻: `vibe coding 做了`, `做了一个 产品`, `欢迎反馈`, `Lovable 做了`, `Cursor 做了一个`, `上线了 求反馈`
+- 即刻: `vibe coding 做了`, `做了一个 产品`, `欢迎反馈`, `Codex 做了`, `Claude Code 做了`, `Cursor 做了一个`, `Trae 做了`, `Lovable 做了`, `上线了 求反馈`
 - V2EX: `https://www.v2ex.com/go/create`, `https://www.v2ex.com/go/ideas`
-- X: `"built with Lovable" feedback`, `"vibe coded" app launch`, `"made with Lovable" app`, `"built this with Cursor" feedback`
-- 小红书: `vibe coding`, `AI 做产品`, `用 AI 做了一个 app`, `Lovable 做网站`, `Cursor 做产品`, `零基础 做 app`
+- X: `"built with Codex" app`, `"built with Claude Code" app`, `"built this with Cursor" feedback`, `"built with Trae" app`, `"AI coding agent" launch`, `"vibe coded" app launch`; add `"built with Lovable" feedback` and `"made with Lovable" app` only for no-code-focused searches.
+- 小红书: `vibe coding`, `AI 做产品`, `用 AI 做了一个 app`, `Codex 做产品`, `Claude Code 做产品`, `Cursor 做产品`, `Trae 做产品`, `Lovable 做网站`, `零基础 做 app`
 - 少数派: `AI 工具`, `独立开发`, `效率工具`, `我做了一个`, `产品上线`, `插件`
 
 Channel intent:
 
 - 即刻: primary Chinese A0 source; prioritize vibe coding builders and AI product experiments.
 - V2EX: product/tool launch source; prioritize people asking for feedback or validation.
-- X: English Lovable/Bolt/Replit/Cursor builders; use short English comments.
+- X: prioritize relevant X communities first when engagement is stronger; primarily target Codex, Claude Code, Cursor, and Trae builders with short comments matched to the specific community. Add Lovable, Bolt, Replit, and Base44 only when the post/community is explicitly no-code or weak-technical.
 - 小红书: discovery-heavy A0 source; prioritize non-technical or weak-technical creators showing AI-built products, workflows, or launch screenshots. Default to candidate collection and reply drafts; ask before publishing original posts.
 - 少数派: tool and productivity audience; prioritize polished tools, plugins, workflows, and app authors. Use more substantive, less salesy comments; ask before submitting articles or original posts.
 

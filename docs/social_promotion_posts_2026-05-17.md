@@ -57,6 +57,21 @@ AI auto-captures behavior, analyzes drop-offs, and helps verify whether each pro
 Looking for 5 Lovable / Base44 / Bolt / Replit / Cursor-built products to try it for free.
 ```
 
+中文版本：
+
+```text
+用 AI / vibe coding 把产品做出来后，真正难的是：用户到底卡在哪？
+
+TraceMind 给 AI-built 产品一层可读的行为证据：
+
+1. 自动采集用户行为，不用先搭复杂埋点/看板
+2. 直接问 AI：用户卡在哪、哪个功能没人用
+3. 改完后验证有没有变好
+
+想找几个产品做早期试点：
+https://tracemind.sandbox.galaxycloud.app/
+```
+
 ## Indie Hackers
 
 Title:
@@ -218,7 +233,8 @@ TraceMind helps AI-built products understand what real users actually do after l
 
 | Platform | Status | URL | Version | Notes |
 | --- | --- | --- | --- | --- |
-| X / Twitter | posted |  | v1-short | User confirmed the post was published. Add final post URL when available. |
+| X / Twitter | posted | https://x.com/old_farmer_/status/2055893615612924388 | v1-short | English main post. |
+| X / Twitter Chinese | posted | https://x.com/old_farmer_/status/2055922795939565621 | v1-zh | Chinese main post for AI-built / vibe coding builders. |
 | X Vibe Coding Community | posted | https://x.com/i/communities/1898129646782497027 | approval-intro | Joined the community and posted a short TraceMind introduction per `r/vibecoding` approval flow. |
 | Indie Hackers | login_required |  | v1 | Chrome shows public homepage / Join state. Not posted. |
 | Reddit | blocked_by_rules | https://www.reddit.com/r/vibecoding/submit/?type=TEXT | v1-feedback | `r/vibecoding` warning says vibe coding dev tools require mod approval via X community; do not submit without editing/approval. |
@@ -233,6 +249,7 @@ TraceMind helps AI-built products understand what real users actually do after l
 
 - X / Twitter short post is filled in the compose dialog and waiting for final publish confirmation.
 - X / Twitter was later published by the user.
+- X / Twitter Chinese post was published as a separate main post: `https://x.com/old_farmer_/status/2055922795939565621`.
 - Reddit `r/vibecoding` showed a rule warning for dev tool approval and no-shilling. We did not click "Submit without editing".
 - Joined the Vibe Coding X community and posted a short TraceMind introduction as the approval path requested.
 - Moved Reddit outreach to `r/nocode` with a value-add question and no TraceMind link; the post is awaiting moderator approval.
