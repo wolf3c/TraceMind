@@ -1,6 +1,6 @@
 # TraceMind Social Reply Targets - 2026-05-17
 
-本文档记录可在即刻、V2EX、X 下方克制推荐 TraceMind 的候选帖子。当前状态：仅收集候选和草稿，尚未发送任何评论。
+本文档记录可在公开社交平台克制推荐 TraceMind 的候选帖子、评论草稿和执行状态。当前已完成即刻、V2EX、小红书、少数派的首批公开评论触达。
 
 ## 回复原则
 
@@ -25,6 +25,8 @@
 1. 即刻：最接近中文 vibe coding / AI 产品圈，且有非技术/弱技术创作者。
 2. V2EX：适合工具站、插件、独立产品发布帖，但回复要更克制。
 3. X：有 Lovable / vibe-coded 产品帖，适合英文短回复和后续私信。
+4. 小红书：更接近非技术/弱技术 AI 产品创作者，优先找“零基础”“AI 做产品”“上线了”的真实作品。
+5. 少数派：适合工具、插件、效率产品作者，评论要更像产品建议，少放链接。
 
 ## 即刻候选
 
@@ -57,6 +59,26 @@
 | P1 | @swordsfrog：FitCalculator，Cursor + ChatGPT 做，求反馈/SEO tips | https://x.com/swordsfrog/status/1943642739536810419 | AI-built 工具站，明确求反馈；帖子较旧，低频触达。 | This is a clean AI-built calculator site. Beyond SEO, the next useful signal is where visitors drop: calculator selection, input, result understanding, or return visits. I’m building TraceMind to auto-capture this behavior and let founders ask AI where users got stuck. Could be useful if you’re still iterating. | candidate |
 | P2 | @surmado：vibe-coded site trust/security check | https://x.com/surmado/status/2049899672408576204 | 面向 vibe-coded sites，相关但更偏安全/信任。 | This is a useful layer for vibe-coded sites. A related problem we’re working on is what happens after launch: auto-capturing user behavior so builders can ask AI where users got stuck and whether fixes worked. If you’re testing onboarding/scan flows, TraceMind could complement this. | candidate |
 
+## 小红书候选
+
+原创新帖状态：`blocked_file_upload`。已进入创作中心，但上传 3 张产品介绍截图时 Chrome 扩展返回 `Not allowed`，因此没有发布小红书原创新帖。后续需要先给 Codex Chrome Extension 开启 `Allow access to file URLs`，再发布带截图版本。
+
+| Priority | Author / Post | URL | Fit | Sent Reply | Status |
+| --- | --- | --- | --- | --- | --- |
+| P0 | 菠萝头：纯零基础，第一个 Vibe Coding 作品终于上架了 | https://www.xiaohongshu.com/explore/69a9937e0000000026031c05 | 非技术/弱技术用户用 AI 做出 iOS app 并上架，A0 ICP 高匹配。 | 这个经历很适合看真实用户路径：用户是卡在首次打开、创建任务、同步数据，还是后续复用。我们在做 TraceMind，想找几个 AI 做出来的产品试点，自动记录行为后直接问 AI 用户卡在哪、改完有没有变好。 | commented |
+| P0 | Sherotree：3 月独立开发总结，插件收入 426 美元 | https://www.xiaohongshu.com/explore/69ccadc8000000001b001ba5 | 独立产品已有收入和 AdSense 反馈，适合验证安装、试用、付费路径。 | 已经有插件收入和 AdSense 反馈了，下一步很适合看真实用户路径：用户从看到功能、安装/试用，到付费或复购，哪一步掉得最多。我们在做 TraceMind，帮 AI-built 产品自动记录行为，然后直接问 AI 用户卡在哪、改完有没有变好。 | commented |
+| P1 | Cyrus宇：两个月通过 AI 赚到 1w | https://www.xiaohongshu.com/explore/69ee2d27000000003502030b | AI 变现相关，但需要进一步确认是否是自有产品。 | 如果是自有 AI 产品，后续最值得看的是用户从看到价值、开始试用，到付费或复用，哪一步掉得最多。TraceMind 可以自动记录行为，再直接问 AI 用户卡在哪、改完有没有改善。 | candidate |
+
+## 少数派候选
+
+| Priority | Author / Post | URL | Fit | Reply | Status |
+| --- | --- | --- | --- | --- | --- |
+| P0 | 1023号小岛：独立开发了一款超级效率工具 MioKit | https://sspai.com/post/108082 | 独立效率工具，插件驱动，作者提到预览版、bug、后续 MCP 辅助开发，适合看插件使用路径和真实卡点。 | MioKit 这种插件驱动工具，后续最值得看的可能是用户从打开搜索框、触发插件、固定/忽略/快捷操作，到真正形成高频使用习惯，中间哪一步掉得最多。我们在做 TraceMind，想找几个工具产品试点：不用先搭复杂 analytics，自动记录用户行为后直接问 AI 用户卡在哪、哪些插件真的被用。 | commented |
+| P1 | goldenmo：SnackGuard 开发故事 | https://sspai.com/post/106791 | 独立 App，行为感知和反馈循环强，但隐私/本地数据理念较强，需谨慎推荐。 | SnackGuard 的“感知 -> 提醒 -> 选择 -> 反馈”链路很完整。如果后续想优化 onboarding 或付费转化，最关键的是看用户在哪一步没完成核心动作。我们在做 TraceMind，偏向帮早期产品看真实行为路径，再让 AI 总结卡点和改动效果。 | candidate |
+| P1 | 智通：SoloMD Markdown 编辑器 | https://sspai.com/post/108550 | 独立工具产品，有 AI 文本清理场景，适合看功能使用和留存。 | SoloMD 这种轻量工具后续很适合看真实功能使用：用户是只打开编辑器，还是会用到 AI 格式清理、导出、持续写作。我们在做 TraceMind，能把这些行为整理成 AI 可读证据，直接问用户卡在哪、哪些功能真的有价值。 | candidate |
+| P1 | Text-Well：多视角内容评审 AI 工具 | https://sspai.com/post/101765 | AI 工具产品，适合验证评审流程、问题项点击和复用行为。 | Text-Well 的评审流程很适合用行为证据验证：用户是卡在导入文本、查看问题项、接受建议，还是复用模板。我们在做 TraceMind，想找 AI 工具试点，让 AI 直接基于真实行为回答用户卡在哪、改完有没有变好。 | candidate |
+| P2 | 飞书文档到公众号 CLI 工具 | https://sspai.com/post/108059 | 偏技术 CLI，适合 MCP/agent 工具场景备选。 | 这个 CLI 的价值链路很清晰：预览、调格式、生成封面、发布。后续如果想知道用户真实卡点，TraceMind 这类行为证据层可以帮忙把配置/运行/发布成功路径整理出来，再让 AI 分析掉点。 | candidate |
+
 ## First Batch Recommendation
 
 建议第一批只发 5 条，按顺序：
@@ -73,3 +95,5 @@
 
 - 2026-05-17: 已评论第一批 5 条候选：即刻 3 条、V2EX 2 条。
 - 2026-05-17: X 补图回复因本地文件上传权限被 Chrome 扩展拦截，未发送。
+- 2026-05-17: 小红书登录后完成 2 条评论触达；原创新帖因本地截图上传权限被 Chrome 扩展拦截，未发布。
+- 2026-05-17: 少数派登录后完成 MioKit 文章评论；其余候选保留为后续低频深评论对象。

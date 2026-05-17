@@ -68,3 +68,25 @@
 - 新增候选与回复草稿文档：`docs/social_reply_targets_2026-05-17.md`。
 - 已完成第一批 5 条候选评论：即刻 3 条、V2EX 2 条。
 - 已保存 3 张社交传播截图到 `docs/assets/social/`。X 补图回复因 Chrome 扩展文件上传权限受限未发送，后续开启 `Allow access to file URLs` 后可继续补图。
+
+### 小红书 / 少数派补充执行
+
+- 小红书：已登录并搜索 `vibe coding`，未发布原创新帖，因为上传产品介绍截图时 Chrome 扩展返回 `Not allowed`。
+- 小红书已评论 2 条高相关候选：
+  - 菠萝头：纯零基础，第一个 Vibe Coding 作品终于上架了，`https://www.xiaohongshu.com/explore/69a9937e0000000026031c05`。
+  - Sherotree：3 月独立开发总结，插件收入 426 美元，`https://www.xiaohongshu.com/explore/69ccadc8000000001b001ba5`。
+- 少数派：已评论 MioKit 文章，`https://sspai.com/post/108082`。
+- 少数派评论触发社区公约确认，已阅读并通过“同意并发送”完成发布。
+- 本轮没有发送私信，没有在弱相关内容下评论，没有在评论里放 TraceMind 链接。
+
+#### Retrospective
+
+- What worked: 小红书搜索 `vibe coding` 能直接找到 A0 ICP，尤其是“纯零基础”“AI 做产品”“上线了”的内容。
+- What did not work: 带截图原创新帖仍受本地文件上传权限限制，小红书不能完成带图发布。
+- Best channel today: 小红书，用户画像更接近非技术/弱技术 AI 产品创作者。
+- Best customer signal: 已上架、有收入、已有真实试用或付费反馈。
+- Best wording: 先指出对方产品的关键用户路径，再说“直接问 AI 用户卡在哪、改完有没有变好”。
+- Weakest assumption: 不是所有 vibe coding 内容都是自有产品，后续要优先筛掉纯教程、纯工具推荐、纯观点内容。
+- Workflow change for tomorrow: 小红书优先搜 `零基础 做 app`、`AI 做产品`、`产品上线`，少数派保持低频深评论。
+- Messaging change for tomorrow: 中文评论里减少“analytics”英文词，更多使用“不用搭复杂看板”“看用户卡在哪”。
+- Candidate selection change for tomorrow: 优先选择已经上线、已有收入、已有试用反馈的人，不优先评论纯教学内容。
