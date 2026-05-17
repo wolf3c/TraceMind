@@ -22,16 +22,28 @@ import {
   publicSemanticEvent,
   summarizePresenceSessions,
 } from '/imports/api/tracemind';
+import { latestSdkForSetup } from '/imports/api/sdk_release';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 import { queueProjectDailyHealthRefresh, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.17.5';
+const AGENT_GUIDANCE_VERSION = '2026.05.17.6';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
+const SDK_NAME_BY_SOURCE_PATH = {
+  'sdk/ios': 'swift',
+  'sdk/android': 'android',
+  'sdk/react-native': 'react_native',
+  'sdk/mini-program': 'mini_program',
+  'sdk/browser-extension': 'browser_extension',
+  'sdk/mcp-node': 'mcp_node',
+  'sdk/mcp-python': 'mcp_python',
+  'sdk/server-node': 'server_node',
+  'sdk/server-python': 'server_python',
+};
 const MINI_PROGRAM_PROVIDERS = ['wechat', 'alipay', 'douyin', 'dingtalk'];
 const MINI_PROGRAM_PROVIDER_LABELS = {
   wechat: 'WeChat',
@@ -232,7 +244,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.project_health',
       title: projectScopedTitle('TraceMind Project Health', project),
-      description: projectScopedDescription('读取按自然日物化的项目健康报告，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
+      description: projectScopedDescription('读取按自然日物化的项目健康报告和 SDK 升级提示，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -573,6 +585,7 @@ function projectHealthResult(project, reportDate, report, health = {}) {
       status: health.status || 'normal',
       attentionSummary: health.attentionSummary || '',
       attentionItems: health.attentionItems || [],
+      sdkUpgradeFindings: health.sdkUpgradeFindings || health.current?.sdkUpgradeFindings || [],
       current: health.current || {},
       previous: health.previous || {},
       trends: health.trends || {},
@@ -667,6 +680,8 @@ function guidanceResult(extra = {}) {
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
+      'For SDK platforms, use capture_setup latestSdk, installedVersionDetection, installedSdkManifest, upgradeCommands, and verificationCommands; write .tracemind-sdk.json for local_source vendored installs and compare contentHash instead of relying only on displayVersion.',
+      'When project_health returns sdkUpgradeFindings, update the vendored SDK through the coding agent workflow rather than silently editing customer code.',
       'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
       'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
@@ -1064,6 +1079,7 @@ function commonSetup(project, platform) {
 }
 
 function localSourceSdkBase(sdkSourcePath, customerVendorPath) {
+  const sdkName = SDK_NAME_BY_SOURCE_PATH[sdkSourcePath];
   return {
     distributionMode: 'local_source',
     publishStatus: 'not_published',
@@ -1071,6 +1087,7 @@ function localSourceSdkBase(sdkSourcePath, customerVendorPath) {
     sdkSourceCheckoutDir: TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR,
     sdkSourcePath,
     customerVendorPath,
+    ...(sdkName ? sdkGovernanceFields(sdkName, sdkSourcePath, customerVendorPath) : {}),
     installNotes: [
       'TraceMind SDK packages are not registry-published yet; install from the local source copied from sdkSourceRepo.',
       `If ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} or ${customerVendorPath} already exists, inspect it before overwriting.`,
@@ -1078,11 +1095,99 @@ function localSourceSdkBase(sdkSourcePath, customerVendorPath) {
   };
 }
 
-function localSourceCopyCommands(sdkSourcePath, customerVendorPath) {
+function installedSdkManifestFor(sdkName, sdkSourcePath, customerVendorPath) {
+  const sdk = latestSdkForSetup(sdkName);
+  if (!sdk) return null;
+  return {
+    schemaVersion: 1,
+    sdkName,
+    displayVersion: sdk.displayVersion,
+    contentHash: sdk.contentHash,
+    sourceRepo: sdk.sourceRepo,
+    sourceRef: sdk.sourceRef,
+    sdkSourcePath,
+    vendorPath: customerVendorPath,
+    verificationCommands: sdk.verificationCommands,
+  };
+}
+
+function shellSingleQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function sdkManifestWriteCommand(installedSdkManifest, manifestPath) {
+  const script = `const fs = require("fs"); fs.writeFileSync(${JSON.stringify(manifestPath)}, JSON.stringify(${JSON.stringify(installedSdkManifest)}, null, 2) + "\\n");`;
+  return `node -e ${shellSingleQuote(script)}`;
+}
+
+function localSourceCheckoutCommands(sourceRef = 'main') {
   return [
-    `test -d ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} || git clone --depth 1 ${TRACE_MIND_SDK_SOURCE_REPO} ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}`,
+    `test -d ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} || git clone --filter=blob:none --no-checkout ${TRACE_MIND_SDK_SOURCE_REPO} ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}`,
+    `git -C ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} fetch --depth 1 origin ${shellSingleQuote(sourceRef)}`,
+    `git -C ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} checkout --detach FETCH_HEAD`,
+  ];
+}
+
+function sdkSourceHashVerifyCommand(sdkName, expectedHash) {
+  const script = [
+    `const gate = require("./${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}/scripts/check-sdk-release-manifest.js");`,
+    `const config = gate.SDK_CONFIGS.find((entry) => entry.sdkName === ${JSON.stringify(sdkName)});`,
+    'if (!config) { console.error("TraceMind SDK config not found."); process.exit(1); }',
+    'const actual = gate.contentHash(gate.discoverRuntimeFiles(config));',
+    `if (actual !== ${JSON.stringify(expectedHash)}) { console.error("TraceMind SDK source hash mismatch: expected ${expectedHash}, got " + actual + ". Stop and ask TraceMind for the pinned SDK sourceRef."); process.exit(1); }`,
+  ].join(' ');
+  return `node -e ${shellSingleQuote(script)}`;
+}
+
+function sdkGovernanceFields(sdkName, sdkSourcePath, customerVendorPath) {
+  const sdk = latestSdkForSetup(sdkName);
+  if (!sdk) return {};
+  const latestSdk = {
+    sdkName: sdk.sdkName,
+    displayVersion: sdk.displayVersion,
+    contentHash: sdk.contentHash,
+    sourceRepo: sdk.sourceRepo,
+    sourceRef: sdk.sourceRef,
+    sdkSourcePath: sdk.sdkSourcePath,
+    minimumSupportedHash: sdk.minimumSupportedHash,
+    verificationCommands: sdk.verificationCommands,
+  };
+  const installedSdkManifest = installedSdkManifestFor(sdkName, sdkSourcePath, customerVendorPath);
+  return {
+    latestSdk,
+    installedSdkManifest,
+    installedVersionDetection: {
+      manifestPath: `${customerVendorPath}/.tracemind-sdk.json`,
+      rootManifestPath: '.tracemind-sdk.json',
+      detectionOrder: [
+        `Read ${customerVendorPath}/.tracemind-sdk.json if it exists.`,
+        'Compare installed contentHash with latestSdk.contentHash; do not rely only on displayVersion.',
+        'If the manifest is missing, inspect sourceDetails.sdkContentHash from tracemind.project_health or treat the SDK version as unknown.',
+      ],
+    },
+    upgradePolicy: sdk.upgradePolicy,
+    upgradeCommands: [
+      'Call tracemind.project_health to see whether TraceMind already found an SDK update or unknown SDK version.',
+      `Read ${customerVendorPath}/.tracemind-sdk.json and compare contentHash with latestSdk.contentHash.`,
+      ...localSourceCheckoutCommands(sdk.sourceRef),
+      sdkSourceHashVerifyCommand(sdkName, sdk.contentHash),
+      `Copy ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}/${sdkSourcePath}/. into ${customerVendorPath}/ without changing app instrumentation semantics.`,
+      sdkManifestWriteCommand(installedSdkManifest, `${customerVendorPath}/.tracemind-sdk.json`),
+      'Run the returned verificationCommands in the customer project, then report success or the exact failing command.',
+      'For TraceMind SDK source changes, run npm run update:sdk-manifest and npm run test:sdk-release before committing.',
+    ],
+  };
+}
+
+function localSourceCopyCommands(sdkSourcePath, customerVendorPath) {
+  const sdkName = SDK_NAME_BY_SOURCE_PATH[sdkSourcePath];
+  const installedSdkManifest = sdkName ? installedSdkManifestFor(sdkName, sdkSourcePath, customerVendorPath) : null;
+  return [
+    ...localSourceCheckoutCommands(installedSdkManifest?.sourceRef),
+    ...(installedSdkManifest ? [sdkSourceHashVerifyCommand(sdkName, installedSdkManifest.contentHash)] : []),
     `mkdir -p ${customerVendorPath}`,
     `cp -R ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}/${sdkSourcePath}/. ${customerVendorPath}/`,
+    ...(installedSdkManifest ? [sdkManifestWriteCommand(installedSdkManifest, `${customerVendorPath}/.tracemind-sdk.json`)] : []),
   ];
 }
 
@@ -1162,8 +1267,9 @@ function localAndroidSdkSetup() {
 }
 
 function localPythonSdkSetup({ packageLabel, moduleName, sdkSourcePath, customerVendorPath }) {
+  const sdkSetup = localSourceSdkBase(sdkSourcePath, customerVendorPath);
   return {
-    ...localSourceSdkBase(sdkSourcePath, customerVendorPath),
+    ...sdkSetup,
     packageManagerNotes: [
       'TraceMind Python SDKs do not have package metadata yet; do not use a fake pip install command.',
       `Add ${customerVendorPath} to PYTHONPATH or the project packaging source path so imports from ${moduleName} resolve.`,
@@ -1173,9 +1279,11 @@ function localPythonSdkSetup({ packageLabel, moduleName, sdkSourcePath, customer
       `Python imports should resolve ${moduleName} from ${customerVendorPath}/${moduleName}.`,
     ],
     installCommands: [
-      `test -d ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} || git clone --depth 1 ${TRACE_MIND_SDK_SOURCE_REPO} ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}`,
+      ...localSourceCheckoutCommands(sdkSetup.installedSdkManifest?.sourceRef),
+      ...(sdkSetup.installedSdkManifest ? [sdkSourceHashVerifyCommand(sdkSetup.installedSdkManifest.sdkName, sdkSetup.installedSdkManifest.contentHash)] : []),
       `mkdir -p ${customerVendorPath}`,
       `cp -R ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}/${sdkSourcePath}/${moduleName} ${customerVendorPath}/`,
+      ...(sdkSetup.installedSdkManifest ? [sdkManifestWriteCommand(sdkSetup.installedSdkManifest, `${customerVendorPath}/.tracemind-sdk.json`)] : []),
       `Add ${customerVendorPath} to PYTHONPATH in the app runtime, test runner, or deployment environment before importing ${moduleName}.`,
     ],
     idempotencyChecks: [
@@ -1231,7 +1339,7 @@ function miniProgramSetup(project, provider) {
       key: 'Mini program appId when available, otherwise developer configured sourceKey.',
       details: { provider },
     },
-    sourceModel: 'platform is mini_program; sourceType is mini_program; sourceKey is the mini program appId or configured sourceKey; sourceDetails.provider records wechat, alipay, douyin, or dingtalk.',
+    sourceModel: 'platform is mini_program; sourceType is mini_program; sourceKey is the mini program appId or configured sourceKey; sourceDetails.provider records wechat, alipay, douyin, or dingtalk; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
     autoCapturedSignals: MINI_PROGRAM_AUTO_CAPTURE_SIGNALS,
     privacyConstraints: PRIVACY_CONSTRAINTS,
     networkRestrictionChecks: miniProgramNetworkRestrictionChecks(provider),
@@ -1298,7 +1406,7 @@ function browserExtensionSetup(project) {
         runtimeContext: 'popup | options | sidebar | devtools | background',
       },
     },
-    sourceModel: 'platform is browser_extension; sourceType is browser_extension; sourceKey is the extension id or configured extensionId; sourceDetails.browser, manifestVersion, runtimeContext, and sdkVersion are the only persisted extension source details.',
+    sourceModel: 'platform is browser_extension; sourceType is browser_extension; sourceKey is the extension id or configured extensionId; sourceDetails.browser, manifestVersion, runtimeContext, sdkVersion, and sdkContentHash are the only persisted extension source details.',
     autoCapturedSignals: BROWSER_EXTENSION_AUTO_CAPTURE_SIGNALS,
     privacyConstraints: PRIVACY_CONSTRAINTS,
     manifestPermissions: BROWSER_EXTENSION_MANIFEST_PERMISSIONS,
@@ -1353,14 +1461,28 @@ function platformSetup(project, platform, options = {}) {
           platform: 'ios_or_macos',
           sdkSourcePath: swiftSdkSetup.sdkSourcePath,
           customerVendorPath: swiftSdkSetup.customerVendorPath,
+          latestSdk: swiftSdkSetup.latestSdk,
+          installedSdkManifest: swiftSdkSetup.installedSdkManifest,
+          installedVersionDetection: swiftSdkSetup.installedVersionDetection,
           dependencyEdits: swiftSdkSetup.dependencyEdits,
         },
         {
           platform: 'android',
           sdkSourcePath: androidSdkSetup.sdkSourcePath,
           customerVendorPath: androidSdkSetup.customerVendorPath,
+          latestSdk: androidSdkSetup.latestSdk,
+          installedSdkManifest: androidSdkSetup.installedSdkManifest,
+          installedVersionDetection: androidSdkSetup.installedVersionDetection,
           dependencyEdits: androidSdkSetup.dependencyEdits,
         },
+      ],
+      upgradePolicy: {
+        level: 'recommended',
+        agentPrompt: 'Ask your coding agent to read WebView setup, then check the native vendor/TraceMind and vendor/tracemind-android .tracemind-sdk.json files against nativeSdkInstallOptions.',
+      },
+      upgradeCommands: [
+        ...swiftSdkSetup.upgradeCommands,
+        ...androidSdkSetup.upgradeCommands,
       ],
       captureScriptUrl,
       captureSnippet,
@@ -1449,7 +1571,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'server_app',
         key: 'Developer configured server/service name, for example billing-api',
       },
-      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
@@ -1500,7 +1622,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'server_app',
         key: 'Developer configured server/service name, for example billing-api',
       },
-      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
@@ -1566,7 +1688,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'server_app',
         key: 'Developer configured server/service name, for example billing-api',
       },
-      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment when an SDK is used.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
@@ -1615,7 +1737,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'mcp_server',
         key: 'Developer configured MCP server/package name, for example docs-mcp',
       },
-      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, and mcpFramework.',
+      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, sdkContentHash, and mcpFramework.',
       autoCapturedSignals: MCP_AUTO_CAPTURE_SIGNALS,
       privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS,
@@ -1665,7 +1787,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'mcp_server',
         key: 'Developer configured MCP server/package name, for example docs-mcp',
       },
-      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, and mcpFramework.',
+      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, sdkContentHash, and mcpFramework.',
       autoCapturedSignals: MCP_AUTO_CAPTURE_SIGNALS,
       privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS,
@@ -1757,7 +1879,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'ios',
         key: 'iOS bundle id, for example com.example.app',
       },
-      sourceModel: 'platform remains ios; sourceKey is the iOS bundle id; sourceDetails.framework is swift.',
+      sourceModel: 'platform remains ios; sourceKey is the iOS bundle id; sourceDetails.framework is swift; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
       networkRestrictionChecks: IOS_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'swift test --package-path sdk/ios',
@@ -1800,7 +1922,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'macos',
         key: 'macOS bundle id, for example com.example.app',
       },
-      sourceModel: 'platform remains macos; sourceKey is the macOS bundle id; sourceDetails.framework is swift.',
+      sourceModel: 'platform remains macos; sourceKey is the macOS bundle id; sourceDetails.framework is swift; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
       autoCapturedSignals: [
         'app/session start',
         'screen or window view',
@@ -1850,7 +1972,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'android',
         key: 'Android package name, for example com.example.app',
       },
-      sourceModel: 'platform remains android; sourceKey is the Android package name; sourceDetails.framework is kotlin.',
+      sourceModel: 'platform remains android; sourceKey is the Android package name; sourceDetails.framework is kotlin; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
       networkRestrictionChecks: ANDROID_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'npm run test:sdk:android',
@@ -1900,7 +2022,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'ios_or_android',
         key: 'Native bundle id or package name; React Native is marked in deviceInfo.framework.',
       },
-      sourceModel: 'Do not create a react_native platform value. Events keep platform ios or android and mark deviceInfo.framework/sourceDetails.framework as react_native.',
+      sourceModel: 'Do not create a react_native platform value. Events keep platform ios or android and mark deviceInfo.framework/sourceDetails.framework as react_native; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
       networkRestrictionChecks: REACT_NATIVE_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'npm test --prefix sdk/react-native',

@@ -1,4 +1,5 @@
 const SDK_VERSION = '0.1.0';
+const SDK_CONTENT_HASH = 'sha256:cbd3c9df52bc5548ce8dfcaa7db9aa1c55ac201fc670eb395d9bb3c53c57d47d';
 const DEFAULT_CAPTURE_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/capture';
 const DEFAULT_PRESENCE_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/presence';
 const DEFAULT_FEEDBACK_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback';
@@ -357,6 +358,7 @@ function createTraceMindClient({
         manifestVersion: manifest.manifest_version || manifest.manifestVersion || '',
         runtimeContext: state.config.runtimeContext,
         sdkVersion: SDK_VERSION,
+        sdkContentHash: SDK_CONTENT_HASH,
       },
     };
   }

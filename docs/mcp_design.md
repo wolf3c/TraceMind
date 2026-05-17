@@ -262,7 +262,7 @@ Output:
 
 ### `tracemind.capture_setup`
 
-返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主，浏览器插件使用通用 WebExtension SDK。SDK 平台当前不假设包已发布到 registry；返回 `distributionMode: "local_source"` 时，agent 必须按返回的 GitHub clone、`vendor/` 复制、本地依赖、SwiftPM local path、Gradle module 或 PYTHONPATH 指令执行。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
+返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主，浏览器插件使用通用 WebExtension SDK。SDK 平台当前不假设包已发布到 registry；返回 `distributionMode: "local_source"` 时，agent 必须按返回的 GitHub clone、`vendor/` 复制、本地依赖、SwiftPM local path、Gradle module 或 PYTHONPATH 指令执行，并把 `installedSdkManifest` 写入 vendored SDK 目录的 `.tracemind-sdk.json`。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
 
 Input:
 
@@ -274,6 +274,8 @@ Input:
 ```
 
 `platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`hybrid`、`mini_program`、`browser_extension`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。`mini_program` 可选 `provider`：`wechat`、`alipay`、`douyin`、`dingtalk`；别名 `wechat_mini_program`、`alipay_mini_program`、`douyin_mini_program`、`dingtalk_mini_program` 会归一为 `mini_program + provider`。浏览器插件别名 `chrome_extension`、`edge_extension`、`firefox_extension`、`web_extension` 会归一为 `browser_extension`。
+
+SDK 平台还会返回升级治理字段：`latestSdk.displayVersion`、`latestSdk.contentHash`、`latestSdk.sourceRef`、`installedVersionDetection`、`upgradePolicy`、`upgradeCommands` 和 `verificationCommands`。`contentHash` 是判断升级的硬依据，`displayVersion` 只用于展示。SDK runtime 通过白名单 `sourceDetails.sdkVersion` 和 `sourceDetails.sdkContentHash` 上报安全 metadata；`tracemind.project_health` 会在 hash 落后或未知时返回 `sdkUpgradeFindings`，让客户把更新 prompt 交给 coding agent 执行。
 
 Output:
 

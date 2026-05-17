@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "start": "meteor run",
+    "pretest": "npm run test:sdk-release",
     "test": "meteor test --once --driver-package meteortesting:mocha",
+    "update:sdk-manifest": "node scripts/check-sdk-release-manifest.js --write",
+    "test:sdk-release": "node scripts/check-sdk-release-manifest.js --check",
     "test:sdk:android": "sh sdk/android/test.sh",
     "test:sdk:ios": "CLANG_MODULE_CACHE_PATH=.swiftpm-cache/clang swift test --disable-sandbox --package-path sdk/ios",
     "test:sdk:mcp-node": "npm test --prefix sdk/mcp-node",

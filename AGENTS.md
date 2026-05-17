@@ -18,10 +18,11 @@ Keep reusable code under `imports/` so Meteor imports it explicitly instead of r
 
 - Work only on files required for the current task. Do not modify, revert, reformat, stage, or otherwise clean up files changed by other people or unrelated work.
 - Before editing production code for behavior changes or optimizations, state the current behavior, target behavior, affected modules, risks, verification plan, and concise implementation plan.
-- For any behavior change, optimization, analytics change, SDK change, or public contract change, explicitly check every supported runtime before editing: Web, iOS, Android, React Native, server SDKs, MCP, Agent Skill, and dashboard/API surfaces. If a runtime is intentionally out of scope, state that boundary and document why. The same product concept should behave consistently across supported environments unless the product requirements explicitly define a platform-specific difference.
+- For any behavior change, optimization, analytics change, SDK change, or public contract change, explicitly check every supported runtime before editing: Web, iOS, macOS, Android, React Native, Hybrid, Mini Program, Browser Extension, server SDKs, MCP, Agent Skill, and dashboard/API surfaces. If a runtime is intentionally out of scope, state that boundary and document why. The same product concept should behave consistently across supported environments unless the product requirements explicitly define a platform-specific difference.
 - Keep changes minimal and aligned with existing product semantics. Avoid opportunistic refactors, broad cleanup, or expanding scope beyond the requested task.
 - After finishing any task, provide one or more suggested git commit messages that accurately describe the completed change.
 - If the user explicitly points out an agent mistake, update this file with the underlying lesson: summarize why the mistake happened, the deeper rule that should have prevented it, and how future agents should apply that rule.
+- After any SDK runtime change under `sdk/`, run `npm run update:sdk-manifest` and `npm run test:sdk-release`. The manifest gate uses SDK content hashes, so do not rely on remembering to bump a version number by hand.
 
 ## Error Ledger
 
@@ -87,7 +88,7 @@ When adding or modifying TraceMind analytics instrumentation in this project:
 1. Use the TraceMind MCP before writing analytics code.
 2. Call `tracemind.agent_guidance` to check the current guidance version.
 3. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` or inspect MCP tool descriptions to confirm the project.
-4. Verify TraceMind setup before manual custom events by calling `tracemind.capture_setup`; Web uses the returned `captureSnippet`, while iOS, Android, React Native, MCP Node, MCP Python, Agent Skill, and server application targets pass the matching `platform` (`ios`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`) and follow the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, and one-line `initSnippet`. The public project key is only for capture writes.
+4. Verify TraceMind setup before manual custom events by calling `tracemind.capture_setup`; Web uses the returned `captureSnippet`, while iOS, macOS, Android, React Native, Hybrid, Mini Program, Browser Extension, MCP Node, MCP Python, Agent Skill, and server application targets pass the matching `platform` (`ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`) and follow the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, one-line `initSnippet`, `latestSdk`, `installedVersionDetection`, `upgradeCommands`, and `verificationCommands`. If setup returns `distributionMode: "local_source"`, write the returned `installedSdkManifest` as `.tracemind-sdk.json` in the vendored SDK path so future coding agents can detect upgrades by content hash. The public project key is only for capture writes.
 5. Search for an existing event before creating a new event.
 6. Use only approved event names and properties returned or validated by the MCP.
 7. Do not invent event names.
@@ -99,7 +100,9 @@ When adding or modifying TraceMind analytics instrumentation in this project:
 
 For product app and MCP targets, verify Auto Capture before manual custom events. Ordinary server applications are the exception in v1: use manual capture only.
 
-For native SDK setup, do not duplicate existing dependencies or `TraceMind.start(...)` calls. iOS initializes from `App.swift` or `AppDelegate`, Android initializes from `Application.onCreate()`, and React Native initializes from the app bootstrap while keeping event `platform` as `ios` or `android` and marking `react_native` in framework metadata.
+For native SDK setup, do not duplicate existing dependencies or `TraceMind.start(...)` calls. iOS/macOS initialize from `App.swift` or `AppDelegate`, Android initializes from `Application.onCreate()`, and React Native initializes from the app bootstrap while keeping event `platform` as `ios` or `android` and marking `react_native` in framework metadata. Hybrid uses WebView Web Auto Capture plus the matching native SDK; Mini Program uses `mini_program` with provider `wechat`, `alipay`, `douyin`, or `dingtalk`; Browser Extension uses `browser_extension` for Chrome, Edge, and Firefox extension-owned pages.
+
+For SDK upgrades, treat `latestSdk.contentHash`, `.tracemind-sdk.json`, and reported `sourceDetails.sdkContentHash` as the source of truth. `displayVersion` is only human-readable. `tracemind.project_health` may return `sdkUpgradeFindings`; if it does, have the customer coding agent call `capture_setup`, update the vendored SDK, run returned verification commands, and report completion.
 
 Manual native events are for stable business outcomes that Auto Capture cannot infer. The SDKs sanitize and omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
 

@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 
 const SDK_VERSION = '0.1.0';
+const SDK_CONTENT_HASH = 'sha256:77bc22cff95e1505bd2153340c68549c2f19758a3dc62705d0a2fa906db3dd2d';
 const DEFAULT_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/capture';
 const DEFAULT_FEEDBACK_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback';
 const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|email|phone|input|enteredtext)/i;
@@ -176,6 +177,7 @@ function createTraceMindServerClient(options = {}) {
         language: 'javascript',
         runtime: `node ${process.version}`,
         sdkVersion: SDK_VERSION,
+        sdkContentHash: SDK_CONTENT_HASH,
       },
     };
   }

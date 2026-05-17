@@ -31,7 +31,7 @@ Web 应用把下面这行代码放到页面的 `<head>` 或 `</body>` 前：
 开发者控制台支持中英文切换，右上角选择语言后会保存在当前浏览器中。
 控制台默认收起项目配置区，只保留当前项目切换、必要时的项目数量提示和展开配置信息入口；展开后可以复制 `projectKey`、Coding Agent 安装提示词并管理 MCP Token。各环境的安装步骤与使用方式以本文档为准。
 
-Native、小程序、浏览器插件、MCP 和 server SDK 当前采用本地源码安装：coding agent 先调用 `tracemind.capture_setup`，再按返回的 GitHub clone、`vendor/` 复制和本地依赖命令接入；不要假设 SDK 已发布到 npm、PyPI、Maven 或 Swift Package registry。包安装和本地依赖配置完成后，业务代码只需要一行初始化：
+Native、小程序、浏览器插件、MCP 和 server SDK 当前采用本地源码安装：coding agent 先调用 `tracemind.capture_setup`，再按返回的 GitHub clone、`vendor/` 复制和本地依赖命令接入；不要假设 SDK 已发布到 npm、PyPI、Maven 或 Swift Package registry。SDK setup 会返回 `latestSdk`、`installedSdkManifest`、`installedVersionDetection`、`upgradeCommands` 和 `verificationCommands`；agent 应把 `installedSdkManifest` 写到 vendored SDK 目录的 `.tracemind-sdk.json`，以后用 `contentHash` 判断是否需要升级，而不是只看版本号。包安装和本地依赖配置完成后，业务代码只需要一行初始化：
 
 ```swift
 TraceMind.start(projectKey: "tm_proj_xxx")
@@ -748,7 +748,7 @@ connect-src https://tracemind.sandbox.galaxycloud.app
 
 `data-tracemind-token` 是公开项目 token，不是开发者密钥。但它会暴露在前端，因此服务端必须把它当作公开标识处理，不能把它当作私密凭证。
 
-TraceMind 会记录采集来源并在控制台展示采集来源统计。这里的 `sourceType/sourceKey` 用于治理写入项目 key 的 App 或 SDK，不等同于用户跳转进来的流量来源。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；macOS 使用 bundle id 并上报 `sourceType: "macos"`；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；混合应用不新增 `hybrid` 事件平台，WebView 保持 Web 来源并可通过 `data-tracemind-framework` 写入 `sourceDetails.framework`，原生壳层保持对应 Native 来源并可用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记具体混合框架；小程序使用 `sourceType: "mini_program"`，`sourceKey` 优先使用 appId，`sourceDetails.provider` 标记微信、支付宝、抖音或钉钉；浏览器插件使用 `sourceType: "browser_extension"`，`sourceKey` 优先使用 extension id，`sourceDetails` 只白名单保存 `browser`、`manifestVersion`、`runtimeContext` 和 `sdkVersion`；MCP server 使用 `sourceType: "mcp_server"`；普通后端服务使用 `sourceType: "server_app"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
+TraceMind 会记录采集来源并在控制台展示采集来源统计。这里的 `sourceType/sourceKey` 用于治理写入项目 key 的 App 或 SDK，不等同于用户跳转进来的流量来源。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；macOS 使用 bundle id 并上报 `sourceType: "macos"`；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；混合应用不新增 `hybrid` 事件平台，WebView 保持 Web 来源并可通过 `data-tracemind-framework` 写入 `sourceDetails.framework`，原生壳层保持对应 Native 来源并可用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记具体混合框架；小程序使用 `sourceType: "mini_program"`，`sourceKey` 优先使用 appId，`sourceDetails.provider` 标记微信、支付宝、抖音或钉钉；浏览器插件使用 `sourceType: "browser_extension"`，`sourceKey` 优先使用 extension id，`sourceDetails` 只白名单保存 `browser`、`manifestVersion`、`runtimeContext`、`sdkVersion` 和 `sdkContentHash`；MCP server 使用 `sourceType: "mcp_server"`；普通后端服务使用 `sourceType: "server_app"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。SDK runtime 会安全上报 `sourceDetails.sdkVersion` 和 `sourceDetails.sdkContentHash`；`project_health` 可据此提示 SDK 过旧或版本未知，并生成给 coding agent 的升级动作。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
 
 流量来源分析使用单独的 `attribution` 字段。Web 自动生成；iOS/macOS、Android、React Native 和混合应用壳层通过 URL/deeplink helper 或安全 `setAttribution` 设置；小程序和浏览器插件通过安全 `setAttribution` 设置；server SDK 只在业务事件已经持有安全产品来源上下文时手动传入。MCP 可以用 `attributionSource`、`attributionMedium`、`attributionCampaign` 和 `landingPath` 过滤分析。
 

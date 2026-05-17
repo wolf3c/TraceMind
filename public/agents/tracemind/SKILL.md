@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.17.5
+version: 2026.05.17.6
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -63,7 +63,7 @@ For product apps, first check whether TraceMind Auto Capture is already initiali
 - React Native: call `tracemind.capture_setup` with `{ "platform": "react_native" }`; install the returned local `@tracemind/react-native` file dependency and native bridge, then initialize once in `index.js`, `App.js`, `App.tsx`, or the app bootstrap module.
 - Hybrid: call `tracemind.capture_setup` with `{ "platform": "hybrid" }`; install Web Auto Capture in the WebView document and use the returned local-source native SDK instructions for the shell. Do not create a new event platform: WebView events remain `web` and can carry `sourceDetails.framework` from `data-tracemind-framework`; native shell events remain `ios`, `macos`, or `android`.
 - Mini Program: call `tracemind.capture_setup` with `{ "platform": "mini_program", "provider": "wechat" }` and set provider to `wechat`, `alipay`, `douyin`, or `dingtalk`. Follow the returned local `@tracemind/mini-program` file dependency command. Aliases such as `wechat_mini_program` are normalized to the same SDK. Events use `platform: "mini_program"` and `sourceType: "mini_program"` with `sourceDetails.provider`.
-- Browser Extension: call `tracemind.capture_setup` with `{ "platform": "browser_extension" }`. Aliases such as `chrome_extension`, `edge_extension`, `firefox_extension`, and `web_extension` normalize to the same SDK. Use the returned local `@tracemind/browser-extension` file dependency in extension-owned popup, options, sidebar, and devtools pages; background or service worker contexts support manual capture only. Events use `platform: "browser_extension"` and `sourceType: "browser_extension"` with whitelisted `sourceDetails.browser`, `manifestVersion`, `runtimeContext`, and `sdkVersion`.
+- Browser Extension: call `tracemind.capture_setup` with `{ "platform": "browser_extension" }`. Aliases such as `chrome_extension`, `edge_extension`, `firefox_extension`, and `web_extension` normalize to the same SDK. Use the returned local `@tracemind/browser-extension` file dependency in extension-owned popup, options, sidebar, and devtools pages; background or service worker contexts support manual capture only. Events use `platform: "browser_extension"` and `sourceType: "browser_extension"` with whitelisted `sourceDetails.browser`, `manifestVersion`, `runtimeContext`, `sdkVersion`, and `sdkContentHash`.
 - MCP Node: call `tracemind.capture_setup` with `{ "platform": "mcp_node" }`; install the returned local `@tracemind/mcp-node` file dependency and initialize it around the MCP server object before serving tools.
 - MCP Python: call `tracemind.capture_setup` with `{ "platform": "mcp_python" }`; copy the returned local `tracemind_mcp` package directory, add its vendor parent to `PYTHONPATH` or project packaging source path, and initialize it around the MCP server object before serving tools.
 - Agent Skill: call `tracemind.capture_setup` with `{ "platform": "agent_skill" }`; only instrument executable host agent runtime hooks. A static Skill file cannot auto-capture by itself.
@@ -85,6 +85,17 @@ Use `capture_setup` as the source of truth for current setup details instead of 
 - For Browser Extensions, use the generic `@tracemind/browser-extension` SDK for Chrome, Edge, and Firefox WebExtensions. V1 automatically records extension-owned DOM pages such as popup, options, sidebar, and devtools page; background/service worker code only uses `capture`, `identify`, `submitFeedback`, and `flush`. Do not promise content script no-code capture of host pages.
 - Native Auto Capture should follow the platform-specific `autoCapturedSignals` returned by `capture_setup`: iOS/Android/React Native include app/session start, screen/page view, tap/click, input changed without values, and submit signals; macOS v1 includes app/session start plus window or screen changes.
 - Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
+
+## SDK Upgrade Governance
+
+TraceMind customers may rely entirely on a coding agent. Do not assume they understand SDK package versions.
+
+- For SDK platforms, `tracemind.capture_setup` returns `latestSdk`, `installedSdkManifest`, `installedVersionDetection`, `upgradePolicy`, `upgradeCommands`, and `verificationCommands`.
+- When `distributionMode` is `local_source`, write the returned `installedSdkManifest` to the vendored SDK path as `.tracemind-sdk.json`. Future agents use that file plus `latestSdk.contentHash` to decide whether an upgrade is needed.
+- Treat `contentHash` as the source of truth. `displayVersion` is only human-readable; an unchanged version string does not prove the SDK is current.
+- SDK runtimes report safe source metadata as `sourceDetails.sdkVersion` and `sourceDetails.sdkContentHash`. `tracemind.project_health` may return `sdkUpgradeFindings` when an app reports an older hash or no SDK hash.
+- If TraceMind reports an SDK update, copy the update prompt to the customer coding agent. The agent should call `tracemind.project_health`, read `.tracemind-sdk.json`, call `tracemind.capture_setup({ platform })`, update the vendored SDK, run `verificationCommands`, and report the result.
+- For TraceMind repository work, any SDK runtime change must run `npm run update:sdk-manifest` and `npm run test:sdk-release`. The release gate is authoritative; do not rely on memory or manual version bump discipline.
 
 ## Platform Loading And Network Restrictions
 

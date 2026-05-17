@@ -25,6 +25,10 @@ import {
   summarizeProjectHealthFromDailyReports,
   summarizePresenceSessions,
 } from '../imports/api/tracemind';
+import {
+  SDK_RELEASE_MANIFEST,
+  latestSdkForSetup,
+} from '../imports/api/sdk_release';
 import * as TraceMindApi from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
 import { resolveConsoleState } from '../imports/ui/console_state';
@@ -43,11 +47,18 @@ function assertLocalSourceSetup(setup, vendorPath) {
   assert.strictEqual(setup.structuredContent.publishStatus, 'not_published');
   assert.strictEqual(setup.structuredContent.sdkSourceRepo, 'https://github.com/wolf3c/TraceMind.git');
   assert.strictEqual(setup.structuredContent.customerVendorPath, vendorPath);
-  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('git clone --depth 1 https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source')));
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('git clone --filter=blob:none --no-checkout https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source')));
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('git -C .tracemind-sdk-source fetch --depth 1 origin')));
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('git -C .tracemind-sdk-source checkout --detach FETCH_HEAD')));
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('contentHash') || step.includes('content hash') || step.includes('source hash mismatch')));
   assert.ok(setup.structuredContent.installCommands.some((step) => step.includes(`mkdir -p ${vendorPath}`)));
   assert.ok(setup.structuredContent.installCommands.some((step) => step.includes(` ${vendorPath}/`) || step.includes(` ${vendorPath}`)));
+  const manifestCommand = setup.structuredContent.installCommands.find((step) => step.includes(`${vendorPath}/.tracemind-sdk.json`));
+  assert.ok(manifestCommand?.startsWith('node -e '));
+  assert.ok(manifestCommand.includes('fs.writeFileSync'));
   assert.ok(setup.structuredContent.idempotencyChecks.some((check) => check.includes(vendorPath)));
   assert.ok(!JSON.stringify(setup.structuredContent.installCommands).includes('TraceMind SDK distribution'));
+  assert.ok(!JSON.stringify(setup.structuredContent.installCommands).includes('Write .tracemind-sdk.json'));
 }
 
 function assertLocalJsDependency(setup, vendorPath) {
@@ -56,6 +67,28 @@ function assertLocalJsDependency(setup, vendorPath) {
   assert.ok(setup.structuredContent.installCommands.includes(`pnpm add ./${vendorPath}`));
   assert.ok(setup.structuredContent.installCommands.includes(`yarn add file:./${vendorPath}`));
   assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('do not run npm, pnpm, and yarn together')));
+}
+
+function assertSdkGovernance(setup, sdkName, vendorPath) {
+  const latestSdk = latestSdkForSetup(sdkName);
+  assert.ok(latestSdk, `missing latest SDK manifest for ${sdkName}`);
+  assert.strictEqual(setup.structuredContent.latestSdk.sdkName, sdkName);
+  assert.strictEqual(setup.structuredContent.latestSdk.displayVersion, latestSdk.displayVersion);
+  assert.strictEqual(setup.structuredContent.latestSdk.contentHash, latestSdk.contentHash);
+  assert.strictEqual(setup.structuredContent.latestSdk.sourceRef, latestSdk.sourceRef);
+  assert.deepStrictEqual(setup.structuredContent.latestSdk.verificationCommands, latestSdk.verificationCommands);
+  assert.ok(setup.structuredContent.latestSdk.contentHash.startsWith('sha256:'));
+  assert.ok(setup.structuredContent.installedVersionDetection.manifestPath.includes('.tracemind-sdk.json'));
+  assert.ok(setup.structuredContent.installedVersionDetection.detectionOrder.some((step) => step.includes('contentHash')));
+  assert.ok(setup.structuredContent.upgradePolicy.agentPrompt.includes('coding agent'));
+  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('npm run test:sdk-release')));
+  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes(vendorPath)));
+  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('git -C .tracemind-sdk-source fetch --depth 1 origin')));
+  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('source hash mismatch')));
+  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.startsWith('node -e ') && command.includes(`${vendorPath}/.tracemind-sdk.json`)));
+  assert.strictEqual(setup.structuredContent.installedSdkManifest.sdkName, sdkName);
+  assert.strictEqual(setup.structuredContent.installedSdkManifest.contentHash, latestSdk.contentHash);
+  assert.strictEqual(setup.structuredContent.installedSdkManifest.vendorPath, vendorPath);
 }
 
 describe('TraceMind', function () {
@@ -173,7 +206,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.17.5'));
+      assert.ok(skill.includes('version: 2026.05.17.6'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -212,6 +245,9 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('{ "platform": "browser_extension" }'));
       assert.ok(skill.includes('@tracemind/browser-extension'));
       assert.ok(skill.includes('local-source GitHub clone'));
+      assert.ok(skill.includes('.tracemind-sdk.json'));
+      assert.ok(skill.includes('sdkContentHash'));
+      assert.ok(skill.includes('npm run update:sdk-manifest'));
       assert.ok(skill.includes('PYTHONPATH'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
@@ -222,6 +258,10 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
       assert.ok(snippet.includes('installCommands'));
       assert.ok(snippet.includes('distributionMode: "local_source"'));
+      assert.ok(snippet.includes('.tracemind-sdk.json'));
+      assert.ok(snippet.includes('sdkContentHash'));
+      assert.ok(snippet.includes('latestSdk'));
+      assert.ok(snippet.includes('npm run update:sdk-manifest'));
       assert.ok(snippet.includes('manualCaptureWorkflow'));
       assert.ok(snippet.includes('supported primitives'));
       assert.ok(snippet.includes('attributionSource'));
@@ -239,7 +279,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
       assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.5');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.6');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -261,9 +301,30 @@ describe('TraceMind', function () {
       assert.ok(manifest.platforms.includes('server_python'));
       assert.ok(manifest.platforms.includes('server_http'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_info'));
+      assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
+      assert.ok(manifest.sdkUpgradePolicy.includes('.tracemind-sdk.json'));
+      assert.ok(manifest.sdkUpgradePolicy.includes('sdkContentHash'));
       [skill, snippet, JSON.stringify(manifest)].forEach((content) => {
         assert.ok(!content.includes('tm_mcp_'));
         assert.ok(!content.includes('tracemind.super-tree.com'));
+      });
+    });
+
+    it('keeps the SDK release manifest valid through the release gate', async function () {
+      if (!Meteor.isServer) return;
+
+      assert.ok(Array.isArray(SDK_RELEASE_MANIFEST.sdks));
+      assert.ok(SDK_RELEASE_MANIFEST.sdks.length >= 9);
+      SDK_RELEASE_MANIFEST.sdks.forEach((sdk) => {
+        assert.ok(sdk.sdkName);
+        assert.ok(sdk.displayVersion);
+        assert.ok(sdk.contentHash.startsWith('sha256:'));
+        assert.ok(sdk.minimumSupportedHash.startsWith('sha256:'));
+        assert.ok(sdk.sourceRepo.includes('github.com/wolf3c/TraceMind'));
+        assert.ok(sdk.sourceRef);
+        assert.ok(Array.isArray(sdk.verificationCommands));
+        assert.ok(sdk.verificationCommands.length > 0);
+        assert.ok(sdk.upgradePolicy.agentPrompt.includes('coding agent'));
       });
     });
 
@@ -1086,7 +1147,7 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.5');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.6');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
@@ -1836,6 +1897,9 @@ describe('TraceMind', function () {
       assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
       assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('No package install')));
       assert.notStrictEqual(setup.structuredContent.distributionMode, 'local_source');
+      assert.strictEqual(setup.structuredContent.latestSdk, undefined);
+      assert.strictEqual(setup.structuredContent.installedSdkManifest, undefined);
+      assert.strictEqual(setup.structuredContent.upgradeCommands, undefined);
       assert.ok(setup.structuredContent.filesToEdit.some((file) => file.includes('root layout')));
       assert.ok(setup.structuredContent.idempotencyChecks.some((check) => check.includes('data-tracemind-token')));
       assert.ok(setup.structuredContent.verificationCommands.some((command) => command.includes('query TraceMind')));
@@ -1884,6 +1948,7 @@ describe('TraceMind', function () {
 
       assert.strictEqual(ios.structuredContent.platform, 'ios');
       assertLocalSourceSetup(ios, 'vendor/TraceMind');
+      assertSdkGovernance(ios, 'swift', 'vendor/TraceMind');
       assert.ok(ios.structuredContent.installCommands.some((step) => step.includes('.package(path: "vendor/TraceMind")')));
       assert.ok(ios.structuredContent.dependencyEdits.some((edit) => edit.includes('.product(name: "TraceMind", package: "TraceMind")')));
       assert.ok(ios.structuredContent.install.includes('Swift Package'));
@@ -1905,6 +1970,7 @@ describe('TraceMind', function () {
       assert.strictEqual(macos.structuredContent.platform, 'macos');
       assert.strictEqual(macos.structuredContent.eventPlatform, 'macos');
       assertLocalSourceSetup(macos, 'vendor/TraceMind');
+      assertSdkGovernance(macos, 'swift', 'vendor/TraceMind');
       assert.ok(macos.structuredContent.installCommands.some((step) => step.includes('.package(path: "vendor/TraceMind")')));
       assert.ok(macos.structuredContent.install.includes('Swift Package'));
       assert.ok(macos.structuredContent.installCommands.some((step) => step.includes('sdk/ios')));
@@ -1924,6 +1990,7 @@ describe('TraceMind', function () {
 
       assert.strictEqual(android.structuredContent.platform, 'android');
       assertLocalSourceSetup(android, 'vendor/tracemind-android');
+      assertSdkGovernance(android, 'android', 'vendor/tracemind-android');
       assert.ok(android.structuredContent.installCommands.some((step) => step.includes('include(":tracemind")')));
       assert.ok(android.structuredContent.installCommands.some((step) => step.includes('implementation(project(":tracemind"))')));
       assert.ok(android.structuredContent.install.includes('Gradle'));
@@ -1945,6 +2012,7 @@ describe('TraceMind', function () {
 
       assert.strictEqual(reactNative.structuredContent.platform, 'react_native');
       assertLocalJsDependency(reactNative, 'vendor/tracemind/react-native');
+      assertSdkGovernance(reactNative, 'react_native', 'vendor/tracemind/react-native');
       assert.ok(reactNative.structuredContent.install.includes('@tracemind/react-native'));
       assert.ok(reactNative.structuredContent.packageManagerNotes.some((note) => note.includes('@tracemind/react-native')));
       assert.ok(reactNative.structuredContent.filesToEdit.includes('package.json'));
@@ -1996,6 +2064,9 @@ describe('TraceMind', function () {
       assert.strictEqual(hybrid.structuredContent.eventPlatform, 'web_plus_native');
       assert.strictEqual(hybrid.structuredContent.distributionMode, 'web_snippet_plus_local_source_native');
       assert.strictEqual(hybrid.structuredContent.publishStatus, 'not_published');
+      assert.ok(hybrid.structuredContent.nativeSdkInstallOptions.some((option) => option.latestSdk.sdkName === 'swift'));
+      assert.ok(hybrid.structuredContent.nativeSdkInstallOptions.some((option) => option.latestSdk.sdkName === 'android'));
+      assert.ok(hybrid.structuredContent.upgradeCommands.some((command) => command.includes('.tracemind-sdk.json')));
       assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('vendor/TraceMind')));
       assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('vendor/tracemind-android')));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('/capture.js'));
@@ -2048,6 +2119,7 @@ describe('TraceMind', function () {
       assert.strictEqual(wechat.structuredContent.provider, 'wechat');
       assert.strictEqual(wechat.structuredContent.eventPlatform, 'mini_program');
       assertLocalJsDependency(wechat, 'vendor/tracemind/mini-program');
+      assertSdkGovernance(wechat, 'mini_program', 'vendor/tracemind/mini-program');
       assert.ok(wechat.structuredContent.install.includes('@tracemind/mini-program'));
       assert.ok(wechat.structuredContent.installCommands.some((step) => step.includes('provider: "wechat"')));
       assert.ok(wechat.structuredContent.filesToEdit.some((file) => file.includes('app.js')));
@@ -2101,6 +2173,7 @@ describe('TraceMind', function () {
       assert.strictEqual(extension.structuredContent.platform, 'browser_extension');
       assert.strictEqual(extension.structuredContent.eventPlatform, 'browser_extension');
       assertLocalJsDependency(extension, 'vendor/tracemind/browser-extension');
+      assertSdkGovernance(extension, 'browser_extension', 'vendor/tracemind/browser-extension');
       assert.ok(extension.structuredContent.install.includes('@tracemind/browser-extension'));
       assert.ok(extension.structuredContent.installCommands.some((step) => step.includes('popup')));
       assert.ok(extension.structuredContent.installCommands.some((step) => step.includes('background')));
@@ -2151,6 +2224,7 @@ describe('TraceMind', function () {
       assert.strictEqual(node.structuredContent.platform, 'mcp_node');
       assert.strictEqual(node.structuredContent.eventPlatform, 'server');
       assertLocalJsDependency(node, 'vendor/tracemind/mcp-node');
+      assertSdkGovernance(node, 'mcp_node', 'vendor/tracemind/mcp-node');
       assert.ok(node.structuredContent.initSnippet.includes('TraceMindMCP.start(server'));
       assert.ok(node.structuredContent.initSnippet.includes('projectKey: "tm_proj_mcp_sdk"'));
       assert.ok(node.structuredContent.packageManagerNotes.some((note) => note.includes('@tracemind/mcp-node')));
@@ -2162,6 +2236,7 @@ describe('TraceMind', function () {
       assert.strictEqual(python.structuredContent.platform, 'mcp_python');
       assert.strictEqual(python.structuredContent.eventPlatform, 'server');
       assertLocalSourceSetup(python, 'vendor/tracemind_mcp');
+      assertSdkGovernance(python, 'mcp_python', 'vendor/tracemind_mcp');
       assert.ok(python.structuredContent.installCommands.some((step) => step.includes('PYTHONPATH')));
       assert.ok(!JSON.stringify(python.structuredContent.installCommands).includes('pip install'));
       assert.ok(python.structuredContent.initSnippet.includes('TraceMindMCP.start(server'));
@@ -2206,6 +2281,7 @@ describe('TraceMind', function () {
       assert.strictEqual(node.structuredContent.platform, 'server_node');
       assert.strictEqual(node.structuredContent.eventPlatform, 'server');
       assertLocalJsDependency(node, 'vendor/tracemind/server-node');
+      assertSdkGovernance(node, 'server_node', 'vendor/tracemind/server-node');
       assert.ok(node.structuredContent.initSnippet.includes('TraceMindServer.start'));
       assert.ok(node.structuredContent.initSnippet.includes('projectKey: "tm_proj_server_sdk"'));
       assert.ok(node.structuredContent.manualCaptureExample.includes('TraceMindServer.capture'));
@@ -2216,6 +2292,7 @@ describe('TraceMind', function () {
       assert.strictEqual(python.structuredContent.platform, 'server_python');
       assert.strictEqual(python.structuredContent.eventPlatform, 'server');
       assertLocalSourceSetup(python, 'vendor/tracemind_server');
+      assertSdkGovernance(python, 'server_python', 'vendor/tracemind_server');
       assert.ok(python.structuredContent.installCommands.some((step) => step.includes('PYTHONPATH')));
       assert.ok(!JSON.stringify(python.structuredContent.installCommands).includes('pip install'));
       assert.ok(python.structuredContent.initSnippet.includes('TraceMindServer.start'));
@@ -2225,6 +2302,9 @@ describe('TraceMind', function () {
       assert.strictEqual(http.structuredContent.platform, 'server_http');
       assert.strictEqual(http.structuredContent.eventPlatform, 'server');
       assert.notStrictEqual(http.structuredContent.distributionMode, 'local_source');
+      assert.strictEqual(http.structuredContent.latestSdk, undefined);
+      assert.strictEqual(http.structuredContent.installedSdkManifest, undefined);
+      assert.strictEqual(http.structuredContent.upgradeCommands, undefined);
       assert.ok(http.structuredContent.installCommands.some((step) => step.includes('HTTP client')));
       assert.ok(http.structuredContent.payloadTemplate.projectKey === 'tm_proj_server_sdk');
       assert.strictEqual(http.structuredContent.payloadTemplate.source.type, 'server_app');
@@ -2621,6 +2701,90 @@ describe('TraceMind', function () {
     assert.ok(health.attentionSummary.includes('近 24h'));
   });
 
+  it('surfaces SDK upgrade findings from reported SDK content hashes', function () {
+    const now = new Date('2026-05-09T12:00:00.000Z');
+    const swiftLatest = latestSdkForSetup('swift');
+    const serverLatest = latestSdkForSetup('server_node');
+    const oldHash = `sha256:${'0'.repeat(64)}`;
+    const health = summarizeProjectHealth({
+      events: [
+        {
+          eventType: 'page_view',
+          eventName: 'page_view',
+          userId: 'ios-user',
+          platform: 'ios',
+          sourceType: 'ios',
+          sourceKey: 'com.example.ios',
+          sourceDetails: {
+            framework: 'swift',
+            sdkVersion: swiftLatest.displayVersion,
+            sdkContentHash: oldHash,
+          },
+          path: '/',
+          occurredAt: new Date('2026-05-09T11:00:00.000Z'),
+        },
+        {
+          eventType: 'custom',
+          eventName: 'job_completed',
+          userId: 'server-user',
+          platform: 'server',
+          sourceType: 'server_app',
+          sourceKey: 'billing-api',
+          sourceDetails: {
+            language: 'javascript',
+            sdkVersion: serverLatest.displayVersion,
+            sdkContentHash: serverLatest.contentHash,
+          },
+          path: '/jobs',
+          occurredAt: new Date('2026-05-09T11:10:00.000Z'),
+        },
+        {
+          eventType: 'page_view',
+          eventName: 'page_view',
+          userId: 'web-user',
+          platform: 'web',
+          sourceType: 'web',
+          sourceKey: 'app.example.com',
+          sourceDetails: {},
+          path: '/',
+          occurredAt: new Date('2026-05-09T11:20:00.000Z'),
+        },
+      ],
+      presenceSessions: [
+        {
+          presenceId: 'android-unknown',
+          deviceId: 'android-device',
+          platform: 'android',
+          sourceType: 'android',
+          sourceKey: 'com.example.android',
+          sourceDetails: { framework: 'kotlin' },
+          path: '/',
+          startedAt: new Date('2026-05-09T11:30:00.000Z'),
+          lastSeenAt: new Date('2026-05-09T11:40:00.000Z'),
+          activeDurationMs: 120000,
+        },
+        {
+          presenceId: 'http-server',
+          deviceId: 'server-http',
+          platform: 'server',
+          sourceType: 'server_app',
+          sourceKey: 'raw-http',
+          sourceDetails: { language: 'http' },
+          path: '/webhook',
+          startedAt: new Date('2026-05-09T11:45:00.000Z'),
+          lastSeenAt: new Date('2026-05-09T11:50:00.000Z'),
+          activeDurationMs: 0,
+        },
+      ],
+      now,
+    });
+
+    assert.ok(health.sdkUpgradeFindings.some((finding) => finding.code === 'sdk_update_available' && finding.sdkName === 'swift'));
+    assert.ok(health.sdkUpgradeFindings.some((finding) => finding.code === 'sdk_version_unknown' && finding.sdkName === 'android'));
+    assert.ok(!health.sdkUpgradeFindings.some((finding) => finding.sourceKey === 'app.example.com'));
+    assert.ok(!health.sdkUpgradeFindings.some((finding) => finding.sourceKey === 'raw-http'));
+  });
+
   it('formats daily report health attention copy by selected day', function () {
     const health = summarizeProjectHealthFromDailyReports({
       currentReport: {
@@ -2893,6 +3057,7 @@ describe('TraceMind', function () {
   });
 
   it('normalizes capture sources with cross-platform source fields', function () {
+    const sdkContentHash = `sha256:${'a'.repeat(64)}`;
     assert.deepStrictEqual(
       normalizeCaptureSource({
         source: {
@@ -3001,12 +3166,28 @@ describe('TraceMind', function () {
     );
 
     assert.deepStrictEqual(
-      normalizeCaptureSource({ platform: 'ios', source: { key: 'com.example.app', label: 'Example iOS' } }),
+      normalizeCaptureSource({
+        platform: 'ios',
+        source: {
+          key: 'com.example.app',
+          label: 'Example iOS',
+          details: {
+            framework: 'swift',
+            sdkVersion: '0.1.0',
+            sdkContentHash,
+            token: 'do-not-store',
+          },
+        },
+      }),
       {
         sourceType: 'ios',
         sourceKey: 'com.example.app',
         sourceLabel: 'Example iOS',
-        sourceDetails: {},
+        sourceDetails: {
+          framework: 'swift',
+          sdkVersion: '0.1.0',
+          sdkContentHash,
+        },
       },
     );
 
@@ -3027,14 +3208,14 @@ describe('TraceMind', function () {
           type: 'mcp_server',
           key: 'docs-mcp',
           label: 'Docs MCP',
-          details: { language: 'javascript', runtime: 'node', sdkVersion: '0.1.0' },
+          details: { language: 'javascript', runtime: 'node', sdkVersion: '0.1.0', sdkContentHash },
         },
       }),
       {
         sourceType: 'mcp_server',
         sourceKey: 'docs-mcp',
         sourceLabel: 'Docs MCP',
-        sourceDetails: { language: 'javascript', runtime: 'node', sdkVersion: '0.1.0' },
+        sourceDetails: { language: 'javascript', runtime: 'node', sdkVersion: '0.1.0', sdkContentHash },
       },
     );
 
@@ -3065,6 +3246,8 @@ describe('TraceMind', function () {
           label: 'Example Mini Program',
           details: {
             provider: 'wechat',
+            sdkVersion: '0.1.0',
+            sdkContentHash,
             token: 'do-not-store',
           },
         },
@@ -3073,7 +3256,7 @@ describe('TraceMind', function () {
         sourceType: 'mini_program',
         sourceKey: 'wx123',
         sourceLabel: 'Example Mini Program',
-        sourceDetails: { provider: 'wechat' },
+        sourceDetails: { provider: 'wechat', sdkVersion: '0.1.0', sdkContentHash },
       },
     );
 
@@ -3083,6 +3266,8 @@ describe('TraceMind', function () {
         sourceKey: 'configured-mini-source',
         sourceDetails: {
           provider: 'alipay',
+          sdkVersion: '0.1.0',
+          sdkContentHash,
           requestBody: 'do-not-store',
         },
       }),
@@ -3090,7 +3275,7 @@ describe('TraceMind', function () {
         sourceType: 'mini_program',
         sourceKey: 'configured-mini-source',
         sourceLabel: 'configured-mini-source',
-        sourceDetails: { provider: 'alipay' },
+        sourceDetails: { provider: 'alipay', sdkVersion: '0.1.0', sdkContentHash },
       },
     );
 
@@ -3106,6 +3291,7 @@ describe('TraceMind', function () {
             manifestVersion: 3,
             runtimeContext: 'popup',
             sdkVersion: '0.1.0',
+            sdkContentHash,
             tabUrl: 'https://example.com/page?token=secret',
             token: 'do-not-store',
           },
@@ -3120,6 +3306,7 @@ describe('TraceMind', function () {
           manifestVersion: '3',
           runtimeContext: 'popup',
           sdkVersion: '0.1.0',
+          sdkContentHash,
         },
       },
     );
@@ -3133,6 +3320,7 @@ describe('TraceMind', function () {
           manifestVersion: '3',
           runtimeContext: 'background',
           sdkVersion: '0.1.0',
+          sdkContentHash,
           cookies: 'do-not-store',
         },
       }),
@@ -3145,6 +3333,7 @@ describe('TraceMind', function () {
           manifestVersion: '3',
           runtimeContext: 'background',
           sdkVersion: '0.1.0',
+          sdkContentHash,
         },
       },
     );
@@ -3160,6 +3349,7 @@ describe('TraceMind', function () {
             manifestVersion: '3',
             runtimeContext: 'content_script',
             sdkVersion: '0.1.0',
+            sdkContentHash,
             tabUrl: 'https://example.com/account?token=secret',
             pageContent: 'do-not-store',
           },
@@ -3174,6 +3364,7 @@ describe('TraceMind', function () {
           manifestVersion: '3',
           runtimeContext: 'content_script',
           sdkVersion: '0.1.0',
+          sdkContentHash,
         },
       },
     );

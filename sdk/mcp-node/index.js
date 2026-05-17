@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 
 const SDK_VERSION = '0.1.0';
+const SDK_CONTENT_HASH = 'sha256:14771368102e2278847c81f05d89d2bb3399693abd0c568e291a6564307e3736';
 const DEFAULT_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/capture';
 const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawargs|rawarguments|toolarguments|rawresult|toolresult|resourcecontent|token|secret|password|email|phone|input|enteredtext)/i;
 
@@ -91,6 +92,7 @@ function createTraceMindMcpClient(options = {}) {
         language: 'javascript',
         runtime: `node ${process.version}`,
         sdkVersion: SDK_VERSION,
+        sdkContentHash: SDK_CONTENT_HASH,
         ...details,
       },
     };

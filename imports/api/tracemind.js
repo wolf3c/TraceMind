@@ -1,4 +1,5 @@
 import { Mongo } from 'meteor/mongo';
+import { cleanSdkContentHash, sdkUpgradeFindingsForRecords } from './sdk_release';
 
 export const Developers = new Mongo.Collection('tracemind_developers');
 export const Projects = new Mongo.Collection('tracemind_projects');
@@ -146,6 +147,23 @@ function cleanFramework(value) {
   return /^[a-z][a-z0-9_-]{0,39}$/.test(framework) ? framework : '';
 }
 
+function cleanSdkVersion(value) {
+  const version = cleanString(value, 80);
+  return /^[A-Za-z0-9._+-]{1,80}$/.test(version) ? version : '';
+}
+
+function sourceGovernanceDetails(sourceDetails = {}) {
+  const input = safeObject(sourceDetails);
+  const framework = cleanFramework(input.framework);
+  const sdkVersion = cleanSdkVersion(input.sdkVersion);
+  const sdkContentHash = cleanSdkContentHash(input.sdkContentHash);
+  return {
+    ...(framework ? { framework } : {}),
+    ...(sdkVersion ? { sdkVersion } : {}),
+    ...(sdkContentHash ? { sdkContentHash } : {}),
+  };
+}
+
 function cleanMiniProgramProvider(value) {
   const provider = cleanString(value, 40).toLowerCase();
   return ['wechat', 'alipay', 'douyin', 'dingtalk'].includes(provider) ? provider : '';
@@ -171,13 +189,27 @@ function browserExtensionSourceDetails(sourceDetails = {}) {
   const browser = cleanBrowserExtensionBrowser(input.browser);
   const manifestVersion = cleanBrowserExtensionVersion(input.manifestVersion);
   const runtimeContext = cleanBrowserExtensionRuntimeContext(input.runtimeContext);
-  const sdkVersion = cleanBrowserExtensionVersion(input.sdkVersion);
+  const sdkVersion = cleanSdkVersion(input.sdkVersion);
+  const sdkContentHash = cleanSdkContentHash(input.sdkContentHash);
   return {
     ...(browser ? { browser } : {}),
     ...(manifestVersion ? { manifestVersion } : {}),
     ...(runtimeContext ? { runtimeContext } : {}),
     ...(sdkVersion ? { sdkVersion } : {}),
+    ...(sdkContentHash ? { sdkContentHash } : {}),
   };
+}
+
+function serverRuntimeSourceDetails(sourceDetails = {}) {
+  const input = safeObject(sourceDetails);
+  const details = {
+    ...sourceGovernanceDetails(input),
+  };
+  ['language', 'runtime', 'environment', 'mcpFramework', 'hostRuntime', 'version'].forEach((key) => {
+    const value = cleanString(input[key], 120);
+    if (/^[A-Za-z0-9][A-Za-z0-9 ._:+/-]{0,119}$/.test(value)) details[key] = value;
+  });
+  return details;
 }
 
 function safeObject(value, maxBytes = 4096) {
@@ -299,13 +331,22 @@ export function normalizeCaptureSource(payload = {}, headers = {}) {
       200,
       'unknown',
     );
-    const provider = cleanMiniProgramProvider(safeObject(source.details).provider)
-      || cleanMiniProgramProvider(safeObject(payload.sourceDetails).provider);
+    const inputDetails = {
+      ...safeObject(payload.sourceDetails),
+      ...safeObject(source.details),
+    };
+    const provider = cleanMiniProgramProvider(inputDetails.provider);
+    const sdkVersion = cleanSdkVersion(inputDetails.sdkVersion);
+    const sdkContentHash = cleanSdkContentHash(inputDetails.sdkContentHash);
     return {
       sourceType,
       sourceKey,
       sourceLabel: cleanString(source.label || payload.sourceLabel || sourceKey, 200, sourceKey),
-      sourceDetails: provider ? { provider } : {},
+      sourceDetails: {
+        ...(provider ? { provider } : {}),
+        ...(sdkVersion ? { sdkVersion } : {}),
+        ...(sdkContentHash ? { sdkContentHash } : {}),
+      },
     };
   }
 
@@ -335,7 +376,15 @@ export function normalizeCaptureSource(payload = {}, headers = {}) {
     sourceType,
     sourceKey,
     sourceLabel: cleanString(source.label || payload.sourceLabel || sourceKey, 200, sourceKey),
-    sourceDetails: safeObject(source.details || payload.sourceDetails),
+    sourceDetails: ['ios', 'macos', 'android'].includes(sourceType)
+      ? sourceGovernanceDetails({
+        ...safeObject(payload.sourceDetails),
+        ...safeObject(source.details),
+      })
+      : serverRuntimeSourceDetails({
+        ...safeObject(payload.sourceDetails),
+        ...safeObject(source.details),
+      }),
   };
 }
 
@@ -1038,6 +1087,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
   const durationPaths = new Map();
   const bounceSessions = new Map();
   const trafficRecords = [];
+  const sdkRecords = [];
   let failureEventCount = 0;
   let lastEventAt = null;
   let eventCount = 0;
@@ -1045,6 +1095,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
   events.forEach((event) => {
     const occurredAt = eventTime(event);
     if (!occurredAt || occurredAt < windowStart || occurredAt >= windowEnd) return;
+    sdkRecords.push(event);
     const actorId = actorIdForEvent(event);
     if (actorId) activeUsers.add(actorId);
     increment(eventCounts, eventLabel(event));
@@ -1081,6 +1132,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     );
     windowSessions.push(session);
     trafficRecords.push(session);
+    sdkRecords.push(session);
     const actorId = actorIdForHealthPresence(session);
     const path = session.path || session.screen || '/';
     const source = session.sourceLabel || session.sourceKey || session.platform || 'Unknown';
@@ -1131,6 +1183,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     topDurationUsers: topDurations(durationUsers, 3),
     topDurationPaths: topDurations(durationPaths, 3),
     topBouncePages: topBouncePagesForSessions(bounceSessions, 3),
+    sdkUpgradeFindings: sdkUpgradeFindingsForRecords(sdkRecords),
   };
 }
 
@@ -1176,6 +1229,7 @@ function emptyHealthWindow() {
     topDurationUsers: [],
     topDurationPaths: [],
     topBouncePages: [],
+    sdkUpgradeFindings: [],
     newUsers: 0,
     retention: Object.fromEntries(
       HEALTH_RETENTION_DAYS.map((day) => [`d${day}`, { sampleSize: 0, retainedUsers: 0, rate: null }]),
@@ -1295,6 +1349,7 @@ export function summarizeProjectHealthForWindow({
   );
 
   const attentionItems = attentionItemsForHealth(current, previous, windowEnd);
+  const sdkUpgradeFindings = current.sdkUpgradeFindings || [];
 
   return {
     window: {
@@ -1304,9 +1359,10 @@ export function summarizeProjectHealthForWindow({
       previousEnd: resolvedPreviousEnd,
       retentionDays: HEALTH_RETENTION_DAYS,
     },
-    status: attentionItems.length ? 'needs_attention' : 'normal',
-    attentionSummary: attentionItems[0]?.message || '',
+    status: attentionItems.length || sdkUpgradeFindings.length ? 'needs_attention' : 'normal',
+    attentionSummary: attentionItems[0]?.message || sdkUpgradeFindings[0]?.message || '',
     attentionItems,
+    sdkUpgradeFindings,
     current,
     previous,
     trends: {
@@ -1341,6 +1397,7 @@ export function summarizeProjectHealthFromDailyReports({
   const attentionItems = attentionItemsForHealth(current, previous, currentEnd || new Date(), {
     comparisonWindow: 'day',
   });
+  const sdkUpgradeFindings = current.sdkUpgradeFindings || [];
 
   return {
     window: {
@@ -1354,9 +1411,10 @@ export function summarizeProjectHealthFromDailyReports({
       timezone: DAILY_REPORT_TIMEZONE,
       retentionDays: HEALTH_RETENTION_DAYS,
     },
-    status: attentionItems.length ? 'needs_attention' : 'normal',
-    attentionSummary: attentionItems[0]?.message || '',
+    status: attentionItems.length || sdkUpgradeFindings.length ? 'needs_attention' : 'normal',
+    attentionSummary: attentionItems[0]?.message || sdkUpgradeFindings[0]?.message || '',
     attentionItems,
+    sdkUpgradeFindings,
     current,
     previous,
     trends: {

@@ -11,6 +11,7 @@ import uuid
 
 
 SDK_VERSION = "0.1.0"
+SDK_CONTENT_HASH = "sha256:e13435d521ce6a41e19e0e6e835f0ddfa8a3f14c877fca57df4f5b8b163ae573"
 DEFAULT_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/capture"
 FORBIDDEN_FIELD_PATTERN = re.compile(
     r"(rawprompt|rawusercontent|rawargs|rawarguments|toolarguments|rawresult|toolresult|resourcecontent|token|secret|password|email|phone|input|enteredtext)",
@@ -119,6 +120,7 @@ class TraceMindMCPClient:
                 "language": "python",
                 "runtime": "python",
                 "sdkVersion": SDK_VERSION,
+                "sdkContentHash": SDK_CONTENT_HASH,
                 **(details or {}),
             },
         }

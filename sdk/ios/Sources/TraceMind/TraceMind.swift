@@ -1,5 +1,10 @@
 import Foundation
 
+public enum TraceMindSDK {
+  public static let version = "0.1.0"
+  public static let contentHash = "sha256:d0a917437df6b2525574bf4913151eb21bacf6abd99f56d25ba00fb155017185"
+}
+
 public struct TraceMindConfiguration {
   public let projectKey: String
   public let endpoint: URL
@@ -8,6 +13,8 @@ public struct TraceMindConfiguration {
   public let sourceKey: String
   public let sourceLabel: String
   public let framework: String
+  public let sdkVersion: String
+  public let sdkContentHash: String
 
   public init(
     projectKey: String,
@@ -16,7 +23,9 @@ public struct TraceMindConfiguration {
     feedbackEndpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/user-feedback")!,
     sourceKey: String = Bundle.main.bundleIdentifier ?? "unknown",
     sourceLabel: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? Bundle.main.bundleIdentifier ?? "unknown",
-    framework: String = "swift"
+    framework: String = "swift",
+    sdkVersion: String = TraceMindSDK.version,
+    sdkContentHash: String = TraceMindSDK.contentHash
   ) {
     self.projectKey = projectKey
     self.endpoint = endpoint
@@ -25,6 +34,8 @@ public struct TraceMindConfiguration {
     self.sourceKey = sourceKey
     self.sourceLabel = sourceLabel
     self.framework = framework
+    self.sdkVersion = sdkVersion
+    self.sdkContentHash = sdkContentHash
   }
 }
 
@@ -508,6 +519,14 @@ public final class TraceMindClient {
   private var activeStartedAt: Date?
   private var lastActiveAt: Date?
 
+  private var sourceDetails: [String: String] {
+    [
+      "framework": configuration.framework,
+      "sdkVersion": configuration.sdkVersion,
+      "sdkContentHash": configuration.sdkContentHash,
+    ]
+  }
+
   public init(
     configuration: TraceMindConfiguration,
     identityStore: TraceMindIdentityStore = UserDefaultsIdentityStore(),
@@ -552,7 +571,7 @@ public final class TraceMindClient {
         bundleId: configuration.sourceKey,
         packageName: nil,
         label: configuration.sourceLabel,
-        details: ["framework": configuration.framework]
+        details: sourceDetails
       ),
       type: type,
       eventName: eventName,
@@ -602,7 +621,7 @@ public final class TraceMindClient {
         bundleId: configuration.sourceKey,
         packageName: nil,
         label: configuration.sourceLabel,
-        details: ["framework": configuration.framework]
+        details: sourceDetails
       ),
       path: screen,
       title: title,
@@ -641,7 +660,7 @@ public final class TraceMindClient {
         bundleId: configuration.sourceKey,
         packageName: nil,
         label: configuration.sourceLabel,
-        details: ["framework": configuration.framework]
+        details: sourceDetails
       ),
       path: path ?? currentScreen,
       title: title,
@@ -934,7 +953,10 @@ public enum TraceMind {
 
   public static func start(
     projectKey: String,
-    endpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/capture")!
+    endpoint: URL = URL(string: "https://tracemind.sandbox.galaxycloud.app/api/capture")!,
+    framework: String = "swift",
+    sdkVersion: String = TraceMindSDK.version,
+    sdkContentHash: String = TraceMindSDK.contentHash
   ) {
     let presenceEndpoint = derivedEndpoint(from: endpoint, replacing: "/api/presence", fallback: defaultPresenceEndpoint)
     let feedbackEndpoint = derivedEndpoint(from: endpoint, replacing: "/api/user-feedback", fallback: defaultFeedbackEndpoint)
@@ -942,7 +964,10 @@ public enum TraceMind {
       projectKey: projectKey,
       endpoint: endpoint,
       presenceEndpoint: presenceEndpoint,
-      feedbackEndpoint: feedbackEndpoint
+      feedbackEndpoint: feedbackEndpoint,
+      framework: framework,
+      sdkVersion: sdkVersion,
+      sdkContentHash: sdkContentHash
     ))
     client = nextClient
     TraceMindAutoCapture.start(client: nextClient)

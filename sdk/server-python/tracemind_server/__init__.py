@@ -8,6 +8,7 @@ import uuid
 
 
 SDK_VERSION = "0.1.0"
+SDK_CONTENT_HASH = "sha256:25af77eb59bf420a8e6ac6a721aea03002c5d9b2ae673a4f33d351f8dad31969"
 DEFAULT_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/capture"
 DEFAULT_FEEDBACK_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/user-feedback"
 FORBIDDEN_FIELD_PATTERN = re.compile(
@@ -224,6 +225,7 @@ class TraceMindServerClient:
                 "language": "python",
                 "runtime": "python",
                 "sdkVersion": SDK_VERSION,
+                "sdkContentHash": SDK_CONTENT_HASH,
             },
         }
 

@@ -1,3 +1,5 @@
+const SDK_VERSION = '0.1.0';
+const SDK_CONTENT_HASH = 'sha256:2eaa878c4adce521b7d1f34a77d66713f9e361857df54f69610fe0930b68544a';
 const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|token|secret|password|email|phone|input|enteredtext)/i;
 const FEEDBACK_FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|sourcecode|sourcediff|codediff|toolarguments|toolresult|resourcecontent)/i;
 const FULL_QUERY_URL_PATTERN = /https?:\/\/[^\s?#]+[^\s]*\?[^\s"'<>)]*/i;
@@ -148,7 +150,11 @@ function createTraceMindClient({ nativeModule, platform } = {}) {
       resolvedNativeModule.start({
         projectKey,
         endpoint,
-        deviceInfo: { framework: 'react_native' },
+        deviceInfo: {
+          framework: 'react_native',
+          sdkVersion: SDK_VERSION,
+          sdkContentHash: SDK_CONTENT_HASH,
+        },
       });
     },
 
@@ -169,6 +175,8 @@ function createTraceMindClient({ nativeModule, platform } = {}) {
         deviceInfo: {
           ...(payload.deviceInfo || {}),
           framework: 'react_native',
+          sdkVersion: SDK_VERSION,
+          sdkContentHash: SDK_CONTENT_HASH,
         },
       });
     },
@@ -202,6 +210,8 @@ function createTraceMindClient({ nativeModule, platform } = {}) {
         deviceInfo: {
           ...(payload.deviceInfo || {}),
           framework: 'react_native',
+          sdkVersion: SDK_VERSION,
+          sdkContentHash: SDK_CONTENT_HASH,
         },
       });
     },
