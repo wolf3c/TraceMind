@@ -1,6 +1,6 @@
 ---
 name: tracemind-daily-customer-acquisition
-description: Use when the user asks to run TraceMind daily customer acquisition, seed-customer operations, social outreach, reply/comment outreach, retrospective review, or to execute yesterday's acquisition plan and prepare tomorrow's plan. Reads TraceMind docs, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, or similar platforms when needed, records progress, compares today's and yesterday's operating results, optimizes the acquisition workflow, and creates the next-day workplan.
+description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, or similar platforms when needed, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
 ---
 
 # TraceMind Daily Customer Acquisition
@@ -9,7 +9,9 @@ Run TraceMind's daily seed-customer acquisition workflow from the repository doc
 
 ## Core Rule
 
-When the user invokes this skill, treat that as authorization to execute the documented daily acquisition plan, including checking social platforms and sending public replies that clearly match the plan's outreach rules.
+When the user invokes this skill, first resolve the requested run mode. If the user names a mode, run only that slice. If the user says to run the daily workflow or gives no mode, use `full-day`.
+
+Treat the chosen mode as authorization to execute the documented acquisition plan inside that scope, including checking social platforms and sending public replies that clearly match the plan's outreach rules.
 
 Still pause for confirmation before:
 
@@ -37,7 +39,62 @@ Use the latest dated files when multiple exist. If no current workplan exists, c
 - X communities can produce more attention than ordinary profile posts when the community is tightly matched to TraceMind's ICP. When a relevant X community is already covered by the plan, prioritize community-native posts and replies before standalone profile posts, while still following community rules and avoiding duplicate shilling. Record community engagement separately from main-profile X posts.
 - In X/community copy, lead with `Codex`, `Claude Code`, `Cursor`, and `Trae` because they have stronger recognition and larger user bases among AI coding builders. Treat `Lovable`, `Base44`, `Bolt`, and `Replit` as optional secondary examples for no-code or weak-technical vibe coding segments. Do not make Lovable/Base44/Bolt/Replit the main examples unless the day's ICP experiment explicitly targets those builders.
 
+## Run Modes
+
+Use one of these modes so the skill can run multiple times per day without repeating the entire workflow.
+
+### `morning-review`
+
+Use for the first check of the day.
+
+- Read yesterday's latest workplan and progress.
+- Check replies, likes, follows, comments, and visible engagement on already-posted content.
+- Classify signals as `high`, `medium`, `low`, `not_fit`, or `no_response`.
+- Reply only to `high` or clearly promising `medium` interactions.
+- Update `docs/customer_acquisition_progress.md` and target statuses.
+- Do not create a new tomorrow plan unless the user asks.
+
+### `outreach-block`
+
+Use for a focused 30-90 minute block of finding posts, recommending TraceMind, and replying publicly.
+
+- Read the latest workplan, target list, and messaging doc.
+- Search only the channels or keywords requested by the user; if none are specified, use the workplan priorities.
+- Send only high-relevance public replies that satisfy the reply rules.
+- Record every contacted or skipped candidate with status and reason.
+- End with a short note on which channel looked most promising.
+- Do not run a full retrospective or write tomorrow's plan.
+
+### `post-publish`
+
+Use when the user asks to publish a specific public post or community post.
+
+- Draft or reuse the approved post copy.
+- Prefer X communities over main-profile posts when the community is relevant and already covered by the plan.
+- Confirm before posting only when the copy is new, risky, or not already approved.
+- After publishing, record URL, channel, copy version, visible engagement if available, and any blockers.
+- Do not search for new candidates unless the user asks.
+
+### `end-of-day-retro`
+
+Use near the end of the day.
+
+- Read today's progress and target docs.
+- Compare planned work against actual output and visible engagement.
+- Identify what worked, what did not, best channel, best wording, best ICP signal, and weakest assumption.
+- Update `docs/customer_acquisition_progress.md`, `docs/social_reply_targets_YYYY-MM-DD.md`, and `docs/customer_messaging.md` only if wording changed.
+- Create or update tomorrow's workplan.
+- Do not send new outreach unless the user explicitly asks.
+
+### `full-day`
+
+Use when the user asks for the complete daily run or gives no mode.
+
+- Run the full workflow below: review plan, check feedback, reply to high-intent interactions, do one outreach block, handle screenshot follow-up, update progress, run retrospective, and create tomorrow's workplan.
+
 ## Daily Workflow
+
+Use this full sequence only for `full-day`. For other modes, run the relevant subset from `Run Modes`.
 
 ### 1. Establish Today And Yesterday
 
@@ -260,6 +317,7 @@ Tomorrow's plan should be executable without reading the entire chat history.
 
 Keep the final response short and operational:
 
+- Mode used.
 - What was checked.
 - What was sent.
 - What was updated.
