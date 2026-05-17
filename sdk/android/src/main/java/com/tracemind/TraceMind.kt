@@ -43,7 +43,10 @@ object TraceMind {
     projectKey: String,
     endpoint: String = DEFAULT_CAPTURE_ENDPOINT,
     presenceEndpoint: String = derivedEndpoint(endpoint, "/api/presence", DEFAULT_PRESENCE_ENDPOINT),
-    feedbackEndpoint: String = derivedEndpoint(endpoint, "/api/user-feedback", DEFAULT_FEEDBACK_ENDPOINT)
+    feedbackEndpoint: String = derivedEndpoint(endpoint, "/api/user-feedback", DEFAULT_FEEDBACK_ENDPOINT),
+    framework: String = "kotlin",
+    sdkVersion: String = TraceMindSDK.VERSION,
+    sdkContentHash: String = TraceMindSDK.CONTENT_HASH
   ) {
     client = TraceMindClient(
       projectKey = projectKey,
@@ -52,6 +55,9 @@ object TraceMind {
       feedbackEndpoint = feedbackEndpoint,
       packageName = application.packageName,
       appLabel = application.applicationInfo.loadLabel(application.packageManager).toString(),
+      framework = framework,
+      sdkVersion = sdkVersion,
+      sdkContentHash = sdkContentHash,
       identityStore = SharedPreferencesIdentityStore(
         application.getSharedPreferences("tracemind_identity", Context.MODE_PRIVATE)
       )
@@ -111,6 +117,9 @@ class TraceMindClient(
   private val feedbackEndpoint: String = derivedEndpoint(endpoint, "/api/user-feedback", DEFAULT_FEEDBACK_ENDPOINT),
   packageName: String,
   appLabel: String,
+  framework: String = "kotlin",
+  sdkVersion: String = TraceMindSDK.VERSION,
+  sdkContentHash: String = TraceMindSDK.CONTENT_HASH,
   identityStore: TraceMindIdentityStore? = null,
   private val maxQueueSize: Int = 100,
   private val presenceSender: ((TraceMindPresencePayload) -> Unit)? = null,
@@ -125,6 +134,9 @@ class TraceMindClient(
     projectKey = projectKey,
     packageName = packageName,
     appLabel = appLabel,
+    framework = framework,
+    sdkVersion = sdkVersion,
+    sdkContentHash = sdkContentHash,
     identityStore = identityStore ?: InMemoryIdentityStore(
       sessionId = "tm_sess_${uuid()}",
       anonymousId = "tm_anon_${uuid()}",

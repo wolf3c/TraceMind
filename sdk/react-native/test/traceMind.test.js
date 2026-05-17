@@ -2,6 +2,12 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createTraceMindClient } = require('../index');
 
+function assertReactNativeDeviceInfo(deviceInfo) {
+  assert.equal(deviceInfo.framework, 'react_native');
+  assert.equal(deviceInfo.sdkVersion, '0.1.0');
+  assert.match(deviceInfo.sdkContentHash, /^sha256:[a-f0-9]{64}$/);
+}
+
 test('starts native TraceMind with a one-line project key config', () => {
   const calls = [];
   const client = createTraceMindClient({
@@ -15,11 +21,10 @@ test('starts native TraceMind with a one-line project key config', () => {
 
   client.start({ projectKey: 'tm_proj_rn' });
 
-  assert.deepEqual(calls, [['start', {
-    projectKey: 'tm_proj_rn',
-    endpoint: undefined,
-    deviceInfo: { framework: 'react_native' },
-  }]]);
+  assert.equal(calls[0][0], 'start');
+  assert.equal(calls[0][1].projectKey, 'tm_proj_rn');
+  assert.equal(calls[0][1].endpoint, undefined);
+  assertReactNativeDeviceInfo(calls[0][1].deviceInfo);
 });
 
 test('sends custom events through the native SDK without raw user content', () => {
@@ -61,7 +66,7 @@ test('sends custom events through the native SDK without raw user content', () =
   assert.equal(calls[0][2].eventName, 'plan_selected');
   assert.deepEqual(calls[0][2].properties, { plan: 'pro', amount: 29, ratio: 1.5, trial: true });
   assert.deepEqual(calls[0][2].context, { source: 'pricing', retry: false });
-  assert.deepEqual(calls[0][2].deviceInfo, { framework: 'react_native' });
+  assertReactNativeDeviceInfo(calls[0][2].deviceInfo);
 });
 
 test('passes action correlation fields through to the native SDK', () => {
@@ -86,7 +91,7 @@ test('passes action correlation fields through to the native SDK', () => {
   assert.equal(calls[0][2].relatedActionKey, 'android:ProjectScreen:submit:target:resourceId:create_project');
   assert.equal(calls[0][2].relatedTargetHash, 'tm_target_create_project');
   assert.equal(calls[0][2].correlationId, 'corr_123');
-  assert.deepEqual(calls[0][2].deviceInfo, { framework: 'react_native' });
+  assertReactNativeDeviceInfo(calls[0][2].deviceInfo);
 });
 
 test('passes sanitized traffic attribution controls through to the native SDK', () => {
@@ -218,7 +223,7 @@ test('submits user feedback through the native SDK bridge', () => {
   assert.equal(calls[0][1].message.contact.email, 'user@example.com');
   assert.deepEqual(calls[0][1].message.fields, { plan: 'pro' });
   assert.deepEqual(calls[0][1].message.attachments, []);
-  assert.deepEqual(calls[0][1].deviceInfo, { framework: 'react_native' });
+  assertReactNativeDeviceInfo(calls[0][1].deviceInfo);
   assert.equal(JSON.stringify(calls[0][1]).includes('do not send'), false);
   assert.equal(JSON.stringify(calls[0][1]).includes('callback?token'), false);
 });
@@ -239,5 +244,5 @@ test('keeps React Native as a native SDK proxy without its own platform value', 
   assert.equal(client.platform, 'android');
   assert.equal(client.presence, undefined);
   assert.equal(calls[0].platform, undefined);
-  assert.deepEqual(calls[0].deviceInfo, { framework: 'react_native' });
+  assertReactNativeDeviceInfo(calls[0].deviceInfo);
 });

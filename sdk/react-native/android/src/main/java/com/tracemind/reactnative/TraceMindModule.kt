@@ -18,10 +18,14 @@ class TraceMindModule(
   @ReactMethod
   fun start(config: ReadableMap) {
     val projectKey = config.getString("projectKey") ?: return
+    val deviceInfo = if (config.hasKey("deviceInfo")) config.getMap("deviceInfo") else null
     TraceMind.start(
       application = reactContext.applicationContext as android.app.Application,
       projectKey = projectKey,
-      endpoint = if (config.hasKey("endpoint")) config.getString("endpoint") ?: DEFAULT_ENDPOINT else DEFAULT_ENDPOINT
+      endpoint = if (config.hasKey("endpoint")) config.getString("endpoint") ?: DEFAULT_ENDPOINT else DEFAULT_ENDPOINT,
+      framework = deviceInfo?.let { readString(it, "framework") } ?: "react_native",
+      sdkVersion = deviceInfo?.let { readString(it, "sdkVersion") } ?: com.tracemind.TraceMindSDK.VERSION,
+      sdkContentHash = deviceInfo?.let { readString(it, "sdkContentHash") } ?: com.tracemind.TraceMindSDK.CONTENT_HASH
     )
   }
 

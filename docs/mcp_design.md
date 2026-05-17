@@ -262,7 +262,7 @@ Output:
 
 ### `tracemind.capture_setup`
 
-返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主，浏览器插件使用通用 WebExtension SDK。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
+返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主，浏览器插件使用通用 WebExtension SDK。SDK 平台当前不假设包已发布到 registry；返回 `distributionMode: "local_source"` 时，agent 必须按返回的 GitHub clone、`vendor/` 复制、本地依赖、SwiftPM local path、Gradle module 或 PYTHONPATH 指令执行，并把 `installedSdkManifest` 写入 vendored SDK 目录的 `.tracemind-sdk.json`。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
 
 Input:
 
@@ -274,6 +274,8 @@ Input:
 ```
 
 `platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`hybrid`、`mini_program`、`browser_extension`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。`mini_program` 可选 `provider`：`wechat`、`alipay`、`douyin`、`dingtalk`；别名 `wechat_mini_program`、`alipay_mini_program`、`douyin_mini_program`、`dingtalk_mini_program` 会归一为 `mini_program + provider`。浏览器插件别名 `chrome_extension`、`edge_extension`、`firefox_extension`、`web_extension` 会归一为 `browser_extension`。
+
+SDK 平台还会返回升级治理字段：`latestSdk.displayVersion`、`latestSdk.contentHash`、`latestSdk.sourceRef`、`installedVersionDetection`、`upgradePolicy`、`upgradeCommands` 和 `verificationCommands`。`contentHash` 是判断升级的硬依据，`displayVersion` 只用于展示。SDK runtime 通过白名单 `sourceDetails.sdkVersion` 和 `sourceDetails.sdkContentHash` 上报安全 metadata；`tracemind.project_health` 会在 hash 落后或未知时返回 `sdkUpgradeFindings`，让客户把更新 prompt 交给 coding agent 执行。
 
 Output:
 
@@ -322,9 +324,17 @@ Native 示例：
   "projectKey": "tm_proj_xxx",
   "platform": "ios",
   "eventPlatform": "ios",
-  "install": "Add the TraceMind Swift Package from sdk/ios, then import TraceMind in your App entrypoint.",
+  "distributionMode": "local_source",
+  "publishStatus": "not_published",
+  "sdkSourceRepo": "https://github.com/wolf3c/TraceMind.git",
+  "sdkSourcePath": "sdk/ios",
+  "customerVendorPath": "vendor/TraceMind",
+  "install": "Vendor the TraceMind Swift Package from the TraceMind GitHub source repo, add it as a local Swift Package, then import TraceMind in your App entrypoint.",
   "installCommands": [
-    "Add the TraceMind Swift Package from the TraceMind SDK distribution; in this repo the package is sdk/ios.",
+    "test -d .tracemind-sdk-source || git clone --depth 1 https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source",
+    "mkdir -p vendor/TraceMind",
+    "cp -R .tracemind-sdk-source/sdk/ios/. vendor/TraceMind/",
+    "For Package.swift apps, add dependencies: [.package(path: \"vendor/TraceMind\")] and target dependency .product(name: \"TraceMind\", package: \"TraceMind\").",
     "Import TraceMind in App.swift, AppDelegate.swift, or the app startup file that owns launch."
   ],
   "filesToEdit": [
@@ -357,9 +367,15 @@ macOS 示例：
   "projectKey": "tm_proj_xxx",
   "platform": "macos",
   "eventPlatform": "macos",
-  "install": "Add the TraceMind Swift Package from sdk/ios, then initialize TraceMind once from the macOS app bootstrap.",
+  "distributionMode": "local_source",
+  "publishStatus": "not_published",
+  "sdkSourceRepo": "https://github.com/wolf3c/TraceMind.git",
+  "install": "Vendor the TraceMind Swift Package from the TraceMind GitHub source repo, add it as a local Swift Package, then initialize TraceMind once from the macOS app bootstrap.",
   "installCommands": [
-    "Add the TraceMind Swift Package from the TraceMind SDK distribution; in this repo the package is sdk/ios.",
+    "test -d .tracemind-sdk-source || git clone --depth 1 https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source",
+    "mkdir -p vendor/TraceMind",
+    "cp -R .tracemind-sdk-source/sdk/ios/. vendor/TraceMind/",
+    "For Package.swift apps, add dependencies: [.package(path: \"vendor/TraceMind\")] and target dependency .product(name: \"TraceMind\", package: \"TraceMind\").",
     "Import TraceMind in App.swift, AppDelegate.swift, or the app startup file that owns launch."
   ],
   "initSnippet": "TraceMind.start(projectKey: \"tm_proj_xxx\")",
@@ -395,8 +411,16 @@ Native 和 React Native 返回还包含：
   "platform": "mini_program",
   "provider": "wechat",
   "eventPlatform": "mini_program",
+  "distributionMode": "local_source",
+  "publishStatus": "not_published",
   "installCommands": [
-    "Install @tracemind/mini-program from the TraceMind SDK distribution; in this repo the package is sdk/mini-program.",
+    "test -d .tracemind-sdk-source || git clone --depth 1 https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source",
+    "mkdir -p vendor/tracemind/mini-program",
+    "cp -R .tracemind-sdk-source/sdk/mini-program/. vendor/tracemind/mini-program/",
+    "npm install ./vendor/tracemind/mini-program",
+    "pnpm add ./vendor/tracemind/mini-program",
+    "yarn add file:./vendor/tracemind/mini-program",
+    "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together.",
     "Initialize TraceMind once in app.js with provider: \"wechat\"."
   ],
   "initSnippet": "import { TraceMind } from \"@tracemind/mini-program\";\n\nTraceMind.start({\n  projectKey: \"tm_proj_xxx\",\n  provider: \"wechat\",\n  appId: \"your-mini-program-app-id\",\n  appName: \"Your Mini Program\"\n});",
@@ -429,8 +453,16 @@ Native 和 React Native 返回还包含：
   "projectKey": "tm_proj_xxx",
   "platform": "browser_extension",
   "eventPlatform": "browser_extension",
+  "distributionMode": "local_source",
+  "publishStatus": "not_published",
   "installCommands": [
-    "Install @tracemind/browser-extension from the TraceMind SDK distribution; in this repo the package is sdk/browser-extension.",
+    "test -d .tracemind-sdk-source || git clone --depth 1 https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source",
+    "mkdir -p vendor/tracemind/browser-extension",
+    "cp -R .tracemind-sdk-source/sdk/browser-extension/. vendor/tracemind/browser-extension/",
+    "npm install ./vendor/tracemind/browser-extension",
+    "pnpm add ./vendor/tracemind/browser-extension",
+    "yarn add file:./vendor/tracemind/browser-extension",
+    "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together.",
     "Initialize TraceMind once in extension-owned popup, options, sidebar, or devtools pages; background/service worker contexts use manual capture only."
   ],
   "initSnippet": "import { TraceMind } from \"@tracemind/browser-extension\";\n\nTraceMind.start({\n  projectKey: \"tm_proj_xxx\",\n  extensionName: \"Example Extension\"\n});",
@@ -466,8 +498,13 @@ MCP server 示例：
   "projectKey": "tm_proj_xxx",
   "platform": "mcp_node",
   "eventPlatform": "server",
+  "distributionMode": "local_source",
+  "publishStatus": "not_published",
   "installCommands": [
-    "Install @tracemind/mcp-node from the TraceMind SDK distribution; in this repo the package is sdk/mcp-node.",
+    "test -d .tracemind-sdk-source || git clone --depth 1 https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source",
+    "mkdir -p vendor/tracemind/mcp-node",
+    "cp -R .tracemind-sdk-source/sdk/mcp-node/. vendor/tracemind/mcp-node/",
+    "npm install ./vendor/tracemind/mcp-node",
     "Import TraceMindMCP in the MCP server entrypoint."
   ],
   "initSnippet": "import { TraceMindMCP } from \"@tracemind/mcp-node\";\n\nTraceMindMCP.start(server, {\n  projectKey: \"tm_proj_xxx\",\n  sourceKey: \"docs-mcp\"\n});",
@@ -494,8 +531,13 @@ Agent Skill setup 返回 host runtime hook 指南。静态 Skill 文件不能 au
   "projectKey": "tm_proj_xxx",
   "platform": "server_node",
   "eventPlatform": "server",
+  "distributionMode": "local_source",
+  "publishStatus": "not_published",
   "installCommands": [
-    "Install @tracemind/server-node from the TraceMind SDK distribution; in this repo the package is sdk/server-node.",
+    "test -d .tracemind-sdk-source || git clone --depth 1 https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source",
+    "mkdir -p vendor/tracemind/server-node",
+    "cp -R .tracemind-sdk-source/sdk/server-node/. vendor/tracemind/server-node/",
+    "npm install ./vendor/tracemind/server-node",
     "Import TraceMindServer in the backend entrypoint or instrumentation module."
   ],
   "initSnippet": "import { TraceMindServer } from \"@tracemind/server-node\";\n\nTraceMindServer.start({\n  projectKey: \"tm_proj_xxx\",\n  sourceKey: \"billing-api\"\n});",

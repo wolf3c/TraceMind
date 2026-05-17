@@ -11,10 +11,14 @@ final class TraceMindModule: NSObject {
 
   @objc func start(_ config: NSDictionary) {
     guard let projectKey = config["projectKey"] as? String else { return }
+    let deviceInfo = config["deviceInfo"] as? NSDictionary
+    let framework = deviceInfo?["framework"] as? String ?? "react_native"
+    let sdkVersion = deviceInfo?["sdkVersion"] as? String ?? TraceMindSDK.version
+    let sdkContentHash = deviceInfo?["sdkContentHash"] as? String ?? TraceMindSDK.contentHash
     if let endpointValue = config["endpoint"] as? String, let endpoint = URL(string: endpointValue) {
-      TraceMind.start(projectKey: projectKey, endpoint: endpoint)
+      TraceMind.start(projectKey: projectKey, endpoint: endpoint, framework: framework, sdkVersion: sdkVersion, sdkContentHash: sdkContentHash)
     } else {
-      TraceMind.start(projectKey: projectKey)
+      TraceMind.start(projectKey: projectKey, framework: framework, sdkVersion: sdkVersion, sdkContentHash: sdkContentHash)
     }
   }
 

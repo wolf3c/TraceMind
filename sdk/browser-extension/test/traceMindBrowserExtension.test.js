@@ -145,7 +145,9 @@ test('captures extension-owned UI events and sends presence separately', async (
     manifestVersion: 3,
     runtimeContext: 'popup',
     sdkVersion: '0.1.0',
+    sdkContentHash: events[0].source.details.sdkContentHash,
   });
+  assert.match(events[0].source.details.sdkContentHash, /^sha256:[a-f0-9]{64}$/);
   assert.equal(events.some((event) => event.type === 'extension_ui_start'), true);
   assert.equal(events.some((event) => event.type === 'page_view'), true);
   assert.equal(events.some((event) => event.type === 'click'), true);

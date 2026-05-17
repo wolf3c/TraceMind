@@ -5,6 +5,11 @@ import java.net.URI
 import java.time.Instant
 import java.util.UUID
 
+object TraceMindSDK {
+  const val VERSION = "0.1.0"
+  const val CONTENT_HASH = "sha256:4a4021126208f8d58635d3664090bb8bceae0e6e8b64e0b19a845e75a7d6a7da"
+}
+
 data class TraceMindTarget(
   val className: String? = null,
   val type: String? = null,
@@ -298,9 +303,19 @@ class TraceMindPayloadBuilder(
   private val packageName: String,
   private val appLabel: String,
   private val framework: String = "kotlin",
+  private val sdkVersion: String = TraceMindSDK.VERSION,
+  private val sdkContentHash: String = TraceMindSDK.CONTENT_HASH,
   private val identityStore: TraceMindIdentityStore
 ) {
   private var attribution: TraceMindAttribution? = null
+
+  private fun sourceDetails(): Map<String, String> {
+    return mapOf(
+      "framework" to framework,
+      "sdkVersion" to sdkVersion,
+      "sdkContentHash" to sdkContentHash
+    )
+  }
 
   fun identify(userId: String) {
     identityStore.identify(userId)
@@ -338,7 +353,7 @@ class TraceMindPayloadBuilder(
         type = "android",
         packageName = packageName,
         label = appLabel,
-        details = mapOf("framework" to framework)
+        details = sourceDetails()
       ),
       type = type,
       eventName = eventName,
@@ -381,7 +396,7 @@ class TraceMindPayloadBuilder(
         type = "android",
         packageName = packageName,
         label = appLabel,
-        details = mapOf("framework" to framework)
+        details = sourceDetails()
       ),
       path = path,
       title = title,
@@ -415,7 +430,7 @@ class TraceMindPayloadBuilder(
         type = "android",
         packageName = packageName,
         label = appLabel,
-        details = mapOf("framework" to framework)
+        details = sourceDetails()
       ),
       path = path,
       title = title,

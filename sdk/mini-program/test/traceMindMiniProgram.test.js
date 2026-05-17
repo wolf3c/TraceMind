@@ -89,6 +89,7 @@ test('starts with mini_program source metadata and captures lifecycle events', a
   assert.equal(events[0].source.label, 'Example Mini Program');
   assert.equal(events[0].source.details.provider, 'wechat');
   assert.equal(events[0].source.details.sdkVersion, '0.1.0');
+  assert.match(events[0].source.details.sdkContentHash, /^sha256:[a-f0-9]{64}$/);
   assert.equal(events[0].path, '/pages/home/index');
   assert.equal(events.some((event) => event.type === 'app_show'), true);
   assert.equal(events.some((event) => event.type === 'page_view'), true);

@@ -22,14 +22,28 @@ import {
   publicSemanticEvent,
   summarizePresenceSessions,
 } from '/imports/api/tracemind';
+import { latestSdkForSetup } from '/imports/api/sdk_release';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 import { queueProjectDailyHealthRefresh, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.17.4';
+const AGENT_GUIDANCE_VERSION = '2026.05.17.6';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
+const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
+const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
+const SDK_NAME_BY_SOURCE_PATH = {
+  'sdk/ios': 'swift',
+  'sdk/android': 'android',
+  'sdk/react-native': 'react_native',
+  'sdk/mini-program': 'mini_program',
+  'sdk/browser-extension': 'browser_extension',
+  'sdk/mcp-node': 'mcp_node',
+  'sdk/mcp-python': 'mcp_python',
+  'sdk/server-node': 'server_node',
+  'sdk/server-python': 'server_python',
+};
 const MINI_PROGRAM_PROVIDERS = ['wechat', 'alipay', 'douyin', 'dingtalk'];
 const MINI_PROGRAM_PROVIDER_LABELS = {
   wechat: 'WeChat',
@@ -230,7 +244,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.project_health',
       title: projectScopedTitle('TraceMind Project Health', project),
-      description: projectScopedDescription('读取按自然日物化的项目健康报告，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
+      description: projectScopedDescription('读取按自然日物化的项目健康报告和 SDK 升级提示，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -571,6 +585,7 @@ function projectHealthResult(project, reportDate, report, health = {}) {
       status: health.status || 'normal',
       attentionSummary: health.attentionSummary || '',
       attentionItems: health.attentionItems || [],
+      sdkUpgradeFindings: health.sdkUpgradeFindings || health.current?.sdkUpgradeFindings || [],
       current: health.current || {},
       previous: health.previous || {},
       trends: health.trends || {},
@@ -665,6 +680,8 @@ function guidanceResult(extra = {}) {
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
+      'For SDK platforms, use capture_setup latestSdk, installedVersionDetection, installedSdkManifest, upgradeCommands, and verificationCommands; write .tracemind-sdk.json for local_source vendored installs and compare contentHash instead of relying only on displayVersion.',
+      'When project_health returns sdkUpgradeFindings, update the vendored SDK through the coding agent workflow rather than silently editing customer code.',
       'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
       'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
@@ -1061,20 +1078,242 @@ function commonSetup(project, platform) {
   };
 }
 
+function localSourceSdkBase(sdkSourcePath, customerVendorPath) {
+  const sdkName = SDK_NAME_BY_SOURCE_PATH[sdkSourcePath];
+  return {
+    distributionMode: 'local_source',
+    publishStatus: 'not_published',
+    sdkSourceRepo: TRACE_MIND_SDK_SOURCE_REPO,
+    sdkSourceCheckoutDir: TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR,
+    sdkSourcePath,
+    customerVendorPath,
+    ...(sdkName ? sdkGovernanceFields(sdkName, sdkSourcePath, customerVendorPath) : {}),
+    installNotes: [
+      'TraceMind SDK packages are not registry-published yet; install from the local source copied from sdkSourceRepo.',
+      `If ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} or ${customerVendorPath} already exists, inspect it before overwriting.`,
+    ],
+  };
+}
+
+function installedSdkManifestFor(sdkName, sdkSourcePath, customerVendorPath) {
+  const sdk = latestSdkForSetup(sdkName);
+  if (!sdk) return null;
+  return {
+    schemaVersion: 1,
+    sdkName,
+    displayVersion: sdk.displayVersion,
+    contentHash: sdk.contentHash,
+    sourceRepo: sdk.sourceRepo,
+    sourceRef: sdk.sourceRef,
+    sdkSourcePath,
+    vendorPath: customerVendorPath,
+    verificationCommands: sdk.verificationCommands,
+  };
+}
+
+function shellSingleQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function sdkManifestWriteCommand(installedSdkManifest, manifestPath) {
+  const script = `const fs = require("fs"); fs.writeFileSync(${JSON.stringify(manifestPath)}, JSON.stringify(${JSON.stringify(installedSdkManifest)}, null, 2) + "\\n");`;
+  return `node -e ${shellSingleQuote(script)}`;
+}
+
+function localSourceCheckoutCommands(sourceRef = 'main') {
+  return [
+    `test -d ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} || git clone --filter=blob:none --no-checkout ${TRACE_MIND_SDK_SOURCE_REPO} ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}`,
+    `git -C ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} fetch --depth 1 origin ${shellSingleQuote(sourceRef)}`,
+    `git -C ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} checkout --detach FETCH_HEAD`,
+  ];
+}
+
+function sdkSourceHashVerifyCommand(sdkName, expectedHash) {
+  const script = [
+    `const gate = require("./${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}/scripts/check-sdk-release-manifest.js");`,
+    `const config = gate.SDK_CONFIGS.find((entry) => entry.sdkName === ${JSON.stringify(sdkName)});`,
+    'if (!config) { console.error("TraceMind SDK config not found."); process.exit(1); }',
+    'const actual = gate.contentHash(gate.discoverRuntimeFiles(config));',
+    `if (actual !== ${JSON.stringify(expectedHash)}) { console.error("TraceMind SDK source hash mismatch: expected ${expectedHash}, got " + actual + ". Stop and ask TraceMind for the pinned SDK sourceRef."); process.exit(1); }`,
+  ].join(' ');
+  return `node -e ${shellSingleQuote(script)}`;
+}
+
+function sdkGovernanceFields(sdkName, sdkSourcePath, customerVendorPath) {
+  const sdk = latestSdkForSetup(sdkName);
+  if (!sdk) return {};
+  const latestSdk = {
+    sdkName: sdk.sdkName,
+    displayVersion: sdk.displayVersion,
+    contentHash: sdk.contentHash,
+    sourceRepo: sdk.sourceRepo,
+    sourceRef: sdk.sourceRef,
+    sdkSourcePath: sdk.sdkSourcePath,
+    minimumSupportedHash: sdk.minimumSupportedHash,
+    verificationCommands: sdk.verificationCommands,
+  };
+  const installedSdkManifest = installedSdkManifestFor(sdkName, sdkSourcePath, customerVendorPath);
+  return {
+    latestSdk,
+    installedSdkManifest,
+    installedVersionDetection: {
+      manifestPath: `${customerVendorPath}/.tracemind-sdk.json`,
+      rootManifestPath: '.tracemind-sdk.json',
+      detectionOrder: [
+        `Read ${customerVendorPath}/.tracemind-sdk.json if it exists.`,
+        'Compare installed contentHash with latestSdk.contentHash; do not rely only on displayVersion.',
+        'If the manifest is missing, inspect sourceDetails.sdkContentHash from tracemind.project_health or treat the SDK version as unknown.',
+      ],
+    },
+    upgradePolicy: sdk.upgradePolicy,
+    upgradeCommands: [
+      'Call tracemind.project_health to see whether TraceMind already found an SDK update or unknown SDK version.',
+      `Read ${customerVendorPath}/.tracemind-sdk.json and compare contentHash with latestSdk.contentHash.`,
+      ...localSourceCheckoutCommands(sdk.sourceRef),
+      sdkSourceHashVerifyCommand(sdkName, sdk.contentHash),
+      `Copy ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}/${sdkSourcePath}/. into ${customerVendorPath}/ without changing app instrumentation semantics.`,
+      sdkManifestWriteCommand(installedSdkManifest, `${customerVendorPath}/.tracemind-sdk.json`),
+      'Run the returned verificationCommands in the customer project, then report success or the exact failing command.',
+      'For TraceMind SDK source changes, run npm run update:sdk-manifest and npm run test:sdk-release before committing.',
+    ],
+  };
+}
+
+function localSourceCopyCommands(sdkSourcePath, customerVendorPath) {
+  const sdkName = SDK_NAME_BY_SOURCE_PATH[sdkSourcePath];
+  const installedSdkManifest = sdkName ? installedSdkManifestFor(sdkName, sdkSourcePath, customerVendorPath) : null;
+  return [
+    ...localSourceCheckoutCommands(installedSdkManifest?.sourceRef),
+    ...(installedSdkManifest ? [sdkSourceHashVerifyCommand(sdkName, installedSdkManifest.contentHash)] : []),
+    `mkdir -p ${customerVendorPath}`,
+    `cp -R ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}/${sdkSourcePath}/. ${customerVendorPath}/`,
+    ...(installedSdkManifest ? [sdkManifestWriteCommand(installedSdkManifest, `${customerVendorPath}/.tracemind-sdk.json`)] : []),
+  ];
+}
+
+function localJsSdkSetup({ packageName, sdkSourcePath, customerVendorPath }) {
+  return {
+    ...localSourceSdkBase(sdkSourcePath, customerVendorPath),
+    packageManagerNotes: [
+      'Choose exactly one dependency command based on the project lockfile: package-lock.json uses npm, pnpm-lock.yaml uses pnpm, yarn.lock uses yarn.',
+      `The local file dependency keeps imports stable as ${packageName}.`,
+    ],
+    dependencyEdits: [
+      `package.json dependencies should resolve ${packageName} from file:${customerVendorPath}.`,
+    ],
+    installCommands: [
+      ...localSourceCopyCommands(sdkSourcePath, customerVendorPath),
+      `npm install ./${customerVendorPath}`,
+      `pnpm add ./${customerVendorPath}`,
+      `yarn add file:./${customerVendorPath}`,
+      'Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together.',
+    ],
+    idempotencyChecks: [
+      `Search package.json for an existing ${packageName} dependency.`,
+      `Search the repository for an existing ${customerVendorPath} vendored SDK copy.`,
+      `Search the source for imports from ${packageName}.`,
+    ],
+  };
+}
+
+function localSwiftSdkSetup() {
+  const customerVendorPath = 'vendor/TraceMind';
+  return {
+    ...localSourceSdkBase('sdk/ios', customerVendorPath),
+    packageManagerNotes: [
+      'Use a local Swift Package dependency until TraceMind publishes a registry package.',
+      'For Xcode-managed projects, add a local package dependency pointing at vendor/TraceMind.',
+    ],
+    dependencyEdits: [
+      'Package.swift dependencies: [.package(path: "vendor/TraceMind")]',
+      'Target dependencies: .product(name: "TraceMind", package: "TraceMind")',
+    ],
+    installCommands: [
+      ...localSourceCopyCommands('sdk/ios', customerVendorPath),
+      'For Package.swift apps, add dependencies: [.package(path: "vendor/TraceMind")] and target dependency .product(name: "TraceMind", package: "TraceMind").',
+      'For Xcode-managed apps, add a local Swift Package dependency pointing at vendor/TraceMind.',
+    ],
+    idempotencyChecks: [
+      'Check Package.swift or the Xcode project for an existing TraceMind local package dependency.',
+      'Search the repository for an existing vendor/TraceMind vendored SDK copy.',
+    ],
+  };
+}
+
+function localAndroidSdkSetup() {
+  const customerVendorPath = 'vendor/tracemind-android';
+  return {
+    ...localSourceSdkBase('sdk/android', customerVendorPath),
+    packageManagerNotes: [
+      'Use a local Gradle module until TraceMind publishes a Maven artifact.',
+      'Apply the same dependency semantics in Groovy or Kotlin Gradle syntax based on the target project.',
+    ],
+    dependencyEdits: [
+      'settings.gradle(.kts): include(":tracemind")',
+      'settings.gradle(.kts): project(":tracemind").projectDir = file("vendor/tracemind-android")',
+      'app/build.gradle(.kts): implementation(project(":tracemind"))',
+    ],
+    installCommands: [
+      ...localSourceCopyCommands('sdk/android', customerVendorPath),
+      'Add include(":tracemind") and project(":tracemind").projectDir = file("vendor/tracemind-android") to settings.gradle(.kts).',
+      'Add implementation(project(":tracemind")) to the Gradle app module dependencies.',
+    ],
+    idempotencyChecks: [
+      'Check settings.gradle(.kts) for an existing :tracemind module include.',
+      'Check app/build.gradle(.kts) for an existing implementation(project(":tracemind")) dependency.',
+      'Search the repository for an existing vendor/tracemind-android vendored SDK copy.',
+    ],
+  };
+}
+
+function localPythonSdkSetup({ packageLabel, moduleName, sdkSourcePath, customerVendorPath }) {
+  const sdkSetup = localSourceSdkBase(sdkSourcePath, customerVendorPath);
+  return {
+    ...sdkSetup,
+    packageManagerNotes: [
+      'TraceMind Python SDKs do not have package metadata yet; do not use a fake pip install command.',
+      `Add ${customerVendorPath} to PYTHONPATH or the project packaging source path so imports from ${moduleName} resolve.`,
+    ],
+    dependencyEdits: [
+      `Runtime/test environment should include PYTHONPATH=$PWD/${customerVendorPath}:$PYTHONPATH.`,
+      `Python imports should resolve ${moduleName} from ${customerVendorPath}/${moduleName}.`,
+    ],
+    installCommands: [
+      ...localSourceCheckoutCommands(sdkSetup.installedSdkManifest?.sourceRef),
+      ...(sdkSetup.installedSdkManifest ? [sdkSourceHashVerifyCommand(sdkSetup.installedSdkManifest.sdkName, sdkSetup.installedSdkManifest.contentHash)] : []),
+      `mkdir -p ${customerVendorPath}`,
+      `cp -R ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}/${sdkSourcePath}/${moduleName} ${customerVendorPath}/`,
+      ...(sdkSetup.installedSdkManifest ? [sdkManifestWriteCommand(sdkSetup.installedSdkManifest, `${customerVendorPath}/.tracemind-sdk.json`)] : []),
+      `Add ${customerVendorPath} to PYTHONPATH in the app runtime, test runner, or deployment environment before importing ${moduleName}.`,
+    ],
+    idempotencyChecks: [
+      `Search Python dependency files and runtime config for an existing ${packageLabel} or ${moduleName} setup.`,
+      `Search the repository for an existing ${customerVendorPath} vendored SDK copy.`,
+      `Search Python files for imports from ${moduleName}.`,
+    ],
+  };
+}
+
 function miniProgramSetup(project, provider) {
   const common = commonSetup(project, 'mini_program');
+  const sdkSetup = localJsSdkSetup({
+    packageName: '@tracemind/mini-program',
+    sdkSourcePath: 'sdk/mini-program',
+    customerVendorPath: 'vendor/tracemind/mini-program',
+  });
   const providerLabel = MINI_PROGRAM_PROVIDER_LABELS[provider] || 'Mini Program';
   const apiName = MINI_PROGRAM_PROVIDER_API_NAMES[provider] || 'host';
   const exampleFile = MINI_PROGRAM_PROVIDER_FILE_NAMES[provider] || 'app.js';
   return {
     ...common,
+    ...sdkSetup,
     platform: 'mini_program',
     provider,
     providerLabel,
     eventPlatform: 'mini_program',
-    install: `Install @tracemind/mini-program once and configure provider: "${provider}" for ${providerLabel}.`,
+    install: `Vendor @tracemind/mini-program from the TraceMind GitHub source repo, install it as a local file dependency, and configure provider: "${provider}" for ${providerLabel}.`,
     installCommands: [
-      'Install @tracemind/mini-program from the TraceMind SDK distribution; in this repo the package is sdk/mini-program.',
+      ...sdkSetup.installCommands,
       `Initialize TraceMind once in ${exampleFile} with provider: "${provider}".`,
       'Wrap App/Page lifecycle or call the returned lifecycle helpers from existing App and Page handlers.',
       'Wire tap/input/submit helpers manually from existing event handlers; do not promise no-code interaction capture in v1.',
@@ -1088,6 +1327,7 @@ function miniProgramSetup(project, provider) {
     ],
     initLocation: 'Run once in the mini program App bootstrap before the first Page is shown, then call lifecycle helpers from App/Page handlers.',
     idempotencyChecks: [
+      ...sdkSetup.idempotencyChecks,
       'Search the mini program source for @tracemind/mini-program.',
       'Search App and Page entrypoints for TraceMind.start(',
       'Search event handlers for existing TraceMind.trackTap, TraceMind.trackInput, or TraceMind.trackSubmit calls before adding duplicates.',
@@ -1099,7 +1339,7 @@ function miniProgramSetup(project, provider) {
       key: 'Mini program appId when available, otherwise developer configured sourceKey.',
       details: { provider },
     },
-    sourceModel: 'platform is mini_program; sourceType is mini_program; sourceKey is the mini program appId or configured sourceKey; sourceDetails.provider records wechat, alipay, douyin, or dingtalk.',
+    sourceModel: 'platform is mini_program; sourceType is mini_program; sourceKey is the mini program appId or configured sourceKey; sourceDetails.provider records wechat, alipay, douyin, or dingtalk; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
     autoCapturedSignals: MINI_PROGRAM_AUTO_CAPTURE_SIGNALS,
     privacyConstraints: PRIVACY_CONSTRAINTS,
     networkRestrictionChecks: miniProgramNetworkRestrictionChecks(provider),
@@ -1125,13 +1365,19 @@ function miniProgramSetup(project, provider) {
 
 function browserExtensionSetup(project) {
   const common = commonSetup(project, 'browser_extension');
+  const sdkSetup = localJsSdkSetup({
+    packageName: '@tracemind/browser-extension',
+    sdkSourcePath: 'sdk/browser-extension',
+    customerVendorPath: 'vendor/tracemind/browser-extension',
+  });
   return {
     ...common,
+    ...sdkSetup,
     platform: 'browser_extension',
     eventPlatform: 'browser_extension',
-    install: 'Install @tracemind/browser-extension in the extension package and initialize it from extension-owned popup/options/sidebar/devtools pages; use background/service worker only for manual capture.',
+    install: 'Vendor @tracemind/browser-extension from the TraceMind GitHub source repo, install it as a local file dependency, and initialize it from extension-owned popup/options/sidebar/devtools pages; use background/service worker only for manual capture.',
     installCommands: [
-      'Install @tracemind/browser-extension from the TraceMind SDK distribution; in this repo the package is sdk/browser-extension.',
+      ...sdkSetup.installCommands,
       'Initialize TraceMind once from popup, options, sidebar, or devtools entrypoints that own extension UI DOM.',
       'Initialize TraceMind from background/service worker only when manual business events, identify, submitFeedback, or flush are needed.',
       'Do not add content-script no-code host-page capture in V1; wire only explicit safe business events if a later content-script helper is approved.',
@@ -1145,6 +1391,7 @@ function browserExtensionSetup(project) {
     ],
     initLocation: 'Run once in each extension-owned popup/options/sidebar/devtools bootstrap before the first interaction; in background/service worker, run once before manual capture calls.',
     idempotencyChecks: [
+      ...sdkSetup.idempotencyChecks,
       'Search the extension source for @tracemind/browser-extension.',
       'Search popup/options/sidebar/devtools and background/service worker entrypoints for TraceMind.start(',
       'Search event handlers for existing TraceMind.trackTap, TraceMind.trackInput, or TraceMind.trackSubmit calls before adding duplicates.',
@@ -1159,7 +1406,7 @@ function browserExtensionSetup(project) {
         runtimeContext: 'popup | options | sidebar | devtools | background',
       },
     },
-    sourceModel: 'platform is browser_extension; sourceType is browser_extension; sourceKey is the extension id or configured extensionId; sourceDetails.browser, manifestVersion, runtimeContext, and sdkVersion are the only persisted extension source details.',
+    sourceModel: 'platform is browser_extension; sourceType is browser_extension; sourceKey is the extension id or configured extensionId; sourceDetails.browser, manifestVersion, runtimeContext, sdkVersion, and sdkContentHash are the only persisted extension source details.',
     autoCapturedSignals: BROWSER_EXTENSION_AUTO_CAPTURE_SIGNALS,
     privacyConstraints: PRIVACY_CONSTRAINTS,
     manifestPermissions: BROWSER_EXTENSION_MANIFEST_PERMISSIONS,
@@ -1199,16 +1446,52 @@ function platformSetup(project, platform, options = {}) {
   if (platform === 'hybrid') {
     const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
     const captureSnippet = `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" data-tracemind-framework="hybrid" async></script>`;
+    const swiftSdkSetup = localSwiftSdkSetup();
+    const androidSdkSetup = localAndroidSdkSetup();
     return {
       ...common,
       platform: 'hybrid',
       eventPlatform: 'web_plus_native',
+      distributionMode: 'web_snippet_plus_local_source_native',
+      publishStatus: 'not_published',
+      sdkSourceRepo: TRACE_MIND_SDK_SOURCE_REPO,
+      sdkSourceCheckoutDir: TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR,
+      nativeSdkInstallOptions: [
+        {
+          platform: 'ios_or_macos',
+          sdkSourcePath: swiftSdkSetup.sdkSourcePath,
+          customerVendorPath: swiftSdkSetup.customerVendorPath,
+          latestSdk: swiftSdkSetup.latestSdk,
+          installedSdkManifest: swiftSdkSetup.installedSdkManifest,
+          installedVersionDetection: swiftSdkSetup.installedVersionDetection,
+          dependencyEdits: swiftSdkSetup.dependencyEdits,
+        },
+        {
+          platform: 'android',
+          sdkSourcePath: androidSdkSetup.sdkSourcePath,
+          customerVendorPath: androidSdkSetup.customerVendorPath,
+          latestSdk: androidSdkSetup.latestSdk,
+          installedSdkManifest: androidSdkSetup.installedSdkManifest,
+          installedVersionDetection: androidSdkSetup.installedVersionDetection,
+          dependencyEdits: androidSdkSetup.dependencyEdits,
+        },
+      ],
+      upgradePolicy: {
+        level: 'recommended',
+        agentPrompt: 'Ask your coding agent to read WebView setup, then check the native vendor/TraceMind and vendor/tracemind-android .tracemind-sdk.json files against nativeSdkInstallOptions.',
+      },
+      upgradeCommands: [
+        ...swiftSdkSetup.upgradeCommands,
+        ...androidSdkSetup.upgradeCommands,
+      ],
       captureScriptUrl,
       captureSnippet,
       install: 'Install Web Auto Capture in the WebView document and the matching native SDK in the app shell, then connect identity and deeplink handling through a narrow bridge.',
       installCommands: [
         'Add captureSnippet to the WebView HTML document, root layout, or bundled H5 entry loaded inside the shell.',
-        'Install the matching native SDK for the shell: iOS/macOS use sdk/ios, Android uses sdk/android.',
+        `Native shell SDKs are local-source installs: clone ${TRACE_MIND_SDK_SOURCE_REPO} into ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}, then vendor only the matching SDK.`,
+        'For iOS/macOS shells: copy .tracemind-sdk-source/sdk/ios/. into vendor/TraceMind/ and add a local Swift Package dependency with .package(path: "vendor/TraceMind").',
+        'For Android shells: copy .tracemind-sdk-source/sdk/android/. into vendor/tracemind-android/, then add include(":tracemind") and implementation(project(":tracemind")).',
         'Initialize TraceMind once in the native startup path and once in the WebView document using the same projectKey.',
         'After login, call identify in both layers with the same stable internal userId; use the bridge only for identity, sanitized route/source metadata, and deeplink handoff.',
       ],
@@ -1222,6 +1505,7 @@ function platformSetup(project, platform, options = {}) {
       initLocation: 'Load captureSnippet in every WebView page, and run the native TraceMind.start line once during shell startup before the first WebView screen is shown.',
       idempotencyChecks: [
         'Search WebView assets for /capture.js and data-tracemind-token.',
+        'Search native dependency files for an existing vendor/TraceMind, vendor/tracemind-android, or TraceMind local SDK dependency before copying source.',
         'Search native shell code for TraceMind.start(',
         'Check that WebView and native shell use the same projectKey and do not mix in an MCP token.',
         'Search bridge code for existing TraceMind identity, deeplink, or route handoff helpers before adding another one.',
@@ -1255,13 +1539,19 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'server_node') {
+    const sdkSetup = localJsSdkSetup({
+      packageName: '@tracemind/server-node',
+      sdkSourcePath: 'sdk/server-node',
+      customerVendorPath: 'vendor/tracemind/server-node',
+    });
     return {
       ...common,
+      ...sdkSetup,
       platform: 'server_node',
       eventPlatform: 'server',
-      install: 'Install @tracemind/server-node and add manual capture at stable server-side business outcomes.',
+      install: 'Vendor @tracemind/server-node from the TraceMind GitHub source repo, install it as a local file dependency, and add manual capture at stable server-side business outcomes.',
       installCommands: [
-        'Install @tracemind/server-node from the TraceMind SDK distribution; in this repo the package is sdk/server-node.',
+        ...sdkSetup.installCommands,
         'Import TraceMindServer in the backend entrypoint or instrumentation module.',
       ],
       filesToEdit: [
@@ -1271,6 +1561,7 @@ function platformSetup(project, platform, options = {}) {
       ],
       initLocation: 'Run once during server startup before business handlers call TraceMindServer.capture.',
       idempotencyChecks: [
+        ...sdkSetup.idempotencyChecks,
         'Search the backend for TraceMindServer.start(',
         'Check package.json for an existing @tracemind/server-node dependency.',
         'Search server-side business handlers for existing TraceMindServer.capture calls.',
@@ -1280,7 +1571,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'server_app',
         key: 'Developer configured server/service name, for example billing-api',
       },
-      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
@@ -1298,13 +1589,20 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'server_python') {
+    const sdkSetup = localPythonSdkSetup({
+      packageLabel: 'tracemind-server',
+      moduleName: 'tracemind_server',
+      sdkSourcePath: 'sdk/server-python',
+      customerVendorPath: 'vendor/tracemind_server',
+    });
     return {
       ...common,
+      ...sdkSetup,
       platform: 'server_python',
       eventPlatform: 'server',
-      install: 'Install tracemind-server and add manual capture at stable server-side business outcomes.',
+      install: 'Vendor tracemind_server from the TraceMind GitHub source repo, add it to the Python source path, and add manual capture at stable server-side business outcomes.',
       installCommands: [
-        'Install tracemind-server from the TraceMind SDK distribution; in this repo the package is sdk/server-python.',
+        ...sdkSetup.installCommands,
         'Import TraceMindServer in the backend entrypoint or instrumentation module.',
       ],
       filesToEdit: [
@@ -1314,6 +1612,7 @@ function platformSetup(project, platform, options = {}) {
       ],
       initLocation: 'Run once during server startup before business handlers call TraceMindServer.capture.',
       idempotencyChecks: [
+        ...sdkSetup.idempotencyChecks,
         'Search the backend for TraceMindServer.start(',
         'Check Python dependency files for an existing tracemind-server dependency.',
         'Search server-side business handlers for existing TraceMindServer.capture calls.',
@@ -1323,7 +1622,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'server_app',
         key: 'Developer configured server/service name, for example billing-api',
       },
-      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
@@ -1389,7 +1688,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'server_app',
         key: 'Developer configured server/service name, for example billing-api',
       },
-      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, and environment.',
+      sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment when an SDK is used.',
       autoCapturedSignals: [],
       privacyConstraints: SERVER_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: SERVER_NETWORK_RESTRICTION_CHECKS,
@@ -1406,13 +1705,19 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'mcp_node') {
+    const sdkSetup = localJsSdkSetup({
+      packageName: '@tracemind/mcp-node',
+      sdkSourcePath: 'sdk/mcp-node',
+      customerVendorPath: 'vendor/tracemind/mcp-node',
+    });
     return {
       ...common,
+      ...sdkSetup,
       platform: 'mcp_node',
       eventPlatform: 'server',
-      install: 'Install @tracemind/mcp-node and initialize it around the MCP server instance.',
+      install: 'Vendor @tracemind/mcp-node from the TraceMind GitHub source repo, install it as a local file dependency, and initialize it around the MCP server instance.',
       installCommands: [
-        'Install @tracemind/mcp-node from the TraceMind SDK distribution; in this repo the package is sdk/mcp-node.',
+        ...sdkSetup.installCommands,
         'Import TraceMindMCP in the MCP server entrypoint.',
       ],
       filesToEdit: [
@@ -1422,6 +1727,7 @@ function platformSetup(project, platform, options = {}) {
       ],
       initLocation: 'Run once after creating the MCP server object and before registering or serving tools.',
       idempotencyChecks: [
+        ...sdkSetup.idempotencyChecks,
         'Search the MCP server for TraceMindMCP.start(',
         'Check package.json for an existing @tracemind/mcp-node dependency.',
         'Search tool/resource/prompt registration code for existing TraceMindMCP.wrapTool, wrapResource, or wrapPrompt calls.',
@@ -1431,7 +1737,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'mcp_server',
         key: 'Developer configured MCP server/package name, for example docs-mcp',
       },
-      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, and mcpFramework.',
+      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, sdkContentHash, and mcpFramework.',
       autoCapturedSignals: MCP_AUTO_CAPTURE_SIGNALS,
       privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS,
@@ -1448,13 +1754,20 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'mcp_python') {
+    const sdkSetup = localPythonSdkSetup({
+      packageLabel: 'tracemind-mcp',
+      moduleName: 'tracemind_mcp',
+      sdkSourcePath: 'sdk/mcp-python',
+      customerVendorPath: 'vendor/tracemind_mcp',
+    });
     return {
       ...common,
+      ...sdkSetup,
       platform: 'mcp_python',
       eventPlatform: 'server',
-      install: 'Install tracemind-mcp and initialize it around the Python MCP server instance.',
+      install: 'Vendor tracemind_mcp from the TraceMind GitHub source repo, add it to the Python source path, and initialize it around the Python MCP server instance.',
       installCommands: [
-        'Install tracemind-mcp from the TraceMind SDK distribution; in this repo the package is sdk/mcp-python.',
+        ...sdkSetup.installCommands,
         'Import TraceMindMCP in the MCP server entrypoint.',
       ],
       filesToEdit: [
@@ -1464,6 +1777,7 @@ function platformSetup(project, platform, options = {}) {
       ],
       initLocation: 'Run once after creating the MCP server object and before registering or serving tools.',
       idempotencyChecks: [
+        ...sdkSetup.idempotencyChecks,
         'Search the MCP server for TraceMindMCP.start(',
         'Check Python dependency files for an existing tracemind-mcp dependency.',
         'Search tool/resource/prompt registration code for existing TraceMindMCP.wrap_tool, wrap_resource, or wrap_prompt calls.',
@@ -1473,7 +1787,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'mcp_server',
         key: 'Developer configured MCP server/package name, for example docs-mcp',
       },
-      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, and mcpFramework.',
+      sourceModel: 'platform is server; sourceType is mcp_server; sourceKey is the configured MCP server/package name; sourceDetails records language, runtime, sdkVersion, sdkContentHash, and mcpFramework.',
       autoCapturedSignals: MCP_AUTO_CAPTURE_SIGNALS,
       privacyConstraints: MCP_PRIVACY_CONSTRAINTS,
       networkRestrictionChecks: MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS,
@@ -1537,13 +1851,15 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'ios') {
+    const sdkSetup = localSwiftSdkSetup();
     return {
       ...common,
+      ...sdkSetup,
       platform: 'ios',
       eventPlatform: 'ios',
-      install: 'Add the TraceMind Swift Package from sdk/ios, then import TraceMind in your App entrypoint.',
+      install: 'Vendor the TraceMind Swift Package from the TraceMind GitHub source repo, add it as a local Swift Package, then import TraceMind in your App entrypoint.',
       installCommands: [
-        'Add the TraceMind Swift Package from the TraceMind SDK distribution; in this repo the package is sdk/ios.',
+        ...sdkSetup.installCommands,
         'Import TraceMind in App.swift, AppDelegate.swift, or the app startup file that owns launch.',
       ],
       filesToEdit: [
@@ -1554,6 +1870,7 @@ function platformSetup(project, platform, options = {}) {
       ],
       initLocation: 'Run once during app startup, before the first user screen is shown.',
       idempotencyChecks: [
+        ...sdkSetup.idempotencyChecks,
         'Search the app for TraceMind.start(',
         'Check Package.swift or the Xcode project for an existing TraceMind package dependency.',
       ],
@@ -1562,7 +1879,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'ios',
         key: 'iOS bundle id, for example com.example.app',
       },
-      sourceModel: 'platform remains ios; sourceKey is the iOS bundle id; sourceDetails.framework is swift.',
+      sourceModel: 'platform remains ios; sourceKey is the iOS bundle id; sourceDetails.framework is swift; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
       networkRestrictionChecks: IOS_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'swift test --package-path sdk/ios',
@@ -1577,13 +1894,15 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'macos') {
+    const sdkSetup = localSwiftSdkSetup();
     return {
       ...common,
+      ...sdkSetup,
       platform: 'macos',
       eventPlatform: 'macos',
-      install: 'Add the TraceMind Swift Package from sdk/ios, then initialize TraceMind once from the macOS app bootstrap.',
+      install: 'Vendor the TraceMind Swift Package from the TraceMind GitHub source repo, add it as a local Swift Package, then initialize TraceMind once from the macOS app bootstrap.',
       installCommands: [
-        'Add the TraceMind Swift Package from the TraceMind SDK distribution; in this repo the package is sdk/ios.',
+        ...sdkSetup.installCommands,
         'Import TraceMind in App.swift, AppDelegate.swift, or the app startup file that owns launch.',
       ],
       filesToEdit: [
@@ -1594,6 +1913,7 @@ function platformSetup(project, platform, options = {}) {
       ],
       initLocation: 'Run once during app startup, before the first user window is shown.',
       idempotencyChecks: [
+        ...sdkSetup.idempotencyChecks,
         'Search the app for TraceMind.start(',
         'Check Package.swift or the Xcode project for an existing TraceMind package dependency.',
       ],
@@ -1602,7 +1922,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'macos',
         key: 'macOS bundle id, for example com.example.app',
       },
-      sourceModel: 'platform remains macos; sourceKey is the macOS bundle id; sourceDetails.framework is swift.',
+      sourceModel: 'platform remains macos; sourceKey is the macOS bundle id; sourceDetails.framework is swift; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
       autoCapturedSignals: [
         'app/session start',
         'screen or window view',
@@ -1623,13 +1943,15 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'android') {
+    const sdkSetup = localAndroidSdkSetup();
     return {
       ...common,
+      ...sdkSetup,
       platform: 'android',
       eventPlatform: 'android',
-      install: 'Add the sdk/android Gradle module and initialize TraceMind from Application.onCreate().',
+      install: 'Vendor the TraceMind Android SDK from the TraceMind GitHub source repo, add it as a local Gradle module, and initialize TraceMind from Application.onCreate().',
       installCommands: [
-        'Add the TraceMind Android SDK module or dependency; in this repo the Gradle module is sdk/android.',
+        ...sdkSetup.installCommands,
         'Import com.tracemind.TraceMind in the Application class.',
       ],
       filesToEdit: [
@@ -1640,6 +1962,7 @@ function platformSetup(project, platform, options = {}) {
       ],
       initLocation: 'Run once from Application.onCreate() before user activities are shown.',
       idempotencyChecks: [
+        ...sdkSetup.idempotencyChecks,
         'Search the app for TraceMind.start(',
         'Check AndroidManifest.xml for the Application class that owns startup.',
         'Check Gradle settings/build files for an existing TraceMind SDK dependency or module include.',
@@ -1649,7 +1972,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'android',
         key: 'Android package name, for example com.example.app',
       },
-      sourceModel: 'platform remains android; sourceKey is the Android package name; sourceDetails.framework is kotlin.',
+      sourceModel: 'platform remains android; sourceKey is the Android package name; sourceDetails.framework is kotlin; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
       networkRestrictionChecks: ANDROID_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'npm run test:sdk:android',
@@ -1664,13 +1987,19 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'react_native') {
+    const sdkSetup = localJsSdkSetup({
+      packageName: '@tracemind/react-native',
+      sdkSourcePath: 'sdk/react-native',
+      customerVendorPath: 'vendor/tracemind/react-native',
+    });
     return {
       ...common,
+      ...sdkSetup,
       platform: 'react_native',
       eventPlatform: 'ios_or_android',
-      install: 'Install @tracemind/react-native from sdk/react-native and run the native package install step for iOS and Android.',
+      install: 'Vendor @tracemind/react-native from the TraceMind GitHub source repo, install it as a local file dependency, and run the native package install step for iOS and Android.',
       installCommands: [
-        'Install @tracemind/react-native from the TraceMind SDK distribution; in this repo the package is sdk/react-native.',
+        ...sdkSetup.installCommands,
         'Run the native dependency install step required by the target React Native app, such as pod install for iOS.',
         'Ensure the underlying iOS and Android TraceMind native modules are linked.',
       ],
@@ -1683,6 +2012,7 @@ function platformSetup(project, platform, options = {}) {
       ],
       initLocation: 'Run once in the React Native bootstrap path before the first product screen is rendered.',
       idempotencyChecks: [
+        ...sdkSetup.idempotencyChecks,
         'Search JavaScript and TypeScript files for TraceMind.start(',
         'Check package.json for an existing @tracemind/react-native dependency.',
         'Check native iOS and Android projects for an existing TraceMind native module link.',
@@ -1692,7 +2022,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'ios_or_android',
         key: 'Native bundle id or package name; React Native is marked in deviceInfo.framework.',
       },
-      sourceModel: 'Do not create a react_native platform value. Events keep platform ios or android and mark deviceInfo.framework/sourceDetails.framework as react_native.',
+      sourceModel: 'Do not create a react_native platform value. Events keep platform ios or android and mark deviceInfo.framework/sourceDetails.framework as react_native; sourceDetails.sdkVersion and sdkContentHash support SDK upgrade governance.',
       networkRestrictionChecks: REACT_NATIVE_NETWORK_RESTRICTION_CHECKS,
       verificationCommands: [
         'npm test --prefix sdk/react-native',

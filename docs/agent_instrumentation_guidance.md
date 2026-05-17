@@ -28,7 +28,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 - 修改前必须列出文件和命令、只合并追加、不覆盖已有配置、安装后验证的要求。
 - 项目级 skill 只在当前 agent 明确支持官方项目级 skill 目录时安装；否则回退到项目级 rules/instructions，不创建自定义目录。
 - MCP URL、token、Bearer token 和 Auto Capture `projectKey` 不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件；项目级规则只保存可提交的 `projectId`、项目显示名和 expected MCP server name。
-- 当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`macos`、`android` 或 `react_native`，混合应用传 `hybrid`，小程序传 `mini_program` 并指定 `provider`，浏览器插件传 `browser_extension`，第三方 MCP server 传 `mcp_node` 或 `mcp_python`，Agent Skill 传 `agent_skill`，普通后端服务传 `server_node`、`server_python` 或 `server_http`。agent 应使用返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks`、`initSnippet`、`identifySnippet`、`manualCaptureExamples`、`supportedPropertyTypes` 和 `manualCaptureWorkflow`，不要从静态文档复制 project key。
+- 当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`macos`、`android` 或 `react_native`，混合应用传 `hybrid`，小程序传 `mini_program` 并指定 `provider`，浏览器插件传 `browser_extension`，第三方 MCP server 传 `mcp_node` 或 `mcp_python`，Agent Skill 传 `agent_skill`，普通后端服务传 `server_node`、`server_python` 或 `server_http`。agent 应使用返回的 `distributionMode`、`installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks`、`initSnippet`、`identifySnippet`、`manualCaptureExamples`、`supportedPropertyTypes`、`manualCaptureWorkflow`、`latestSdk`、`installedVersionDetection`、`upgradeCommands` 和 `verificationCommands`；当 `distributionMode` 为 `local_source` 时，按返回的 GitHub clone、`vendor/` 复制、本地依赖、SwiftPM local path、Gradle module 或 PYTHONPATH 指令接入，并把 `installedSdkManifest` 写入 vendored SDK 目录的 `.tracemind-sdk.json`。不要从静态文档复制 project key，也不要假设 SDK 已发布到 registry。
 - 如果 MCP 只能写入全局配置，agent 直接使用全局 MCP 配置，并继续避免把 MCP URL 或 token 写入仓库文件。
 - 如果已经存在 TraceMind Skill 或 rules，agent 只检查版本和补充缺失内容，不重复追加完整区块。
 - 如果已经存在相同 Project ID 的 `TraceMind project binding`，agent 复用该绑定，只补缺失规则或更新匹配的 MCP server URL/token。
@@ -64,7 +64,7 @@ Agent 后续修改 TraceMind 埋点时应按顺序使用 MCP：
 
 1. `tracemind.project_info`：先确认当前 MCP 对应的 TraceMind 项目，并与项目级 instruction 中的 expected `projectId` 比对；不匹配时停止。
 2. `tracemind.agent_guidance`：检查 guidance 版本和公开资源。
-3. `tracemind.capture_setup`：先获取当前项目接入代码；Web 验证 `/capture.js` 和脚本上的公开项目 key 属性，Native 使用返回的安装步骤、入口文件、幂等检查、初始化位置、SDK 初始化代码、identify 示例、手动埋点示例和 `trafficAttribution` 指南；macOS 传 `platform: "macos"` 并复用 Swift Package；小程序传 `platform: "mini_program"` 和 `provider`，使用通用 SDK，不复制四套 SDK；浏览器插件传 `platform: "browser_extension"`，使用通用 WebExtension SDK，并只承诺插件自有页面自动采集和 background 手动事件；MCP server 使用返回的 Node/Python SDK 初始化和 wrapper 指南；Agent Skill 只在宿主 runtime hook 可执行时接入 lifecycle capture；普通后端服务使用 `server_node`、`server_python` 或 `server_http`，只添加手动业务埋点。
+3. `tracemind.capture_setup`：先获取当前项目接入代码；Web 验证 `/capture.js` 和脚本上的公开项目 key 属性，Native 使用返回的安装步骤、入口文件、幂等检查、初始化位置、SDK 初始化代码、identify 示例、手动埋点示例和 `trafficAttribution` 指南；macOS 传 `platform: "macos"` 并复用 Swift Package；小程序传 `platform: "mini_program"` 和 `provider`，使用通用 SDK，不复制四套 SDK；浏览器插件传 `platform: "browser_extension"`，使用通用 WebExtension SDK，并只承诺插件自有页面自动采集和 background 手动事件；MCP server 使用返回的 Node/Python SDK 初始化和 wrapper 指南；Agent Skill 只在宿主 runtime hook 可执行时接入 lifecycle capture；普通后端服务使用 `server_node`、`server_python` 或 `server_http`，只添加手动业务埋点。SDK 平台若返回 `distributionMode: "local_source"`，安装命令以本地源码 vendoring 为准。
 4. `tracemind.search_event_names`：搜索已有事件，避免随意创建 event name。
 5. `tracemind.suggest_instrumentation`：判断复用事件、跳过手动埋点或创建 draft custom event。
 6. `tracemind.validate_event_payload` / `tracemind.privacy_check`：检查单个 payload。
@@ -92,6 +92,7 @@ MCP 只返回建议和 findings，不写入用户项目，也不把 draft event 
 - 混合应用不新增 `hybrid` 事件平台；WebView 使用返回 snippet 里的 `data-tracemind-framework` 写入来源 metadata，原生壳层保持 `ios`、`macos` 或 `android`。
 - 小程序不复用 Web `capture.js`，使用 `@tracemind/mini-program`；事件保持 `platform: "mini_program"` 和 `sourceType: "mini_program"`，宿主放在 `sourceDetails.provider`。V1 自动采集 app/page lifecycle 和 presence，tap/input/submit 只通过 helper 接入已有 handler，不读取 input value。
 - 浏览器插件不复用 Web `capture.js`，使用 `@tracemind/browser-extension`；事件保持 `platform: "browser_extension"` 和 `sourceType: "browser_extension"`，来源优先使用 extension id，并只保留安全 browser/manifest/runtime/sdk metadata。V1 自动采集插件自有 DOM 页面，background/service worker 只做手动事件，不采集宿主页 DOM、tab 完整 URL、历史、书签、cookie、token 或输入值。
+- SDK 升级治理使用 `contentHash` 而不是人工记忆。SDK runtime 安全上报 `sourceDetails.sdkVersion` 和 `sourceDetails.sdkContentHash`；`project_health` 可返回 `sdkUpgradeFindings`。客户 agent 看到升级提示后，应读取 `.tracemind-sdk.json`、调用 `capture_setup({ platform })`、更新 vendored SDK、运行返回的验证命令并汇报。TraceMind 自身 SDK runtime 改动后必须运行 `npm run update:sdk-manifest` 和 `npm run test:sdk-release`。
 - 完成后运行适用的 `verificationCommands`，再用 TraceMind MCP 查询 raw behaviors 或 semantic events。
 
 ## MCP Server And Skill Guidance

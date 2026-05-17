@@ -1,6 +1,6 @@
 {
   "name": "tracemind-instrumentation",
-  "guidanceVersion": "2026.05.17.4",
+  "guidanceVersion": "2026.05.17.6",
   "platforms": [
     "web",
     "ios",
@@ -43,5 +43,6 @@
       "tracemind.update_user_feedback"
     ]
   },
-  "updatePolicy": "Check tracemind.agent_guidance before changing TraceMind instrumentation. In multi-project setups, use tracemind.project_info or MCP tool metadata to confirm the project before adding events. Ask the user before updating local skill or instruction files. Ask before calling tracemind.submit_feedback unless the developer explicitly requested submission. Use submitFeedback, query_user_feedback, and update_user_feedback for terminal user feedback workflows."
+  "updatePolicy": "Check tracemind.agent_guidance before changing TraceMind instrumentation. In multi-project setups, use tracemind.project_info or MCP tool metadata to confirm the project before adding events. Use tracemind.project_health to surface SDK upgrade findings, daily health, and current attention items before changing instrumentation. Ask the user before updating local skill or instruction files. Ask before calling tracemind.submit_feedback unless the developer explicitly requested submission. Use submitFeedback, query_user_feedback, and update_user_feedback for terminal user feedback workflows.",
+  "sdkUpgradePolicy": "For SDK platforms, capture_setup returns latestSdk, installedSdkManifest, installedVersionDetection, upgradePolicy, upgradeCommands, and verificationCommands. Write installedSdkManifest to .tracemind-sdk.json in the vendored SDK path. Compare .tracemind-sdk.json contentHash and sourceDetails.sdkContentHash against latestSdk.contentHash; displayVersion is only human-readable."
 }

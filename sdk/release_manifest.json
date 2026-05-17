@@ -1,0 +1,190 @@
+{
+  "manifestVersion": 1,
+  "generatedAt": "2026-05-17T14:16:48.323Z",
+  "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+  "sourceRef": "main",
+  "sdks": [
+    {
+      "sdkName": "swift",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:d0a917437df6b2525574bf4913151eb21bacf6abd99f56d25ba00fb155017185",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/ios",
+      "platforms": [
+        "ios",
+        "macos"
+      ],
+      "minimumSupportedHash": "sha256:d0a917437df6b2525574bf4913151eb21bacf6abd99f56d25ba00fb155017185",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored swift SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "swift test --package-path sdk/ios"
+      ]
+    },
+    {
+      "sdkName": "android",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:4a4021126208f8d58635d3664090bb8bceae0e6e8b64e0b19a845e75a7d6a7da",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/android",
+      "platforms": [
+        "android"
+      ],
+      "minimumSupportedHash": "sha256:4a4021126208f8d58635d3664090bb8bceae0e6e8b64e0b19a845e75a7d6a7da",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored android SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "npm run test:sdk:android"
+      ]
+    },
+    {
+      "sdkName": "react_native",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:2eaa878c4adce521b7d1f34a77d66713f9e361857df54f69610fe0930b68544a",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/react-native",
+      "platforms": [
+        "react_native"
+      ],
+      "minimumSupportedHash": "sha256:2eaa878c4adce521b7d1f34a77d66713f9e361857df54f69610fe0930b68544a",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored react_native SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "npm test --prefix sdk/react-native"
+      ]
+    },
+    {
+      "sdkName": "mini_program",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:ed695293003f2a3c422a35aa0e20c355d0102091d86e27afa9d6c8c4494ec0aa",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/mini-program",
+      "platforms": [
+        "mini_program"
+      ],
+      "minimumSupportedHash": "sha256:ed695293003f2a3c422a35aa0e20c355d0102091d86e27afa9d6c8c4494ec0aa",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored mini_program SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "npm test --prefix sdk/mini-program"
+      ]
+    },
+    {
+      "sdkName": "browser_extension",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:cbd3c9df52bc5548ce8dfcaa7db9aa1c55ac201fc670eb395d9bb3c53c57d47d",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/browser-extension",
+      "platforms": [
+        "browser_extension"
+      ],
+      "minimumSupportedHash": "sha256:cbd3c9df52bc5548ce8dfcaa7db9aa1c55ac201fc670eb395d9bb3c53c57d47d",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored browser_extension SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "npm test --prefix sdk/browser-extension"
+      ]
+    },
+    {
+      "sdkName": "mcp_node",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:14771368102e2278847c81f05d89d2bb3399693abd0c568e291a6564307e3736",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/mcp-node",
+      "platforms": [
+        "mcp_node",
+        "agent_skill"
+      ],
+      "minimumSupportedHash": "sha256:14771368102e2278847c81f05d89d2bb3399693abd0c568e291a6564307e3736",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored mcp_node SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "npm test --prefix sdk/mcp-node"
+      ]
+    },
+    {
+      "sdkName": "mcp_python",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:e13435d521ce6a41e19e0e6e835f0ddfa8a3f14c877fca57df4f5b8b163ae573",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/mcp-python",
+      "platforms": [
+        "mcp_python"
+      ],
+      "minimumSupportedHash": "sha256:e13435d521ce6a41e19e0e6e835f0ddfa8a3f14c877fca57df4f5b8b163ae573",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored mcp_python SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "PYTHONPATH=sdk/mcp-python python3 -m unittest discover -s sdk/mcp-python/tests"
+      ]
+    },
+    {
+      "sdkName": "server_node",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:77bc22cff95e1505bd2153340c68549c2f19758a3dc62705d0a2fa906db3dd2d",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/server-node",
+      "platforms": [
+        "server_node"
+      ],
+      "minimumSupportedHash": "sha256:77bc22cff95e1505bd2153340c68549c2f19758a3dc62705d0a2fa906db3dd2d",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored server_node SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "npm test --prefix sdk/server-node"
+      ]
+    },
+    {
+      "sdkName": "server_python",
+      "displayVersion": "0.1.0",
+      "contentHash": "sha256:25af77eb59bf420a8e6ac6a721aea03002c5d9b2ae673a4f33d351f8dad31969",
+      "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+      "sourceRef": "main",
+      "sdkSourcePath": "sdk/server-python",
+      "platforms": [
+        "server_python"
+      ],
+      "minimumSupportedHash": "sha256:25af77eb59bf420a8e6ac6a721aea03002c5d9b2ae673a4f33d351f8dad31969",
+      "upgradePolicy": {
+        "level": "recommended",
+        "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored server_python SDK, run verificationCommands, and report the result."
+      },
+      "verificationCommands": [
+        "PYTHONPATH=sdk/server-python python3 -m unittest discover -s sdk/server-python/tests"
+      ]
+    }
+  ]
+}
