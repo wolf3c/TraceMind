@@ -22,14 +22,14 @@ import {
   publicSemanticEvent,
   summarizePresenceSessions,
 } from '/imports/api/tracemind';
-import { latestSdkForSetup } from '/imports/api/sdk_release';
+import { SDK_RELEASE_MANIFEST, latestSdkForSetup } from '/imports/api/sdk_release';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 import { queueProjectDailyHealthRefresh, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.17.6';
+const AGENT_GUIDANCE_VERSION = '2026.05.17.7';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
@@ -1120,10 +1120,19 @@ function sdkManifestWriteCommand(installedSdkManifest, manifestPath) {
   return `node -e ${shellSingleQuote(script)}`;
 }
 
-function localSourceCheckoutCommands(sourceRef = 'main') {
+function resolveSdkSourceRef(sourceRef) {
+  const resolved = safeString(sourceRef || SDK_RELEASE_MANIFEST?.sourceRef, 120);
+  if (!resolved) {
+    throw new Error('Missing TraceMind SDK sourceRef. Run npm run prepare:sdk-release-ref before exposing local source SDK setup.');
+  }
+  return resolved;
+}
+
+function localSourceCheckoutCommands(sourceRef) {
+  const resolvedSourceRef = resolveSdkSourceRef(sourceRef);
   return [
     `test -d ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} || git clone --filter=blob:none --no-checkout ${TRACE_MIND_SDK_SOURCE_REPO} ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}`,
-    `git -C ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} fetch --depth 1 origin ${shellSingleQuote(sourceRef)}`,
+    `git -C ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} fetch --depth 1 origin ${shellSingleQuote(resolvedSourceRef)}`,
     `git -C ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR} checkout --detach FETCH_HEAD`,
   ];
 }

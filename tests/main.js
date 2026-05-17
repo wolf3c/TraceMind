@@ -76,6 +76,9 @@ function assertSdkGovernance(setup, sdkName, vendorPath) {
   assert.strictEqual(setup.structuredContent.latestSdk.displayVersion, latestSdk.displayVersion);
   assert.strictEqual(setup.structuredContent.latestSdk.contentHash, latestSdk.contentHash);
   assert.strictEqual(setup.structuredContent.latestSdk.sourceRef, latestSdk.sourceRef);
+  assert.match(setup.structuredContent.latestSdk.sourceRef, /^tracemind-release-\d{4}\.\d{1,2}\.\d{1,2}-\d+$/);
+  assert.notStrictEqual(setup.structuredContent.latestSdk.sourceRef, 'main');
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes(latestSdk.sourceRef)));
   assert.deepStrictEqual(setup.structuredContent.latestSdk.verificationCommands, latestSdk.verificationCommands);
   assert.ok(setup.structuredContent.latestSdk.contentHash.startsWith('sha256:'));
   assert.ok(setup.structuredContent.installedVersionDetection.manifestPath.includes('.tracemind-sdk.json'));
@@ -84,6 +87,7 @@ function assertSdkGovernance(setup, sdkName, vendorPath) {
   assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('npm run test:sdk-release')));
   assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes(vendorPath)));
   assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('git -C .tracemind-sdk-source fetch --depth 1 origin')));
+  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes(latestSdk.sourceRef)));
   assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('source hash mismatch')));
   assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.startsWith('node -e ') && command.includes(`${vendorPath}/.tracemind-sdk.json`)));
   assert.strictEqual(setup.structuredContent.installedSdkManifest.sdkName, sdkName);
@@ -206,7 +210,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.17.6'));
+      assert.ok(skill.includes('version: 2026.05.17.7'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -247,7 +251,10 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('local-source GitHub clone'));
       assert.ok(skill.includes('.tracemind-sdk.json'));
       assert.ok(skill.includes('sdkContentHash'));
+      assert.ok(skill.includes('latestSdk.sourceRef'));
+      assert.ok(skill.includes('tracemind-release-<version>'));
       assert.ok(skill.includes('npm run update:sdk-manifest'));
+      assert.ok(skill.includes('npm run prepare:sdk-release-ref -- <version>'));
       assert.ok(skill.includes('PYTHONPATH'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
@@ -261,7 +268,10 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('.tracemind-sdk.json'));
       assert.ok(snippet.includes('sdkContentHash'));
       assert.ok(snippet.includes('latestSdk'));
+      assert.ok(snippet.includes('latestSdk.sourceRef'));
+      assert.ok(snippet.includes('tracemind-release-<version>'));
       assert.ok(snippet.includes('npm run update:sdk-manifest'));
+      assert.ok(snippet.includes('npm run prepare:sdk-release-ref -- <version>'));
       assert.ok(snippet.includes('manualCaptureWorkflow'));
       assert.ok(snippet.includes('supported primitives'));
       assert.ok(snippet.includes('attributionSource'));
@@ -279,7 +289,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
       assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.6');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.7');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -304,6 +314,8 @@ describe('TraceMind', function () {
       assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
       assert.ok(manifest.sdkUpgradePolicy.includes('.tracemind-sdk.json'));
       assert.ok(manifest.sdkUpgradePolicy.includes('sdkContentHash'));
+      assert.ok(manifest.sdkUpgradePolicy.includes('latestSdk.sourceRef'));
+      assert.ok(manifest.sdkUpgradePolicy.includes('tracemind-release-<version>'));
       [skill, snippet, JSON.stringify(manifest)].forEach((content) => {
         assert.ok(!content.includes('tm_mcp_'));
         assert.ok(!content.includes('tracemind.super-tree.com'));
@@ -321,7 +333,7 @@ describe('TraceMind', function () {
         assert.ok(sdk.contentHash.startsWith('sha256:'));
         assert.ok(sdk.minimumSupportedHash.startsWith('sha256:'));
         assert.ok(sdk.sourceRepo.includes('github.com/wolf3c/TraceMind'));
-        assert.ok(sdk.sourceRef);
+        assert.match(sdk.sourceRef, /^tracemind-release-\d{4}\.\d{1,2}\.\d{1,2}-\d+$/);
         assert.ok(Array.isArray(sdk.verificationCommands));
         assert.ok(sdk.verificationCommands.length > 0);
         assert.ok(sdk.upgradePolicy.agentPrompt.includes('coding agent'));
@@ -1147,7 +1159,7 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.6');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.7');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));

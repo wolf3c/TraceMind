@@ -6,8 +6,9 @@ const crypto = require('node:crypto');
 
 const ROOT = path.resolve(__dirname, '..');
 const MANIFEST_PATH = path.join(ROOT, 'sdk/release_manifest.json');
+const PACKAGE_PATH = path.join(ROOT, 'package.json');
 const SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
-const DEFAULT_SOURCE_REF = process.env.TRACEMIND_SDK_SOURCE_REF || 'main';
+const RELEASE_TAG_PREFIX = 'tracemind-release-';
 const HASH_PLACEHOLDER = '__TRACEMIND_SDK_CONTENT_HASH__';
 const RUNTIME_CANDIDATE_EXTENSIONS = new Set(['.js', '.json', '.py', '.swift', '.kt', '.kts', '.java', '.m', '.mm', '.h', '.xml']);
 const IGNORED_RUNTIME_DIRS = new Set([
@@ -187,10 +188,18 @@ function readManifest() {
   return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
 }
 
+function packageVersion() {
+  return JSON.parse(fs.readFileSync(PACKAGE_PATH, 'utf8')).version;
+}
+
+function expectedReleaseSourceRef() {
+  return `${RELEASE_TAG_PREFIX}${packageVersion()}`;
+}
+
 function sourceRef(existingManifest) {
   return process.env.TRACEMIND_SDK_SOURCE_REF
     || existingManifest?.sourceRef
-    || DEFAULT_SOURCE_REF;
+    || expectedReleaseSourceRef();
 }
 
 function canonicalRuntimeText(text) {
@@ -317,6 +326,19 @@ function validateHashConstants(manifest) {
   });
 }
 
+function validateReleaseSourceRef(manifest) {
+  const expectedSourceRef = expectedReleaseSourceRef();
+  const refs = [
+    ['root', manifest.sourceRef],
+    ...(manifest.sdks || []).map((sdk) => [sdk.sdkName || 'unknown_sdk', sdk.sourceRef]),
+  ];
+  const mismatched = refs.filter(([, actualSourceRef]) => actualSourceRef !== expectedSourceRef);
+  if (mismatched.length) {
+    const labels = mismatched.map(([label]) => label).join(', ');
+    throw new Error(`sdk/release_manifest.json sourceRef must be ${expectedSourceRef}. Mismatched entries: ${labels}. Run npm run prepare:sdk-release-ref -- ${packageVersion()}.`);
+  }
+}
+
 function normalizeManifestForCompare(manifest) {
   return {
     ...manifest,
@@ -360,6 +382,7 @@ function check({ write = false } = {}) {
     throw new Error('Missing sdk/release_manifest.json. Run npm run update:sdk-manifest.');
   }
 
+  validateReleaseSourceRef(existingManifest);
   validateHashConstants(existingManifest);
   const actualComparable = normalizeManifestForCompare(existingManifest);
   const expectedComparable = normalizeManifestForCompare(expected);
@@ -379,9 +402,13 @@ if (require.main === module) {
 }
 
 module.exports = {
+  MANIFEST_PATH,
   SDK_CONFIGS,
   buildManifest,
   check,
   contentHash,
   discoverRuntimeFiles,
+  readManifest,
+  writeHashConstants,
+  writeManifest,
 };

@@ -92,7 +92,7 @@ MCP 只返回建议和 findings，不写入用户项目，也不把 draft event 
 - 混合应用不新增 `hybrid` 事件平台；WebView 使用返回 snippet 里的 `data-tracemind-framework` 写入来源 metadata，原生壳层保持 `ios`、`macos` 或 `android`。
 - 小程序不复用 Web `capture.js`，使用 `@tracemind/mini-program`；事件保持 `platform: "mini_program"` 和 `sourceType: "mini_program"`，宿主放在 `sourceDetails.provider`。V1 自动采集 app/page lifecycle 和 presence，tap/input/submit 只通过 helper 接入已有 handler，不读取 input value。
 - 浏览器插件不复用 Web `capture.js`，使用 `@tracemind/browser-extension`；事件保持 `platform: "browser_extension"` 和 `sourceType: "browser_extension"`，来源优先使用 extension id，并只保留安全 browser/manifest/runtime/sdk metadata。V1 自动采集插件自有 DOM 页面，background/service worker 只做手动事件，不采集宿主页 DOM、tab 完整 URL、历史、书签、cookie、token 或输入值。
-- SDK 升级治理使用 `contentHash` 而不是人工记忆。SDK runtime 安全上报 `sourceDetails.sdkVersion` 和 `sourceDetails.sdkContentHash`；`project_health` 可返回 `sdkUpgradeFindings`。客户 agent 看到升级提示后，应读取 `.tracemind-sdk.json`、调用 `capture_setup({ platform })`、更新 vendored SDK、运行返回的验证命令并汇报。TraceMind 自身 SDK runtime 改动后必须运行 `npm run update:sdk-manifest` 和 `npm run test:sdk-release`。
+- SDK 升级治理使用 `contentHash` 而不是人工记忆。SDK runtime 安全上报 `sourceDetails.sdkVersion` 和 `sourceDetails.sdkContentHash`；`project_health` 可返回 `sdkUpgradeFindings`。客户 agent 看到升级提示后，应读取 `.tracemind-sdk.json`、调用 `capture_setup({ platform })`、按返回的 `latestSdk.sourceRef` 获取 vendored SDK、运行返回的验证命令并汇报。TraceMind 自身 SDK runtime 改动后必须运行 `npm run update:sdk-manifest` 和 `npm run test:sdk-release`；发布前必须运行 `npm run prepare:sdk-release-ref -- <version>`，并先推送 `tracemind-release-<version>` tag 再部署。
 - 完成后运行适用的 `verificationCommands`，再用 TraceMind MCP 查询 raw behaviors 或 semantic events。
 
 ## MCP Server And Skill Guidance

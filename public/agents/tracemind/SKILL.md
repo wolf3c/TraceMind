@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.17.6
+version: 2026.05.17.7
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -92,10 +92,11 @@ TraceMind customers may rely entirely on a coding agent. Do not assume they unde
 
 - For SDK platforms, `tracemind.capture_setup` returns `latestSdk`, `installedSdkManifest`, `installedVersionDetection`, `upgradePolicy`, `upgradeCommands`, and `verificationCommands`.
 - When `distributionMode` is `local_source`, write the returned `installedSdkManifest` to the vendored SDK path as `.tracemind-sdk.json`. Future agents use that file plus `latestSdk.contentHash` to decide whether an upgrade is needed.
+- Fetch the SDK source from the returned `latestSdk.sourceRef` exactly. Release builds use immutable `tracemind-release-<version>` tags so customer agents do not install from floating `main`.
 - Treat `contentHash` as the source of truth. `displayVersion` is only human-readable; an unchanged version string does not prove the SDK is current.
 - SDK runtimes report safe source metadata as `sourceDetails.sdkVersion` and `sourceDetails.sdkContentHash`. `tracemind.project_health` may return `sdkUpgradeFindings` when an app reports an older hash or no SDK hash.
 - If TraceMind reports an SDK update, copy the update prompt to the customer coding agent. The agent should call `tracemind.project_health`, read `.tracemind-sdk.json`, call `tracemind.capture_setup({ platform })`, update the vendored SDK, run `verificationCommands`, and report the result.
-- For TraceMind repository work, any SDK runtime change must run `npm run update:sdk-manifest` and `npm run test:sdk-release`. The release gate is authoritative; do not rely on memory or manual version bump discipline.
+- For TraceMind repository work, any SDK runtime change must run `npm run update:sdk-manifest` and `npm run test:sdk-release`. Before a release deploy, run `npm run prepare:sdk-release-ref -- <version>` and publish the matching release tag before Galaxy deploy. The release gate is authoritative; do not rely on memory or manual version bump discipline.
 
 ## Platform Loading And Network Restrictions
 

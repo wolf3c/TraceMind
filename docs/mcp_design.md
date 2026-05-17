@@ -275,7 +275,7 @@ Input:
 
 `platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`hybrid`、`mini_program`、`browser_extension`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。`mini_program` 可选 `provider`：`wechat`、`alipay`、`douyin`、`dingtalk`；别名 `wechat_mini_program`、`alipay_mini_program`、`douyin_mini_program`、`dingtalk_mini_program` 会归一为 `mini_program + provider`。浏览器插件别名 `chrome_extension`、`edge_extension`、`firefox_extension`、`web_extension` 会归一为 `browser_extension`。
 
-SDK 平台还会返回升级治理字段：`latestSdk.displayVersion`、`latestSdk.contentHash`、`latestSdk.sourceRef`、`installedVersionDetection`、`upgradePolicy`、`upgradeCommands` 和 `verificationCommands`。`contentHash` 是判断升级的硬依据，`displayVersion` 只用于展示。SDK runtime 通过白名单 `sourceDetails.sdkVersion` 和 `sourceDetails.sdkContentHash` 上报安全 metadata；`tracemind.project_health` 会在 hash 落后或未知时返回 `sdkUpgradeFindings`，让客户把更新 prompt 交给 coding agent 执行。
+SDK 平台还会返回升级治理字段：`latestSdk.displayVersion`、`latestSdk.contentHash`、`latestSdk.sourceRef`、`installedVersionDetection`、`upgradePolicy`、`upgradeCommands` 和 `verificationCommands`。`contentHash` 是判断升级的硬依据，`displayVersion` 只用于展示。发布版 `sourceRef` 是不可变 `tracemind-release-<version>` tag，客户 agent 必须按返回值获取源码，不从浮动 `main` 推断。SDK runtime 通过白名单 `sourceDetails.sdkVersion` 和 `sourceDetails.sdkContentHash` 上报安全 metadata；`tracemind.project_health` 会在 hash 落后或未知时返回 `sdkUpgradeFindings`，让客户把更新 prompt 交给 coding agent 执行。
 
 Output:
 

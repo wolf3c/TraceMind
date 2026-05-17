@@ -1,5 +1,7 @@
 import sdkReleaseManifest from '../../sdk/release_manifest.json';
 
+export const SDK_RELEASE_MANIFEST = sdkReleaseManifest;
+
 const SDK_BY_NAME = new Map((sdkReleaseManifest.sdks || []).map((sdk) => [sdk.sdkName, sdk]));
 const SDK_BY_PLATFORM = new Map();
 
@@ -102,5 +104,3 @@ export function sdkUpgradeFindingsForRecords(records = []) {
     || left.sourceKey.localeCompare(right.sourceKey)
   ));
 }
-
-export const SDK_RELEASE_MANIFEST = sdkReleaseManifest;

@@ -1,17 +1,17 @@
 ---
 name: deploy
-description: Use when the user invokes `$deploy` or asks to release or deploy TraceMind. Ensures release work is on main, handles branch merge checks, updates the canonical package.json version, verifies visible/runtime references, runs release checks, deploys through the configured Meteor deploy command, and verifies the deployed app.
+description: Use when the user invokes `$deploy` or asks to release or deploy TraceMind. Ensures release work is on main, handles branch merge checks, updates the canonical package.json version, publishes the immutable SDK GitHub source tag, verifies visible/runtime references, runs release checks, deploys through the configured Meteor deploy command, and verifies the deployed app.
 ---
 
 # TraceMind Deploy
 
-Use this skill when preparing or deploying a TraceMind release. It owns the main-branch release gate, version bump, pre-deploy checks, Meteor deploy command, and post-deploy verification.
+Use this skill when preparing or deploying a TraceMind release. It owns the main-branch release gate, version bump, SDK GitHub source publication gate, pre-deploy checks, Meteor deploy command, and post-deploy verification.
 
 ## Scope
 
 The canonical app version is `package.json` field `version`. The current UI reads that value from `imports/ui/App.svelte` and renders it in the footer, so do not add another version constant unless the user explicitly changes the product contract.
 
-This skill covers the TraceMind Meteor app deployment, not SDK package publishing. Out of scope unless requested: release notes, git tags, changelog writing, SDK package publishing, and changing TraceMind agent guidance versions such as `AGENT_GUIDANCE_VERSION`.
+This skill covers the TraceMind Meteor app deployment and the immutable SDK GitHub source tag used by `capture_setup` local-source SDK installs. It does not publish SDK registry packages. Out of scope unless requested: release notes, changelog writing, npm/PyPI/Maven/SPM package publishing, and changing TraceMind agent guidance versions such as `AGENT_GUIDANCE_VERSION`.
 
 ## Workflow
 
@@ -38,17 +38,29 @@ This skill covers the TraceMind Meteor app deployment, not SDK package publishin
 5. Verify references:
    - Search for the old version and confirm any remaining matches are intentional examples, historical docs, generated artifacts, or unrelated guidance versions.
    - Confirm `imports/ui/App.svelte` still reads from `package.json` instead of a duplicate constant.
-6. Run pre-deploy checks:
+6. Prepare the immutable SDK source release ref:
+   - Compute the release tag as `tracemind-release-${version}`, for example `tracemind-release-2026.5.12-2`.
+   - Run `npm run prepare:sdk-release-ref -- ${version}` so `sdk/release_manifest.json` and generated SDK hash constants point at the release tag instead of floating `main`.
+   - Run `npm run test:sdk-release`.
+   - If SDK runtime files changed and the manifest gate fails, fix the SDK manifest/hash mismatch before continuing.
+7. Run pre-deploy checks:
    - `node -e "const p=require('./package.json'); console.log(p.version)"`
    - `npm test` when release timing allows.
    - If `npm test` cannot run, state the blocker and the exact command left for the user.
-7. Deploy when the user asks for deployment or the request clearly says this is a deployment release:
+8. Commit and publish the release source before deploying:
+   - Commit the version, manifest, and any release workflow changes before creating the tag.
+   - Create the release tag on the release commit: `git tag tracemind-release-${version}`. If the tag already exists and does not point to `HEAD`, stop instead of reusing it.
+   - Push `main` first: `git push origin main`.
+   - Push the release tag: `git push origin tracemind-release-${version}`.
+   - Run `npm run check:deploy-git-publication -- ${version}`. It must confirm `package.json.version` equals `${version}`, the current branch is `main`, the worktree is clean, `sdk/release_manifest.json` uses `tracemind-release-${version}`, `origin/main` equals `HEAD`, and the remote tag points to `HEAD`.
+   - If push or remote verification fails, stop and do not deploy. A deployed Galaxy app must not advertise a `latestSdk.sourceRef` that is missing or mismatched on GitHub.
+9. Deploy when the user asks for deployment or the request clearly says this is a deployment release:
    - Prefer the repository script: `npm run deploy`.
    - In this repo the deploy script is the canonical command and currently expands to `meteor deploy tracemind.sandbox.galaxycloud.app --settings .deploy/settings.json`.
    - If the user explicitly specifies another Meteor app target, run that exact command form, for example `meteor deploy TraceMind --settings .deploy/settings.json`.
    - Do not print or commit `.deploy/settings.json`; it is intentionally private.
    - If deploy fails because of missing Galaxy/runtime environment, inspect or request logs and report the exact missing variable. `MONGO_URL` must be available in the Galaxy runtime environment before the app can start.
-8. Verify the deployed app after a successful deploy:
+10. Verify the deployed app after a successful deploy:
    - `npm run deploy:logs` when logs are needed to confirm startup health.
    - `curl -I https://tracemind.sandbox.galaxycloud.app/`
    - `curl -I https://tracemind.sandbox.galaxycloud.app/capture.js`
@@ -68,6 +80,7 @@ Report:
 
 - old version -> new version
 - branch state checked, any merges performed, and whether deployment ran from `main`
+- SDK source release tag, push status, and `check:deploy-git-publication` result
 - files changed
 - verification commands run and their result
 - deploy command run and whether it succeeded, if deployment was requested

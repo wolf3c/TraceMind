@@ -23,6 +23,7 @@ Keep reusable code under `imports/` so Meteor imports it explicitly instead of r
 - After finishing any task, provide one or more suggested git commit messages that accurately describe the completed change.
 - If the user explicitly points out an agent mistake, update this file with the underlying lesson: summarize why the mistake happened, the deeper rule that should have prevented it, and how future agents should apply that rule.
 - After any SDK runtime change under `sdk/`, run `npm run update:sdk-manifest` and `npm run test:sdk-release`. The manifest gate uses SDK content hashes, so do not rely on remembering to bump a version number by hand.
+- For deploys that expose SDK `latestSdk.sourceRef`, `$deploy` must publish immutable GitHub source before Galaxy: run `npm run prepare:sdk-release-ref -- <version>`, commit the release state, create/push `tracemind-release-<version>`, push `origin main`, and pass `npm run check:deploy-git-publication -- <version>` before `npm run deploy`.
 
 ## Error Ledger
 
@@ -102,7 +103,7 @@ For product app and MCP targets, verify Auto Capture before manual custom events
 
 For native SDK setup, do not duplicate existing dependencies or `TraceMind.start(...)` calls. iOS/macOS initialize from `App.swift` or `AppDelegate`, Android initializes from `Application.onCreate()`, and React Native initializes from the app bootstrap while keeping event `platform` as `ios` or `android` and marking `react_native` in framework metadata. Hybrid uses WebView Web Auto Capture plus the matching native SDK; Mini Program uses `mini_program` with provider `wechat`, `alipay`, `douyin`, or `dingtalk`; Browser Extension uses `browser_extension` for Chrome, Edge, and Firefox extension-owned pages.
 
-For SDK upgrades, treat `latestSdk.contentHash`, `.tracemind-sdk.json`, and reported `sourceDetails.sdkContentHash` as the source of truth. `displayVersion` is only human-readable. `tracemind.project_health` may return `sdkUpgradeFindings`; if it does, have the customer coding agent call `capture_setup`, update the vendored SDK, run returned verification commands, and report completion.
+For SDK upgrades, treat `latestSdk.contentHash`, `.tracemind-sdk.json`, and reported `sourceDetails.sdkContentHash` as the source of truth. `displayVersion` is only human-readable, and `latestSdk.sourceRef` must be fetched exactly because release builds point at immutable `tracemind-release-<version>` tags. `tracemind.project_health` may return `sdkUpgradeFindings`; if it does, have the customer coding agent call `capture_setup`, update the vendored SDK, run returned verification commands, and report completion.
 
 Manual native events are for stable business outcomes that Auto Capture cannot infer. The SDKs sanitize and omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
 

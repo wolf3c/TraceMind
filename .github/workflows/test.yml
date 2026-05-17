@@ -22,5 +22,6 @@ jobs:
           echo "$HOME/.meteor" >> "$GITHUB_PATH"
       - run: npm ci
       - run: npm run test:sdk-release
+      - run: npm run test:deploy-gates
       - run: npx svelte-check
       - run: npm test

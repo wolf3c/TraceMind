@@ -27,6 +27,22 @@ Deploy or redeploy TraceMind:
 npm run deploy
 ```
 
+When the release exposes SDK `latestSdk.sourceRef`, deploy from `main` only after publishing the matching GitHub source tag:
+
+```bash
+npm run prepare:sdk-release-ref -- <version>
+npm run test:sdk-release
+git add package.json package-lock.json sdk/release_manifest.json
+git commit -m "Deploy TraceMind <version>"
+git tag tracemind-release-<version>
+git push origin main
+git push origin tracemind-release-<version>
+npm run check:deploy-git-publication -- <version>
+npm run deploy
+```
+
+If `check:deploy-git-publication` fails, do not deploy. It verifies `package.json.version`, the manifest `sourceRef`, clean `main`, `origin/main`, and the remote release tag so the Galaxy app cannot advertise SDK source that is missing or mismatched on GitHub.
+
 Tail production logs:
 
 ```bash
