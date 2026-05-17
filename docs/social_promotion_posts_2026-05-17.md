@@ -257,7 +257,7 @@ TraceMind helps AI-built products understand what real users actually do after l
 | 即刻 | posted | https://web.okjike.com/following | v1 | Posted from logged-in account. Timeline shows the new post. |
 | V2EX | posted | https://www.v2ex.com/t/1213290/review | v1-create-node | Posted to 分享创造. |
 | Product Hunt | deferred |  | v1 | Wait for pilot feedback before formal launch. |
-| Appinn / 小众软件 | login_required | https://meta.appinn.net/new-topic?category=10 | appinn-self-rec | Draft prepared in `docs/appinn_submission_2026-05-17.md`; posting entry redirects to login. |
+| Appinn / 小众软件 | awaiting_mod_approval | https://meta.appinn.net/c/faxian/10 | appinn-self-rec | Submitted to 发现频道 as `【开发者自荐】TraceMind：让 AI Coding 产品看懂真实用户行为`; forum says moderator approval is required before it appears. |
 
 ## Chrome Draft Status
 
@@ -272,7 +272,7 @@ TraceMind helps AI-built products understand what real users actually do after l
 - Indie Hackers requires login before drafting can continue.
 - 即刻 and V2EX were reopened for posting on 2026-05-17 after login. V2EX was moved from `ideas` to `create` because the page guidance says product launches belong in 分享创造.
 - 即刻 and V2EX were both posted successfully.
-- Appinn / 小众软件投稿入口 `https://meta.appinn.net/new-topic?category=10` redirects to login in the current Chrome profile. Do not auto-authorize Google/GitHub/X login; wait for the user to log in or confirm the login method.
+- Appinn / 小众软件投稿入口 direct URL returned 404 after login, so submission was completed from the 发现频道 page via `提交新发现`. The forum accepted the post but says moderator approval is required before it appears.
 
 ## Reddit Rule Response
 

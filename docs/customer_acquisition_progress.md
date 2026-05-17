@@ -47,7 +47,7 @@
 | Reddit `r/vibecoding` | blocked_by_rules | 页面提示 dev tools 需先通过 X community 审核，且有 no-shilling 规则。 | 不强发；等待 X community 反馈或后续按规则重写教育型帖子。 |
 | Indie Hackers | login_required | 当前显示 public homepage / Join 状态。 | 登录后发布英文试点招募帖。 |
 | Product Hunt | deferred | 暂不适合正式 launch。 | 等 1-2 个试点反馈后准备正式 launch 素材。 |
-| Appinn / 小众软件 | login_required | 投稿入口进入登录页，当前 Chrome profile 未登录 Appinn。 | 用户登录后提交 `docs/appinn_submission_2026-05-17.md` 中的 `开发者自荐` 文案。 |
+| Appinn / 小众软件 | awaiting_mod_approval | 已从 发现频道 提交 `开发者自荐`，页面提示需要版主批准后才会显示。 | 等待审核通过；明天检查是否可见和是否有回复。 |
 
 ### 合规处理记录
 
@@ -94,10 +94,12 @@
 - Messaging change for tomorrow: 中文评论里减少“analytics”英文词，更多使用“不用搭复杂看板”“看用户卡在哪”。
 - Candidate selection change for tomorrow: 优先选择已经上线、已有收入、已有试用反馈的人，不优先评论纯教学内容。
 
-### Appinn / 小众软件投稿准备
+### Appinn / 小众软件投稿
 
 - 已将 Appinn / 小众软件加入 `$tracemind-daily-customer-acquisition`，定位为低频中文工具自荐渠道。
 - 已准备 `开发者自荐` 长文案：`docs/appinn_submission_2026-05-17.md`。
-- 已打开投稿入口：`https://meta.appinn.net/new-topic?category=10`。
-- 当前阻塞：投稿入口跳转登录页，Chrome profile 未登录 Appinn。
-- 下一步：用户完成 Appinn 登录后，继续提交标题 `〖开发者自荐〗TraceMind：让 AI Coding 产品看懂真实用户行为`。
+- 已从 发现频道 页面提交：`https://meta.appinn.net/c/faxian/10`。
+- 实际提交标题：`【开发者自荐】TraceMind：让 AI Coding 产品看懂真实用户行为`。
+- 根据 Appinn 页面规则，提交前将正文从长文案压缩成更简洁的工具自荐版。
+- 当前状态：页面提示“我们已收到您的帖子，不过需要由版主批准才能显示。请耐心等待。”
+- 下一步：等待审核；明天检查帖子是否公开，以及是否有评论反馈。
