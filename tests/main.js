@@ -38,6 +38,26 @@ import enMessages from '../imports/ui/i18n/locales/en';
 import zhMessages from '../imports/ui/i18n/locales/zh';
 import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n';
 
+function assertLocalSourceSetup(setup, vendorPath) {
+  assert.strictEqual(setup.structuredContent.distributionMode, 'local_source');
+  assert.strictEqual(setup.structuredContent.publishStatus, 'not_published');
+  assert.strictEqual(setup.structuredContent.sdkSourceRepo, 'https://github.com/wolf3c/TraceMind.git');
+  assert.strictEqual(setup.structuredContent.customerVendorPath, vendorPath);
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('git clone --depth 1 https://github.com/wolf3c/TraceMind.git .tracemind-sdk-source')));
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes(`mkdir -p ${vendorPath}`)));
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes(` ${vendorPath}/`) || step.includes(` ${vendorPath}`)));
+  assert.ok(setup.structuredContent.idempotencyChecks.some((check) => check.includes(vendorPath)));
+  assert.ok(!JSON.stringify(setup.structuredContent.installCommands).includes('TraceMind SDK distribution'));
+}
+
+function assertLocalJsDependency(setup, vendorPath) {
+  assertLocalSourceSetup(setup, vendorPath);
+  assert.ok(setup.structuredContent.installCommands.includes(`npm install ./${vendorPath}`));
+  assert.ok(setup.structuredContent.installCommands.includes(`pnpm add ./${vendorPath}`));
+  assert.ok(setup.structuredContent.installCommands.includes(`yarn add file:./${vendorPath}`));
+  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('do not run npm, pnpm, and yarn together')));
+}
+
 describe('TraceMind', function () {
   describe('Coding agent guidance', function () {
     it('builds Chinese install prompts with the current project MCP URL and public guidance links', function () {
@@ -79,6 +99,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('异常或下降原因分析'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
       assert.ok(prompt.includes('通过 `tracemind.capture_setup` 获取 Web Auto Capture 接入脚本'));
+      assert.ok(prompt.includes('如果返回 `distributionMode: "local_source"`'));
       assert.ok(!prompt.includes('如果只能使用全局配置，请先告诉我并等待确认'));
       assert.ok(!prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
@@ -126,6 +147,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('anomaly or drop investigation'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
       assert.ok(prompt.includes('Call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
+      assert.ok(prompt.includes('If the setup returns `distributionMode: "local_source"`'));
       assert.ok(!prompt.includes('If only global configuration is available, tell me first and wait for confirmation'));
       assert.ok(!prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
@@ -151,7 +173,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.17.4'));
+      assert.ok(skill.includes('version: 2026.05.17.5'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -189,6 +211,8 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('@tracemind/mini-program'));
       assert.ok(skill.includes('{ "platform": "browser_extension" }'));
       assert.ok(skill.includes('@tracemind/browser-extension'));
+      assert.ok(skill.includes('local-source GitHub clone'));
+      assert.ok(skill.includes('PYTHONPATH'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
@@ -197,6 +221,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
       assert.ok(snippet.includes('installCommands'));
+      assert.ok(snippet.includes('distributionMode: "local_source"'));
       assert.ok(snippet.includes('manualCaptureWorkflow'));
       assert.ok(snippet.includes('supported primitives'));
       assert.ok(snippet.includes('attributionSource'));
@@ -214,7 +239,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
       assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.4');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.5');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -1061,7 +1086,7 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.4');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.5');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
@@ -1810,6 +1835,7 @@ describe('TraceMind', function () {
       assert.ok(setup.structuredContent.captureSnippet.includes('/capture.js'));
       assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
       assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('No package install')));
+      assert.notStrictEqual(setup.structuredContent.distributionMode, 'local_source');
       assert.ok(setup.structuredContent.filesToEdit.some((file) => file.includes('root layout')));
       assert.ok(setup.structuredContent.idempotencyChecks.some((check) => check.includes('data-tracemind-token')));
       assert.ok(setup.structuredContent.verificationCommands.some((command) => command.includes('query TraceMind')));
@@ -1857,6 +1883,9 @@ describe('TraceMind', function () {
       const reactNative = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'react_native' });
 
       assert.strictEqual(ios.structuredContent.platform, 'ios');
+      assertLocalSourceSetup(ios, 'vendor/TraceMind');
+      assert.ok(ios.structuredContent.installCommands.some((step) => step.includes('.package(path: "vendor/TraceMind")')));
+      assert.ok(ios.structuredContent.dependencyEdits.some((edit) => edit.includes('.product(name: "TraceMind", package: "TraceMind")')));
       assert.ok(ios.structuredContent.install.includes('Swift Package'));
       assert.ok(ios.structuredContent.installCommands.some((step) => step.includes('Swift Package')));
       assert.ok(ios.structuredContent.filesToEdit.includes('App.swift'));
@@ -1875,6 +1904,8 @@ describe('TraceMind', function () {
 
       assert.strictEqual(macos.structuredContent.platform, 'macos');
       assert.strictEqual(macos.structuredContent.eventPlatform, 'macos');
+      assertLocalSourceSetup(macos, 'vendor/TraceMind');
+      assert.ok(macos.structuredContent.installCommands.some((step) => step.includes('.package(path: "vendor/TraceMind")')));
       assert.ok(macos.structuredContent.install.includes('Swift Package'));
       assert.ok(macos.structuredContent.installCommands.some((step) => step.includes('sdk/ios')));
       assert.ok(macos.structuredContent.filesToEdit.includes('App.swift'));
@@ -1892,6 +1923,9 @@ describe('TraceMind', function () {
       assert.ok(macos.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
 
       assert.strictEqual(android.structuredContent.platform, 'android');
+      assertLocalSourceSetup(android, 'vendor/tracemind-android');
+      assert.ok(android.structuredContent.installCommands.some((step) => step.includes('include(":tracemind")')));
+      assert.ok(android.structuredContent.installCommands.some((step) => step.includes('implementation(project(":tracemind"))')));
       assert.ok(android.structuredContent.install.includes('Gradle'));
       assert.ok(android.structuredContent.installCommands.some((step) => step.includes('Gradle')));
       assert.ok(android.structuredContent.filesToEdit.some((file) => file.includes('AndroidManifest.xml')));
@@ -1910,8 +1944,9 @@ describe('TraceMind', function () {
       assert.ok(android.structuredContent.networkRestrictionChecks.some((check) => check.includes('network_security_config')));
 
       assert.strictEqual(reactNative.structuredContent.platform, 'react_native');
+      assertLocalJsDependency(reactNative, 'vendor/tracemind/react-native');
       assert.ok(reactNative.structuredContent.install.includes('@tracemind/react-native'));
-      assert.ok(reactNative.structuredContent.installCommands.some((step) => step.includes('@tracemind/react-native')));
+      assert.ok(reactNative.structuredContent.packageManagerNotes.some((note) => note.includes('@tracemind/react-native')));
       assert.ok(reactNative.structuredContent.filesToEdit.includes('package.json'));
       assert.ok(reactNative.structuredContent.initLocation.includes('bootstrap'));
       assert.ok(reactNative.structuredContent.idempotencyChecks.some((check) => check.includes('@tracemind/react-native')));
@@ -1959,6 +1994,10 @@ describe('TraceMind', function () {
       assert.strictEqual(hybrid.structuredContent.ok, true);
       assert.strictEqual(hybrid.structuredContent.platform, 'hybrid');
       assert.strictEqual(hybrid.structuredContent.eventPlatform, 'web_plus_native');
+      assert.strictEqual(hybrid.structuredContent.distributionMode, 'web_snippet_plus_local_source_native');
+      assert.strictEqual(hybrid.structuredContent.publishStatus, 'not_published');
+      assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('vendor/TraceMind')));
+      assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('vendor/tracemind-android')));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('/capture.js'));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_hybrid"'));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-framework="hybrid"'));
@@ -2008,6 +2047,7 @@ describe('TraceMind', function () {
       assert.strictEqual(wechat.structuredContent.platform, 'mini_program');
       assert.strictEqual(wechat.structuredContent.provider, 'wechat');
       assert.strictEqual(wechat.structuredContent.eventPlatform, 'mini_program');
+      assertLocalJsDependency(wechat, 'vendor/tracemind/mini-program');
       assert.ok(wechat.structuredContent.install.includes('@tracemind/mini-program'));
       assert.ok(wechat.structuredContent.installCommands.some((step) => step.includes('provider: "wechat"')));
       assert.ok(wechat.structuredContent.filesToEdit.some((file) => file.includes('app.js')));
@@ -2060,6 +2100,7 @@ describe('TraceMind', function () {
       assert.strictEqual(extension.structuredContent.ok, true);
       assert.strictEqual(extension.structuredContent.platform, 'browser_extension');
       assert.strictEqual(extension.structuredContent.eventPlatform, 'browser_extension');
+      assertLocalJsDependency(extension, 'vendor/tracemind/browser-extension');
       assert.ok(extension.structuredContent.install.includes('@tracemind/browser-extension'));
       assert.ok(extension.structuredContent.installCommands.some((step) => step.includes('popup')));
       assert.ok(extension.structuredContent.installCommands.some((step) => step.includes('background')));
@@ -2109,9 +2150,10 @@ describe('TraceMind', function () {
 
       assert.strictEqual(node.structuredContent.platform, 'mcp_node');
       assert.strictEqual(node.structuredContent.eventPlatform, 'server');
+      assertLocalJsDependency(node, 'vendor/tracemind/mcp-node');
       assert.ok(node.structuredContent.initSnippet.includes('TraceMindMCP.start(server'));
       assert.ok(node.structuredContent.initSnippet.includes('projectKey: "tm_proj_mcp_sdk"'));
-      assert.ok(node.structuredContent.installCommands.some((step) => step.includes('@tracemind/mcp-node')));
+      assert.ok(node.structuredContent.packageManagerNotes.some((note) => note.includes('@tracemind/mcp-node')));
       assert.ok(node.structuredContent.autoCapturedSignals.includes('MCP tool call completed'));
       assert.ok(node.structuredContent.privacyConstraints.some((constraint) => constraint.includes('tool arguments')));
       assert.ok(node.structuredContent.manualCaptureExample.includes('TraceMindMCP.capture'));
@@ -2119,9 +2161,12 @@ describe('TraceMind', function () {
 
       assert.strictEqual(python.structuredContent.platform, 'mcp_python');
       assert.strictEqual(python.structuredContent.eventPlatform, 'server');
+      assertLocalSourceSetup(python, 'vendor/tracemind_mcp');
+      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('PYTHONPATH')));
+      assert.ok(!JSON.stringify(python.structuredContent.installCommands).includes('pip install'));
       assert.ok(python.structuredContent.initSnippet.includes('TraceMindMCP.start(server'));
       assert.ok(python.structuredContent.initSnippet.includes('project_key="tm_proj_mcp_sdk"'));
-      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('tracemind-mcp')));
+      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('tracemind_mcp')));
       assert.ok(python.structuredContent.manualCaptureExample.includes('TraceMindMCP.capture'));
 
       assert.strictEqual(skill.structuredContent.platform, 'agent_skill');
@@ -2160,6 +2205,7 @@ describe('TraceMind', function () {
 
       assert.strictEqual(node.structuredContent.platform, 'server_node');
       assert.strictEqual(node.structuredContent.eventPlatform, 'server');
+      assertLocalJsDependency(node, 'vendor/tracemind/server-node');
       assert.ok(node.structuredContent.initSnippet.includes('TraceMindServer.start'));
       assert.ok(node.structuredContent.initSnippet.includes('projectKey: "tm_proj_server_sdk"'));
       assert.ok(node.structuredContent.manualCaptureExample.includes('TraceMindServer.capture'));
@@ -2169,12 +2215,17 @@ describe('TraceMind', function () {
 
       assert.strictEqual(python.structuredContent.platform, 'server_python');
       assert.strictEqual(python.structuredContent.eventPlatform, 'server');
+      assertLocalSourceSetup(python, 'vendor/tracemind_server');
+      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('PYTHONPATH')));
+      assert.ok(!JSON.stringify(python.structuredContent.installCommands).includes('pip install'));
       assert.ok(python.structuredContent.initSnippet.includes('TraceMindServer.start'));
       assert.ok(python.structuredContent.initSnippet.includes('project_key="tm_proj_server_sdk"'));
       assert.ok(python.structuredContent.manualCaptureExample.includes('TraceMindServer.capture'));
 
       assert.strictEqual(http.structuredContent.platform, 'server_http');
       assert.strictEqual(http.structuredContent.eventPlatform, 'server');
+      assert.notStrictEqual(http.structuredContent.distributionMode, 'local_source');
+      assert.ok(http.structuredContent.installCommands.some((step) => step.includes('HTTP client')));
       assert.ok(http.structuredContent.payloadTemplate.projectKey === 'tm_proj_server_sdk');
       assert.strictEqual(http.structuredContent.payloadTemplate.source.type, 'server_app');
       assert.ok(http.structuredContent.manualCaptureExample.includes('/api/capture'));

@@ -66,9 +66,9 @@ Server Python:
 TraceMindServer.start(project_key="PROJECT_KEY", source_key="billing-api")
 ```
 
-Native、React Native、混合应用、小程序、浏览器插件、MCP 和 server SDK 的包安装、Gradle/Swift Package/Python package 配置不计入“一行代码”；真正进入业务代码的接入点保持一行初始化。本地开发时，控制台会显示当前项目和平台对应的一行代码。macOS 复用 `sdk/ios` Swift Package，并以 `platform: "macos"` / `sourceType: "macos"` 区分来源。混合应用通过 `hybrid` setup 返回组合接入指导：WebView 使用 Web Auto Capture，原生壳层使用对应 Native SDK，不新增 `hybrid` 事件平台。小程序通过一个通用 `mini_program` SDK 接入，使用 `provider` 区分微信、支付宝、抖音和钉钉，不复用 Web 脚本注入。浏览器插件通过一个通用 `browser_extension` SDK 接入，支持 Chrome、Edge、Firefox 的插件自有页面和 background 手动事件，不复用 Web 脚本注入，也不对 content script 宿主页做无侵入自动采集。静态 Skill 文件不是运行时，不能独立 auto-capture；只有宿主 agent runtime 暴露 lifecycle hook 时，`agent_skill` 才能采集。普通 server SDK 的一行初始化只启用手动埋点队列，不开启请求自动采集。
+Native、React Native、混合应用、小程序、浏览器插件、MCP 和 server SDK 的包安装、Gradle/Swift Package/Python package 配置不计入“一行代码”；真正进入业务代码的接入点保持一行初始化。SDK 包当前不假设已经发布到 registry：`capture_setup` 对这些平台返回 `distributionMode: "local_source"` 时，coding agent 应按返回的 GitHub clone、`vendor/` 复制、本地 file dependency、SwiftPM local path、Gradle module 或 PYTHONPATH 指令接入。本地开发时，控制台会显示当前项目和平台对应的一行代码。macOS 复用 `sdk/ios` Swift Package，并以 `platform: "macos"` / `sourceType: "macos"` 区分来源。混合应用通过 `hybrid` setup 返回组合接入指导：WebView 使用 Web Auto Capture，原生壳层使用对应 Native SDK，不新增 `hybrid` 事件平台。小程序通过一个通用 `mini_program` SDK 接入，使用 `provider` 区分微信、支付宝、抖音和钉钉，不复用 Web 脚本注入。浏览器插件通过一个通用 `browser_extension` SDK 接入，支持 Chrome、Edge、Firefox 的插件自有页面和 background 手动事件，不复用 Web 脚本注入，也不对 content script 宿主页做无侵入自动采集。静态 Skill 文件不是运行时，不能独立 auto-capture；只有宿主 agent runtime 暴露 lifecycle hook 时，`agent_skill` 才能采集。普通 server SDK 的一行初始化只启用手动埋点队列，不开启请求自动采集。
 
-Coding agent 接入时不应从静态 skill 或 rules 文件读取项目 key。应先配置 TraceMind MCP，再调用 `tracemind.capture_setup` 获取当前项目和平台的一行接入代码。Native、React Native、混合应用、小程序、浏览器插件、MCP server、Agent Skill 和 server application 接入还应使用 MCP 返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks` 和 `verificationCommands`，先确认没有现有 SDK 依赖或初始化代码后再修改项目。
+Coding agent 接入时不应从静态 skill 或 rules 文件读取项目 key。应先配置 TraceMind MCP，再调用 `tracemind.capture_setup` 获取当前项目和平台的一行接入代码。Native、React Native、混合应用、小程序、浏览器插件、MCP server、Agent Skill 和 server application 接入还应使用 MCP 返回的 `distributionMode`、`installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks` 和 `verificationCommands`，先确认没有现有 SDK 依赖、vendored SDK 目录或初始化代码后再修改项目。
 
 ## 自动采集信号
 
@@ -452,7 +452,7 @@ TraceMindServer.capture(
 - 混合应用使用 `tracemind.capture_setup({ platform: "hybrid" })` 获取 WebView + Native 壳层组合接入步骤。WebView 行为仍是 `web`，壳层行为仍是 `ios`、`macos` 或 `android`；登录后两层应使用同一个稳定内部 `userId`，桥接层只传安全身份、路由和来源元信息。
 - 小程序使用 `tracemind.capture_setup({ platform: "mini_program", provider: "wechat" | "alipay" | "douyin" | "dingtalk" })` 获取通用 SDK 接入步骤。V1 自动覆盖 app/page lifecycle 和 presence，tap/input/submit 通过 helper 接入已有事件 handler，不承诺编译期模板改写或无侵入全自动交互采集。
 - 浏览器插件使用 `tracemind.capture_setup({ platform: "browser_extension" })` 获取通用 WebExtension SDK 接入步骤。V1 自动覆盖插件自有 popup/options/sidebar/devtools DOM 页面和 foreground presence，background/service worker 只支持手动事件；不承诺 content script 对宿主页的无侵入全自动采集。
-- Coding agent 使用 `tracemind.capture_setup({ platform: "ios" | "macos" | "android" | "react_native" | "hybrid" | "mini_program" | "browser_extension" | "mcp_node" | "mcp_python" | "agent_skill" | "server_node" | "server_python" | "server_http" })` 获取当前项目的安装步骤、入口文件、幂等检查和验证命令。静态文档只描述流程，不承载具体 project key。
+- Coding agent 使用 `tracemind.capture_setup({ platform: "ios" | "macos" | "android" | "react_native" | "hybrid" | "mini_program" | "browser_extension" | "mcp_node" | "mcp_python" | "agent_skill" | "server_node" | "server_python" | "server_http" })` 获取当前项目的安装步骤、入口文件、幂等检查和验证命令。静态文档只描述流程，不承载具体 project key，也不假设 SDK 已发布到包管理 registry。
 - 第一阶段不自动 hook 网络请求、崩溃、session replay 或截图；这些能力后续独立设计。
 - Native SDK 使用本地队列批量写入 `/api/capture`，前后台切换或网络恢复时 flush；在线区间写入 `/api/presence`，不参与普通事件队列。
 - SDK 过滤明显敏感字段，不采集输入值、截图、secret、token、raw prompt、raw user content 或完整 query URL。

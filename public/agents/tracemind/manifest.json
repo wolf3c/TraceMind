@@ -1,6 +1,6 @@
 {
   "name": "tracemind-instrumentation",
-  "guidanceVersion": "2026.05.17.4",
+  "guidanceVersion": "2026.05.17.5",
   "platforms": [
     "web",
     "ios",
