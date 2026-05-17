@@ -1,6 +1,6 @@
 {
   "name": "tracemind-instrumentation",
-  "guidanceVersion": "2026.05.15.1",
+  "guidanceVersion": "2026.05.17.1",
   "platforms": [
     "web",
     "ios",
@@ -26,6 +26,9 @@
       "tracemind.agent_guidance",
       "tracemind.project_health",
       "tracemind.recent_online",
+      "tracemind.summary",
+      "tracemind.query_events",
+      "tracemind.query_raw_behaviors",
       "tracemind.capture_setup",
       "tracemind.search_event_names",
       "tracemind.suggest_instrumentation",

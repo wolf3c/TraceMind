@@ -16,6 +16,17 @@ class TraceMindServerTest(unittest.TestCase):
             "custom",
             event_name="invoice_paid",
             user_id="user_123",
+            attribution={
+                "source": "partner",
+                "medium": "referral",
+                "campaign": "launch",
+                "landingPath": "/invite?token=secret",
+                "referrerDomain": "example.com",
+                "referrerType": "external",
+                "gclidPresent": True,
+                "fullUrl": "https://example.com/invite?token=secret",
+                "email": "user@example.com",
+            },
             properties={"amount": 2900, "success": True, "currency": "USD"},
             context={"source": "stripe_webhook"},
         )
@@ -28,8 +39,22 @@ class TraceMindServerTest(unittest.TestCase):
         self.assertEqual(event["type"], "custom")
         self.assertEqual(event["eventName"], "invoice_paid")
         self.assertEqual(event["userId"], "user_123")
+        self.assertEqual(
+            event["attribution"],
+            {
+                "source": "partner",
+                "medium": "referral",
+                "campaign": "launch",
+                "landingPath": "/invite",
+                "referrerDomain": "example.com",
+                "referrerType": "external",
+                "gclidPresent": True,
+            },
+        )
         self.assertEqual(event["properties"], {"amount": 2900, "success": True, "currency": "USD"})
         self.assertEqual(event["context"], {"source": "stripe_webhook"})
+        self.assertNotIn("token=secret", str(event))
+        self.assertNotIn("user@example.com", str(event))
 
     def test_filters_sensitive_server_fields_and_non_finite_numbers(self):
         batches = []

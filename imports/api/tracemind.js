@@ -22,6 +22,8 @@ export const DAILY_REPORT_DRAFT_MIN_REFRESH_MS = 60 * 1000;
 
 const PASSIVE_BOUNCE_EVENT_NAMES = new Set(['page_view', 'route_change']);
 const EXPLICIT_BOUNCE_INTERACTION_EVENT_TYPES = new Set(['click', 'input', 'submit', 'change', 'custom']);
+const ATTRIBUTION_REFERRER_TYPES = new Set(['direct', 'internal', 'external', 'search', 'social']);
+const ATTRIBUTION_VALUE_PATTERN = /^[a-z0-9][a-z0-9._~:-]{0,119}$/i;
 
 export const EVENT_TYPES = {
   page_view: '浏览页面',
@@ -41,8 +43,8 @@ export const EVENT_DEFINITIONS = [
   {
     eventType: 'page_view',
     name: '页面浏览',
-    meaning: '用户打开或刷新了一个页面，用于分析访问量、落地页、路径入口和页面级留存。',
-    typicalProperties: ['title', 'path', 'referrer'],
+    meaning: '用户打开或刷新了一个页面，用于分析访问量、落地页、路径入口、流量归因和页面级留存。',
+    typicalProperties: ['title', 'path', 'referrer', 'attribution'],
     platforms: ['web', 'ios', 'android', 'macos', 'server'],
   },
   {
@@ -70,7 +72,7 @@ export const EVENT_DEFINITIONS = [
     eventType: 'route_change',
     name: '页面跳转',
     meaning: '用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。',
-    typicalProperties: ['path', 'referrer'],
+    typicalProperties: ['path', 'referrer', 'attribution'],
     platforms: ['web', 'ios', 'android', 'macos'],
   },
   {
@@ -160,6 +162,58 @@ function parseUrl(value) {
   } catch (error) {
     return null;
   }
+}
+
+function cleanAttributionValue(value, max = 120) {
+  const text = String(value || '').trim().replace(/\s+/g, '-').slice(0, max);
+  if (!text || text.includes('@') || /https?:|[?&=]|%40/i.test(text)) return '';
+  return ATTRIBUTION_VALUE_PATTERN.test(text) ? text : '';
+}
+
+function cleanAttributionDomain(value) {
+  const parsed = parseUrl(value);
+  const domain = String(parsed?.hostname || value || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '').slice(0, 200);
+  if (!domain || domain.includes('@') || /[/?#&=]/.test(domain)) return '';
+  return /^[a-z0-9.-]+$/.test(domain) ? domain : '';
+}
+
+function cleanAttributionPath(value) {
+  const raw = String(value || '').trim().slice(0, 500);
+  if (!raw || raw.includes('@') || /^https?:/i.test(raw)) return '';
+  const [pathWithoutQuery] = raw.split('?');
+  if (!pathWithoutQuery.startsWith('/')) return '';
+  return pathWithoutQuery || '/';
+}
+
+export function normalizeAttribution(input = {}) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+
+  const attribution = {};
+  const source = cleanAttributionValue(input.source || input.utmSource);
+  const medium = cleanAttributionValue(input.medium || input.utmMedium);
+  const campaign = cleanAttributionValue(input.campaign || input.utmCampaign);
+  const content = cleanAttributionValue(input.content || input.utmContent);
+  const referrerDomain = cleanAttributionDomain(input.referrerDomain);
+  const referrerType = ATTRIBUTION_REFERRER_TYPES.has(String(input.referrerType || '').toLowerCase())
+    ? String(input.referrerType).toLowerCase()
+    : '';
+  const landingPath = cleanAttributionPath(input.landingPath);
+
+  attribution.source = source || referrerDomain || (referrerType === 'direct' ? 'direct' : '');
+  attribution.medium = medium || referrerType || '';
+  if (campaign) attribution.campaign = campaign;
+  if (content) attribution.content = content;
+  if (referrerDomain) attribution.referrerDomain = referrerDomain;
+  if (referrerType) attribution.referrerType = referrerType;
+  if (landingPath) attribution.landingPath = landingPath;
+  if (input.gclidPresent === true) attribution.gclidPresent = true;
+  if (input.fbclidPresent === true) attribution.fbclidPresent = true;
+  if (input.msclkidPresent === true) attribution.msclkidPresent = true;
+
+  Object.keys(attribution).forEach((key) => {
+    if (attribution[key] === '') delete attribution[key];
+  });
+  return attribution;
 }
 
 function normalizeSourceType(value) {
@@ -359,6 +413,24 @@ function actorIdForEvent(event = {}) {
   return event.userId || event.anonymousId || event.deviceId || event.deviceFingerprint;
 }
 
+function applyAttributionFilters(query, filters = {}) {
+  const attributionSource = cleanAttributionValue(filters.attributionSource);
+  const attributionMedium = cleanAttributionValue(filters.attributionMedium);
+  const attributionCampaign = cleanAttributionValue(filters.attributionCampaign);
+  const attributionContent = cleanAttributionValue(filters.attributionContent);
+  const attributionReferrerType = ATTRIBUTION_REFERRER_TYPES.has(String(filters.attributionReferrerType || filters.referrerType || '').toLowerCase())
+    ? String(filters.attributionReferrerType || filters.referrerType).toLowerCase()
+    : '';
+  const landingPath = cleanAttributionPath(filters.landingPath || filters.attributionLandingPath);
+
+  if (attributionSource) query['attribution.source'] = attributionSource;
+  if (attributionMedium) query['attribution.medium'] = attributionMedium;
+  if (attributionCampaign) query['attribution.campaign'] = attributionCampaign;
+  if (attributionContent) query['attribution.content'] = attributionContent;
+  if (attributionReferrerType) query['attribution.referrerType'] = attributionReferrerType;
+  if (landingPath) query['attribution.landingPath'] = landingPath;
+}
+
 export function buildEventQuery(projectId, filters = {}) {
   const query = { projectId };
   const startAt = validDate(filters.startAt);
@@ -373,6 +445,7 @@ export function buildEventQuery(projectId, filters = {}) {
   if (filters.targetHash) query.targetHash = String(filters.targetHash);
   if (filters.actionKey) query.actionKey = String(filters.actionKey);
   if (filters.path) query.path = String(filters.path);
+  applyAttributionFilters(query, filters);
   if (startAt || endAt) {
     query.occurredAt = {};
     if (startAt) query.occurredAt.$gte = startAt;
@@ -397,6 +470,7 @@ export function buildRawBehaviorQuery(projectId, filters = {}) {
   if (filters.targetHash) query.targetHash = String(filters.targetHash);
   if (filters.actionKey) query.actionKey = String(filters.actionKey);
   if (filters.path) query.path = String(filters.path);
+  applyAttributionFilters(query, filters);
   if (startAt || endAt) {
     query.occurredAt = {};
     if (startAt) query.occurredAt.$gte = startAt;
@@ -452,6 +526,7 @@ export function publicSemanticEvent(event) {
     relatedActionKey: event.relatedActionKey,
     relatedTargetHash: event.relatedTargetHash,
     correlationId: event.correlationId,
+    attribution: normalizeAttribution(event.attribution),
     properties: event.properties,
     context: event.context,
     occurredAt: event.occurredAt,
@@ -491,6 +566,7 @@ export function publicRawBehavior(behavior) {
     relatedActionKey: behavior.relatedActionKey,
     relatedTargetHash: behavior.relatedTargetHash,
     correlationId: behavior.correlationId,
+    attribution: normalizeAttribution(behavior.attribution),
     method: behavior.method,
     status: behavior.status,
     properties: behavior.properties,
@@ -623,6 +699,53 @@ function topCounts(map, limit = 3) {
     .sort((left, right) => right[1] - left[1])
     .slice(0, limit)
     .map(([label, count]) => ({ label, count }));
+}
+
+function topAttributionCounts(map, limit = 3) {
+  return [...map.entries()]
+    .sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])))
+    .slice(0, limit)
+    .map(([label, count]) => ({ label, count }));
+}
+
+function topPathCounts(map, limit = 3) {
+  return [...map.entries()]
+    .sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])))
+    .slice(0, limit)
+    .map(([path, count]) => ({ path, count }));
+}
+
+function attributionRecordKey(record = {}) {
+  return record.sessionId || record.presenceId || record.rawBehaviorId || record._id || '';
+}
+
+export function summarizeTrafficAttribution(records = [], { dedupe = false, limit = 3 } = {}) {
+  const sources = new Map();
+  const mediums = new Map();
+  const campaigns = new Map();
+  const landingPaths = new Map();
+  const seen = new Set();
+
+  records.forEach((record) => {
+    const attribution = normalizeAttribution(record.attribution);
+    if (!attribution.source && !attribution.medium && !attribution.campaign && !attribution.landingPath) return;
+    if (dedupe) {
+      const key = attributionRecordKey(record);
+      if (key && seen.has(key)) return;
+      if (key) seen.add(key);
+    }
+    if (attribution.source) increment(sources, attribution.source);
+    if (attribution.medium) increment(mediums, attribution.medium);
+    if (attribution.campaign) increment(campaigns, attribution.campaign);
+    if (attribution.landingPath) increment(landingPaths, attribution.landingPath);
+  });
+
+  return {
+    trafficSources: topAttributionCounts(sources, limit),
+    trafficMediums: topAttributionCounts(mediums, limit),
+    trafficCampaigns: topAttributionCounts(campaigns, limit),
+    trafficLandingPaths: topPathCounts(landingPaths, limit),
+  };
 }
 
 function topDurations(map, limit = 3) {
@@ -838,6 +961,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
   const durationUsers = new Map();
   const durationPaths = new Map();
   const bounceSessions = new Map();
+  const trafficRecords = [];
   let failureEventCount = 0;
   let lastEventAt = null;
   let eventCount = 0;
@@ -852,6 +976,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     const device = deviceLabel(event);
     if (region) increment(regionCounts, region);
     if (device) increment(deviceCounts, device);
+    trafficRecords.push(event);
     if (isFailureEvent(event)) failureEventCount += 1;
     if (!lastEventAt || occurredAt > lastEventAt) lastEventAt = occurredAt;
     const bounceKey = eventSessionKey(event);
@@ -879,6 +1004,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
       clippedDurationMs(session, windowStart, windowEnd, now),
     );
     windowSessions.push(session);
+    trafficRecords.push(session);
     const actorId = actorIdForHealthPresence(session);
     const path = session.path || session.screen || '/';
     const source = session.sourceLabel || session.sourceKey || session.platform || 'Unknown';
@@ -925,6 +1051,7 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     deviceDistribution: topCounts(deviceCounts, 5),
     sessionSources: topCounts(sourceCounts, 3),
     sessionPaths: topCounts(sessionPathCounts, 3).map((item) => ({ path: item.label, count: item.count })),
+    ...summarizeTrafficAttribution(trafficRecords, { dedupe: true, limit: 3 }),
     topDurationUsers: topDurations(durationUsers, 3),
     topDurationPaths: topDurations(durationPaths, 3),
     topBouncePages: topBouncePagesForSessions(bounceSessions, 3),
@@ -966,6 +1093,10 @@ function emptyHealthWindow() {
     deviceDistribution: [],
     sessionSources: [],
     sessionPaths: [],
+    trafficSources: [],
+    trafficMediums: [],
+    trafficCampaigns: [],
+    trafficLandingPaths: [],
     topDurationUsers: [],
     topDurationPaths: [],
     topBouncePages: [],
@@ -1192,6 +1323,7 @@ export function publicPresenceSession(session) {
     sourceKey: session.sourceKey,
     sourceLabel: session.sourceLabel,
     sourceDetails: session.sourceDetails,
+    attribution: normalizeAttribution(session.attribution),
     path: session.path,
     title: session.title,
     screen: session.screen,

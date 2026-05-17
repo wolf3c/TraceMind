@@ -288,6 +288,7 @@ export async function ensureTraceMindIndexes() {
     SemanticEvents.rawCollection().createIndex({ projectId: 1, eventType: 1, occurredAt: -1 }, { name: 'semantic_project_event_type_time' }),
     SemanticEvents.rawCollection().createIndex({ projectId: 1, actionKey: 1, occurredAt: -1 }, { name: 'semantic_project_action_time' }),
     SemanticEvents.rawCollection().createIndex({ projectId: 1, targetHash: 1, occurredAt: -1 }, { name: 'semantic_project_target_time' }),
+    SemanticEvents.rawCollection().createIndex({ projectId: 1, 'attribution.source': 1, occurredAt: -1 }, { name: 'semantic_project_attribution_source_time' }),
     PresenceSessions.rawCollection().createIndex({ projectId: 1, presenceId: 1 }, { unique: true, name: 'presence_project_presence_unique' }),
     PresenceSessions.rawCollection().createIndex({ projectId: 1, startedAt: -1 }),
     PresenceSessions.rawCollection().createIndex({ projectId: 1, lastSeenAt: -1 }),
@@ -295,6 +296,7 @@ export async function ensureTraceMindIndexes() {
     RawBehaviors.rawCollection().createIndex({ semanticStatus: 1, createdAt: 1 }, { name: 'raw_semantic_queue' }),
     RawBehaviors.rawCollection().createIndex({ projectId: 1, actionKey: 1, occurredAt: -1 }, { name: 'raw_project_action_time' }),
     RawBehaviors.rawCollection().createIndex({ projectId: 1, targetHash: 1, occurredAt: -1 }, { name: 'raw_project_target_time' }),
+    RawBehaviors.rawCollection().createIndex({ projectId: 1, 'attribution.source': 1, occurredAt: -1 }, { name: 'raw_project_attribution_source_time' }),
     CaptureDeliveryReports.rawCollection().createIndex({ projectId: 1, createdAt: -1 }),
     FeedbackReports.rawCollection().createIndex(
       { projectId: 1, mcpTokenId: 1, feedbackFingerprint: 1, createdAt: -1 },

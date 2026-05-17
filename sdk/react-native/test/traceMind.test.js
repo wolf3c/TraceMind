@@ -89,6 +89,55 @@ test('passes action correlation fields through to the native SDK', () => {
   assert.deepEqual(calls[0][2].deviceInfo, { framework: 'react_native' });
 });
 
+test('passes sanitized traffic attribution controls through to the native SDK', () => {
+  const calls = [];
+  const client = createTraceMindClient({
+    nativeModule: {
+      setAttribution(attribution) {
+        calls.push(['setAttribution', attribution]);
+      },
+      recordDeepLink(payload) {
+        calls.push(['recordDeepLink', payload]);
+      },
+    },
+    platform: 'android',
+  });
+
+  client.setAttribution({
+    source: 'partner',
+    medium: 'deeplink',
+    campaign: 'launch',
+    landingPath: '/invite?secret=true',
+    referrerDomain: 'com.twitter.android',
+    referrerType: 'external',
+    gclidPresent: true,
+    fullUrl: 'https://example.com/invite?token=secret',
+    email: 'user@example.com',
+  });
+  client.recordDeepLink({
+    url: 'myapp://invite?utm_source=partner&utm_medium=deeplink&utm_campaign=launch&fbclid=secret',
+    referrer: 'android-app://com.twitter.android',
+    sourcePackage: 'com.twitter.android',
+  });
+
+  assert.deepEqual(calls[0], ['setAttribution', {
+    source: 'partner',
+    medium: 'deeplink',
+    campaign: 'launch',
+    landingPath: '/invite',
+    referrerDomain: 'com.twitter.android',
+    referrerType: 'external',
+    gclidPresent: true,
+  }]);
+  assert.deepEqual(calls[1], ['recordDeepLink', {
+    url: 'myapp://invite?utm_source=partner&utm_medium=deeplink&utm_campaign=launch&fbclid=secret',
+    referrer: 'android-app://com.twitter.android',
+    sourcePackage: 'com.twitter.android',
+  }]);
+  assert.equal(JSON.stringify(calls).includes('token=secret'), false);
+  assert.equal(JSON.stringify(calls).includes('user@example.com'), false);
+});
+
 test('identifies users through the native SDK with sanitized primitive traits', () => {
   const calls = [];
   const client = createTraceMindClient({

@@ -1,6 +1,7 @@
 package com.tracemind
 
 import android.content.SharedPreferences
+import java.net.URI
 import java.time.Instant
 import java.util.UUID
 
@@ -29,6 +30,134 @@ data class TraceMindSource(
   val details: Map<String, String> = emptyMap()
 )
 
+data class TraceMindAttribution(
+  val source: String? = null,
+  val medium: String? = null,
+  val campaign: String? = null,
+  val content: String? = null,
+  val referrerDomain: String? = null,
+  val referrerType: String? = null,
+  val landingPath: String? = null,
+  val gclidPresent: Boolean? = null,
+  val fbclidPresent: Boolean? = null,
+  val msclkidPresent: Boolean? = null
+) {
+  fun isEmpty(): Boolean {
+    return source == null
+      && medium == null
+      && campaign == null
+      && content == null
+      && referrerDomain == null
+      && referrerType == null
+      && landingPath == null
+      && gclidPresent != true
+      && fbclidPresent != true
+      && msclkidPresent != true
+  }
+
+  companion object {
+    fun sanitized(
+      source: String? = null,
+      medium: String? = null,
+      campaign: String? = null,
+      content: String? = null,
+      referrerDomain: String? = null,
+      referrerType: String? = null,
+      landingPath: String? = null,
+      gclidPresent: Boolean? = null,
+      fbclidPresent: Boolean? = null,
+      msclkidPresent: Boolean? = null
+    ): TraceMindAttribution {
+      return TraceMindAttribution(
+        source = cleanValue(source),
+        medium = cleanValue(medium),
+        campaign = cleanValue(campaign),
+        content = cleanValue(content),
+        referrerDomain = cleanDomain(referrerDomain),
+        referrerType = cleanReferrerType(referrerType),
+        landingPath = cleanPath(landingPath),
+        gclidPresent = if (gclidPresent == true) true else null,
+        fbclidPresent = if (fbclidPresent == true) true else null,
+        msclkidPresent = if (msclkidPresent == true) true else null
+      )
+    }
+
+    fun fromDeepLink(url: String?, referrer: String? = null, sourcePackage: String? = null): TraceMindAttribution {
+      if (url.isNullOrBlank() && referrer.isNullOrBlank() && sourcePackage.isNullOrBlank()) {
+        return TraceMindAttribution()
+      }
+      val parsedUrl = parseUri(url)
+      val params = queryParams(parsedUrl)
+      val scheme = parsedUrl?.scheme?.lowercase().orEmpty()
+      val isWebLink = scheme == "http" || scheme == "https"
+      val referrerHost = cleanDomain(sourcePackage) ?: cleanDomain(parseUri(referrer)?.host)
+      val sourceValue = cleanValue(params["utm_source"]) ?: referrerHost ?: cleanDomain(parsedUrl?.host) ?: if (isWebLink) "direct" else "deeplink"
+      val mediumValue = cleanValue(params["utm_medium"]) ?: if (isWebLink) "app_link" else "deeplink"
+      return sanitized(
+        source = sourceValue,
+        medium = mediumValue,
+        campaign = params["utm_campaign"],
+        content = params["utm_content"],
+        referrerDomain = referrerHost ?: cleanDomain(parsedUrl?.host),
+        referrerType = "external",
+        landingPath = landingPath(parsedUrl),
+        gclidPresent = params.containsKey("gclid"),
+        fbclidPresent = params.containsKey("fbclid"),
+        msclkidPresent = params.containsKey("msclkid")
+      )
+    }
+
+    private fun parseUri(value: String?): URI? {
+      if (value.isNullOrBlank()) return null
+      return runCatching { URI(value) }.getOrNull()
+    }
+
+    private fun queryParams(uri: URI?): Map<String, String> {
+      val query = uri?.rawQuery ?: return emptyMap()
+      return query.split("&").mapNotNull { pair ->
+        val parts = pair.split("=", limit = 2)
+        val key = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        key to (parts.getOrNull(1) ?: "")
+      }.toMap()
+    }
+
+    private fun landingPath(uri: URI?): String? {
+      if (uri == null) return null
+      val scheme = uri.scheme?.lowercase().orEmpty()
+      var path = uri.path.orEmpty()
+      if (path.isEmpty() && scheme != "http" && scheme != "https" && !uri.host.isNullOrBlank()) {
+        path = "/${uri.host}"
+      }
+      if (path.isEmpty()) path = "/"
+      if (!uri.fragment.isNullOrBlank()) path += "#${uri.fragment}"
+      return cleanPath(path)
+    }
+
+    private fun cleanValue(value: String?): String? {
+      val text = value.orEmpty().trim().replace(Regex("\\s+"), "-").take(120)
+      if (text.isBlank() || text.contains("@") || Regex("https?:|[?&=]|%40", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+      return if (Regex("^[A-Za-z0-9][A-Za-z0-9._~:-]{0,119}$").matches(text)) text else null
+    }
+
+    private fun cleanDomain(value: String?): String? {
+      val domain = value.orEmpty().trim().trim('.').lowercase().take(200)
+      if (domain.isBlank() || domain.contains("@") || Regex("[/?#&=]").containsMatchIn(domain)) return null
+      return if (Regex("^[a-z0-9.-]+$").matches(domain)) domain else null
+    }
+
+    private fun cleanPath(value: String?): String? {
+      val raw = value.orEmpty().trim().take(500)
+      if (raw.isBlank() || !raw.startsWith("/") || raw.contains("@") || Regex("^https?:", RegexOption.IGNORE_CASE).containsMatchIn(raw)) return null
+      return raw.split("?", limit = 2).first()
+    }
+
+    private fun cleanReferrerType(value: String?): String? {
+      val next = value.orEmpty().lowercase()
+      return if (next in setOf("direct", "internal", "external", "search", "social")) next else null
+    }
+  }
+}
+
 data class TraceMindPayload(
   val projectKey: String,
   val sessionId: String,
@@ -49,6 +178,7 @@ data class TraceMindPayload(
   val identitySource: String? = null,
   val identityConfidence: String? = null,
   val actionKey: String? = null,
+  val attribution: TraceMindAttribution? = null,
   val properties: Map<String, Any> = emptyMap(),
   val context: Map<String, Any> = emptyMap(),
   val occurredAt: String = Instant.now().toString()
@@ -79,6 +209,7 @@ data class TraceMindPresencePayload(
   val lastActiveAt: String? = null,
   val activeState: String = "inactive",
   val idleTimeoutMs: Int = 60000,
+  val attribution: TraceMindAttribution? = null,
   val occurredAt: String = Instant.now().toString()
 )
 
@@ -169,8 +300,18 @@ class TraceMindPayloadBuilder(
   private val framework: String = "kotlin",
   private val identityStore: TraceMindIdentityStore
 ) {
+  private var attribution: TraceMindAttribution? = null
+
   fun identify(userId: String) {
     identityStore.identify(userId)
+  }
+
+  fun setAttribution(nextAttribution: TraceMindAttribution) {
+    attribution = nextAttribution.takeUnless { it.isEmpty() }
+  }
+
+  fun recordDeepLink(url: String?, referrer: String? = null, sourcePackage: String? = null) {
+    setAttribution(TraceMindAttribution.fromDeepLink(url, referrer, sourcePackage))
   }
 
   fun payload(
@@ -209,6 +350,7 @@ class TraceMindPayloadBuilder(
       identitySource = targetIdentity?.source,
       identityConfidence = targetIdentity?.confidence,
       actionKey = actionKey,
+      attribution = attribution,
       properties = sanitize(properties),
       context = sanitize(context)
     )
@@ -249,6 +391,7 @@ class TraceMindPayloadBuilder(
       lastActiveAt = lastActiveAt,
       activeState = activeState,
       idleTimeoutMs = idleTimeoutMs,
+      attribution = attribution,
       occurredAt = occurredAt
     )
   }

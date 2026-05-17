@@ -1,4 +1,4 @@
-import { EVENT_TYPES } from './tracemind';
+import { EVENT_TYPES, normalizeAttribution, summarizeTrafficAttribution } from './tracemind';
 
 function cleanText(value, fallback = '') {
   return String(value || fallback).replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -46,6 +46,7 @@ export function buildSemanticEvent(behavior) {
     relatedActionKey: behavior.relatedActionKey || behavior.context?.relatedActionKey || '',
     relatedTargetHash: behavior.relatedTargetHash || behavior.context?.relatedTargetHash || '',
     correlationId: behavior.correlationId || behavior.context?.correlationId || '',
+    attribution: normalizeAttribution(behavior.attribution),
     properties: behavior.properties || {},
     context: behavior.context || {},
     occurredAt: behavior.occurredAt || behavior.createdAt || new Date(),
@@ -200,5 +201,6 @@ export function summarizeSemanticEvents(events) {
     topEvents,
     topPaths,
     topActions,
+    ...summarizeTrafficAttribution(events, { limit: 5 }),
   };
 }

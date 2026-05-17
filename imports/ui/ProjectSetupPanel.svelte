@@ -194,10 +194,10 @@
 
       <details class="disclosure-panel source-disclosure">
         <summary>
-          <span>{$t("Source statistics")}</span>
+          <span>{$t("Capture sources")}</span>
         </summary>
         <div class="source-panel">
-          <p class="disclosure-description">{$t("See recent sources writing to this project key")}</p>
+          <p class="disclosure-description">{$t("See recent apps and SDKs writing to this project key")}</p>
           {#if sourceSummary.length}
             <div class="source-list">
               {#each sourceSummary as source (`${source.sourceType}:${source.sourceKey}`)}
@@ -227,7 +227,7 @@
               {/each}
             </div>
           {:else}
-            <p class="empty">{$t("No source data yet. Source statistics will appear after events are captured.")}</p>
+            <p class="empty">{$t("No capture source data yet. Capture sources will appear after events are captured.")}</p>
           {/if}
         </div>
       </details>

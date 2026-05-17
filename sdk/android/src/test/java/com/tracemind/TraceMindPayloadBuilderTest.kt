@@ -195,6 +195,59 @@ class TraceMindPayloadBuilderTest {
   }
 
   @Test
+  fun deepLinkAttributionIsAttachedToEventsAndPresenceWithoutQueryValues() {
+    val presences = mutableListOf<TraceMindPresencePayload>()
+    val client = TraceMindClient(
+      projectKey = "tm_proj_android",
+      endpoint = "https://tracemind.example.com/api/capture",
+      presenceEndpoint = "https://tracemind.example.com/api/presence",
+      packageName = "com.example.android",
+      appLabel = "Example Android",
+      identityStore = InMemoryIdentityStore(userId = "user_123"),
+      presenceSender = { presences.add(it) }
+    )
+
+    client.recordDeepLink(
+      url = "myapp://invite?utm_source=partner&utm_medium=deeplink&utm_campaign=launch&fbclid=secret-click&email=user@example.com",
+      referrer = "android-app://com.twitter.android",
+      sourcePackage = "com.twitter.android"
+    )
+    client.capture(type = "custom", eventName = "invite_accepted", path = "InviteActivity")
+    val event = client.flushPayload().events.first()
+    client.startPresence("InviteActivity")
+    val presence = presences.first()
+    val json = TraceMindBatch(event.projectKey, listOf(event)).toJson()
+
+    assertEquals("partner", event.attribution?.source)
+    assertEquals("deeplink", event.attribution?.medium)
+    assertEquals("launch", event.attribution?.campaign)
+    assertEquals("com.twitter.android", event.attribution?.referrerDomain)
+    assertEquals("external", event.attribution?.referrerType)
+    assertEquals("/invite", event.attribution?.landingPath)
+    assertEquals(true, event.attribution?.fbclidPresent)
+    assertEquals(event.attribution, presence.attribution)
+    assertFalse(json.contains("secret-click"))
+    assertFalse(json.contains("user@example.com"))
+  }
+
+  @Test
+  fun emptyDeepLinkDoesNotCreateAttribution() {
+    val client = TraceMindClient(
+      projectKey = "tm_proj_android",
+      endpoint = "https://tracemind.example.com/api/capture",
+      packageName = "com.example.android",
+      appLabel = "Example Android",
+      identityStore = InMemoryIdentityStore(userId = "user_123")
+    )
+
+    client.recordDeepLink(url = null, referrer = null, sourcePackage = null)
+    client.capture(type = "custom", eventName = "app_opened", path = "HomeActivity")
+    val event = client.flushPayload().events.first()
+
+    assertEquals(null, event.attribution)
+  }
+
+  @Test
   fun submitFeedbackBuildsDedicatedPayloadWithConsentedContact() {
     val feedbacks = mutableListOf<TraceMindUserFeedbackPayload>()
     val client = TraceMindClient(

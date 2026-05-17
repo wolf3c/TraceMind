@@ -10,7 +10,7 @@ When this snippet is installed from the TraceMind console, add the repository-sp
 
 Before using any TraceMind MCP tool in this repository, use the expected MCP server, call `tracemind.project_info`, and continue only if the returned `projectId` matches the Project ID above. If it does not match, stop and ask the user to configure the correct TraceMind MCP server. Do not use another `tracemind-*` MCP server for this repository unless the user explicitly confirms the project switch.
 
-For product behavior analysis, use `tracemind.project_health` to read the selected day's project health report and `tracemind.recent_online` to inspect real-time online status for the last 30 minutes. Then use `tracemind.summary` and `tracemind.query_events` for feature usage analysis or anomaly/drop investigation. Use `tracemind.query_raw_behaviors` only when semantic evidence is insufficient.
+For product behavior analysis, use `tracemind.project_health` to read the selected day's project health report and `tracemind.recent_online` to inspect real-time online status for the last 30 minutes. Then use `tracemind.summary` and `tracemind.query_events` for feature usage analysis, traffic source analysis, or anomaly/drop investigation. Use filters such as `attributionSource`, `attributionMedium`, `attributionCampaign`, and `landingPath` when explaining growth or drops by acquisition channel. Use `tracemind.query_raw_behaviors` only when semantic evidence is insufficient.
 
 When adding or modifying TraceMind analytics instrumentation in this project:
 
@@ -32,6 +32,8 @@ For product app and MCP targets, verify Auto Capture before manual custom events
 For native SDK setup, do not duplicate existing dependencies or `TraceMind.start(...)` calls. iOS and macOS initialize from `App.swift` or `AppDelegate`, Android initializes from `Application.onCreate()`, and React Native initializes from the app bootstrap while keeping event `platform` as `ios` or `android` and marking `react_native` in framework metadata. macOS uses the existing Swift package and records window or screen level Auto Capture with `platform: "macos"` and `sourceType: "macos"`.
 
 Manual native events are for stable business outcomes that Auto Capture cannot infer. The SDKs sanitize and omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
+
+For traffic attribution, keep `sourceType/sourceKey` for capture runtime identity and use the sanitized `attribution` model for product acquisition source. Web Auto Capture records UTM/referrer/landing-path first touch automatically. iOS/macOS should call `TraceMind.recordOpenURL(...)` or `TraceMind.setAttribution(...)`; Android should call `TraceMind.recordDeepLink(...)` or `TraceMind.setAttribution(...)`; React Native should call `TraceMind.recordDeepLink(...)` from `Linking` handlers or `TraceMind.setAttribution(...)`. Do not capture `utm_term`, arbitrary query params, full URLs with query strings, search keywords, raw click IDs, emails, tokens, prompts, or raw user content.
 
 For third-party MCP servers, use `mcp_node` or `mcp_python`. Auto Capture records safe server metadata for tool calls, resource reads, and prompt requests with `platform: "server"` and `sourceType: "mcp_server"`. Do not capture raw prompts, tool arguments, tool results, resource content, source code, diffs, secrets, tokens, or full query URLs.
 

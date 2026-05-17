@@ -6,6 +6,7 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
 import com.tracemind.TraceMind
+import com.tracemind.TraceMindAttribution
 import com.tracemind.TraceMindFeedbackContact
 import com.tracemind.TraceMindFeedbackMessage
 
@@ -43,6 +44,33 @@ class TraceMindModule(
   @ReactMethod
   fun setScreen(screen: String) {
     TraceMind.setScreen(screen)
+  }
+
+  @ReactMethod
+  fun setAttribution(attribution: ReadableMap) {
+    TraceMind.setAttribution(
+      TraceMindAttribution.sanitized(
+        source = readString(attribution, "source"),
+        medium = readString(attribution, "medium"),
+        campaign = readString(attribution, "campaign"),
+        content = readString(attribution, "content"),
+        referrerDomain = readString(attribution, "referrerDomain"),
+        referrerType = readString(attribution, "referrerType"),
+        landingPath = readString(attribution, "landingPath"),
+        gclidPresent = readBoolean(attribution, "gclidPresent"),
+        fbclidPresent = readBoolean(attribution, "fbclidPresent"),
+        msclkidPresent = readBoolean(attribution, "msclkidPresent")
+      )
+    )
+  }
+
+  @ReactMethod
+  fun recordDeepLink(payload: ReadableMap) {
+    TraceMind.recordDeepLink(
+      url = readString(payload, "url"),
+      referrer = readString(payload, "referrer"),
+      sourcePackage = readString(payload, "sourcePackage") ?: readString(payload, "sourceApplication")
+    )
   }
 
   @ReactMethod
@@ -87,6 +115,16 @@ class TraceMindModule(
       }
     }
     return next
+  }
+
+  private fun readString(payload: ReadableMap, key: String): String? {
+    if (!payload.hasKey(key) || payload.isNull(key)) return null
+    return if (payload.getType(key) == ReadableType.String) payload.getString(key) else null
+  }
+
+  private fun readBoolean(payload: ReadableMap, key: String): Boolean? {
+    if (!payload.hasKey(key) || payload.isNull(key)) return null
+    return if (payload.getType(key) == ReadableType.Boolean) payload.getBoolean(key) else null
   }
 
   private companion object {

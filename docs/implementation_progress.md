@@ -143,3 +143,14 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added a today-only recent-online health card that lazily loads after the main project health cards, using a separate `tracemind.project.recentOnline` method so daily reports and setup metadata remain on the fast path.
 - The card reports unique online users in the last 30 minutes, 5-minute online-user buckets, and expandable Top 3 details for region distribution, longest active-duration pages, and frequent events.
 - Kept the recent-online count grounded in presence actors (`userId`, `anonymousId`, `deviceId`, or `deviceFingerprint`) rather than session ids, matching the existing dashboard active-user semantics.
+
+## 2026-05-17
+
+### Completed
+
+- Added privacy-safe first-touch traffic attribution for new Web visits, limited to whitelisted UTM fields, referrer domain/type, landing path, and boolean ad-click markers.
+- Extended attribution production beyond Web: iOS/macOS can call `TraceMind.recordOpenURL(...)` or `TraceMind.setAttribution(...)`, Android can call `TraceMind.recordDeepLink(...)` or `TraceMind.setAttribution(...)`, React Native forwards both helpers to the native SDKs, and server SDKs accept already-sanitized manual attribution without inferring request traffic source automatically.
+- Stored sanitized attribution on raw behaviors, semantic events, and presence sessions, with dashboard health summaries and MCP/API filters for traffic source, medium, campaign, and landing path.
+- Updated `tracemind.capture_setup`, public Skill guidance, agent snippets, and manifest so customer coding agents can both set source attribution during manual instrumentation and analyze source-related changes through MCP filters.
+- Clarified that capture source governance (`sourceType + sourceKey`) tracks apps and SDKs writing to a project key, while traffic attribution tracks where users arrived from.
+- Documented that old events cannot be reliably backfilled because full inbound query/referrer/deeplink context was intentionally not stored.

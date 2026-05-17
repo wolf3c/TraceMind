@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.15.1
+version: 2026.05.17.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -31,10 +31,24 @@ Use these workflows when a developer asks what is happening in their product:
 
 - Daily health check: call `tracemind.project_info`, then `tracemind.project_health` for the selected day. Report whether the project is normal, what changed versus the previous day, and the first attention item to inspect.
 - Recent online status: call `tracemind.project_info`, then `tracemind.recent_online` to inspect the last 30 minutes. Report online users, 5-minute buckets, top regions, active pages, and high-frequency events.
-- Feature usage analysis: call `tracemind.project_health`, then `tracemind.summary` with relevant time, path, event, `actionKey`, or `targetHash` filters. Use `tracemind.query_events` to show reviewable evidence.
+- Feature usage analysis: call `tracemind.project_health`, then `tracemind.summary` with relevant time, path, event, `actionKey`, `targetHash`, or traffic attribution filters. Use `tracemind.query_events` to show reviewable evidence.
 - Anomaly or drop investigation: start with `tracemind.project_health`, identify the dropped metric or upload-health issue, then query affected events and paths. Use `tracemind.query_raw_behaviors` only when semantic evidence is not enough.
+- Traffic source analysis: start with `tracemind.project_health`, then drill down with `tracemind.summary`, `tracemind.query_events`, or `tracemind.query_raw_behaviors` using `attributionSource`, `attributionMedium`, `attributionCampaign`, and `landingPath`.
 
 Only call `tracemind.submit_feedback` after the developer confirms they want to submit an issue or idea.
+
+## Traffic Attribution
+
+Traffic attribution answers where product users came from. It is different from `sourceType/sourceKey`, which describes the capture runtime such as Web hostname, iOS bundle id, Android package name, MCP server, Agent Skill, or server app.
+
+- Web: Auto Capture records first-touch attribution for the browser visit from whitelisted `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, referrer domain/type, landing path without query string, and boolean click markers such as `gclidPresent`. Manual custom events in the same visit inherit it automatically.
+- iOS/macOS: when the app opens from universal links, custom URL schemes, handoff, or another app, call `TraceMind.recordOpenURL(url, sourceApplication: sourceApplication)` before relevant screen or custom events. Use `TraceMind.setAttribution(...)` only when you already have a sanitized custom source setting.
+- Android: call `TraceMind.recordDeepLink(url = intent.data?.toString(), referrer = referrer?.toString(), sourcePackage = callingPackage)` from app links, custom schemes, or deeplink routing. Use `TraceMind.setAttribution(...)` only for sanitized custom source settings.
+- React Native: call `TraceMind.recordDeepLink({ url, referrer, sourcePackage })` from `Linking.getInitialURL()` and URL subscriptions. Use `TraceMind.setAttribution({ source, medium, campaign, landingPath })` when a JS router owns the source setting.
+- Server apps: do not infer user traffic source automatically in v1. If a server-side business event must be analyzed by channel, pass only an already-sanitized `attribution` object from product traffic context.
+- MCP and Agent Skill: their `sourceType/sourceKey` identifies runtime/tool origin, not product traffic acquisition. Use attribution filters to analyze product events, not to label MCP tool calls as marketing traffic.
+
+Never store `utm_term`, arbitrary `ref` params, full URLs with query strings, search keywords, raw click IDs, emails, tokens, prompts, or raw user content. Use MCP filters `attributionSource`, `attributionMedium`, `attributionCampaign`, and `landingPath` for source-related analysis.
 
 ## Auto Capture Setup Workflow
 
@@ -117,6 +131,7 @@ Manual capture follows the same mental model on Web, iOS, macOS, Android, React 
 - Use the returned `identifySnippet` after login when the app has a stable internal `userId`. Traits are optional and must use only `string`, `number`, or `boolean` values.
 - Use `manualCaptureExamples` only after `tracemind.search_event_names` finds an approved event name or the user approves a draft event proposal.
 - Put stable business facts in `properties`; put route, source, experiment, or UI context in `context`.
+- Put traffic acquisition context in the SDK attribution helper or `attribution` object, not only in `context.source`, when the event should be queryable by source/campaign/landing-page MCP filters.
 - Native and React Native SDKs omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
 - Manual events are for outcomes such as purchase completed, subscription changed, invite sent, or onboarding completed. Do not use manual capture for raw input values or screen contents.
 

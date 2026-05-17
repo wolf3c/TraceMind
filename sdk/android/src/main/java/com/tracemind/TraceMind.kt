@@ -65,6 +65,20 @@ object TraceMind {
   }
 
   @JvmStatic
+  fun setAttribution(attribution: TraceMindAttribution) {
+    client?.setAttribution(attribution)
+  }
+
+  @JvmStatic
+  fun recordDeepLink(
+    url: String?,
+    referrer: String? = null,
+    sourcePackage: String? = null
+  ) {
+    client?.recordDeepLink(url = url, referrer = referrer, sourcePackage = sourcePackage)
+  }
+
+  @JvmStatic
   fun identify(userId: String, traits: Map<String, Any?> = emptyMap()) {
     client?.identify(userId = userId, traits = traits)
   }
@@ -196,6 +210,14 @@ class TraceMindClient(
     }
   }
 
+  fun setAttribution(attribution: TraceMindAttribution) {
+    builder.setAttribution(attribution)
+  }
+
+  fun recordDeepLink(url: String?, referrer: String? = null, sourcePackage: String? = null) {
+    builder.recordDeepLink(url = url, referrer = referrer, sourcePackage = sourcePackage)
+  }
+
   fun startPresence(screen: String, title: String? = null, state: String = "start") {
     currentScreen = normalizedScreen(screen)
     if (presenceId == null) presenceId = "tm_pres_${uuid()}"
@@ -298,6 +320,12 @@ private class TraceMindLifecycleCallbacks(
 ) : Application.ActivityLifecycleCallbacks {
   override fun onActivityCreated(activity: Activity, state: Bundle?) {
     activity.window.callback = TraceMindWindowCallback(activity, activity.window.callback, client)
+    val deepLinkUrl = activity.intent?.data?.toString()
+    val referrer = runCatching { activity.referrer?.toString() }.getOrNull()
+    val sourcePackage = activity.callingPackage
+    if (!deepLinkUrl.isNullOrBlank() || !referrer.isNullOrBlank() || !sourcePackage.isNullOrBlank()) {
+      client.recordDeepLink(url = deepLinkUrl, referrer = referrer, sourcePackage = sourcePackage)
+    }
   }
 
   override fun onActivityResumed(activity: Activity) {
@@ -446,6 +474,7 @@ private fun TraceMindPayload.toJson(): String {
   identitySource?.let { fields.add(""""identitySource":"${it.escapeJson()}"""") }
   identityConfidence?.let { fields.add(""""identityConfidence":"${it.escapeJson()}"""") }
   actionKey?.let { fields.add(""""actionKey":"${it.escapeJson()}"""") }
+  attribution?.let { fields.add(""""attribution":${it.toJson()}""") }
   return "{${fields.joinToString(",")}}"
 }
 
@@ -472,6 +501,7 @@ private fun TraceMindPresencePayload.toJson(): String {
   title?.let { fields.add(""""title":"${it.escapeJson()}"""") }
   screen?.let { fields.add(""""screen":"${it.escapeJson()}"""") }
   lastActiveAt?.let { fields.add(""""lastActiveAt":"${it.escapeJson()}"""") }
+  attribution?.let { fields.add(""""attribution":${it.toJson()}""") }
   return "{${fields.joinToString(",")}}"
 }
 
@@ -546,6 +576,21 @@ private fun TraceMindTarget.toJson(): String {
 
 private fun TraceMindTargetIdentity.toJson(): String {
   return """{"key":"${key.escapeJson()}","source":"${source.escapeJson()}","confidence":"${confidence.escapeJson()}"}"""
+}
+
+private fun TraceMindAttribution.toJson(): String {
+  val fields = mutableListOf<String>()
+  source?.let { fields.add(""""source":"${it.escapeJson()}"""") }
+  medium?.let { fields.add(""""medium":"${it.escapeJson()}"""") }
+  campaign?.let { fields.add(""""campaign":"${it.escapeJson()}"""") }
+  content?.let { fields.add(""""content":"${it.escapeJson()}"""") }
+  referrerDomain?.let { fields.add(""""referrerDomain":"${it.escapeJson()}"""") }
+  referrerType?.let { fields.add(""""referrerType":"${it.escapeJson()}"""") }
+  landingPath?.let { fields.add(""""landingPath":"${it.escapeJson()}"""") }
+  if (gclidPresent == true) fields.add(""""gclidPresent":true""")
+  if (fbclidPresent == true) fields.add(""""fbclidPresent":true""")
+  if (msclkidPresent == true) fields.add(""""msclkidPresent":true""")
+  return "{${fields.joinToString(",")}}"
 }
 
 private fun View.findDeepestViewAt(rawX: Int, rawY: Int): View? {

@@ -201,6 +201,90 @@
   </details>
   <details class="health-card">
     <summary>
+      <span>{$t("Traffic sources")}</span>
+      <strong>{healthCurrent.trafficSources?.[0] ? topItemLabel(healthCurrent.trafficSources[0]) : $t("No data")}</strong>
+      <small class="trend-flat">
+        {healthCurrent.trafficSources?.[0] ? `${formatNumber(healthCurrent.trafficSources[0].count)} ${$t("visits")}` : $t("No data")}
+      </small>
+      <em>{$t("first-touch attribution")}</em>
+    </summary>
+    <dl class="health-detail-list">
+      <div class="health-detail-row-stacked">
+        <dt>{$t("Top traffic sources")}</dt>
+        <dd>
+          {#if healthCurrent.trafficSources?.length}
+            <ol class="health-top-list" aria-label={$t("Top traffic sources")}>
+              {#each healthCurrent.trafficSources as item, index (`traffic-source-${index}-${topItemLabel(item)}-${item.count}`)}
+                <li class="health-top-item">
+                  <span class="health-top-rank">{index + 1}</span>
+                  <span class="health-top-label">{topItemLabel(item)}</span>
+                  <strong>{formatNumber(item.count)}</strong>
+                </li>
+              {/each}
+            </ol>
+          {:else}
+            {$t("No data")}
+          {/if}
+        </dd>
+      </div>
+      <div class="health-detail-row-stacked">
+        <dt>{$t("Top traffic mediums")}</dt>
+        <dd>
+          {#if healthCurrent.trafficMediums?.length}
+            <ol class="health-top-list" aria-label={$t("Top traffic mediums")}>
+              {#each healthCurrent.trafficMediums as item, index (`traffic-medium-${index}-${topItemLabel(item)}-${item.count}`)}
+                <li class="health-top-item">
+                  <span class="health-top-rank">{index + 1}</span>
+                  <span class="health-top-label">{topItemLabel(item)}</span>
+                  <strong>{formatNumber(item.count)}</strong>
+                </li>
+              {/each}
+            </ol>
+          {:else}
+            {$t("No data")}
+          {/if}
+        </dd>
+      </div>
+      <div class="health-detail-row-stacked">
+        <dt>{$t("Top campaigns")}</dt>
+        <dd>
+          {#if healthCurrent.trafficCampaigns?.length}
+            <ol class="health-top-list" aria-label={$t("Top campaigns")}>
+              {#each healthCurrent.trafficCampaigns as item, index (`traffic-campaign-${index}-${topItemLabel(item)}-${item.count}`)}
+                <li class="health-top-item">
+                  <span class="health-top-rank">{index + 1}</span>
+                  <span class="health-top-label">{topItemLabel(item)}</span>
+                  <strong>{formatNumber(item.count)}</strong>
+                </li>
+              {/each}
+            </ol>
+          {:else}
+            {$t("No data")}
+          {/if}
+        </dd>
+      </div>
+      <div class="health-detail-row-stacked">
+        <dt>{$t("Top landing pages")}</dt>
+        <dd>
+          {#if healthCurrent.trafficLandingPaths?.length}
+            <ol class="health-top-list" aria-label={$t("Top landing pages")}>
+              {#each healthCurrent.trafficLandingPaths as item, index (`traffic-landing-${index}-${topItemLabel(item)}-${item.count}`)}
+                <li class="health-top-item">
+                  <span class="health-top-rank">{index + 1}</span>
+                  <span class="health-top-label">{topItemLabel(item)}</span>
+                  <strong>{formatNumber(item.count)}</strong>
+                </li>
+              {/each}
+            </ol>
+          {:else}
+            {$t("No data")}
+          {/if}
+        </dd>
+      </div>
+    </dl>
+  </details>
+  <details class="health-card">
+    <summary>
       <span class="health-card-title">
         {$t("Average active time per user")}
         <button

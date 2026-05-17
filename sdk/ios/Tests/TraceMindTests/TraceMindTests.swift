@@ -239,6 +239,58 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(event.context["retry"], .bool(false))
   }
 
+  func testAttributionFromOpenURLIsAttachedToEventsAndPresence() async throws {
+    let transport = RecordingTransport()
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        presenceEndpoint: URL(string: "https://tracemind.example.com/api/presence")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore(userId: "user_123"),
+      transport: transport
+    )
+
+    client.recordOpenURL(
+      URL(string: "https://example.com/invite?utm_source=partner&utm_medium=universal_link&utm_campaign=launch&gclid=secret-click&email=user@example.com")!,
+      sourceApplication: "com.apple.mobilesafari"
+    )
+    try client.capture(type: "custom", eventName: "invite_accepted", path: "InviteViewController")
+    try await client.flush()
+    try await client.sendPresence(state: "heartbeat", path: "InviteViewController")
+
+    let event = try XCTUnwrap(transport.lastBatch?.events.first)
+    let presence = try XCTUnwrap(transport.lastPresence)
+    XCTAssertEqual(event.attribution?.source, "partner")
+    XCTAssertEqual(event.attribution?.medium, "universal_link")
+    XCTAssertEqual(event.attribution?.campaign, "launch")
+    XCTAssertEqual(event.attribution?.referrerDomain, "example.com")
+    XCTAssertEqual(event.attribution?.referrerType, "external")
+    XCTAssertEqual(event.attribution?.landingPath, "/invite")
+    XCTAssertEqual(event.attribution?.gclidPresent, true)
+    XCTAssertEqual(presence.attribution, event.attribution)
+    let json = String(data: try JSONEncoder().encode(event), encoding: .utf8) ?? ""
+    XCTAssertFalse(json.contains("secret-click"))
+    XCTAssertFalse(json.contains("user@example.com"))
+  }
+
+  func testAttributionFromCustomSchemeUsesSourceApplicationAsReferrer() throws {
+    let attribution = TraceMindAttribution.fromOpenURL(
+      URL(string: "tracemind://invite?utm_medium=deeplink&utm_campaign=launch")!,
+      sourceApplication: "com.partner.app"
+    )
+
+    XCTAssertEqual(attribution.source, "com.partner.app")
+    XCTAssertEqual(attribution.medium, "deeplink")
+    XCTAssertEqual(attribution.campaign, "launch")
+    XCTAssertEqual(attribution.referrerDomain, "com.partner.app")
+    XCTAssertEqual(attribution.referrerType, "external")
+    XCTAssertEqual(attribution.landingPath, "/invite")
+  }
+
   func testSubmitFeedbackUsesDedicatedPayloadAndAllowsConsentedContact() async throws {
     let transport = RecordingTransport()
     let client = TraceMindClient(

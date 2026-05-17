@@ -19,10 +19,57 @@ FEEDBACK_FORBIDDEN_FIELD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 FULL_QUERY_URL_PATTERN = re.compile(r"https?://[^\s?#]+[^\s]*\?[^\s\"'<>)]*", re.IGNORECASE)
+ATTRIBUTION_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._~:-]{0,119}$")
+ATTRIBUTION_DOMAIN_PATTERN = re.compile(r"^[a-z0-9.-]+$")
+ATTRIBUTION_REFERRER_TYPES = {"direct", "internal", "external", "search", "social"}
 
 
 def _safe_string(value, max_length=200, fallback=""):
     return str(value or fallback).strip()[:max_length]
+
+
+def _clean_attribution_value(value):
+    text = re.sub(r"\s+", "-", _safe_string(value, 120))
+    if not text or "@" in text or re.search(r"https?:|[?&=]|%40", text, re.IGNORECASE):
+        return None
+    return text if ATTRIBUTION_VALUE_PATTERN.match(text) else None
+
+
+def _clean_attribution_domain(value):
+    domain = _safe_string(value, 200).strip(".").lower()
+    if not domain or "@" in domain or re.search(r"[/?#&=]", domain):
+        return None
+    return domain if ATTRIBUTION_DOMAIN_PATTERN.match(domain) else None
+
+
+def _clean_attribution_path(value):
+    path = _safe_string(value, 500).split("?", 1)[0]
+    if not path or not path.startswith("/") or "@" in path or re.search(r"^https?:", path, re.IGNORECASE):
+        return None
+    return path
+
+
+def _clean_referrer_type(value):
+    referrer_type = _safe_string(value, 40).lower()
+    return referrer_type if referrer_type in ATTRIBUTION_REFERRER_TYPES else None
+
+
+def sanitize_attribution(attribution):
+    if not isinstance(attribution, dict):
+        return {}
+    candidates = {
+        "source": _clean_attribution_value(attribution.get("source")),
+        "medium": _clean_attribution_value(attribution.get("medium")),
+        "campaign": _clean_attribution_value(attribution.get("campaign")),
+        "content": _clean_attribution_value(attribution.get("content")),
+        "referrerDomain": _clean_attribution_domain(attribution.get("referrerDomain")),
+        "referrerType": _clean_referrer_type(attribution.get("referrerType")),
+        "landingPath": _clean_attribution_path(attribution.get("landingPath")),
+        "gclidPresent": True if attribution.get("gclidPresent") is True else None,
+        "fbclidPresent": True if attribution.get("fbclidPresent") is True else None,
+        "msclkidPresent": True if attribution.get("msclkidPresent") is True else None,
+    }
+    return {key: value for key, value in candidates.items() if value is not None}
 
 
 def _normalize_field_key(key):
@@ -188,10 +235,10 @@ class TraceMindServerClient:
         except Exception:
             pass
 
-    def capture(self, event_type, event_name=None, user_id=None, anonymous_id=None, session_id=None, path="/", properties=None, context=None, target=None, source_details=None):
+    def capture(self, event_type, event_name=None, user_id=None, anonymous_id=None, session_id=None, path="/", properties=None, context=None, target=None, source_details=None, attribution=None):
         name = _safe_string(event_name or event_type, 120)
         event_target = target or {"type": "server_event", "name": name, "sourceKey": self.source_key}
-        self._enqueue({
+        event = {
             "userId": _safe_string(user_id, 160),
             "anonymousId": _safe_string(anonymous_id or self.anonymous_id, 120),
             "sessionId": _safe_string(session_id or self.session_id, 120),
@@ -204,7 +251,11 @@ class TraceMindServerClient:
             "targetHash": _stable_hash(event_target),
             "properties": sanitize_fields(properties),
             "context": sanitize_fields(context),
-        })
+        }
+        safe_attribution = sanitize_attribution(attribution)
+        if safe_attribution:
+            event["attribution"] = safe_attribution
+        self._enqueue(event)
 
     def flush(self):
         if not self.queue:

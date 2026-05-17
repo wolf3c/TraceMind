@@ -16,6 +16,9 @@ import {
   mcpServerNameForProject,
   normalizeCaptureSource,
   normalizeEmail,
+  publicPresenceSession,
+  publicRawBehavior,
+  publicSemanticEvent,
   summarizeBehaviorSources,
   summarizeCaptureDelivery,
   summarizeProjectHealth,
@@ -148,9 +151,10 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.15.1'));
+      assert.ok(skill.includes('version: 2026.05.17.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
+      assert.ok(skill.includes('## Traffic Attribution'));
       assert.ok(skill.includes('## Platform Loading And Network Restrictions'));
       assert.ok(skill.includes('script-src'));
       assert.ok(skill.includes('NSAppTransportSecurity'));
@@ -177,6 +181,9 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('installCommands'));
       assert.ok(skill.includes('idempotencyChecks'));
       assert.ok(skill.includes('manualCaptureExamples'));
+      assert.ok(skill.includes('setAttribution'));
+      assert.ok(skill.includes('recordOpenURL'));
+      assert.ok(skill.includes('recordDeepLink'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
@@ -187,6 +194,8 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('installCommands'));
       assert.ok(snippet.includes('manualCaptureWorkflow'));
       assert.ok(snippet.includes('supported primitives'));
+      assert.ok(snippet.includes('attributionSource'));
+      assert.ok(snippet.includes('landingPath'));
       assert.ok(snippet.includes('mcp_node'));
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
@@ -197,7 +206,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
       assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.15.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -347,6 +356,105 @@ describe('TraceMind', function () {
       assert.strictEqual(presenceBody.events.length, 1);
       assert.strictEqual(captureBody.deliveryStats.sent, 1);
       assert.strictEqual(presenceBody.deliveryStats.sent, 1);
+    });
+
+    it('attaches privacy-safe first-touch web attribution to capture and presence records', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const sessionStorage = new Map();
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind launch page',
+          referrer: 'https://news.ycombinator.com/item?id=123',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener() {},
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: {
+          origin: 'https://app.example.com',
+          href: 'https://app.example.com/pricing?utm_source=github&utm_medium=social&utm_campaign=launch-week&utm_content=hero&gclid=secret-click&utm_term=private&email=person@example.com#faq',
+          pathname: '/pricing',
+          hash: '#faq',
+          hostname: 'app.example.com',
+        },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch() {
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        sessionStorage: {
+          getItem(key) { return sessionStorage.has(key) ? sessionStorage.get(key) : null; },
+          setItem(key, value) { sessionStorage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+      sandbox.sessionStorage = sandbox.window.sessionStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      sandbox.location.href = 'https://app.example.com/docs';
+      sandbox.location.pathname = '/docs';
+      sandbox.location.hash = '';
+      sandbox.window.TraceMind.capture('custom', { eventName: 'docs_opened' });
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      const queued = JSON.parse(storage.get(queueKey));
+      const pageView = queued.find((record) => record.kind === 'capture' && record.payload.type === 'page_view');
+      const custom = queued.find((record) => record.kind === 'capture' && record.payload.eventName === 'docs_opened');
+      const presence = queued.find((record) => record.kind === 'presence' && record.payload.state === 'start');
+
+      assert.deepStrictEqual(pageView.payload.attribution, {
+        source: 'github',
+        medium: 'social',
+        campaign: 'launch-week',
+        content: 'hero',
+        referrerDomain: 'news.ycombinator.com',
+        referrerType: 'social',
+        landingPath: '/pricing#faq',
+        gclidPresent: true,
+      });
+      assert.deepStrictEqual(custom.payload.attribution, pageView.payload.attribution);
+      assert.deepStrictEqual(presence.payload.attribution, pageView.payload.attribution);
+      const serialized = JSON.stringify(queued);
+      assert.ok(!serialized.includes('utm_term'));
+      assert.ok(!serialized.includes('secret-click'));
+      assert.ok(!serialized.includes('person@example.com'));
+      assert.ok(!serialized.includes('item?id=123'));
     });
 
     it('queues web user feedback separately from capture and presence events', async function () {
@@ -859,7 +967,7 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.15.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
@@ -1617,6 +1725,8 @@ describe('TraceMind', function () {
       assert.ok(setup.structuredContent.manualCaptureWorkflow.some((step) => step.includes('tracemind.search_event_names')));
       assert.ok(setup.structuredContent.manualCaptureWarnings.some((warning) => warning.includes('stable business outcomes')));
       assert.ok(setup.structuredContent.manualCaptureExamples.some((example) => example.includes('amount: 29')));
+      assert.ok(setup.structuredContent.trafficAttribution.analysisFilters.includes('attributionSource'));
+      assert.ok(setup.structuredContent.trafficAttribution.platformNotes.some((note) => note.includes('Web Auto Capture')));
       assert.ok(setup.structuredContent.manualCaptureExample.includes('window.TraceMind.capture'));
       assert.ok(setup.structuredContent.networkRestrictionChecks.some((check) => check.includes('script-src')));
       assert.ok(setup.structuredContent.networkRestrictionChecks.some((check) => check.includes('connect-src')));
@@ -1656,6 +1766,8 @@ describe('TraceMind', function () {
       assert.ok(ios.structuredContent.verificationCommands.includes('swift test --package-path sdk/ios'));
       assert.ok(ios.structuredContent.identifySnippet.includes('TraceMind.identify'));
       assert.ok(ios.structuredContent.manualCaptureExamples.some((example) => example.includes('"amount": 29')));
+      assert.ok(ios.structuredContent.trafficAttribution.setupExamples.some((example) => example.includes('TraceMind.recordOpenURL')));
+      assert.ok(ios.structuredContent.trafficAttribution.platformNotes.some((note) => note.includes('universal links')));
       assert.ok(ios.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
       assert.ok(ios.structuredContent.networkRestrictionChecks.some((check) => check.includes('NSAppTransportSecurity')));
 
@@ -1689,6 +1801,8 @@ describe('TraceMind', function () {
       assert.ok(android.structuredContent.verificationCommands.includes('npm run test:sdk:android'));
       assert.ok(android.structuredContent.identifySnippet.includes('TraceMind.identify'));
       assert.ok(android.structuredContent.manualCaptureExamples.some((example) => example.includes('"amount" to 29')));
+      assert.ok(android.structuredContent.trafficAttribution.setupExamples.some((example) => example.includes('TraceMind.recordDeepLink')));
+      assert.ok(android.structuredContent.trafficAttribution.platformNotes.some((note) => note.includes('app links')));
       assert.ok(android.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
       assert.ok(android.structuredContent.networkRestrictionChecks.some((check) => check.includes('android.permission.INTERNET')));
       assert.ok(android.structuredContent.networkRestrictionChecks.some((check) => check.includes('network_security_config')));
@@ -1705,6 +1819,8 @@ describe('TraceMind', function () {
       assert.ok(reactNative.structuredContent.verificationCommands.includes('npm test --prefix sdk/react-native'));
       assert.ok(reactNative.structuredContent.identifySnippet.includes('TraceMind.identify'));
       assert.ok(reactNative.structuredContent.manualCaptureExamples.some((example) => example.includes('amount: 29')));
+      assert.ok(reactNative.structuredContent.trafficAttribution.setupExamples.some((example) => example.includes('TraceMind.setAttribution')));
+      assert.ok(reactNative.structuredContent.trafficAttribution.platformNotes.some((note) => note.includes('native attribution helpers')));
       assert.ok(reactNative.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
       assert.ok(reactNative.structuredContent.networkRestrictionChecks.some((check) => check.includes('native module')));
 
@@ -2347,6 +2463,134 @@ describe('TraceMind', function () {
     ]);
   });
 
+  it('summarizes privacy-safe traffic attribution by visit', function () {
+    const health = summarizeProjectHealth({
+      events: [
+        {
+          eventType: 'page_view',
+          eventName: 'page_view',
+          sessionId: 'github-session',
+          anonymousId: 'anon-github',
+          path: '/pricing',
+          attribution: {
+            source: 'github',
+            medium: 'social',
+            campaign: 'launch-week',
+            landingPath: '/pricing',
+            referrerType: 'social',
+          },
+          occurredAt: new Date('2026-05-09T09:00:00.000Z'),
+        },
+        {
+          eventType: 'click',
+          eventName: 'click',
+          sessionId: 'github-session',
+          anonymousId: 'anon-github',
+          path: '/pricing',
+          attribution: {
+            source: 'github',
+            medium: 'social',
+            campaign: 'launch-week',
+            landingPath: '/pricing',
+            referrerType: 'social',
+          },
+          occurredAt: new Date('2026-05-09T09:01:00.000Z'),
+        },
+        {
+          eventType: 'page_view',
+          eventName: 'page_view',
+          sessionId: 'direct-session',
+          anonymousId: 'anon-direct',
+          path: '/',
+          attribution: {
+            source: 'direct',
+            medium: 'direct',
+            landingPath: '/',
+            referrerType: 'direct',
+          },
+          occurredAt: new Date('2026-05-09T10:00:00.000Z'),
+        },
+      ],
+      presenceSessions: [
+        {
+          presenceId: 'github-presence',
+          sessionId: 'github-session',
+          anonymousId: 'anon-github',
+          path: '/pricing',
+          attribution: {
+            source: 'github',
+            medium: 'social',
+            campaign: 'launch-week',
+            landingPath: '/pricing',
+            referrerType: 'social',
+          },
+          startedAt: new Date('2026-05-09T09:00:00.000Z'),
+          lastSeenAt: new Date('2026-05-09T09:02:00.000Z'),
+          activeDurationMs: 60000,
+        },
+        {
+          presenceId: 'direct-presence',
+          sessionId: 'direct-session',
+          anonymousId: 'anon-direct',
+          path: '/',
+          attribution: {
+            source: 'direct',
+            medium: 'direct',
+            landingPath: '/',
+            referrerType: 'direct',
+          },
+          startedAt: new Date('2026-05-09T10:00:00.000Z'),
+          lastSeenAt: new Date('2026-05-09T10:01:00.000Z'),
+          activeDurationMs: 30000,
+        },
+      ],
+      now: new Date('2026-05-09T12:00:00.000Z'),
+    });
+
+    assert.deepStrictEqual(health.current.trafficSources, [
+      { label: 'direct', count: 1 },
+      { label: 'github', count: 1 },
+    ]);
+    assert.deepStrictEqual(health.current.trafficMediums, [
+      { label: 'direct', count: 1 },
+      { label: 'social', count: 1 },
+    ]);
+    assert.deepStrictEqual(health.current.trafficCampaigns, [
+      { label: 'launch-week', count: 1 },
+    ]);
+    assert.deepStrictEqual(health.current.trafficLandingPaths, [
+      { path: '/', count: 1 },
+      { path: '/pricing', count: 1 },
+    ]);
+  });
+
+  it('normalizes native traffic attribution without preserving full URLs or identifiers', function () {
+    assert.deepStrictEqual(TraceMindApi.normalizeAttribution({
+      source: 'com.twitter.android',
+      medium: 'app_link',
+      campaign: 'launch-week',
+      content: 'invite-card',
+      referrerDomain: 'twitter.com',
+      referrerType: 'external',
+      landingPath: '/invite?code=secret',
+      gclidPresent: true,
+      fbclidPresent: true,
+      clickId: 'secret-click',
+      email: 'user@example.com',
+      fullUrl: 'https://example.com/invite?token=secret',
+    }), {
+      source: 'com.twitter.android',
+      medium: 'app_link',
+      campaign: 'launch-week',
+      content: 'invite-card',
+      referrerDomain: 'twitter.com',
+      referrerType: 'external',
+      landingPath: '/invite',
+      gclidPresent: true,
+      fbclidPresent: true,
+    });
+  });
+
   it('normalizes capture sources with cross-platform source fields', function () {
     assert.deepStrictEqual(
       normalizeCaptureSource({
@@ -2592,6 +2836,7 @@ describe('TraceMind', function () {
     });
 
     it('creates indexes for capture, MCP, presence, and event query paths', async function () {
+      this.timeout(5000);
       await ensureTraceMindIndexes();
 
       const indexNames = async (collection) => new Set((await collection.rawCollection().indexes()).map((index) => index.name));
@@ -2621,6 +2866,7 @@ describe('TraceMind', function () {
         'raw_semantic_queue',
         'raw_project_action_time',
         'raw_project_target_time',
+        'raw_project_attribution_source_time',
       ].forEach((name) => assert.ok(rawIndexes.has(name), `missing ${name}`));
       [
         'projectId_1_occurredAt_-1',
@@ -2628,6 +2874,7 @@ describe('TraceMind', function () {
         'semantic_project_event_type_time',
         'semantic_project_action_time',
         'semantic_project_target_time',
+        'semantic_project_attribution_source_time',
       ].forEach((name) => assert.ok(semanticIndexes.has(name), `missing ${name}`));
       [
         'presence_project_presence_unique',
@@ -3536,6 +3783,53 @@ describe('TraceMind', function () {
       assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 0);
     });
 
+    it('stores sanitized attribution on presence sessions', async function () {
+      const projectId = `project-presence-attribution-${Date.now()}`;
+      const projectKey = `tm_proj_presence_attr_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-presence-attribution',
+        name: 'Presence Attribution Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestPresencePayload({
+        projectKey,
+        presenceId: 'tm_pres_attr',
+        sessionId: 'tm_sess_attr',
+        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        path: '/pricing',
+        state: 'start',
+        attribution: {
+          source: 'google',
+          medium: 'cpc',
+          campaign: 'launch-week',
+          referrerDomain: 'google.com',
+          referrerType: 'search',
+          landingPath: '/pricing',
+          gclidPresent: true,
+          fullUrl: 'https://app.example.com/pricing?gclid=secret-click',
+        },
+      }, { headers: {}, socket: {} });
+      const session = await PresenceSessions.findOneAsync({ projectId, presenceId: 'tm_pres_attr' });
+
+      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.deepStrictEqual(session.attribution, {
+        source: 'google',
+        medium: 'cpc',
+        campaign: 'launch-week',
+        referrerDomain: 'google.com',
+        referrerType: 'search',
+        landingPath: '/pricing',
+        gclidPresent: true,
+      });
+      assert.deepStrictEqual(publicPresenceSession(session).attribution, session.attribution);
+      assert.ok(!JSON.stringify(session.attribution).includes('secret-click'));
+    });
+
     it('upserts presence sessions without creating raw or semantic events', async function () {
       const projectId = `project-presence-${Date.now()}`;
       const projectKey = `tm_proj_presence_${Date.now()}`;
@@ -3681,6 +3975,62 @@ describe('TraceMind', function () {
         path: '/docs',
         referrer: '',
       });
+    });
+
+    it('stores only sanitized attribution fields on raw and semantic events', async function () {
+      const projectId = `project-attribution-capture-${Date.now()}`;
+      const projectKey = `tm_proj_attribution_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-attribution-capture',
+        name: 'Attribution Capture Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload(
+        {
+          projectKey,
+          type: 'page_view',
+          path: '/pricing',
+          source: { type: 'web', url: 'https://app.example.com/pricing' },
+          attribution: {
+            source: 'github',
+            medium: 'social',
+            campaign: 'launch-week',
+            content: 'hero',
+            referrerDomain: 'news.ycombinator.com',
+            referrerType: 'social',
+            landingPath: '/pricing',
+            gclidPresent: true,
+            utmTerm: 'private search words',
+            fullUrl: 'https://app.example.com/pricing?email=person@example.com',
+            email: 'person@example.com',
+          },
+        },
+        { headers: {}, socket: {} },
+      );
+      const behavior = await RawBehaviors.findOneAsync({ projectId });
+      const semanticEvent = buildSemanticEvent(behavior);
+
+      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.deepStrictEqual(behavior.attribution, {
+        source: 'github',
+        medium: 'social',
+        campaign: 'launch-week',
+        content: 'hero',
+        referrerDomain: 'news.ycombinator.com',
+        referrerType: 'social',
+        landingPath: '/pricing',
+        gclidPresent: true,
+      });
+      assert.deepStrictEqual(semanticEvent.attribution, behavior.attribution);
+      assert.deepStrictEqual(publicRawBehavior(behavior).attribution, behavior.attribution);
+      assert.deepStrictEqual(publicSemanticEvent(semanticEvent).attribution, behavior.attribution);
+      assert.ok(!JSON.stringify(behavior.attribution).includes('person@example.com'));
+      assert.ok(!JSON.stringify(behavior.attribution).includes('private search words'));
     });
 
     it('preserves numeric and boolean manual capture fields from SDK payloads', async function () {
@@ -4006,6 +4356,124 @@ describe('TraceMind', function () {
       assert.strictEqual(events.length, 1);
       assert.strictEqual(events[0].eventName, 'checkout_started');
       assert.strictEqual(events[0].userId, 'user-a');
+    });
+
+    it('queries raw and semantic events by traffic attribution fields', async function () {
+      const projectId = `project-attribution-query-${Date.now()}`;
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'page_view',
+        eventName: 'page_view',
+        attribution: {
+          source: 'github',
+          medium: 'social',
+          campaign: 'launch-week',
+          landingPath: '/pricing',
+        },
+        occurredAt: new Date('2026-05-01T10:00:00.000Z'),
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'page_view',
+        eventName: 'page_view',
+        attribution: {
+          source: 'direct',
+          medium: 'direct',
+          landingPath: '/',
+        },
+        occurredAt: new Date('2026-05-01T11:00:00.000Z'),
+        createdAt: new Date(),
+      });
+      await RawBehaviors.insertAsync({
+        projectId,
+        type: 'page_view',
+        attribution: {
+          source: 'github',
+          medium: 'social',
+          campaign: 'launch-week',
+          landingPath: '/pricing',
+        },
+        occurredAt: new Date('2026-05-01T10:00:00.000Z'),
+        createdAt: new Date(),
+      });
+      await RawBehaviors.insertAsync({
+        projectId,
+        type: 'page_view',
+        attribution: {
+          source: 'direct',
+          medium: 'direct',
+          landingPath: '/',
+        },
+        occurredAt: new Date('2026-05-01T11:00:00.000Z'),
+        createdAt: new Date(),
+      });
+
+      const semanticEvents = await SemanticEvents.find(
+        buildEventQuery(projectId, {
+          attributionSource: 'github',
+          attributionMedium: 'social',
+          attributionCampaign: 'launch-week',
+          landingPath: '/pricing',
+        }),
+      ).fetchAsync();
+      const rawBehaviors = await RawBehaviors.find(
+        buildRawBehaviorQuery(projectId, {
+          attributionSource: 'github',
+          attributionMedium: 'social',
+          attributionCampaign: 'launch-week',
+          landingPath: '/pricing',
+        }),
+      ).fetchAsync();
+
+      assert.strictEqual(semanticEvents.length, 1);
+      assert.strictEqual(semanticEvents[0].attribution.source, 'github');
+      assert.strictEqual(rawBehaviors.length, 1);
+      assert.strictEqual(rawBehaviors[0].attribution.source, 'github');
+    });
+
+    it('filters MCP semantic event queries by traffic attribution', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const projectId = `project-mcp-attribution-query-${Date.now()}`;
+      const project = { _id: projectId, name: 'MCP Attribution Project' };
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'page_view',
+        eventName: 'page_view',
+        path: '/pricing',
+        meaning: 'GitHub visit',
+        attribution: {
+          source: 'github',
+          medium: 'social',
+          campaign: 'launch-week',
+          landingPath: '/pricing',
+        },
+        occurredAt: new Date('2026-05-01T10:00:00.000Z'),
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'page_view',
+        eventName: 'page_view',
+        path: '/',
+        meaning: 'Direct visit',
+        attribution: {
+          source: 'direct',
+          medium: 'direct',
+          landingPath: '/',
+        },
+        occurredAt: new Date('2026-05-01T11:00:00.000Z'),
+        createdAt: new Date(),
+      });
+
+      const result = await callMcpTool(project, 'tracemind.query_events', {
+        attributionSource: 'github',
+        attributionCampaign: 'launch-week',
+      });
+
+      assert.strictEqual(result.structuredContent.events.length, 1);
+      assert.strictEqual(result.structuredContent.events[0].attribution.source, 'github');
+      assert.strictEqual(result.structuredContent.events[0].attribution.campaign, 'launch-week');
     });
   }
 });

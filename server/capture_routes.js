@@ -16,6 +16,7 @@ import {
   buildRawBehaviorQuery,
   isSourceBlocked,
   mcpServerNameForProject,
+  normalizeAttribution,
   normalizeCaptureSource,
   publicRawBehavior,
   publicSemanticEvent,
@@ -27,7 +28,7 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.15.1';
+const AGENT_GUIDANCE_VERSION = '2026.05.17.1';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -383,7 +384,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.summary',
       title: projectScopedTitle('TraceMind Behavior Summary', project),
-      description: projectScopedDescription('汇总当前 Web 产品最近的语义行为事件。', project),
+      description: projectScopedDescription('汇总当前产品最近的语义行为事件，支持按流量来源归因过滤。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -400,6 +401,10 @@ export function mcpTools(project) {
           deviceId: { type: 'string', description: '设备 ID。' },
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
           actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
+          attributionSource: { type: 'string', description: '流量归因来源，可来自 Web UTM/referrer 或 native deeplink/referrer app，例如 github、google、direct、partner。' },
+          attributionMedium: { type: 'string', description: '流量归因媒介，例如 social、cpc、direct、deeplink、universal_link、app_link。' },
+          attributionCampaign: { type: 'string', description: '流量归因 campaign，例如 launch-week。' },
+          landingPath: { type: 'string', description: '首次落地 path，不包含 query string。' },
         },
       },
     },
@@ -425,6 +430,10 @@ export function mcpTools(project) {
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
           actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
           path: { type: 'string', description: '页面或接口路径。' },
+          attributionSource: { type: 'string', description: '流量归因来源，可来自 Web UTM/referrer 或 native deeplink/referrer app，例如 github、google、direct、partner。' },
+          attributionMedium: { type: 'string', description: '流量归因媒介，例如 social、cpc、direct、deeplink、universal_link、app_link。' },
+          attributionCampaign: { type: 'string', description: '流量归因 campaign，例如 launch-week。' },
+          landingPath: { type: 'string', description: '首次落地 path，不包含 query string。' },
         },
       },
     },
@@ -450,6 +459,10 @@ export function mcpTools(project) {
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
           actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
           path: { type: 'string', description: '页面或接口路径。' },
+          attributionSource: { type: 'string', description: '流量归因来源，可来自 Web UTM/referrer 或 native deeplink/referrer app，例如 github、google、direct、partner。' },
+          attributionMedium: { type: 'string', description: '流量归因媒介，例如 social、cpc、direct、deeplink、universal_link、app_link。' },
+          attributionCampaign: { type: 'string', description: '流量归因 campaign，例如 launch-week。' },
+          landingPath: { type: 'string', description: '首次落地 path，不包含 query string。' },
         },
       },
     },
@@ -593,7 +606,12 @@ function guidanceResult(extra = {}) {
       {
         name: 'Feature usage analysis',
         prompt: 'Analyze whether a feature is actually being used, who uses it, and which paths or actions lead to it.',
-        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary with event/path filters', 'tracemind.query_events by path, actionKey, targetHash, or eventName'],
+        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary with event/path/traffic attribution filters', 'tracemind.query_events by path, actionKey, targetHash, eventName, attributionSource, attributionMedium, attributionCampaign, or landingPath'],
+      },
+      {
+        name: 'Traffic source analysis',
+        prompt: 'Explain which traffic sources, campaigns, referrers, or landing paths are driving growth, conversion, or drops.',
+        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary with attributionSource/attributionMedium/attributionCampaign/landingPath filters', 'tracemind.query_events for source-specific evidence', 'tracemind.query_raw_behaviors only when semantic evidence is insufficient'],
       },
       {
         name: 'Anomaly or drop investigation',
@@ -605,8 +623,10 @@ function guidanceResult(extra = {}) {
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
+      'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
+      'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
       'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
@@ -669,6 +689,32 @@ const SERVER_PRIVACY_CONSTRAINTS = [
   'Use the returned public projectKey only for capture writes; never use an MCP token in server application code.',
 ];
 
+const TRAFFIC_ATTRIBUTION_FIELDS = [
+  'source',
+  'medium',
+  'campaign',
+  'content',
+  'referrerDomain',
+  'referrerType',
+  'landingPath',
+  'gclidPresent',
+  'fbclidPresent',
+  'msclkidPresent',
+];
+
+const TRAFFIC_ATTRIBUTION_ANALYSIS_FILTERS = [
+  'attributionSource',
+  'attributionMedium',
+  'attributionCampaign',
+  'landingPath',
+];
+
+const TRAFFIC_ATTRIBUTION_PRIVACY_CONSTRAINTS = [
+  'Do not capture utm_term, arbitrary ref parameters, full URLs with query strings, search terms, click IDs, emails, tokens, secrets, raw prompts, or raw user content.',
+  'Use only whitelisted source/medium/campaign/content fields, safe referrer domain/type, landing path without query string, and boolean click-id-present markers.',
+  'Keep sourceType/sourceKey for capture runtime governance; use attribution only for product traffic acquisition analysis.',
+];
+
 const SUPPORTED_MANUAL_PROPERTY_TYPES = ['string', 'number', 'boolean'];
 
 const MANUAL_CAPTURE_WORKFLOW = [
@@ -724,6 +770,129 @@ const MCP_RUNTIME_NETWORK_RESTRICTION_CHECKS = [
   'For MCP and Agent Skill instrumentation, confirm capture code runs in executable server/runtime hooks, not only in a static SKILL.md document.',
 ];
 
+function trafficAttributionGuidance(platform = 'web') {
+  const base = {
+    fields: TRAFFIC_ATTRIBUTION_FIELDS,
+    analysisFilters: TRAFFIC_ATTRIBUTION_ANALYSIS_FILTERS,
+    privacyConstraints: TRAFFIC_ATTRIBUTION_PRIVACY_CONSTRAINTS,
+    manualCaptureGuidance: [
+      'For product apps, set attribution before manual business events when conversion or funnel analysis needs acquisition channel context.',
+      'For Web, Auto Capture persists first-touch attribution for the browser visit and attaches it to page, presence, interaction, and manual custom events.',
+      'For native and React Native, call the URL/deeplink helper when the app opens from a universal link, app link, custom scheme, or another app; use setAttribution only for already-sanitized custom source settings.',
+      'Do not store traffic source only in context.source when it should be available to MCP attribution filters and health summaries.',
+    ],
+  };
+  const byPlatform = {
+    web: {
+      platformNotes: [
+        'Web Auto Capture derives first-touch attribution from whitelisted UTM params, referrer domain/type, landing path, and boolean click markers.',
+        'Web strips query strings from captured paths and never stores full landing URLs or click IDs.',
+      ],
+      setupExamples: [
+        'Install captureSnippet. No manual traffic attribution code is needed for ordinary Web UTM/referrer tracking.',
+        'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { success: true } }) // current visit attribution is attached automatically',
+      ],
+    },
+    ios: {
+      platformNotes: [
+        'iOS records traffic attribution when the app opens from universal links, custom URL schemes, or another source application.',
+        'Call TraceMind.recordOpenURL from SwiftUI onOpenURL, UIApplicationDelegate URL handlers, SceneDelegate URL contexts, or universal links handling before capture events fire.',
+      ],
+      setupExamples: [
+        'TraceMind.recordOpenURL(url, sourceApplication: sourceApplication)',
+        'TraceMind.setAttribution(TraceMindAttribution(source: "partner", medium: "universal_link", campaign: "launch", landingPath: "/invite", referrerType: "external"))',
+      ],
+    },
+    macos: {
+      platformNotes: [
+        'macOS uses the same Swift attribution helpers for custom URL schemes, universal links, and app handoff flows when the app can observe the opened URL.',
+      ],
+      setupExamples: [
+        'TraceMind.recordOpenURL(url, sourceApplication: sourceApplication)',
+        'TraceMind.setAttribution(TraceMindAttribution(source: "partner", medium: "deeplink", campaign: "launch", landingPath: "/invite", referrerType: "external"))',
+      ],
+    },
+    android: {
+      platformNotes: [
+        'Android records traffic attribution from app links, custom schemes, Activity intent data, Activity referrer, or an explicit source package.',
+        'The SDK attempts to read Activity intent/referrer on creation; call TraceMind.recordDeepLink from explicit app links or deeplink routing code when the app updates intent data later.',
+      ],
+      setupExamples: [
+        'TraceMind.recordDeepLink(url = intent.data?.toString(), referrer = referrer?.toString(), sourcePackage = callingPackage)',
+        'TraceMind.setAttribution(TraceMindAttribution.sanitized(source = "partner", medium = "deeplink", campaign = "launch", landingPath = "/invite", referrerType = "external"))',
+      ],
+    },
+    react_native: {
+      platformNotes: [
+        'React Native uses native attribution helpers under the bridge while events remain platform ios or android.',
+        'Use native attribution helpers through TraceMind.recordDeepLink from Linking.getInitialURL and Linking URL subscriptions, or TraceMind.setAttribution for sanitized custom source settings.',
+      ],
+      setupExamples: [
+        'TraceMind.recordDeepLink({ url, referrer, sourcePackage })',
+        'TraceMind.setAttribution({ source: "partner", medium: "deeplink", campaign: "launch", landingPath: "/invite", referrerType: "external" })',
+      ],
+    },
+    server_node: {
+      platformNotes: [
+        'Ordinary server apps should not infer user traffic source automatically in v1.',
+        'If a server-side business event needs source analysis, pass only an already-sanitized attribution object that came from product traffic context.',
+      ],
+      setupExamples: [
+        'TraceMindServer.capture("custom", { eventName: approvedEventName, attribution: { source: "partner", medium: "referral", campaign: "launch", landingPath: "/invite" } })',
+      ],
+    },
+    server_python: {
+      platformNotes: [
+        'Ordinary server apps should not infer user traffic source automatically in v1.',
+        'If a server-side business event needs source analysis, pass only an already-sanitized attribution object that came from product traffic context.',
+      ],
+      setupExamples: [
+        'TraceMindServer.capture("custom", event_name=approved_event_name, attribution={"source": "partner", "medium": "referral", "campaign": "launch", "landingPath": "/invite"})',
+      ],
+    },
+    server_http: {
+      platformNotes: [
+        'Direct HTTP capture may include attribution only when the caller already has sanitized product traffic context.',
+      ],
+      setupExamples: [
+        'Include "attribution": { "source": "partner", "medium": "referral", "campaign": "launch", "landingPath": "/invite" } in the safe /api/capture payload.',
+      ],
+    },
+    mcp_node: {
+      platformNotes: [
+        'MCP sourceType/sourceKey describes the tool runtime, not product traffic acquisition.',
+        'Use attribution filters only when analyzing captured product app events, not to label MCP tool calls as marketing traffic.',
+      ],
+      setupExamples: [
+        'Use tracemind.summary/query_events filters: { "attributionSource": "partner", "attributionCampaign": "launch" }',
+      ],
+    },
+    mcp_python: {
+      platformNotes: [
+        'MCP sourceType/sourceKey describes the tool runtime, not product traffic acquisition.',
+        'Use attribution filters only when analyzing captured product app events, not to label MCP tool calls as marketing traffic.',
+      ],
+      setupExamples: [
+        'Use tracemind.summary/query_events filters: { "attributionSource": "partner", "attributionCampaign": "launch" }',
+      ],
+    },
+    agent_skill: {
+      platformNotes: [
+        'Agent Skill sourceType/sourceKey describes the agent runtime, not product traffic acquisition.',
+        'Coding agents should use attribution filters when analyzing product growth, funnels, or drops by channel.',
+      ],
+      setupExamples: [
+        'Ask MCP for tracemind.project_health first, then drill down with tracemind.summary/query_events filters such as attributionSource, attributionMedium, attributionCampaign, or landingPath.',
+      ],
+    },
+  };
+
+  return {
+    ...base,
+    ...(byPlatform[platform] || byPlatform.web),
+  };
+}
+
 function commonSetup(project, platform) {
   const captureApiUrl = Meteor.absoluteUrl('/api/capture');
   const presenceApiUrl = Meteor.absoluteUrl('/api/presence');
@@ -750,6 +919,7 @@ function commonSetup(project, platform) {
     supportedPropertyTypes: SUPPORTED_MANUAL_PROPERTY_TYPES,
     manualCaptureWorkflow: MANUAL_CAPTURE_WORKFLOW,
     manualCaptureWarnings: MANUAL_CAPTURE_WARNINGS,
+    trafficAttribution: trafficAttributionGuidance(platform),
     userFeedbackWorkflow,
     userFeedbackMethods: {
       web: 'window.TraceMind.submitFeedback({ message })',
@@ -2421,6 +2591,24 @@ export function clientScript(host) {
     }
   }
 
+  function readSession(key) {
+    try {
+      return window.sessionStorage && sessionStorage.getItem(key);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeSession(key, value) {
+    try {
+      if (!window.sessionStorage) return false;
+      sessionStorage.setItem(key, value);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
   var sessionId = readLocal('tracemind_session_id') || ('tm_sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
   var anonymousId = readLocal('tracemind_anonymous_id') || ('tm_anon_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
   var deviceId = readLocal('tracemind_device_id') || ('tm_dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -2449,7 +2637,7 @@ export function clientScript(host) {
   function deviceInfo() {
     return Object.assign({}, fingerprintInfo(), {
       viewport: { width: window.innerWidth, height: window.innerHeight },
-      referrer: document.referrer
+      referrer: document.referrer ? safePageUrl(document.referrer) : ''
     });
   }
 
@@ -2472,6 +2660,87 @@ export function clientScript(host) {
       url: safePageUrl(location.href),
       referrer: document.referrer ? safePageUrl(document.referrer) : ''
     };
+  }
+
+  function attributionValue(value) {
+    var text = String(value || '').trim().replace(/\\s+/g, '-').slice(0, 120);
+    if (!text || text.indexOf('@') !== -1 || /https?:|[?&=]|%40/i.test(text)) return '';
+    return /^[a-z0-9][a-z0-9._~:-]{0,119}$/i.test(text) ? text : '';
+  }
+
+  function parsedUrl(value) {
+    try {
+      return new URL(value, location.origin);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function referrerDomain() {
+    var referrerUrl = document.referrer ? parsedUrl(document.referrer) : null;
+    return referrerUrl && referrerUrl.hostname ? referrerUrl.hostname.toLowerCase() : '';
+  }
+
+  function isSearchDomain(hostname) {
+    return /(^|\\.)(google|bing|baidu|duckduckgo|yahoo|yandex|ecosia|brave)\\./i.test(hostname);
+  }
+
+  function isSocialDomain(hostname) {
+    return /(^|\\.)((x|twitter|linkedin|facebook|fb|instagram|reddit|youtube|tiktok|producthunt)\\.com|t\\.co)$/i.test(hostname)
+      || hostname === 'news.ycombinator.com';
+  }
+
+  function referrerType(hostname) {
+    if (!hostname) return 'direct';
+    var currentUrl = parsedUrl(location.href);
+    var currentHost = currentUrl && currentUrl.hostname ? currentUrl.hostname.toLowerCase() : (location.hostname || '').toLowerCase();
+    if (hostname === currentHost) return 'internal';
+    if (isSearchDomain(hostname)) return 'search';
+    if (isSocialDomain(hostname)) return 'social';
+    return 'external';
+  }
+
+  function buildAttribution() {
+    var pageUrl = parsedUrl(location.href);
+    var params = pageUrl ? pageUrl.searchParams : null;
+    var referrerHost = referrerDomain();
+    var type = referrerType(referrerHost);
+    var source = attributionValue(params && params.get('utm_source')) || referrerHost || 'direct';
+    var medium = attributionValue(params && params.get('utm_medium')) || type;
+    var attribution = {
+      source: source,
+      medium: medium,
+      referrerType: type,
+      landingPath: currentPath()
+    };
+    var campaign = attributionValue(params && params.get('utm_campaign'));
+    var content = attributionValue(params && params.get('utm_content'));
+    if (campaign) attribution.campaign = campaign;
+    if (content) attribution.content = content;
+    if (referrerHost) attribution.referrerDomain = referrerHost;
+    if (params && params.has('gclid')) attribution.gclidPresent = true;
+    if (params && params.has('fbclid')) attribution.fbclidPresent = true;
+    if (params && params.has('msclkid')) attribution.msclkidPresent = true;
+    return attribution;
+  }
+
+  var visitAttribution = null;
+  var attributionStorageKey = 'tracemind_attribution_' + hash(projectKey || endpoint, 'tm_attr_');
+
+  function currentAttribution() {
+    if (visitAttribution) return Object.assign({}, visitAttribution);
+    try {
+      var stored = JSON.parse(readSession(attributionStorageKey) || 'null');
+      if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+        visitAttribution = stored;
+        return Object.assign({}, visitAttribution);
+      }
+    } catch (error) {
+      // Ignore malformed session attribution and rebuild from the landing page.
+    }
+    visitAttribution = buildAttribution();
+    writeSession(attributionStorageKey, JSON.stringify(visitAttribution));
+    return Object.assign({}, visitAttribution);
   }
 
   var fingerprint = hash(JSON.stringify(fingerprintInfo()), 'tm_fp_');
@@ -2985,6 +3254,7 @@ export function clientScript(host) {
       platform: 'web',
       deviceInfo: deviceInfo(),
       source: currentSource(),
+      attribution: currentAttribution(),
       type: type,
       eventName: data && data.eventName,
       path: currentPath(),
@@ -3107,6 +3377,7 @@ export function clientScript(host) {
       platform: 'web',
       deviceInfo: deviceInfo(),
       source: currentSource(),
+      attribution: currentAttribution(),
       path: location.pathname,
       title: document.title,
       state: state,
@@ -3342,6 +3613,7 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     relatedActionKey: safeString(payload.relatedActionKey || context.relatedActionKey, 500),
     relatedTargetHash: safeString(payload.relatedTargetHash || context.relatedTargetHash, 160),
     correlationId: safeString(payload.correlationId || context.correlationId, 160),
+    attribution: normalizeAttribution(payload.attribution),
     method: safeString(payload.method, 20),
     status: safeString(payload.status, 20),
     properties: isServerAppSource ? sanitizeServerCaptureFields(properties) : properties,
@@ -3445,6 +3717,7 @@ async function upsertPresenceEvent(project, payload = {}, req = {}) {
       sourceKey: source.sourceKey,
       sourceLabel: source.sourceLabel,
       sourceDetails: source.sourceDetails,
+      attribution: normalizeAttribution(payload.attribution),
       path: safeString(payload.path, 500, '/'),
       title: safeString(payload.title, 160),
       screen: safeString(payload.screen, 160),

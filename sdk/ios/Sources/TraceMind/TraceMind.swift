@@ -133,6 +133,137 @@ public struct TraceMindSource: Codable {
   public let details: [String: String]
 }
 
+public struct TraceMindAttribution: Codable, Equatable {
+  public let source: String?
+  public let medium: String?
+  public let campaign: String?
+  public let content: String?
+  public let referrerDomain: String?
+  public let referrerType: String?
+  public let landingPath: String?
+  public let gclidPresent: Bool?
+  public let fbclidPresent: Bool?
+  public let msclkidPresent: Bool?
+
+  public init(
+    source: String? = nil,
+    medium: String? = nil,
+    campaign: String? = nil,
+    content: String? = nil,
+    referrerDomain: String? = nil,
+    referrerType: String? = nil,
+    landingPath: String? = nil,
+    gclidPresent: Bool? = nil,
+    fbclidPresent: Bool? = nil,
+    msclkidPresent: Bool? = nil
+  ) {
+    self.source = Self.cleanValue(source)
+    self.medium = Self.cleanValue(medium)
+    self.campaign = Self.cleanValue(campaign)
+    self.content = Self.cleanValue(content)
+    self.referrerDomain = Self.cleanDomain(referrerDomain)
+    self.referrerType = Self.cleanReferrerType(referrerType)
+    self.landingPath = Self.cleanPath(landingPath)
+    self.gclidPresent = gclidPresent == true ? true : nil
+    self.fbclidPresent = fbclidPresent == true ? true : nil
+    self.msclkidPresent = msclkidPresent == true ? true : nil
+  }
+
+  public static func fromOpenURL(_ url: URL, sourceApplication: String? = nil) -> TraceMindAttribution {
+    let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    let params = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).compactMap { item in
+      item.value.map { (item.name, $0) }
+    })
+    let scheme = (components?.scheme ?? url.scheme ?? "").lowercased()
+    let isWebLink = scheme == "http" || scheme == "https"
+    let urlHost = cleanDomain(components?.host)
+    let referrerDomain = isWebLink ? urlHost : (cleanDomain(sourceApplication) ?? urlHost)
+    let source = cleanValue(params["utm_source"]) ?? cleanValue(sourceApplication) ?? urlHost ?? (isWebLink ? "direct" : "deeplink")
+    let medium = cleanValue(params["utm_medium"]) ?? (isWebLink ? "universal_link" : "deeplink")
+
+    return TraceMindAttribution(
+      source: source,
+      medium: medium,
+      campaign: params["utm_campaign"],
+      content: params["utm_content"],
+      referrerDomain: referrerDomain,
+      referrerType: sourceApplication == Bundle.main.bundleIdentifier ? "internal" : "external",
+      landingPath: landingPath(from: url),
+      gclidPresent: params.keys.contains("gclid"),
+      fbclidPresent: params.keys.contains("fbclid"),
+      msclkidPresent: params.keys.contains("msclkid")
+    )
+  }
+
+  var isEmpty: Bool {
+    source == nil
+      && medium == nil
+      && campaign == nil
+      && content == nil
+      && referrerDomain == nil
+      && referrerType == nil
+      && landingPath == nil
+      && gclidPresent != true
+      && fbclidPresent != true
+      && msclkidPresent != true
+  }
+
+  private static func cleanValue(_ value: String?) -> String? {
+    let text = (value ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: #"\s+"#, with: "-", options: .regularExpression)
+      .prefix(120)
+    guard !text.isEmpty else { return nil }
+    let next = String(text)
+    if next.contains("@")
+      || next.range(of: #"https?:|[?&=]|%40"#, options: [.regularExpression, .caseInsensitive]) != nil {
+      return nil
+    }
+    return next.range(of: #"^[A-Za-z0-9][A-Za-z0-9._~:-]{0,119}$"#, options: .regularExpression) == nil ? nil : next
+  }
+
+  private static func cleanDomain(_ value: String?) -> String? {
+    let domain = (value ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+      .lowercased()
+      .prefix(200)
+    guard !domain.isEmpty else { return nil }
+    let next = String(domain)
+    if next.contains("@") || next.range(of: #"[/?#&=]"#, options: .regularExpression) != nil {
+      return nil
+    }
+    return next.range(of: #"^[a-z0-9.-]+$"#, options: .regularExpression) == nil ? nil : next
+  }
+
+  private static func cleanReferrerType(_ value: String?) -> String? {
+    let next = (value ?? "").lowercased()
+    return ["direct", "internal", "external", "search", "social"].contains(next) ? next : nil
+  }
+
+  private static func cleanPath(_ value: String?) -> String? {
+    let raw = String((value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+    guard !raw.isEmpty, raw.hasPrefix("/"), !raw.contains("@"), raw.range(of: #"^https?:"#, options: [.regularExpression, .caseInsensitive]) == nil else {
+      return nil
+    }
+    return raw.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init)
+  }
+
+  private static func landingPath(from url: URL) -> String? {
+    let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    let scheme = (components?.scheme ?? url.scheme ?? "").lowercased()
+    var path = components?.path ?? url.path
+    if path.isEmpty, scheme != "http", scheme != "https", let host = components?.host, !host.isEmpty {
+      path = "/\(host)"
+    }
+    if path.isEmpty { path = "/" }
+    if let fragment = components?.fragment, !fragment.isEmpty {
+      path += "#\(fragment)"
+    }
+    return cleanPath(path)
+  }
+}
+
 public struct TraceMindPayload: Codable {
   public let projectKey: String
   public let sessionId: String
@@ -153,6 +284,7 @@ public struct TraceMindPayload: Codable {
   public let identitySource: String?
   public let identityConfidence: String?
   public let actionKey: String?
+  public let attribution: TraceMindAttribution?
   public let properties: TraceMindFields
   public let context: TraceMindFields
   public let occurredAt: String
@@ -183,6 +315,7 @@ public struct TraceMindPresencePayload: Codable {
   public let lastActiveAt: String?
   public let activeState: String
   public let idleTimeoutMs: Int
+  public let attribution: TraceMindAttribution?
   public let occurredAt: String
 }
 
@@ -368,6 +501,7 @@ public final class TraceMindClient {
   private var queue: [TraceMindPayload] = []
   private var presenceId: String?
   private var currentScreen = "Application"
+  private var currentAttribution: TraceMindAttribution?
   private let heartbeatIntervalMs = 5_000
   private let activeIdleTimeoutMs = 60_000
   private var activeDurationMs = 0
@@ -430,6 +564,7 @@ public final class TraceMindClient {
       identitySource: targetIdentity?.source,
       identityConfidence: targetIdentity?.confidence,
       actionKey: actionKey,
+      attribution: currentAttribution,
       properties: Self.sanitize(properties),
       context: Self.sanitize(context),
       occurredAt: ISO8601DateFormatter.traceMind.string(from: clock())
@@ -478,6 +613,7 @@ public final class TraceMindClient {
       lastActiveAt: lastActiveAt.map { ISO8601DateFormatter.traceMind.string(from: $0) },
       activeState: (state == "end" || state == "background") ? "inactive" : activeState(now),
       idleTimeoutMs: activeIdleTimeoutMs,
+      attribution: currentAttribution,
       occurredAt: ISO8601DateFormatter.traceMind.string(from: now)
     )
   }
@@ -537,6 +673,14 @@ public final class TraceMindClient {
       recordActivity()
     }
     currentScreen = Self.normalizedScreen(screen)
+  }
+
+  public func setAttribution(_ attribution: TraceMindAttribution) {
+    currentAttribution = attribution.isEmpty ? nil : attribution
+  }
+
+  public func recordOpenURL(_ url: URL, sourceApplication: String? = nil) {
+    setAttribution(TraceMindAttribution.fromOpenURL(url, sourceApplication: sourceApplication))
   }
 
   func switchPresenceScreen(_ screen: String) async throws {
@@ -821,6 +965,14 @@ public enum TraceMind {
     client?.setScreen(screen)
     TraceMindAutoCapture.setScreen(screen)
 #endif
+  }
+
+  public static func setAttribution(_ attribution: TraceMindAttribution) {
+    client?.setAttribution(attribution)
+  }
+
+  public static func recordOpenURL(_ url: URL, sourceApplication: String? = nil) {
+    client?.recordOpenURL(url, sourceApplication: sourceApplication)
   }
 
   public static func identify(_ userId: String, traits: TraceMindFields = [:]) throws {

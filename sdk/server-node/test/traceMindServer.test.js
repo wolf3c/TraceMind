@@ -13,6 +13,17 @@ test('captures server custom events with primitive properties and server_app sou
   client.capture('custom', {
     eventName: 'invoice_paid',
     userId: 'user_123',
+    attribution: {
+      source: 'partner',
+      medium: 'referral',
+      campaign: 'launch',
+      landingPath: '/invite?token=secret',
+      referrerDomain: 'example.com',
+      referrerType: 'external',
+      gclidPresent: true,
+      fullUrl: 'https://example.com/invite?token=secret',
+      email: 'user@example.com',
+    },
     properties: {
       amount: 2900,
       success: true,
@@ -31,8 +42,19 @@ test('captures server custom events with primitive properties and server_app sou
   assert.equal(event.type, 'custom');
   assert.equal(event.eventName, 'invoice_paid');
   assert.equal(event.userId, 'user_123');
+  assert.deepEqual(event.attribution, {
+    source: 'partner',
+    medium: 'referral',
+    campaign: 'launch',
+    landingPath: '/invite',
+    referrerDomain: 'example.com',
+    referrerType: 'external',
+    gclidPresent: true,
+  });
   assert.deepEqual(event.properties, { amount: 2900, success: true, currency: 'USD' });
   assert.deepEqual(event.context, { source: 'stripe_webhook' });
+  assert.equal(JSON.stringify(event).includes('token=secret'), false);
+  assert.equal(JSON.stringify(event).includes('user@example.com'), false);
 });
 
 test('filters sensitive server fields and non-finite numbers', async () => {

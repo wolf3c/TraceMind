@@ -34,6 +34,18 @@ final class TraceMindModule: NSObject {
     TraceMind.setScreen(screen)
   }
 
+  @objc func setAttribution(_ attribution: NSDictionary) {
+    TraceMind.setAttribution(Self.traceMindAttribution(attribution))
+  }
+
+  @objc func recordDeepLink(_ payload: NSDictionary) {
+    guard let urlValue = payload["url"] as? String, let url = URL(string: urlValue) else { return }
+    let sourceApplication = payload["sourceApplication"] as? String
+      ?? payload["sourcePackage"] as? String
+      ?? payload["referrer"] as? String
+    TraceMind.recordOpenURL(url, sourceApplication: sourceApplication)
+  }
+
   @objc func submitFeedback(_ payload: NSDictionary) {
     guard let messageInput = payload["message"] as? NSDictionary else { return }
     let contactInput = messageInput["contact"] as? NSDictionary
@@ -78,6 +90,27 @@ final class TraceMindModule: NSObject {
       }
     }
     return next
+  }
+
+  private static func traceMindAttribution(_ value: NSDictionary) -> TraceMindAttribution {
+    TraceMindAttribution(
+      source: value["source"] as? String,
+      medium: value["medium"] as? String,
+      campaign: value["campaign"] as? String,
+      content: value["content"] as? String,
+      referrerDomain: value["referrerDomain"] as? String,
+      referrerType: value["referrerType"] as? String,
+      landingPath: value["landingPath"] as? String,
+      gclidPresent: boolValue(value["gclidPresent"]),
+      fbclidPresent: boolValue(value["fbclidPresent"]),
+      msclkidPresent: boolValue(value["msclkidPresent"])
+    )
+  }
+
+  private static func boolValue(_ value: Any?) -> Bool? {
+    if let value = value as? Bool { return value }
+    if let value = value as? NSNumber { return value.boolValue }
+    return nil
   }
 }
 #endif

@@ -6,6 +6,9 @@ const DEFAULT_FEEDBACK_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api
 const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|email|phone|input|enteredtext)/i;
 const FEEDBACK_FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|sourcecode|sourcediff|codediff|toolarguments|toolresult|resourcecontent)/i;
 const FULL_QUERY_URL_PATTERN = /https?:\/\/[^\s?#]+[^\s]*\?[^\s"'<>)]*/i;
+const ATTRIBUTION_VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,119}$/;
+const ATTRIBUTION_DOMAIN_PATTERN = /^[a-z0-9.-]+$/;
+const ATTRIBUTION_REFERRER_TYPES = new Set(['direct', 'internal', 'external', 'search', 'social']);
 
 function normalizeFieldKey(key) {
   return String(key || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -43,6 +46,46 @@ function sanitizeFeedbackFields(fields) {
 
 function safeString(value, max = 200, fallback = '') {
   return String(value || fallback).trim().slice(0, max);
+}
+
+function cleanAttributionValue(value) {
+  const text = safeString(value, 120).replace(/\s+/g, '-');
+  if (!text || text.includes('@') || /https?:|[?&=]|%40/i.test(text)) return undefined;
+  return ATTRIBUTION_VALUE_PATTERN.test(text) ? text : undefined;
+}
+
+function cleanAttributionDomain(value) {
+  const domain = safeString(value, 200).replace(/^\.+|\.+$/g, '').toLowerCase();
+  if (!domain || domain.includes('@') || /[/?#&=]/.test(domain)) return undefined;
+  return ATTRIBUTION_DOMAIN_PATTERN.test(domain) ? domain : undefined;
+}
+
+function cleanAttributionPath(value) {
+  const path = safeString(value, 500).split('?')[0];
+  if (!path || !path.startsWith('/') || path.includes('@') || /^https?:/i.test(path)) return undefined;
+  return path;
+}
+
+function cleanReferrerType(value) {
+  const referrerType = safeString(value, 40).toLowerCase();
+  return ATTRIBUTION_REFERRER_TYPES.has(referrerType) ? referrerType : undefined;
+}
+
+function sanitizeAttribution(attribution = {}) {
+  if (!attribution || typeof attribution !== 'object' || Array.isArray(attribution)) return {};
+  const next = {
+    source: cleanAttributionValue(attribution.source),
+    medium: cleanAttributionValue(attribution.medium),
+    campaign: cleanAttributionValue(attribution.campaign),
+    content: cleanAttributionValue(attribution.content),
+    referrerDomain: cleanAttributionDomain(attribution.referrerDomain),
+    referrerType: cleanReferrerType(attribution.referrerType),
+    landingPath: cleanAttributionPath(attribution.landingPath),
+    gclidPresent: attribution.gclidPresent === true ? true : undefined,
+    fbclidPresent: attribution.fbclidPresent === true ? true : undefined,
+    msclkidPresent: attribution.msclkidPresent === true ? true : undefined,
+  };
+  return Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined));
 }
 
 function feedbackEndpointFor(endpoint) {
@@ -156,6 +199,7 @@ function createTraceMindServerClient(options = {}) {
     capture(type, payload = {}) {
       const eventName = safeString(payload.eventName || payload.name || type, 120);
       const target = payload.target || (eventName ? { type: 'server_event', name: eventName, sourceKey } : undefined);
+      const attribution = sanitizeAttribution(payload.attribution);
       enqueue({
         userId: safeString(payload.userId, 160),
         anonymousId: safeString(payload.anonymousId || state.anonymousId, 120),
@@ -166,6 +210,7 @@ function createTraceMindServerClient(options = {}) {
         path: safeString(payload.path, 500, '/'),
         source: source(payload.sourceDetails),
         ...(target ? { target, targetHash: stableHash(target) } : {}),
+        ...(Object.keys(attribution).length ? { attribution } : {}),
         properties: sanitizeFields(payload.properties),
         context: sanitizeFields(payload.context),
       });
@@ -238,5 +283,6 @@ module.exports = {
   TraceMindServer,
   createTraceMindServerClient,
   sanitizeFields,
+  sanitizeAttribution,
   sanitizeFeedbackFields,
 };
