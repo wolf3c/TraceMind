@@ -1995,6 +1995,7 @@ describe('TraceMind', function () {
       'Add one line of code and TraceMind turns clicks, paths, forms, and active time into product evidence that Codex, Claude Code, and Cursor can question through MCP.',
       '1-minute setup · public projectKey writes · independent MCP token authorization',
       'View setup docs',
+      'Supported platforms: Web · iOS · macOS · Android · React Native · Server · MCP · Agent Skill',
       'Email',
       'Send code',
       'Checking your session...',

@@ -640,6 +640,15 @@ button:disabled {
   color: #5f6f68;
 }
 
+.supported-platforms {
+  margin: 18px 0 0;
+  color: #60756c;
+  font-size: 0.95rem;
+  font-weight: 680;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 .product-board {
   align-self: center;
   display: grid;

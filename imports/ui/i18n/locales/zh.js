@@ -114,6 +114,7 @@ export default {
   "Auto Capture": "Auto Capture",
   "TraceMind automatically records Web pages, iOS/Android interactions, macOS windows, route changes, and active time after setup.": "接入后，TraceMind 自动记录 Web 页面、iOS/Android 交互、macOS 窗口、路径变化和活跃时长。",
   "TraceMind keeps raw behavior, extracts semantic events, and exposes reviewable MCP evidence so agents can analyze product usage directly.": "TraceMind 保留原始行为，提取语义事件，并通过 MCP 提供可复核证据，让 Agent 直接分析产品使用情况。",
+  "Supported platforms: Web · iOS · macOS · Android · React Native · Server · MCP · Agent Skill": "已支持平台：Web · iOS · macOS · Android · React Native · Server · MCP · Agent Skill",
   "AI + MCP analysis": "AI + MCP 分析",
   "Let AI automatically complete efficient product iteration": "让 AI 自动完成高效产品迭代",
   "Let Coding Agents answer product health questions directly": "让 Coding Agent 直接回答产品健康问题",
