@@ -1,0 +1,4 @@
+interface:
+  display_name: "TraceMind Daily Customer Acquisition"
+  short_description: "Run and improve TraceMind's daily seed-customer acquisition workflow."
+  default_prompt: "Run today's TraceMind customer acquisition workflow: review yesterday's plan, check 即刻/V2EX/X/小红书/少数派 feedback and candidates, perform approved outreach, record progress, retrospect on what worked, optimize the workflow, and create tomorrow's plan."
