@@ -272,7 +272,7 @@ Input:
 }
 ```
 
-`platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。
+`platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`hybrid`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。
 
 Output:
 

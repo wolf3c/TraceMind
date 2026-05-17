@@ -141,6 +141,11 @@ function cleanString(value, max = 200, fallback = '') {
   return String(value || fallback).trim().slice(0, max);
 }
 
+function cleanFramework(value) {
+  const framework = cleanString(value, 40).toLowerCase();
+  return /^[a-z][a-z0-9_-]{0,39}$/.test(framework) ? framework : '';
+}
+
 function safeObject(value, maxBytes = 4096) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   try {
@@ -236,16 +241,20 @@ export function normalizeCaptureSource(payload = {}, headers = {}) {
       const sourceKey = cleanString(pageUrl.hostname.toLowerCase(), 200, 'unknown');
       const payloadUrlMatchesSource = payloadUrl && payloadUrl.hostname.toLowerCase() === sourceKey;
       const detailUrl = payloadUrlMatchesSource ? payloadUrl : (!originUrl && referrerUrl ? referrerUrl : null);
+      const framework = cleanFramework(safeObject(source.details).framework)
+        || cleanFramework(safeObject(payload.sourceDetails).framework);
+      const sourceDetails = {
+        origin: pageUrl.origin,
+        path: detailUrl ? `${detailUrl.pathname || '/'}${detailUrl.search || ''}` : '/',
+        referrer,
+      };
+      if (framework) sourceDetails.framework = framework;
 
       return {
         sourceType,
         sourceKey,
         sourceLabel: sourceKey,
-        sourceDetails: {
-          origin: pageUrl.origin,
-          path: detailUrl ? `${detailUrl.pathname || '/'}${detailUrl.search || ''}` : '/',
-          referrer,
-        },
+        sourceDetails,
       };
     }
   }

@@ -66,7 +66,7 @@ TraceMind 不应被包装成传统 analytics 看板。早期卖点是：
 - 1-20 人团队，创始人或 CTO 亲自写代码。
 - 日常使用 Cursor、Claude Code、Codex、Copilot Agent 或类似工具。
 - 产品已经上线，有真实用户和真实转化问题。
-- Web-first 最优，因为一行脚本能最快接入；Native、React Native、MCP server 和后端服务是加分项。
+- Web-first 最优，因为一行脚本能最快接入；Native、React Native、混合应用、MCP server 和后端服务是加分项。
 - 没有专职数据分析师，也没有稳定维护的事件体系。
 
 高匹配场景：

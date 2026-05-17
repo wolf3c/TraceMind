@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.17.1
+version: 2026.05.17.2
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -14,7 +14,7 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
 3. For product behavior analysis, use `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
 4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-5. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
+5. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
 6. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
 7. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
 8. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
@@ -59,6 +59,7 @@ For product apps, first check whether TraceMind Auto Capture is already initiali
 - macOS: call `tracemind.capture_setup` with `{ "platform": "macos" }`; add the same Swift package from `sdk/ios` and initialize once from the macOS app bootstrap. Auto Capture records app/session start and window or screen changes; use `TraceMind.setScreen(...)` when the app has better semantic screen names.
 - Android: call `tracemind.capture_setup` with `{ "platform": "android" }`; add the Gradle module/dependency and initialize once from `Application.onCreate()`.
 - React Native: call `tracemind.capture_setup` with `{ "platform": "react_native" }`; install the JS package and native bridge, then initialize once in `index.js`, `App.js`, `App.tsx`, or the app bootstrap module.
+- Hybrid: call `tracemind.capture_setup` with `{ "platform": "hybrid" }`; install Web Auto Capture in the WebView document and the matching native SDK in the shell. Do not create a new event platform: WebView events remain `web` and can carry `sourceDetails.framework` from `data-tracemind-framework`; native shell events remain `ios`, `macos`, or `android`.
 - MCP Node: call `tracemind.capture_setup` with `{ "platform": "mcp_node" }`; install the Node MCP SDK and initialize it around the MCP server object before serving tools.
 - MCP Python: call `tracemind.capture_setup` with `{ "platform": "mcp_python" }`; install the Python MCP SDK and initialize it around the MCP server object before serving tools.
 - Agent Skill: call `tracemind.capture_setup` with `{ "platform": "agent_skill" }`; only instrument executable host agent runtime hooks. A static Skill file cannot auto-capture by itself.
@@ -75,6 +76,7 @@ Use `capture_setup` as the source of truth for current setup details instead of 
 - Place the returned `initSnippet` at the returned `initLocation`; keep it as the only business-code line needed for Auto Capture.
 - For macOS, the first version uses AppKit application/window notifications. It provides stable window-level Auto Capture and keeps manual `TraceMind.capture(...)` and `TraceMind.setScreen(...)` available for richer app-specific semantics.
 - For React Native, do not create a new platform value. Events remain `ios` or `android`; React Native is marked through `deviceInfo.framework` or `sourceDetails.framework`.
+- For hybrid apps, use the returned WebView snippet with `data-tracemind-framework`, and use a narrow native-WebView bridge only for safe identity, route/source metadata, and deeplink handoff. After login, call `identify` in both layers with the same stable internal `userId`; never pass raw input values, cookies, tokens, page content, or full query URLs across the bridge.
 - Native Auto Capture should follow the platform-specific `autoCapturedSignals` returned by `capture_setup`: iOS/Android/React Native include app/session start, screen/page view, tap/click, input changed without values, and submit signals; macOS v1 includes app/session start plus window or screen changes.
 - Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
 
@@ -86,6 +88,7 @@ If setup looks correct but no data appears, check platform restrictions before c
 - iOS/macOS: check `Info.plist` `NSAppTransportSecurity` / ATS policy, HTTPS/TLS certificate validity, certificate pinning allowlists, MDM policy, and enterprise proxy rules. Fix by using the HTTPS production endpoint and allowing the TraceMind domain in the app or certificate policy when required.
 - Android: check `android.permission.INTERNET`, cleartext traffic policy, `network_security_config`, certificate pinning, proxy, and custom CA rules. Fix by declaring network permission and using HTTPS in production instead of relying on cleartext exceptions.
 - React Native: check both iOS and Android network rules, then confirm the native module is linked, pods/Gradle dependencies are installed, and native initialization runs before the first product screen.
+- Hybrid: check Web CSP/connect-src plus native ATS/Android network rules, then confirm the WebView enables JavaScript and DOM storage/localStorage and the bridge sends only sanitized identity, route/source, and deeplink metadata.
 - Server Node/Python/HTTP: check egress firewall, VPC, security group, DNS, proxy, TLS CA bundle, HTTP client timeout/retry behavior, and `Content-Type: application/json`. Fix by allowing outbound HTTPS to the TraceMind capture endpoint and configuring the server HTTP client.
 - MCP/Agent Skill runtime: use the server checks, then confirm capture code runs in executable MCP or host runtime hooks, not only in a static `SKILL.md` document.
 
@@ -126,7 +129,7 @@ For v1, ordinary server applications use manual capture first and do not enable 
 
 ## Manual Capture And Identify
 
-Manual capture follows the same mental model on Web, iOS, macOS, Android, React Native, MCP servers, ordinary server applications, and executable Agent Skill runtimes: initialize TraceMind once, optionally identify the actor with a stable internal user ID, then capture approved business outcomes with the platform SDK.
+Manual capture follows the same mental model on Web, iOS, macOS, Android, React Native, hybrid apps, MCP servers, ordinary server applications, and executable Agent Skill runtimes: initialize TraceMind once, optionally identify the actor with a stable internal user ID, then capture approved business outcomes with the platform SDK.
 
 - Use the returned `identifySnippet` after login when the app has a stable internal `userId`. Traits are optional and must use only `string`, `number`, or `boolean` values.
 - Use `manualCaptureExamples` only after `tracemind.search_event_names` finds an approved event name or the user approves a draft event proposal.

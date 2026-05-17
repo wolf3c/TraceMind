@@ -151,7 +151,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.17.1'));
+      assert.ok(skill.includes('version: 2026.05.17.2'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -184,6 +184,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('setAttribution'));
       assert.ok(skill.includes('recordOpenURL'));
       assert.ok(skill.includes('recordDeepLink'));
+      assert.ok(skill.includes('{ "platform": "hybrid" }'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
@@ -197,6 +198,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('attributionSource'));
       assert.ok(snippet.includes('landingPath'));
       assert.ok(snippet.includes('mcp_node'));
+      assert.ok(snippet.includes('hybrid'));
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
       assert.ok(snippet.includes('tracemind.project_health'));
@@ -206,7 +208,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
       assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.2');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -218,6 +220,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.mcp.tools.includes('tracemind.query_user_feedback'));
       assert.ok(manifest.mcp.tools.includes('tracemind.update_user_feedback'));
       assert.ok(manifest.platforms.includes('macos'));
+      assert.ok(manifest.platforms.includes('hybrid'));
       assert.ok(manifest.platforms.includes('mcp_node'));
       assert.ok(manifest.platforms.includes('mcp_python'));
       assert.ok(manifest.platforms.includes('agent_skill'));
@@ -455,6 +458,89 @@ describe('TraceMind', function () {
       assert.ok(!serialized.includes('secret-click'));
       assert.ok(!serialized.includes('person@example.com'));
       assert.ok(!serialized.includes('item?id=123'));
+    });
+
+    it('attaches optional framework metadata to Web Auto Capture sources', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const sessionStorage = new Map();
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'Hybrid WebView',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              if (name === 'data-tracemind-framework') return 'Capacitor';
+              return null;
+            },
+          },
+          addEventListener() {},
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: {
+          origin: 'https://app.example.com',
+          href: 'https://app.example.com/webview',
+          pathname: '/webview',
+          hash: '',
+          hostname: 'app.example.com',
+        },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch() {
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        sessionStorage: {
+          getItem(key) { return sessionStorage.has(key) ? sessionStorage.get(key) : null; },
+          setItem(key, value) { sessionStorage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+      sandbox.sessionStorage = sandbox.window.sessionStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      sandbox.window.TraceMind.capture('custom', { eventName: 'webview_checkout' });
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      const queued = JSON.parse(storage.get(queueKey));
+      const pageView = queued.find((record) => record.kind === 'capture' && record.payload.type === 'page_view');
+      const custom = queued.find((record) => record.kind === 'capture' && record.payload.eventName === 'webview_checkout');
+      const presence = queued.find((record) => record.kind === 'presence' && record.payload.state === 'start');
+
+      assert.strictEqual(pageView.payload.source.details.framework, 'capacitor');
+      assert.strictEqual(custom.payload.source.details.framework, 'capacitor');
+      assert.strictEqual(presence.payload.source.details.framework, 'capacitor');
     });
 
     it('queues web user feedback separately from capture and presence events', async function () {
@@ -967,13 +1053,13 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.2');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
-      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
-      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.'));
+      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Daily health check'));
@@ -1746,6 +1832,7 @@ describe('TraceMind', function () {
       const feedbackTool = mcpTools(project).find((tool) => tool.name === 'tracemind.submit_feedback');
       assert.strictEqual(setupTool.inputSchema.properties.platform.type, 'string');
       assert.ok(setupTool.inputSchema.properties.platform.enum.includes('macos'));
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('hybrid'));
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.platform.enum.includes('macos'));
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('macos'));
 
@@ -1839,6 +1926,50 @@ describe('TraceMind', function () {
       assert.ok(macos.structuredContent.privacyConstraints.some((constraint) => constraint.includes('Do not capture input values')));
       assert.ok(macos.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
       assert.ok(!JSON.stringify(macos.structuredContent).includes('tm_mcp_'));
+    });
+
+    it('returns hybrid app setup guidance through MCP', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const project = {
+        _id: `project-hybrid-capture-setup-${Date.now()}`,
+        name: 'Hybrid Capture Setup Project',
+        projectKey: 'tm_proj_hybrid',
+      };
+
+      const setupTool = mcpTools(project).find((tool) => tool.name === 'tracemind.capture_setup');
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('hybrid'));
+
+      const hybrid = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'hybrid' });
+
+      assert.strictEqual(hybrid.structuredContent.ok, true);
+      assert.strictEqual(hybrid.structuredContent.platform, 'hybrid');
+      assert.strictEqual(hybrid.structuredContent.eventPlatform, 'web_plus_native');
+      assert.ok(hybrid.structuredContent.captureSnippet.includes('/capture.js'));
+      assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_hybrid"'));
+      assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-framework="hybrid"'));
+      assert.ok(hybrid.structuredContent.install.includes('Web Auto Capture'));
+      assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('WebView')));
+      assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('same stable internal userId')));
+      assert.ok(hybrid.structuredContent.filesToEdit.some((file) => file.includes('WebView')));
+      assert.ok(hybrid.structuredContent.filesToEdit.some((file) => file.includes('Application.kt')));
+      assert.ok(hybrid.structuredContent.initLocation.includes('WebView page'));
+      assert.ok(hybrid.structuredContent.idempotencyChecks.some((check) => check.includes('TraceMind.start(')));
+      assert.ok(hybrid.structuredContent.initSnippet.includes('tm_proj_hybrid'));
+      assert.ok(hybrid.structuredContent.sourceModel.includes('Do not create a hybrid event platform'));
+      assert.ok(hybrid.structuredContent.sourceModel.includes('WebView events remain platform web'));
+      assert.ok(hybrid.structuredContent.autoCapturedSignals.some((signal) => signal.includes('WebView page view')));
+      assert.ok(hybrid.structuredContent.networkRestrictionChecks.some((check) => check.includes('WebView enables JavaScript')));
+      assert.ok(hybrid.structuredContent.verificationCommands.some((command) => command.includes('WebView content')));
+      assert.ok(hybrid.structuredContent.verificationCommands.some((command) => command.includes('same stable userId')));
+      assert.ok(hybrid.structuredContent.identifySnippet.includes('window.TraceMind.identify'));
+      assert.ok(hybrid.structuredContent.manualCaptureExamples.some((example) => example.includes('window.TraceMind.capture')));
+      assert.ok(hybrid.structuredContent.manualCaptureExample.includes('never duplicate'));
+      assert.ok(hybrid.structuredContent.trafficAttribution.platformNotes.some((note) => note.includes('WebView')));
+      assert.ok(hybrid.structuredContent.trafficAttribution.setupExamples.some((example) => example.includes('captureSnippet')));
+      assert.strictEqual(hybrid.structuredContent.tokenType, 'public_auto_capture_project_key');
+      assert.deepStrictEqual(hybrid.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
+      assert.ok(hybrid.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
+      assert.ok(!JSON.stringify(hybrid.structuredContent).includes('tm_mcp_'));
     });
 
     it('returns third-party MCP and agent skill setup snippets through MCP', async function () {
@@ -1995,7 +2126,7 @@ describe('TraceMind', function () {
       'Add one line of code and TraceMind turns clicks, paths, forms, and active time into product evidence that Codex, Claude Code, and Cursor can question through MCP.',
       '1-minute setup · public projectKey writes · independent MCP token authorization',
       'View setup docs',
-      'Supported platforms: Web · iOS · macOS · Android · React Native · Server · MCP · Agent Skill',
+      'Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Server · MCP · Agent Skill',
       'Email',
       'Send code',
       'Checking your session...',
@@ -2653,7 +2784,54 @@ describe('TraceMind', function () {
       },
     );
 
-      assert.deepStrictEqual(
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'web',
+        source: {
+          url: 'https://app.example.com/webview',
+          details: {
+            framework: 'Capacitor',
+            token: 'do-not-store',
+            requestBody: 'do-not-store',
+          },
+        },
+      }),
+      {
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        sourceLabel: 'app.example.com',
+        sourceDetails: {
+          origin: 'https://app.example.com',
+          path: '/webview',
+          referrer: '',
+          framework: 'capacitor',
+        },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'web',
+        source: { url: 'https://app.example.com/webview' },
+        sourceDetails: {
+          framework: 'Cordova',
+          headers: { authorization: 'do-not-store' },
+        },
+      }),
+      {
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        sourceLabel: 'app.example.com',
+        sourceDetails: {
+          origin: 'https://app.example.com',
+          path: '/webview',
+          referrer: '',
+          framework: 'cordova',
+        },
+      },
+    );
+
+    assert.deepStrictEqual(
       normalizeCaptureSource({ platform: 'ios', source: { key: 'com.example.app', label: 'Example iOS' } }),
       {
         sourceType: 'ios',

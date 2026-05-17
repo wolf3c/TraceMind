@@ -96,7 +96,7 @@
 ## 设备、IP 与地理信息
 
 - Web 自动采集会发送 `deviceInfo`，包括 UA、语言、平台、时区、屏幕、viewport、硬件并发、内存和 referrer。
-- iOS/macOS/Android 自动采集会发送平台、系统、框架、bundle id/package name、app label 和 SDK 框架来源；macOS 上 `deviceInfo.os` 为 `macOS`，`platform/sourceType` 为 `macos`；React Native 保持原生 `platform`，并用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记 `react_native`。
+- iOS/macOS/Android 自动采集会发送平台、系统、框架、bundle id/package name、app label 和 SDK 框架来源；macOS 上 `deviceInfo.os` 为 `macOS`，`platform/sourceType` 为 `macos`；React Native 保持原生 `platform`，并用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记 `react_native`。混合应用不新增事件平台，WebView 保持 Web 来源并可通过 `data-tracemind-framework` 写入 `sourceDetails.framework`，原生壳层保持 Native 来源，并用 framework metadata 标记具体壳层。
 - 设备指纹只使用较稳定字段，避免 viewport/referrer 变化导致同一设备被频繁重算。
 - 服务端通过请求头采集 IP，包括 `x-forwarded-for`、`cf-connecting-ip`、`x-real-ip` 和 socket 地址。
 - 地理信息使用无感请求头来源，例如 Cloudflare、Vercel、CloudFront、App Engine 注入的国家、地区、城市字段；后续可接入 IP geo 数据库，但不需要改变事件表结构。
@@ -106,7 +106,7 @@
 - `eventName` 表达具体业务事件名，例如 `checkout_started`、`plan_selected`、`invite_sent`。
 - `properties` 保存事件自身属性，例如金额、套餐、按钮位置、实验分组。
 - `context` 保存上报上下文，例如 `source: "server"`、trace id、feature flag、入口渠道。
-- Web、Native、React Native、MCP server、Agent Skill runtime 和服务端埋点都使用同一字段，后续扩展不用修改表结构。SDK 只保留 string、number、boolean 类型，省略 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value、request/response body、headers、cookies、authorization、tool arguments/result、resource content 和带 query 的完整 URL。
+- Web、Native、React Native、混合应用、MCP server、Agent Skill runtime 和服务端埋点都使用同一字段，后续扩展不用修改表结构。SDK 只保留 string、number、boolean 类型，省略 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value、request/response body、headers、cookies、authorization、tool arguments/result、resource content 和带 query 的完整 URL。
 
 ## 手动埋点与 Coding Agent 规则
 

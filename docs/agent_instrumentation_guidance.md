@@ -28,7 +28,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 - 修改前必须列出文件和命令、只合并追加、不覆盖已有配置、安装后验证的要求。
 - 项目级 skill 只在当前 agent 明确支持官方项目级 skill 目录时安装；否则回退到项目级 rules/instructions，不创建自定义目录。
 - MCP URL、token、Bearer token 和 Auto Capture `projectKey` 不写入 `AGENTS.md`、skill、README、源码或其他仓库规则文件；项目级规则只保存可提交的 `projectId`、项目显示名和 expected MCP server name。
-- 当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`macos`、`android` 或 `react_native`，第三方 MCP server 传 `mcp_node` 或 `mcp_python`，Agent Skill 传 `agent_skill`，普通后端服务传 `server_node`、`server_python` 或 `server_http`。agent 应使用返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks`、`initSnippet`、`identifySnippet`、`manualCaptureExamples`、`supportedPropertyTypes` 和 `manualCaptureWorkflow`，不要从静态文档复制 project key。
+- 当前项目接入代码由 `tracemind.capture_setup` 动态返回，不写入静态 guidance 或安装提示词；Web 省略 platform，Native 传 `ios`、`macos`、`android` 或 `react_native`，混合应用传 `hybrid`，第三方 MCP server 传 `mcp_node` 或 `mcp_python`，Agent Skill 传 `agent_skill`，普通后端服务传 `server_node`、`server_python` 或 `server_http`。agent 应使用返回的 `installCommands`、`filesToEdit`、`initLocation`、`idempotencyChecks`、`initSnippet`、`identifySnippet`、`manualCaptureExamples`、`supportedPropertyTypes` 和 `manualCaptureWorkflow`，不要从静态文档复制 project key。
 - 如果 MCP 只能写入全局配置，agent 直接使用全局 MCP 配置，并继续避免把 MCP URL 或 token 写入仓库文件。
 - 如果已经存在 TraceMind Skill 或 rules，agent 只检查版本和补充缺失内容，不重复追加完整区块。
 - 如果已经存在相同 Project ID 的 `TraceMind project binding`，agent 复用该绑定，只补缺失规则或更新匹配的 MCP server URL/token。
@@ -89,6 +89,7 @@ MCP 只返回建议和 findings，不写入用户项目，也不把 draft event 
 - 来源归因不要只写在 `context.source`；需要 MCP 可过滤分析时使用 SDK attribution helper 或安全 `attribution` 对象。
 - 用户反馈 `message.contact` 可以包含用户主动提交且 consented 的联系方式；Auto Capture 和普通手动埋点仍然不能采集输入值、邮箱、手机号、prompt、token、源码 diff、请求/响应 body 或完整 query URL。
 - React Native 不新增 `platform: "react_native"`；事件保持 `ios` 或 `android`，并通过 framework metadata 标记来源。
+- 混合应用不新增 `hybrid` 事件平台；WebView 使用返回 snippet 里的 `data-tracemind-framework` 写入来源 metadata，原生壳层保持 `ios`、`macos` 或 `android`。
 - 完成后运行适用的 `verificationCommands`，再用 TraceMind MCP 查询 raw behaviors 或 semantic events。
 
 ## MCP Server And Skill Guidance

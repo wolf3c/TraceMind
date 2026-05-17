@@ -28,7 +28,7 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.17.1';
+const AGENT_GUIDANCE_VERSION = '2026.05.17.2';
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -219,13 +219,13 @@ export function mcpTools(project) {
     {
       name: 'tracemind.capture_setup',
       title: projectScopedTitle('TraceMind Capture Setup', project),
-      description: projectScopedDescription('返回当前项目的 Auto Capture 项目 key 和指定平台的一行接入代码。', project),
+      description: projectScopedDescription('返回当前项目的 Auto Capture 项目 key 和指定平台的接入代码与步骤。', project),
       inputSchema: {
         type: 'object',
         properties: {
           platform: {
             type: 'string',
-            enum: ['web', 'ios', 'macos', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'],
+            enum: ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'],
             description: '要接入的平台；省略时返回 Web 脚本。',
           },
         },
@@ -252,7 +252,7 @@ export function mcpTools(project) {
         properties: {
           intent: { type: 'string', description: '准备记录的用户行为或业务结果。' },
           context: { type: 'string', description: '相关代码或产品流程摘要。' },
-          platform: { type: 'string', description: 'web、ios、macos、android、react_native、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
+          platform: { type: 'string', description: 'web、ios、macos、android、react_native、hybrid、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
         },
       },
     },
@@ -624,10 +624,10 @@ function guidanceResult(extra = {}) {
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
-      'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
+      'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
-      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, and server egress/proxy/TLS policy.',
+      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
@@ -760,6 +760,14 @@ const REACT_NATIVE_NETWORK_RESTRICTION_CHECKS = [
   'Confirm the React Native native module is linked, pods/Gradle dependencies are installed, and native initialization runs before the first product screen.',
 ];
 
+const HYBRID_NETWORK_RESTRICTION_CHECKS = [
+  ...WEB_NETWORK_RESTRICTION_CHECKS,
+  ...IOS_NETWORK_RESTRICTION_CHECKS,
+  ...ANDROID_NETWORK_RESTRICTION_CHECKS,
+  'Confirm the WebView enables JavaScript and DOM storage/localStorage so the Web Auto Capture queue and identity store can work.',
+  'Confirm WebView navigation, deeplink, and bridge code pass only sanitized route/source metadata and never raw input values, cookies, tokens, or page content.',
+];
+
 const SERVER_NETWORK_RESTRICTION_CHECKS = [
   'Check egress firewall, VPC, security group, DNS, proxy, and TLS CA bundle policy allow outbound HTTPS to the TraceMind capture endpoint.',
   'Check the backend HTTP client sets Content-Type: application/json, has reasonable timeout/retry behavior, and sends the sanitized payload returned by capture_setup.',
@@ -830,6 +838,18 @@ function trafficAttributionGuidance(platform = 'web') {
       setupExamples: [
         'TraceMind.recordDeepLink({ url, referrer, sourcePackage })',
         'TraceMind.setAttribution({ source: "partner", medium: "deeplink", campaign: "launch", landingPath: "/invite", referrerType: "external" })',
+      ],
+    },
+    hybrid: {
+      platformNotes: [
+        'Hybrid apps use Web first-touch attribution inside the WebView and native URL/deeplink helpers in the shell.',
+        'Keep events on their owning runtime: WebView events remain web, while shell events remain ios, android, or macos.',
+        'Pass only sanitized route/source metadata across the native-WebView bridge.',
+      ],
+      setupExamples: [
+        'Install captureSnippet in the WebView document and TraceMind.start in the native shell startup.',
+        'Call window.TraceMind.identify and native TraceMind.identify with the same stable internal userId after login.',
+        'Use TraceMind.recordOpenURL or TraceMind.recordDeepLink in the native shell when the hybrid app opens from a link.',
       ],
     },
     server_node: {
@@ -927,6 +947,7 @@ function commonSetup(project, platform) {
       macos: 'TraceMind.submitFeedback(message: feedbackMessage)',
       android: 'TraceMind.submitFeedback(message)',
       react_native: 'TraceMind.submitFeedback({ message })',
+      hybrid: 'Use window.TraceMind.submitFeedback({ message }) from the WebView or the matching native TraceMind.submitFeedback(...) API from the shell.',
       server_node: 'TraceMindServer.submitFeedback({ message, userId, sessionId })',
       server_python: 'TraceMindServer.submit_feedback(message=message, user_id=user_id, session_id=session_id)',
       server_http: `POST ${userFeedbackApiUrl}`,
@@ -937,6 +958,64 @@ function commonSetup(project, platform) {
 
 function platformSetup(project, platform) {
   const common = commonSetup(project, platform);
+
+  if (platform === 'hybrid') {
+    const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
+    const captureSnippet = `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" data-tracemind-framework="hybrid" async></script>`;
+    return {
+      ...common,
+      platform: 'hybrid',
+      eventPlatform: 'web_plus_native',
+      captureScriptUrl,
+      captureSnippet,
+      install: 'Install Web Auto Capture in the WebView document and the matching native SDK in the app shell, then connect identity and deeplink handling through a narrow bridge.',
+      installCommands: [
+        'Add captureSnippet to the WebView HTML document, root layout, or bundled H5 entry loaded inside the shell.',
+        'Install the matching native SDK for the shell: iOS/macOS use sdk/ios, Android uses sdk/android.',
+        'Initialize TraceMind once in the native startup path and once in the WebView document using the same projectKey.',
+        'After login, call identify in both layers with the same stable internal userId; use the bridge only for identity, sanitized route/source metadata, and deeplink handoff.',
+      ],
+      filesToEdit: [
+        'WebView HTML document, app.html, root layout, or bundled H5 entry',
+        'iOS/macOS App.swift, AppDelegate.swift, or SceneDelegate.swift when the shell is Apple-native',
+        'Android Application.kt/Application.java and AndroidManifest.xml when the shell is Android-native',
+        'WebView bridge, deeplink router, or Capacitor/Cordova/Electron/Tauri bootstrap module',
+        'CSP, ATS, Android network security, or WebView configuration files when the TraceMind endpoint is restricted',
+      ],
+      initLocation: 'Load captureSnippet in every WebView page, and run the native TraceMind.start line once during shell startup before the first WebView screen is shown.',
+      idempotencyChecks: [
+        'Search WebView assets for /capture.js and data-tracemind-token.',
+        'Search native shell code for TraceMind.start(',
+        'Check that WebView and native shell use the same projectKey and do not mix in an MCP token.',
+        'Search bridge code for existing TraceMind identity, deeplink, or route handoff helpers before adding another one.',
+      ],
+      initSnippet: `${captureSnippet}\n\n// iOS/macOS shell\nTraceMind.start(projectKey: "${project.projectKey}")\n\n// Android shell\nTraceMind.start(application, projectKey = "${project.projectKey}")`,
+      source: {
+        type: 'web_plus_native',
+        key: 'WebView hostname plus native bundle id or package name.',
+      },
+      sourceModel: 'Do not create a hybrid event platform. WebView events remain platform web/sourceType web and can mark sourceDetails.framework through data-tracemind-framework; native shell events remain ios, macos, or android and can mark deviceInfo.framework/sourceDetails.framework as hybrid, capacitor, cordova, electron, tauri, or the specific shell framework when available.',
+      autoCapturedSignals: [
+        'WebView page view, route change, click, input changed without input values, submit, and active time from Web Auto Capture',
+        'Native shell app/session start, screen/view changes, tap/click, input changed without input values, submit, and active time from the matching native SDK',
+        'Deeplink/source attribution from native URL helpers plus Web first-touch attribution inside the WebView',
+      ],
+      privacyConstraints: PRIVACY_CONSTRAINTS,
+      networkRestrictionChecks: HYBRID_NETWORK_RESTRICTION_CHECKS,
+      verificationCommands: [
+        'Run the WebView content and trigger a page load/click/input/submit, then query TraceMind raw behaviors or semantic events.',
+        'Run each native shell variant, trigger foreground/background and deeplink flows, then query TraceMind raw behaviors or semantic events.',
+        'Confirm WebView and native shell events share the same stable userId after login and never include raw input values, cookies, tokens, or full query URLs.',
+      ],
+      identifySnippet: 'After login, call window.TraceMind.identify("user_123", { plan: "pro" }) in the WebView and TraceMind.identify(...) in the native shell with the same stable internal userId.',
+      manualCaptureExamples: [
+        'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro", amount: 29, trial: true }, context: { source: "webview_checkout" } })',
+        'try? TraceMind.capture("custom", eventName: approvedEventName, path: "HybridShell", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "native_shell"])',
+        'TraceMind.capture(type = "custom", eventName = approvedEventName, path = "HybridShell", properties = mapOf("plan" to "pro", "amount" to 29, "trial" to true), context = mapOf("source" to "native_shell"))',
+      ],
+      manualCaptureExample: 'Use Web manual capture for WebView-owned business outcomes and native manual capture for shell-owned business outcomes; never duplicate the same outcome in both layers.',
+    };
+  }
 
   if (platform === 'server_node') {
     return {
@@ -1440,7 +1519,7 @@ function captureSetupResult(project, args = {}) {
   }
 
   const requestedPlatform = String(args.platform || '').toLowerCase().replace('-', '_');
-  const platform = ['ios', 'macos', 'android', 'react_native', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http', 'web'].includes(requestedPlatform)
+  const platform = ['ios', 'macos', 'android', 'react_native', 'hybrid', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http', 'web'].includes(requestedPlatform)
     ? requestedPlatform
     : 'web';
 
@@ -2572,6 +2651,12 @@ export function clientScript(host) {
   var feedbackEndpoint = (script && script.getAttribute('data-tracemind-feedback-endpoint')) || '${host}/api/user-feedback';
   var staticUserId = script && script.getAttribute('data-tracemind-user-id');
   var userIdProvider = script && script.getAttribute('data-tracemind-user-id-provider');
+  var sourceFramework = frameworkName(script && script.getAttribute('data-tracemind-framework'));
+
+  function frameworkName(value) {
+    var text = String(value || '').trim().toLowerCase();
+    return /^[a-z][a-z0-9_-]{0,39}$/.test(text) ? text : '';
+  }
 
   function readLocal(key) {
     try {
@@ -2655,11 +2740,13 @@ export function clientScript(host) {
   }
 
   function currentSource() {
-    return {
+    var source = {
       type: 'web',
       url: safePageUrl(location.href),
       referrer: document.referrer ? safePageUrl(document.referrer) : ''
     };
+    if (sourceFramework) source.details = { framework: sourceFramework };
+    return source;
   }
 
   function attributionValue(value) {
