@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.17.3
+version: 2026.05.17.4
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -14,7 +14,7 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
 3. For product behavior analysis, use `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
 4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-5. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
+5. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
 6. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
 7. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
 8. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
@@ -39,13 +39,14 @@ Only call `tracemind.submit_feedback` after the developer confirms they want to 
 
 ## Traffic Attribution
 
-Traffic attribution answers where product users came from. It is different from `sourceType/sourceKey`, which describes the capture runtime such as Web hostname, iOS bundle id, Android package name, Mini Program appId, MCP server, Agent Skill, or server app.
+Traffic attribution answers where product users came from. It is different from `sourceType/sourceKey`, which describes the capture runtime such as Web hostname, iOS bundle id, Android package name, Mini Program appId, browser extension id, MCP server, Agent Skill, or server app.
 
 - Web: Auto Capture records first-touch attribution for the browser visit from whitelisted `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, referrer domain/type, landing path without query string, and boolean click markers such as `gclidPresent`. Manual custom events in the same visit inherit it automatically.
 - iOS/macOS: when the app opens from universal links, custom URL schemes, handoff, or another app, call `TraceMind.recordOpenURL(url, sourceApplication: sourceApplication)` before relevant screen or custom events. Use `TraceMind.setAttribution(...)` only when you already have a sanitized custom source setting.
 - Android: call `TraceMind.recordDeepLink(url = intent.data?.toString(), referrer = referrer?.toString(), sourcePackage = callingPackage)` from app links, custom schemes, or deeplink routing. Use `TraceMind.setAttribution(...)` only for sanitized custom source settings.
 - React Native: call `TraceMind.recordDeepLink({ url, referrer, sourcePackage })` from `Linking.getInitialURL()` and URL subscriptions. Use `TraceMind.setAttribution({ source, medium, campaign, landingPath })` when a JS router owns the source setting.
 - Mini Program: use `TraceMind.setAttribution({ source, medium, campaign, landingPath })` only with already-sanitized campaign, scene, QR, share, or channel metadata. Page paths must not include query strings.
+- Browser Extension: use `TraceMind.setAttribution({ source, medium, campaign, landingPath })` only with already-sanitized extension workflow or campaign metadata. Do not use host-page URLs, tab URLs, browser history, bookmarks, cookies, or content script page content as attribution.
 - Server apps: do not infer user traffic source automatically in v1. If a server-side business event must be analyzed by channel, pass only an already-sanitized `attribution` object from product traffic context.
 - MCP and Agent Skill: their `sourceType/sourceKey` identifies runtime/tool origin, not product traffic acquisition. Use attribution filters to analyze product events, not to label MCP tool calls as marketing traffic.
 
@@ -62,6 +63,7 @@ For product apps, first check whether TraceMind Auto Capture is already initiali
 - React Native: call `tracemind.capture_setup` with `{ "platform": "react_native" }`; install the JS package and native bridge, then initialize once in `index.js`, `App.js`, `App.tsx`, or the app bootstrap module.
 - Hybrid: call `tracemind.capture_setup` with `{ "platform": "hybrid" }`; install Web Auto Capture in the WebView document and the matching native SDK in the shell. Do not create a new event platform: WebView events remain `web` and can carry `sourceDetails.framework` from `data-tracemind-framework`; native shell events remain `ios`, `macos`, or `android`.
 - Mini Program: call `tracemind.capture_setup` with `{ "platform": "mini_program", "provider": "wechat" }` and set provider to `wechat`, `alipay`, `douyin`, or `dingtalk`. Aliases such as `wechat_mini_program` are normalized to the same SDK. Events use `platform: "mini_program"` and `sourceType: "mini_program"` with `sourceDetails.provider`.
+- Browser Extension: call `tracemind.capture_setup` with `{ "platform": "browser_extension" }`. Aliases such as `chrome_extension`, `edge_extension`, `firefox_extension`, and `web_extension` normalize to the same SDK. Use `@tracemind/browser-extension` in extension-owned popup, options, sidebar, and devtools pages; background or service worker contexts support manual capture only. Events use `platform: "browser_extension"` and `sourceType: "browser_extension"` with whitelisted `sourceDetails.browser`, `manifestVersion`, `runtimeContext`, and `sdkVersion`.
 - MCP Node: call `tracemind.capture_setup` with `{ "platform": "mcp_node" }`; install the Node MCP SDK and initialize it around the MCP server object before serving tools.
 - MCP Python: call `tracemind.capture_setup` with `{ "platform": "mcp_python" }`; install the Python MCP SDK and initialize it around the MCP server object before serving tools.
 - Agent Skill: call `tracemind.capture_setup` with `{ "platform": "agent_skill" }`; only instrument executable host agent runtime hooks. A static Skill file cannot auto-capture by itself.
@@ -80,6 +82,7 @@ Use `capture_setup` as the source of truth for current setup details instead of 
 - For React Native, do not create a new platform value. Events remain `ios` or `android`; React Native is marked through `deviceInfo.framework` or `sourceDetails.framework`.
 - For hybrid apps, use the returned WebView snippet with `data-tracemind-framework`, and use a narrow native-WebView bridge only for safe identity, route/source metadata, and deeplink handoff. After login, call `identify` in both layers with the same stable internal `userId`; never pass raw input values, cookies, tokens, page content, or full query URLs across the bridge.
 - For Mini Programs, use the generic `@tracemind/mini-program` SDK rather than provider-specific duplicate SDKs. V1 automatically records app/session start, app show/hide, page view, page show/hide, route/page path, and presence heartbeat. Tap/input/submit signals require `TraceMind.trackTap`, `TraceMind.trackInput`, or `TraceMind.trackSubmit` from existing handlers; do not promise no-code capture or collect input values.
+- For Browser Extensions, use the generic `@tracemind/browser-extension` SDK for Chrome, Edge, and Firefox WebExtensions. V1 automatically records extension-owned DOM pages such as popup, options, sidebar, and devtools page; background/service worker code only uses `capture`, `identify`, `submitFeedback`, and `flush`. Do not promise content script no-code capture of host pages.
 - Native Auto Capture should follow the platform-specific `autoCapturedSignals` returned by `capture_setup`: iOS/Android/React Native include app/session start, screen/page view, tap/click, input changed without values, and submit signals; macOS v1 includes app/session start plus window or screen changes.
 - Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
 
@@ -93,6 +96,7 @@ If setup looks correct but no data appears, check platform restrictions before c
 - React Native: check both iOS and Android network rules, then confirm the native module is linked, pods/Gradle dependencies are installed, and native initialization runs before the first product screen.
 - Hybrid: check Web CSP/connect-src plus native ATS/Android network rules, then confirm the WebView enables JavaScript and DOM storage/localStorage and the bridge sends only sanitized identity, route/source, and deeplink metadata.
 - Mini Program: check the provider request domain allowlist, confirm the host API (`wx.request`, `my.request`, `tt.request`, or `dd.request`) and storage APIs are available, and verify App/Page lifecycle wrappers run in the target provider dev tool.
+- Browser Extension: check `host_permissions` or extension permissions allow the TraceMind endpoint, extension CSP permits `connect-src`, `fetch` works in the target context, and background service worker lifecycle does not assume persistent DOM listeners.
 - Server Node/Python/HTTP: check egress firewall, VPC, security group, DNS, proxy, TLS CA bundle, HTTP client timeout/retry behavior, and `Content-Type: application/json`. Fix by allowing outbound HTTPS to the TraceMind capture endpoint and configuring the server HTTP client.
 - MCP/Agent Skill runtime: use the server checks, then confirm capture code runs in executable MCP or host runtime hooks, not only in a static `SKILL.md` document.
 
@@ -133,13 +137,13 @@ For v1, ordinary server applications use manual capture first and do not enable 
 
 ## Manual Capture And Identify
 
-Manual capture follows the same mental model on Web, iOS, macOS, Android, React Native, hybrid apps, Mini Programs, MCP servers, ordinary server applications, and executable Agent Skill runtimes: initialize TraceMind once, optionally identify the actor with a stable internal user ID, then capture approved business outcomes with the platform SDK.
+Manual capture follows the same mental model on Web, iOS, macOS, Android, React Native, hybrid apps, Mini Programs, Browser Extensions, MCP servers, ordinary server applications, and executable Agent Skill runtimes: initialize TraceMind once, optionally identify the actor with a stable internal user ID, then capture approved business outcomes with the platform SDK.
 
 - Use the returned `identifySnippet` after login when the app has a stable internal `userId`. Traits are optional and must use only `string`, `number`, or `boolean` values.
 - Use `manualCaptureExamples` only after `tracemind.search_event_names` finds an approved event name or the user approves a draft event proposal.
 - Put stable business facts in `properties`; put route, source, experiment, or UI context in `context`.
 - Put traffic acquisition context in the SDK attribution helper or `attribution` object, not only in `context.source`, when the event should be queryable by source/campaign/landing-page MCP filters.
-- Native, React Native, and Mini Program SDKs omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
+- Native, React Native, Mini Program, and Browser Extension SDKs omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
 - Manual events are for outcomes such as purchase completed, subscription changed, invite sent, or onboarding completed. Do not use manual capture for raw input values or screen contents.
 
 ## Developer Feedback Submission
@@ -157,7 +161,7 @@ TraceMind MCP can submit developer feedback separately from analytics events. Us
 
 TraceMind also supports terminal user feedback from the customer app. This is separate from developer feedback.
 
-- Use SDK `submitFeedback` for user feedback upload: Web `window.TraceMind.submitFeedback({ message })`, iOS/macOS `TraceMind.submitFeedback(message:)`, Android `TraceMind.submitFeedback(message)`, React Native `TraceMind.submitFeedback({ message })`, Mini Program `TraceMind.submitFeedback({ message })`, or server SDK `TraceMindServer.submitFeedback(...)`.
+- Use SDK `submitFeedback` for user feedback upload: Web `window.TraceMind.submitFeedback({ message })`, iOS/macOS `TraceMind.submitFeedback(message:)`, Android `TraceMind.submitFeedback(message)`, React Native `TraceMind.submitFeedback({ message })`, Mini Program `TraceMind.submitFeedback({ message })`, Browser Extension `TraceMind.submitFeedback({ message })`, or server SDK `TraceMindServer.submitFeedback(...)`.
 - Do not send terminal user feedback through `/api/capture`, `capture("custom")`, or `tracemind.submit_feedback`.
 - Feedback `message` is structured and may include `kind`, `title`, `body`, consented `contact`, and primitive custom `fields`; attachments remain empty in v1.
 - Contact fields are allowed only when the end user explicitly submits them in the feedback payload. Auto Capture still must not collect input values, emails, phones, prompts, tokens, source diffs, request/response bodies, or full query URLs.

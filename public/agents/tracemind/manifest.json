@@ -1,6 +1,6 @@
 {
   "name": "tracemind-instrumentation",
-  "guidanceVersion": "2026.05.17.3",
+  "guidanceVersion": "2026.05.17.4",
   "platforms": [
     "web",
     "ios",
@@ -9,6 +9,7 @@
     "react_native",
     "hybrid",
     "mini_program",
+    "browser_extension",
     "mcp_node",
     "mcp_python",
     "agent_skill",

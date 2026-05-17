@@ -2,7 +2,7 @@
 
 ## 目标
 
-让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入开发者反馈、`tracemind.update_user_feedback` 更新终端用户反馈处理状态和备注。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；小程序通过 `mini_program` 通用 SDK 写入 `/api/capture`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问今天产品是否正常、用户在做什么、哪里值得改：Agent 默认先读取项目健康日报，再下钻语义事件，需要复核时再查询原始日志。
+让 LLM / AI Coding Agent 通过远程 MCP 分析 TraceMind 已抽取的产品行为语义，并在开发者明确要求时上报问题或想法反馈。TraceMind 自己的远程 MCP 端点不是采集目标；它读取行为证据，并且只允许 `tracemind.submit_feedback` 写入开发者反馈、`tracemind.update_user_feedback` 更新终端用户反馈处理状态和备注。第三方 MCP server 若要分析自身 tool/resource/prompt 运行情况，应通过 `mcp_node` 或 `mcp_python` SDK 使用公开 `projectKey` 写入 `/api/capture`；小程序通过 `mini_program` 通用 SDK 写入 `/api/capture`；浏览器插件通过 `browser_extension` 通用 SDK 写入 `/api/capture`，并将 presence 写入 `/api/presence`；普通后端服务第一版通过 `server_node`、`server_python` 或 `server_http` 添加手动业务埋点，不做 request Auto Capture。开发者可以在 Codex、Claude Code、Cursor 等工具里直接追问今天产品是否正常、用户在做什么、哪里值得改：Agent 默认先读取项目健康日报，再下钻语义事件，需要复核时再查询原始日志。
 
 ## Endpoint
 
@@ -262,7 +262,7 @@ Output:
 
 ### `tracemind.capture_setup`
 
-返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
+返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主，浏览器插件使用通用 WebExtension SDK。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
 
 Input:
 
@@ -273,7 +273,7 @@ Input:
 }
 ```
 
-`platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`hybrid`、`mini_program`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。`mini_program` 可选 `provider`：`wechat`、`alipay`、`douyin`、`dingtalk`；别名 `wechat_mini_program`、`alipay_mini_program`、`douyin_mini_program`、`dingtalk_mini_program` 会归一为 `mini_program + provider`。
+`platform` 可省略，默认 `web`；也可传 `ios`、`macos`、`android`、`react_native`、`hybrid`、`mini_program`、`browser_extension`、`mcp_node`、`mcp_python`、`agent_skill`、`server_node`、`server_python` 或 `server_http`。`mini_program` 可选 `provider`：`wechat`、`alipay`、`douyin`、`dingtalk`；别名 `wechat_mini_program`、`alipay_mini_program`、`douyin_mini_program`、`dingtalk_mini_program` 会归一为 `mini_program + provider`。浏览器插件别名 `chrome_extension`、`edge_extension`、`firefox_extension`、`web_extension` 会归一为 `browser_extension`。
 
 Output:
 
@@ -420,6 +420,43 @@ Native 和 React Native 返回还包含：
 ```
 
 小程序不复用 Web `capture.js`。V1 不做编译期 WXML/AXML/TTML 改写，也不承诺无侵入全自动 tap/input/submit 捕获；交互事件通过 helper 接到开发者已有 handler。
+
+浏览器插件示例：
+
+```json
+{
+  "ok": true,
+  "projectKey": "tm_proj_xxx",
+  "platform": "browser_extension",
+  "eventPlatform": "browser_extension",
+  "installCommands": [
+    "Install @tracemind/browser-extension from the TraceMind SDK distribution; in this repo the package is sdk/browser-extension.",
+    "Initialize TraceMind once in extension-owned popup, options, sidebar, or devtools pages; background/service worker contexts use manual capture only."
+  ],
+  "initSnippet": "import { TraceMind } from \"@tracemind/browser-extension\";\n\nTraceMind.start({\n  projectKey: \"tm_proj_xxx\",\n  extensionName: \"Example Extension\"\n});",
+  "autoCapturedSignals": [
+    "extension UI start",
+    "page view for extension-owned pages",
+    "click/input without value/submit",
+    "route/path changes without query strings",
+    "foreground presence heartbeat",
+    "background/service worker manual capture only"
+  ],
+  "sourceModel": "platform is browser_extension; sourceType is browser_extension; sourceKey is the extension id or configured extensionId; sourceDetails.browser, manifestVersion, runtimeContext, and sdkVersion are the only saved extension metadata.",
+  "manifestPermissions": [
+    "Add host_permissions or permissions that allow HTTPS requests to the TraceMind endpoint.",
+    "Allow connect-src to the TraceMind endpoint in extension CSP when CSP is declared."
+  ],
+  "manualCaptureExamples": [
+    "TraceMind.capture(\"custom\", { eventName: approvedEventName, properties: { success: true } })"
+  ],
+  "verificationCommands": [
+    "npm test --prefix sdk/browser-extension"
+  ]
+}
+```
+
+浏览器插件 V1 不把 content script 宿主页作为无侵入自动采集目标，不采集宿主页 DOM、页面内容、截图、浏览器历史、书签、cookies、tab 完整 URL、query、token 或输入值。
 
 MCP server 示例：
 

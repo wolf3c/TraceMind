@@ -9,6 +9,7 @@
     "test:sdk:ios": "CLANG_MODULE_CACHE_PATH=.swiftpm-cache/clang swift test --disable-sandbox --package-path sdk/ios",
     "test:sdk:mcp-node": "npm test --prefix sdk/mcp-node",
     "test:sdk:mcp-python": "PYTHONPATH=sdk/mcp-python python3 -m unittest discover -s sdk/mcp-python/tests",
+    "test:sdk:browser-extension": "npm test --prefix sdk/browser-extension",
     "test:sdk:mini-program": "npm test --prefix sdk/mini-program",
     "test:sdk:react-native": "npm test --prefix sdk/react-native",
     "test:sdk:server-node": "npm test --prefix sdk/server-node",

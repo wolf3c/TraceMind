@@ -155,3 +155,4 @@ Then add the capture snippet to a small test web page, generate several interact
 - Clarified that capture source governance (`sourceType + sourceKey`) tracks apps and SDKs writing to a project key, while traffic attribution tracks where users arrived from.
 - Documented that old events cannot be reliably backfilled because full inbound query/referrer/deeplink context was intentionally not stored.
 - Added the generic `sdk/mini-program` runtime and `tracemind.capture_setup({ platform: "mini_program", provider })` so WeChat, Alipay, Douyin, and DingTalk mini programs share one SDK while preserving `sourceDetails.provider`.
+- Added the generic `sdk/browser-extension` runtime and `tracemind.capture_setup({ platform: "browser_extension" })` so Chrome, Edge, and Firefox extensions share one SDK while preserving safe `sourceDetails.browser`, `manifestVersion`, `runtimeContext`, and `sdkVersion` metadata.

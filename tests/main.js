@@ -151,7 +151,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.17.3'));
+      assert.ok(skill.includes('version: 2026.05.17.4'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -187,6 +187,8 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('{ "platform": "hybrid" }'));
       assert.ok(skill.includes('{ "platform": "mini_program", "provider": "wechat" }'));
       assert.ok(skill.includes('@tracemind/mini-program'));
+      assert.ok(skill.includes('{ "platform": "browser_extension" }'));
+      assert.ok(skill.includes('@tracemind/browser-extension'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
@@ -202,6 +204,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('mcp_node'));
       assert.ok(snippet.includes('hybrid'));
       assert.ok(snippet.includes('mini_program'));
+      assert.ok(snippet.includes('browser_extension'));
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
       assert.ok(snippet.includes('tracemind.project_health'));
@@ -211,7 +214,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
       assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.3');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.4');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -225,6 +228,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.platforms.includes('macos'));
       assert.ok(manifest.platforms.includes('hybrid'));
       assert.ok(manifest.platforms.includes('mini_program'));
+      assert.ok(manifest.platforms.includes('browser_extension'));
       assert.ok(manifest.platforms.includes('mcp_node'));
       assert.ok(manifest.platforms.includes('mcp_python'));
       assert.ok(manifest.platforms.includes('agent_skill'));
@@ -1057,13 +1061,13 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.3');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.4');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
-      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
-      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, and server egress/proxy/TLS policy.'));
+      assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Daily health check'));
@@ -1838,11 +1842,14 @@ describe('TraceMind', function () {
       assert.ok(setupTool.inputSchema.properties.platform.enum.includes('macos'));
       assert.ok(setupTool.inputSchema.properties.platform.enum.includes('hybrid'));
       assert.ok(setupTool.inputSchema.properties.platform.enum.includes('mini_program'));
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('browser_extension'));
       assert.deepStrictEqual(setupTool.inputSchema.properties.provider.enum, ['wechat', 'alipay', 'douyin', 'dingtalk']);
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.platform.enum.includes('macos'));
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('macos'));
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.platform.enum.includes('mini_program'));
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('mini_program'));
+      assert.ok(feedbackTool.inputSchema.properties.environment.properties.platform.enum.includes('browser_extension'));
+      assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('browser_extension'));
 
       const ios = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'ios' });
       const macos = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'macos' });
@@ -2035,6 +2042,54 @@ describe('TraceMind', function () {
       assert.ok(dingtalk.structuredContent.networkRestrictionChecks.some((check) => check.includes('dd.request')));
     });
 
+    it('returns browser extension setup guidance through MCP', async function () {
+      const { callMcpTool, mcpTools } = await import('../server/capture_routes');
+      const project = {
+        _id: `project-browser-extension-capture-setup-${Date.now()}`,
+        name: 'Browser Extension Capture Setup Project',
+        projectKey: 'tm_proj_extension',
+      };
+
+      const setupTool = mcpTools(project).find((tool) => tool.name === 'tracemind.capture_setup');
+      assert.ok(setupTool.inputSchema.properties.platform.enum.includes('browser_extension'));
+
+      const extension = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'browser_extension' });
+      const chromeAlias = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'chrome_extension' });
+      const firefoxAlias = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'firefox_extension' });
+
+      assert.strictEqual(extension.structuredContent.ok, true);
+      assert.strictEqual(extension.structuredContent.platform, 'browser_extension');
+      assert.strictEqual(extension.structuredContent.eventPlatform, 'browser_extension');
+      assert.ok(extension.structuredContent.install.includes('@tracemind/browser-extension'));
+      assert.ok(extension.structuredContent.installCommands.some((step) => step.includes('popup')));
+      assert.ok(extension.structuredContent.installCommands.some((step) => step.includes('background')));
+      assert.ok(extension.structuredContent.filesToEdit.some((file) => file.includes('manifest.json')));
+      assert.ok(extension.structuredContent.initLocation.includes('popup'));
+      assert.ok(extension.structuredContent.idempotencyChecks.some((check) => check.includes('@tracemind/browser-extension')));
+      assert.ok(extension.structuredContent.initSnippet.includes('TraceMind.start({'));
+      assert.ok(extension.structuredContent.initSnippet.includes('projectKey: "tm_proj_extension"'));
+      assert.ok(extension.structuredContent.sourceModel.includes('platform is browser_extension'));
+      assert.ok(extension.structuredContent.sourceModel.includes('sourceType is browser_extension'));
+      assert.ok(extension.structuredContent.sourceModel.includes('sourceDetails.browser'));
+      assert.ok(extension.structuredContent.autoCapturedSignals.some((signal) => signal.includes('extension UI start')));
+      assert.ok(extension.structuredContent.autoCapturedSignals.some((signal) => signal.includes('presence heartbeat')));
+      assert.ok(extension.structuredContent.privacyConstraints.some((constraint) => constraint.includes('Do not capture input values')));
+      assert.ok(extension.structuredContent.networkRestrictionChecks.some((check) => check.includes('host_permissions')));
+      assert.ok(extension.structuredContent.verificationCommands.includes('npm test --prefix sdk/browser-extension'));
+      assert.ok(extension.structuredContent.identifySnippet.includes('TraceMind.identify'));
+      assert.ok(extension.structuredContent.manualCaptureExamples.some((example) => example.includes('TraceMind.trackTap')));
+      assert.ok(extension.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
+      assert.ok(extension.structuredContent.trafficAttribution.platformNotes.some((note) => note.includes('Browser Extension')));
+      assert.ok(extension.structuredContent.trafficAttribution.setupExamples.some((example) => example.includes('TraceMind.setAttribution')));
+      assert.ok(extension.structuredContent.manifestPermissions.some((permission) => permission.includes('host_permissions')));
+      assert.strictEqual(extension.structuredContent.tokenType, 'public_auto_capture_project_key');
+      assert.deepStrictEqual(extension.structuredContent.supportedPropertyTypes, ['string', 'number', 'boolean']);
+      assert.ok(!JSON.stringify(extension.structuredContent).includes('tm_mcp_'));
+
+      assert.strictEqual(chromeAlias.structuredContent.platform, 'browser_extension');
+      assert.strictEqual(firefoxAlias.structuredContent.platform, 'browser_extension');
+    });
+
     it('returns third-party MCP and agent skill setup snippets through MCP', async function () {
       const { callMcpTool, mcpTools } = await import('../server/capture_routes');
       const project = {
@@ -2189,7 +2244,7 @@ describe('TraceMind', function () {
       'Add one line of code and TraceMind turns clicks, paths, forms, and active time into product evidence that Codex, Claude Code, and Cursor can question through MCP.',
       '1-minute setup · public projectKey writes · independent MCP token authorization',
       'View setup docs',
-      'Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Mini Program (WeChat / Alipay / Douyin / DingTalk) · Server · MCP · Agent Skill',
+      'Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Mini Program (WeChat / Alipay / Douyin / DingTalk) · Browser Extension (Chrome / Edge / Firefox) · Server · MCP · Agent Skill',
       'Email',
       'Send code',
       'Checking your session...',
@@ -2985,6 +3040,90 @@ describe('TraceMind', function () {
         sourceKey: 'configured-mini-source',
         sourceLabel: 'configured-mini-source',
         sourceDetails: { provider: 'alipay' },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'browser_extension',
+        source: {
+          type: 'browser_extension',
+          extensionId: 'abc123',
+          label: 'Example Extension',
+          details: {
+            browser: 'chrome',
+            manifestVersion: 3,
+            runtimeContext: 'popup',
+            sdkVersion: '0.1.0',
+            tabUrl: 'https://example.com/page?token=secret',
+            token: 'do-not-store',
+          },
+        },
+      }),
+      {
+        sourceType: 'browser_extension',
+        sourceKey: 'abc123',
+        sourceLabel: 'Example Extension',
+        sourceDetails: {
+          browser: 'chrome',
+          manifestVersion: '3',
+          runtimeContext: 'popup',
+          sdkVersion: '0.1.0',
+        },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'browser_extension',
+        sourceKey: 'configured-extension-source',
+        sourceDetails: {
+          browser: 'firefox',
+          manifestVersion: '3',
+          runtimeContext: 'background',
+          sdkVersion: '0.1.0',
+          cookies: 'do-not-store',
+        },
+      }),
+      {
+        sourceType: 'browser_extension',
+        sourceKey: 'configured-extension-source',
+        sourceLabel: 'configured-extension-source',
+        sourceDetails: {
+          browser: 'firefox',
+          manifestVersion: '3',
+          runtimeContext: 'background',
+          sdkVersion: '0.1.0',
+        },
+      },
+    );
+
+    assert.deepStrictEqual(
+      normalizeCaptureSource({
+        platform: 'browser_extension',
+        source: {
+          type: 'browser_extension',
+          extensionId: 'content-script-extension',
+          details: {
+            browser: 'chrome',
+            manifestVersion: '3',
+            runtimeContext: 'content_script',
+            sdkVersion: '0.1.0',
+            tabUrl: 'https://example.com/account?token=secret',
+            pageContent: 'do-not-store',
+          },
+        },
+      }),
+      {
+        sourceType: 'browser_extension',
+        sourceKey: 'content-script-extension',
+        sourceLabel: 'content-script-extension',
+        sourceDetails: {
+          browser: 'chrome',
+          manifestVersion: '3',
+          runtimeContext: 'content_script',
+          sdkVersion: '0.1.0',
+        },
       },
     );
   });

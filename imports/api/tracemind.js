@@ -45,42 +45,42 @@ export const EVENT_DEFINITIONS = [
     name: '页面浏览',
     meaning: '用户打开或刷新了一个页面，用于分析访问量、落地页、路径入口、流量归因和页面级留存。',
     typicalProperties: ['title', 'path', 'referrer', 'attribution'],
-    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'server'],
+    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension', 'server'],
   },
   {
     eventType: 'click',
     name: '元素点击',
     meaning: '用户点击了页面或客户端界面上的元素，用于分析功能入口、按钮转化和交互兴趣。',
     typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
-    platforms: ['web', 'ios', 'android', 'macos', 'mini_program'],
+    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension'],
   },
   {
     eventType: 'input',
     name: '输入变化',
     meaning: '用户修改了输入控件，用于分析表单填写、设置修改和关键流程参与度。',
     typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
-    platforms: ['web', 'ios', 'android', 'macos', 'mini_program'],
+    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension'],
   },
   {
     eventType: 'submit',
     name: '表单提交',
     meaning: '用户提交了表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。',
     typicalProperties: ['target', 'targetHash', 'targetText', 'targetTag', 'path'],
-    platforms: ['web', 'ios', 'android', 'macos', 'mini_program'],
+    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension'],
   },
   {
     eventType: 'route_change',
     name: '页面跳转',
     meaning: '用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。',
     typicalProperties: ['path', 'referrer', 'attribution'],
-    platforms: ['web', 'ios', 'android', 'macos', 'mini_program'],
+    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension'],
   },
   {
     eventType: 'api_call',
     name: '接口调用',
     meaning: '客户端或服务端记录了一次接口调用，用于分析接口失败、关键后端流程和服务端埋点。',
     typicalProperties: ['method', 'status', 'path'],
-    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'server'],
+    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension', 'server'],
   },
   {
     eventType: 'tool_call',
@@ -115,7 +115,7 @@ export const EVENT_DEFINITIONS = [
     name: '自定义事件',
     meaning: '开发者手动上报的业务事件，用于表达自动采集无法稳定推断的业务语义。',
     typicalProperties: ['eventName', 'properties', 'context'],
-    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'server'],
+    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension', 'server'],
   },
 ];
 
@@ -149,6 +149,35 @@ function cleanFramework(value) {
 function cleanMiniProgramProvider(value) {
   const provider = cleanString(value, 40).toLowerCase();
   return ['wechat', 'alipay', 'douyin', 'dingtalk'].includes(provider) ? provider : '';
+}
+
+function cleanBrowserExtensionBrowser(value) {
+  const browser = cleanString(value, 40).toLowerCase();
+  return ['chrome', 'edge', 'firefox', 'unknown'].includes(browser) ? browser : '';
+}
+
+function cleanBrowserExtensionRuntimeContext(value) {
+  const runtimeContext = cleanString(value, 40).toLowerCase().replace(/-/g, '_');
+  return ['popup', 'options', 'sidebar', 'devtools', 'background', 'service_worker', 'content_script', 'unknown'].includes(runtimeContext) ? runtimeContext : '';
+}
+
+function cleanBrowserExtensionVersion(value) {
+  const version = cleanString(value, 40);
+  return /^[A-Za-z0-9._+-]{1,40}$/.test(version) ? version : '';
+}
+
+function browserExtensionSourceDetails(sourceDetails = {}) {
+  const input = safeObject(sourceDetails);
+  const browser = cleanBrowserExtensionBrowser(input.browser);
+  const manifestVersion = cleanBrowserExtensionVersion(input.manifestVersion);
+  const runtimeContext = cleanBrowserExtensionRuntimeContext(input.runtimeContext);
+  const sdkVersion = cleanBrowserExtensionVersion(input.sdkVersion);
+  return {
+    ...(browser ? { browser } : {}),
+    ...(manifestVersion ? { manifestVersion } : {}),
+    ...(runtimeContext ? { runtimeContext } : {}),
+    ...(sdkVersion ? { sdkVersion } : {}),
+  };
 }
 
 function safeObject(value, maxBytes = 4096) {
@@ -228,7 +257,7 @@ export function normalizeAttribution(input = {}) {
 
 function normalizeSourceType(value) {
   const sourceType = cleanString(value, 40).toLowerCase();
-  return ['web', 'ios', 'android', 'macos', 'mini_program', 'server', 'mcp_server', 'agent_skill', 'server_app'].includes(sourceType) ? sourceType : 'unknown';
+  return ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension', 'server', 'mcp_server', 'agent_skill', 'server_app'].includes(sourceType) ? sourceType : 'unknown';
 }
 
 export function normalizeCaptureSource(payload = {}, headers = {}) {
@@ -277,6 +306,23 @@ export function normalizeCaptureSource(payload = {}, headers = {}) {
       sourceKey,
       sourceLabel: cleanString(source.label || payload.sourceLabel || sourceKey, 200, sourceKey),
       sourceDetails: provider ? { provider } : {},
+    };
+  }
+
+  if (sourceType === 'browser_extension') {
+    const sourceKey = cleanString(
+      source.extensionId || source.key || payload.sourceKey,
+      200,
+      'unknown',
+    );
+    return {
+      sourceType,
+      sourceKey,
+      sourceLabel: cleanString(source.label || payload.sourceLabel || sourceKey, 200, sourceKey),
+      sourceDetails: browserExtensionSourceDetails({
+        ...safeObject(payload.sourceDetails),
+        ...safeObject(source.details),
+      }),
     };
   }
 

@@ -1,6 +1,6 @@
 # TraceMind
 
-TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者按平台添加初始化代码后，TraceMind 就会把 Web、iOS、macOS、Android、React Native、混合应用、小程序、MCP server、普通后端服务和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题，也可以在开发者确认后上报问题或想法反馈。
+TraceMind 是一个面向 AI Coding Agent 的产品行为分析层。开发者按平台添加初始化代码后，TraceMind 就会把 Web、iOS、macOS、Android、React Native、混合应用、小程序、浏览器插件、MCP server、普通后端服务和可执行 Agent Skill runtime 里的真实行为自动整理成可分析的产品线索，并通过 MCP 让 Codex、Claude Code、Cursor 等工具直接追问用户流失、功能使用和转化问题，也可以在开发者确认后上报问题或想法反馈。
 
 ## Coding Agent 产品分析路径
 
@@ -60,6 +60,17 @@ TraceMind.start({
 });
 ```
 
+浏览器插件通过 `tracemind.capture_setup({ platform: "browser_extension" })` 获取 Chrome / Edge / Firefox 共用的 WebExtension SDK 接入方式：
+
+```js
+import { TraceMind } from "@tracemind/browser-extension";
+
+TraceMind.start({
+  projectKey: "tm_proj_xxx",
+  extensionName: "Example Extension"
+});
+```
+
 接入后会自动采集：
 
 - `page_view`: 页面打开或刷新。
@@ -67,7 +78,7 @@ TraceMind.start({
 - `input`: 输入控件发生变化，不采集输入值。
 - `submit`: 表单提交。
 - `route_change`: SPA 路由变化或原生页面切换。
-- 在线时长：Web、iOS、macOS、Android、React Native、混合应用的 WebView/原生壳层和小程序分别上报前台在线区间；5 秒 heartbeat 只更新在线区间，不进入最近事件列表。
+- 在线时长：Web、iOS、macOS、Android、React Native、混合应用的 WebView/原生壳层、小程序和浏览器插件自有前台页面分别上报前台在线区间；5 秒 heartbeat 只更新在线区间，不进入最近事件列表。
 
 ## Web 接入方式
 
@@ -118,7 +129,7 @@ window.TraceMind.submitFeedback({
 });
 ```
 
-Native、小程序和 server SDK 使用同名能力：iOS/macOS `TraceMind.submitFeedback(message:)`、Android `TraceMind.submitFeedback(message)`、React Native `TraceMind.submitFeedback({ message })`、Mini Program `TraceMind.submitFeedback({ message })`、Node/Python server SDK `TraceMindServer.submitFeedback(...)` / `submit_feedback(...)`。
+Native、小程序、浏览器插件和 server SDK 使用同名能力：iOS/macOS `TraceMind.submitFeedback(message:)`、Android `TraceMind.submitFeedback(message)`、React Native `TraceMind.submitFeedback({ message })`、Mini Program `TraceMind.submitFeedback({ message })`、Browser Extension `TraceMind.submitFeedback({ message })`、Node/Python server SDK `TraceMindServer.submitFeedback(...)` / `submit_feedback(...)`。
 
 联系方式只允许来自用户主动提交的 feedback payload；自动采集仍然不读取输入值、邮箱、手机号、prompt、token、源码 diff、请求/响应 body 或完整 query URL。v1 不做公开反馈板、投票、roadmap、changelog、截图、录屏或附件上传，`attachments` 只保留为空数组用于未来兼容。Coding agent 实现用户反馈入口时必须使用 `submitFeedback`，不能用 `/api/capture`、`capture("custom")` 或 `tracemind.submit_feedback` 替代。
 
@@ -270,6 +281,30 @@ TraceMind.trackSubmit("checkout_form", {
 ```
 
 小程序事件使用 `platform: "mini_program"`、`sourceType: "mini_program"`。`sourceKey` 优先使用小程序 `appId`，没有 `appId` 时使用配置的 `sourceKey`；`sourceDetails.provider` 标记 `wechat`、`alipay`、`douyin` 或 `dingtalk`。SDK 不采集输入值、截图、用户输入内容、完整 query URL、token、cookie 或 raw content。
+
+## 浏览器插件接入方式
+
+浏览器插件是独立运行时平台，不复用 Web `capture.js`。V1 使用一套通用 `sdk/browser-extension`，支持 Chrome、Edge 和 Firefox 的插件自有界面：popup、options、sidebar、devtools page，以及 background/service worker 里的手动业务事件。
+
+```js
+import { TraceMind } from "@tracemind/browser-extension";
+
+TraceMind.start({
+  projectKey: "tm_proj_xxx",
+  extensionName: "Example Extension"
+});
+
+TraceMind.capture("custom", {
+  eventName: "export_completed",
+  properties: { success: true }
+});
+```
+
+`tracemind.capture_setup({ platform: "browser_extension" })` 会返回安装步骤、manifest 权限提示、初始化片段、来源模型和验证命令。别名 `chrome_extension`、`edge_extension`、`firefox_extension`、`web_extension` 会归一为 `browser_extension`。
+
+插件自有 DOM 页面默认自动采集 extension UI start、page view、click、input changed without value、submit、route/path 和 foreground presence heartbeat。background/service worker 没有 DOM，自动跳过 DOM listener，只支持 `capture`、`identify`、`submitFeedback` 和 `flush`。
+
+浏览器插件事件使用 `platform: "browser_extension"`、`sourceType: "browser_extension"`。`sourceKey` 优先使用 extension id；`sourceDetails` 只保留安全白名单：`browser`、`manifestVersion`、`runtimeContext` 和 `sdkVersion`。V1 不支持 content script 对宿主页的无侵入全自动采集，不采集宿主页 DOM、页面内容、截图、浏览器历史、书签、cookies、tab 完整 URL、query、token 或输入值。
 
 ## MCP Server 接入方式
 
@@ -711,8 +746,8 @@ connect-src https://tracemind.sandbox.galaxycloud.app
 
 `data-tracemind-token` 是公开项目 token，不是开发者密钥。但它会暴露在前端，因此服务端必须把它当作公开标识处理，不能把它当作私密凭证。
 
-TraceMind 会记录采集来源并在控制台展示采集来源统计。这里的 `sourceType/sourceKey` 用于治理写入项目 key 的 App 或 SDK，不等同于用户跳转进来的流量来源。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；macOS 使用 bundle id 并上报 `sourceType: "macos"`；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；混合应用不新增 `hybrid` 事件平台，WebView 保持 Web 来源并可通过 `data-tracemind-framework` 写入 `sourceDetails.framework`，原生壳层保持对应 Native 来源并可用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记具体混合框架；小程序使用 `sourceType: "mini_program"`，`sourceKey` 优先使用 appId，`sourceDetails.provider` 标记微信、支付宝、抖音或钉钉；MCP server 使用 `sourceType: "mcp_server"`；普通后端服务使用 `sourceType: "server_app"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
+TraceMind 会记录采集来源并在控制台展示采集来源统计。这里的 `sourceType/sourceKey` 用于治理写入项目 key 的 App 或 SDK，不等同于用户跳转进来的流量来源。Web 来源会归一化为 `sourceType: "web"` 和 hostname `sourceKey`；iOS 使用 bundle id；macOS 使用 bundle id 并上报 `sourceType: "macos"`；Android 使用 package name；React Native 复用对应原生来源并额外标记 `deviceInfo.framework: "react_native"`；混合应用不新增 `hybrid` 事件平台，WebView 保持 Web 来源并可通过 `data-tracemind-framework` 写入 `sourceDetails.framework`，原生壳层保持对应 Native 来源并可用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记具体混合框架；小程序使用 `sourceType: "mini_program"`，`sourceKey` 优先使用 appId，`sourceDetails.provider` 标记微信、支付宝、抖音或钉钉；浏览器插件使用 `sourceType: "browser_extension"`，`sourceKey` 优先使用 extension id，`sourceDetails` 只白名单保存 `browser`、`manifestVersion`、`runtimeContext` 和 `sdkVersion`；MCP server 使用 `sourceType: "mcp_server"`；普通后端服务使用 `sourceType: "server_app"`；Agent Skill hook 使用 `sourceType: "agent_skill"`。开发者发现不是自己项目的来源后，可以在控制台屏蔽该来源。屏蔽后新事件会被静默拒收，`/api/capture` 仍返回正常 ok，但事件不会进入数据库；已屏蔽来源会继续显示，方便解除屏蔽。
 
-流量来源分析使用单独的 `attribution` 字段。Web 自动生成；iOS/macOS、Android、React Native 和混合应用壳层通过 URL/deeplink helper 或安全 `setAttribution` 设置；小程序通过安全 `setAttribution` 设置；server SDK 只在业务事件已经持有安全产品来源上下文时手动传入。MCP 可以用 `attributionSource`、`attributionMedium`、`attributionCampaign` 和 `landingPath` 过滤分析。
+流量来源分析使用单独的 `attribution` 字段。Web 自动生成；iOS/macOS、Android、React Native 和混合应用壳层通过 URL/deeplink helper 或安全 `setAttribution` 设置；小程序和浏览器插件通过安全 `setAttribution` 设置；server SDK 只在业务事件已经持有安全产品来源上下文时手动传入。MCP 可以用 `attributionSource`、`attributionMedium`、`attributionCampaign` 和 `landingPath` 过滤分析。
 
 MCP Token 是查询凭证，不要放到前端页面里。为不同成员或 Agent 使用不同 MCP Token，泄露时只刷新或删除对应 token。

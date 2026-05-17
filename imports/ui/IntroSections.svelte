@@ -138,7 +138,7 @@
         <p>{$t("TraceMind keeps raw behavior, extracts semantic events, and exposes reviewable MCP evidence so agents can analyze product usage directly.")}</p>
       </article>
     </div>
-    <p class="supported-platforms">{$t("Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Mini Program (WeChat / Alipay / Douyin / DingTalk) · Server · MCP · Agent Skill")}</p>
+    <p class="supported-platforms">{$t("Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Mini Program (WeChat / Alipay / Douyin / DingTalk) · Browser Extension (Chrome / Edge / Firefox) · Server · MCP · Agent Skill")}</p>
   </section>
 
   <section class="workflow product-iteration">

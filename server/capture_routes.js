@@ -28,8 +28,8 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.17.3';
-const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
+const AGENT_GUIDANCE_VERSION = '2026.05.17.4';
+const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 const MINI_PROGRAM_PROVIDERS = ['wechat', 'alipay', 'douyin', 'dingtalk'];
 const MINI_PROGRAM_PROVIDER_LABELS = {
   wechat: 'WeChat',
@@ -62,6 +62,7 @@ const MINI_PROGRAM_PLATFORM_ALIASES = {
   ding_mini_program: 'dingtalk',
   dd_mini_program: 'dingtalk',
 };
+const BROWSER_EXTENSION_PLATFORM_ALIASES = new Set(['chrome_extension', 'edge_extension', 'firefox_extension', 'web_extension']);
 const AGENT_GUIDANCE_RESOURCES = {
   skill: '/agents/tracemind/SKILL.md',
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
@@ -259,7 +260,7 @@ export function mcpTools(project) {
           platform: {
             type: 'string',
             enum: CAPTURE_SETUP_PLATFORMS,
-            description: '要接入的平台；省略时返回 Web 脚本。小程序使用 mini_program，并用 provider 指定微信、支付宝、抖音或钉钉；也接受 wechat_mini_program 等别名。',
+            description: '要接入的平台；省略时返回 Web 脚本。小程序使用 mini_program，并用 provider 指定微信、支付宝、抖音或钉钉；浏览器插件使用 browser_extension；也接受 wechat_mini_program、chrome_extension 等别名。',
           },
           provider: {
             type: 'string',
@@ -290,7 +291,7 @@ export function mcpTools(project) {
         properties: {
           intent: { type: 'string', description: '准备记录的用户行为或业务结果。' },
           context: { type: 'string', description: '相关代码或产品流程摘要。' },
-          platform: { type: 'string', description: 'web、ios、macos、android、react_native、hybrid、mini_program、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
+          platform: { type: 'string', description: 'web、ios、macos、android、react_native、hybrid、mini_program、browser_extension、mcp_node、mcp_python、agent_skill、server_node、server_python、server_http 或 server。' },
         },
       },
     },
@@ -367,8 +368,8 @@ export function mcpTools(project) {
           environment: {
             type: 'object',
             properties: {
-              platform: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'mini_program', 'server', 'unknown'] },
-              sourceType: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'mini_program', 'mcp_server', 'agent_skill', 'server_app', 'unknown'] },
+              platform: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'mini_program', 'browser_extension', 'server', 'unknown'] },
+              sourceType: { type: 'string', enum: ['web', 'ios', 'macos', 'android', 'mini_program', 'browser_extension', 'mcp_server', 'agent_skill', 'server_app', 'unknown'] },
               sourceKey: { type: 'string' },
             },
           },
@@ -389,8 +390,8 @@ export function mcpTools(project) {
           startAt: { type: 'string', description: 'ISO 时间，提交时间起点。' },
           endAt: { type: 'string', description: 'ISO 时间，提交时间终点。' },
           path: { type: 'string', description: '页面 path 或 screen。' },
-          platform: { type: 'string', description: 'web、ios、macos、android、server 或 unknown。' },
-          sourceType: { type: 'string', description: '来源类型，例如 web、ios、android、server_app。' },
+          platform: { type: 'string', description: 'web、ios、macos、android、mini_program、browser_extension、server 或 unknown。' },
+          sourceType: { type: 'string', description: '来源类型，例如 web、ios、android、mini_program、browser_extension、server_app。' },
           userId: { type: 'string' },
           anonymousId: { type: 'string' },
           sessionId: { type: 'string' },
@@ -662,10 +663,10 @@ function guidanceResult(extra = {}) {
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
-      'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
+      'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
-      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, and server egress/proxy/TLS policy.',
+      'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
@@ -815,6 +816,30 @@ const MINI_PROGRAM_AUTO_CAPTURE_SIGNALS = [
   'tap/input/submit only when developers call helper functions from event handlers',
 ];
 
+const BROWSER_EXTENSION_AUTO_CAPTURE_SIGNALS = [
+  'extension UI start for popup/options/sidebar/devtools pages',
+  'extension-owned page view',
+  'click on extension-owned UI elements',
+  'input changed without input values',
+  'submit from extension-owned forms',
+  'extension UI route/path without query strings',
+  'presence heartbeat for foreground extension-owned UI pages',
+  'background/service worker manual capture only',
+];
+
+const BROWSER_EXTENSION_MANIFEST_PERMISSIONS = [
+  'Add the TraceMind HTTPS origin to host_permissions or extension CSP connect-src so /api/capture, /api/presence, and /api/user-feedback can be reached.',
+  'Do not request tabs/history/bookmarks/cookies permissions for TraceMind V1 instrumentation.',
+  'Initialize the SDK from extension-owned popup/options/sidebar/devtools pages and from background/service worker only for manual capture.',
+];
+
+const BROWSER_EXTENSION_NETWORK_RESTRICTION_CHECKS = [
+  'Confirm manifest host_permissions or content_security_policy allows HTTPS requests to the TraceMind endpoint.',
+  'Confirm background service worker code does not rely on DOM auto capture; only manual capture, identify, submitFeedback, and flush are available there.',
+  'Confirm popup/options/sidebar/devtools pages call TraceMind.start before the first user interaction.',
+  'Confirm content scripts do not inject no-code host-page capture in V1 and do not read page content, cookies, input values, or full tab URLs.',
+];
+
 function miniProgramNetworkRestrictionChecks(provider = 'wechat') {
   const apiName = MINI_PROGRAM_PROVIDER_API_NAMES[provider] || 'host';
   const label = MINI_PROGRAM_PROVIDER_LABELS[provider] || 'Mini Program host';
@@ -920,6 +945,16 @@ function trafficAttributionGuidance(platform = 'web') {
         'TraceMind.capture("custom", { eventName: approvedEventName, properties: { success: true } })',
       ],
     },
+    browser_extension: {
+      platformNotes: [
+        'Browser Extension attribution should describe sanitized product acquisition or extension workflow source, not host-page content.',
+        'Extension UI paths strip query strings; sourceDetails.browser, manifestVersion, runtimeContext, and sdkVersion describe the extension runtime.',
+      ],
+      setupExamples: [
+        'TraceMind.setAttribution({ source: "chrome-web-store", medium: "extension", campaign: "launch", landingPath: "/popup.html" })',
+        'TraceMind.capture("custom", { eventName: approvedEventName, properties: { success: true } })',
+      ],
+    },
     server_node: {
       platformNotes: [
         'Ordinary server apps should not infer user traffic source automatically in v1.',
@@ -1017,6 +1052,7 @@ function commonSetup(project, platform) {
       react_native: 'TraceMind.submitFeedback({ message })',
       hybrid: 'Use window.TraceMind.submitFeedback({ message }) from the WebView or the matching native TraceMind.submitFeedback(...) API from the shell.',
       mini_program: 'TraceMind.submitFeedback({ message })',
+      browser_extension: 'TraceMind.submitFeedback({ message })',
       server_node: 'TraceMindServer.submitFeedback({ message, userId, sessionId })',
       server_python: 'TraceMindServer.submit_feedback(message=message, user_id=user_id, session_id=session_id)',
       server_http: `POST ${userFeedbackApiUrl}`,
@@ -1087,11 +1123,77 @@ function miniProgramSetup(project, provider) {
   };
 }
 
+function browserExtensionSetup(project) {
+  const common = commonSetup(project, 'browser_extension');
+  return {
+    ...common,
+    platform: 'browser_extension',
+    eventPlatform: 'browser_extension',
+    install: 'Install @tracemind/browser-extension in the extension package and initialize it from extension-owned popup/options/sidebar/devtools pages; use background/service worker only for manual capture.',
+    installCommands: [
+      'Install @tracemind/browser-extension from the TraceMind SDK distribution; in this repo the package is sdk/browser-extension.',
+      'Initialize TraceMind once from popup, options, sidebar, or devtools entrypoints that own extension UI DOM.',
+      'Initialize TraceMind from background/service worker only when manual business events, identify, submitFeedback, or flush are needed.',
+      'Do not add content-script no-code host-page capture in V1; wire only explicit safe business events if a later content-script helper is approved.',
+    ],
+    filesToEdit: [
+      'package.json or extension dependency manifest',
+      'manifest.json',
+      'popup/options/sidebar/devtools bootstrap file',
+      'background or service worker file only when manual capture is needed there',
+      'extension CSP or host_permissions configuration',
+    ],
+    initLocation: 'Run once in each extension-owned popup/options/sidebar/devtools bootstrap before the first interaction; in background/service worker, run once before manual capture calls.',
+    idempotencyChecks: [
+      'Search the extension source for @tracemind/browser-extension.',
+      'Search popup/options/sidebar/devtools and background/service worker entrypoints for TraceMind.start(',
+      'Search event handlers for existing TraceMind.trackTap, TraceMind.trackInput, or TraceMind.trackSubmit calls before adding duplicates.',
+      'Confirm manifest host_permissions or content_security_policy allows the TraceMind HTTPS endpoint.',
+    ],
+    initSnippet: `import { TraceMind } from "@tracemind/browser-extension";\n\nTraceMind.start({\n  projectKey: "${project.projectKey}",\n  extensionName: "Your Extension"\n});`,
+    source: {
+      type: 'browser_extension',
+      key: 'Browser extension id when available, otherwise developer configured extensionId.',
+      details: {
+        browser: 'chrome | edge | firefox',
+        runtimeContext: 'popup | options | sidebar | devtools | background',
+      },
+    },
+    sourceModel: 'platform is browser_extension; sourceType is browser_extension; sourceKey is the extension id or configured extensionId; sourceDetails.browser, manifestVersion, runtimeContext, and sdkVersion are the only persisted extension source details.',
+    autoCapturedSignals: BROWSER_EXTENSION_AUTO_CAPTURE_SIGNALS,
+    privacyConstraints: PRIVACY_CONSTRAINTS,
+    manifestPermissions: BROWSER_EXTENSION_MANIFEST_PERMISSIONS,
+    networkRestrictionChecks: BROWSER_EXTENSION_NETWORK_RESTRICTION_CHECKS,
+    verificationCommands: [
+      'npm test --prefix sdk/browser-extension',
+      'Load the extension in Chrome/Edge/Firefox dev tools, open popup/options/sidebar/devtools UI, trigger page view/click/input/submit, then query TraceMind raw behaviors or semantic events.',
+      'Trigger background/service worker manual capture and confirm no DOM auto capture is registered there.',
+      'Confirm payloads do not include host-page DOM, input values, cookies, browser history, bookmarks, full tab URLs, or query strings.',
+    ],
+    identifySnippet: 'TraceMind.identify("user_123", { plan: "pro" })',
+    manualCaptureExamples: [
+      'TraceMind.trackTap("export_button", { path: "/popup.html", properties: { format: "csv" } })',
+      'TraceMind.trackInput("search_box", { path: "/popup.html", properties: { field: "query" } })',
+      'TraceMind.trackSubmit("settings_form", { path: "/options.html", properties: { success: true } })',
+      'TraceMind.capture("custom", { eventName: approvedEventName, properties: { success: true } })',
+    ],
+    manualCaptureExample: 'TraceMind.capture("custom", { eventName: approvedEventName, properties: { success: true } })',
+    manualCaptureWarnings: [
+      ...MANUAL_CAPTURE_WARNINGS,
+      'Browser Extension V1 captures extension-owned UI only; do not promise host-page content-script no-code capture.',
+    ],
+  };
+}
+
 function platformSetup(project, platform, options = {}) {
   const common = commonSetup(project, platform);
 
   if (platform === 'mini_program') {
     return miniProgramSetup(project, options.provider || 'wechat');
+  }
+
+  if (platform === 'browser_extension') {
+    return browserExtensionSetup(project);
   }
 
   if (platform === 'hybrid') {
@@ -1656,11 +1758,14 @@ function captureSetupResult(project, args = {}) {
   const requestedPlatform = String(args.platform || '').toLowerCase().replace(/-/g, '_');
   const requestedProvider = String(args.provider || '').toLowerCase().replace(/-/g, '_');
   const aliasProvider = MINI_PROGRAM_PLATFORM_ALIASES[requestedPlatform];
+  const isBrowserExtensionAlias = BROWSER_EXTENSION_PLATFORM_ALIASES.has(requestedPlatform);
   const provider = MINI_PROGRAM_PROVIDERS.includes(requestedProvider)
     ? requestedProvider
     : aliasProvider || 'wechat';
   const platform = aliasProvider
     ? 'mini_program'
+    : isBrowserExtensionAlias
+      ? 'browser_extension'
     : CAPTURE_SETUP_PLATFORMS.includes(requestedPlatform)
       ? requestedPlatform
       : 'web';
@@ -1707,8 +1812,8 @@ function privacyFindings(fields = {}) {
 }
 
 const FEEDBACK_TYPES = new Set(['issue', 'idea']);
-const FEEDBACK_PLATFORMS = new Set(['web', 'ios', 'macos', 'android', 'mini_program', 'server', 'unknown']);
-const FEEDBACK_SOURCE_TYPES = new Set(['web', 'ios', 'macos', 'android', 'mini_program', 'mcp_server', 'agent_skill', 'server_app', 'unknown']);
+const FEEDBACK_PLATFORMS = new Set(['web', 'ios', 'macos', 'android', 'mini_program', 'browser_extension', 'server', 'unknown']);
+const FEEDBACK_SOURCE_TYPES = new Set(['web', 'ios', 'macos', 'android', 'mini_program', 'browser_extension', 'mcp_server', 'agent_skill', 'server_app', 'unknown']);
 const FEEDBACK_ARRAY_LIMIT = 20;
 const FEEDBACK_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const FEEDBACK_RATE_WINDOW_MS = 60 * 1000;
