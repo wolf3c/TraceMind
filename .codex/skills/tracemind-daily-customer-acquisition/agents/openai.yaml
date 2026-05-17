@@ -1,4 +1,4 @@
 interface:
   display_name: "TraceMind Daily Customer Acquisition"
   short_description: "Run TraceMind seed-customer ops in focused modes."
-  default_prompt: "Use $tracemind-daily-customer-acquisition outreach-block to find relevant public posts, reply where TraceMind fits, and record progress."
+  default_prompt: "Use $tracemind-daily-customer-acquisition outreach-block to find relevant public posts, draft reply recommendations for my approval, and record progress."

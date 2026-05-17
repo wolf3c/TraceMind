@@ -103,3 +103,49 @@
 - 根据 Appinn 页面规则，提交前将正文从长文案压缩成更简洁的工具自荐版。
 - 当前状态：页面提示“我们已收到您的帖子，不过需要由版主批准才能显示。请耐心等待。”
 - 下一步：等待审核；明天检查帖子是否公开，以及是否有评论反馈。
+
+### Full-Day Follow-Up Run
+
+- Workplan used: `docs/customer_acquisition_workplan_2026-05-18.md` as the baseline for the same-day follow-up run.
+- Channels checked: V2EX, X / Twitter, 即刻, 小红书, 少数派, Appinn / 小众软件.
+- Public replies sent: 3.
+- Private messages sent: 0.
+
+#### Feedback Checked
+
+| Channel | Source | Signal | Action Taken | Follow-Up |
+| --- | --- | --- | --- | --- |
+| V2EX | Main TraceMind post: `https://www.v2ex.com/t/1213290` | `no_response`; 119 clicks, 47 registered views, 4 Google clicks, no replies. | No repost. | Keep monitoring; do not treat views as intent. |
+| V2EX | `https://www.v2ex.com/t/1213256#reply15` | `no_response`; reply remains visible, no direct response. | No follow-up. | Recheck only if the author replies. |
+| V2EX | `https://www.v2ex.com/t/1213245#reply6` | `no_response`; reply remains visible, no direct response. | No follow-up. | Recheck only if the author replies. |
+| X / Twitter | English main post: `https://x.com/old_farmer_/status/2055893615612924388` | `low`; 8 views, no replies. | No follow-up. | Main post is not the strongest source of conversations yet. |
+| X / Twitter | Chinese main post: `https://x.com/old_farmer_/status/2055922795939565621` | `low`; 11 views, no replies. | No follow-up. | Keep as background presence. |
+| X Vibe Coding Community | `https://x.com/old_farmer_/status/2055896097890193663` | `medium`; Johnny Nel replied that founders often skip behavior analysis after shipping. | Replied publicly: `https://x.com/old_farmer_/status/2055939454217638329`. | Follow this thread first; it is the clearest explicit signal from today. |
+| 即刻 | Own post and first-batch comments | `no_response` / `unverified`; own post had no visible engagement, Dreamer comment remained visible, Zhuge and ThirtyThr33 comments were not visible in the current web check. | No new 即刻 replies. | Treat Zhuge and ThirtyThr33 as `commented_unverified` until confirmed from a stable page state. |
+| 小红书 | Sherotree note: `https://www.xiaohongshu.com/explore/69ccadc8000000001b001ba5` | `no_response`; comment visible from a valid logged-in/search-state tab, no reply. | No follow-up. | Continue checking from valid search-state or app context. |
+| 小红书 | 菠萝头 note: `https://www.xiaohongshu.com/explore/69a9937e0000000026031c05` | `blocked`; direct web page returned the platform unavailable-note page. | No follow-up. | Recheck through search-state or mobile; do not assume deletion. |
+| 少数派 | MioKit article: `https://sspai.com/post/108082` | `no_response`; comment visible under `少数派61886006`, no reply. | No follow-up. | Keep as low-frequency deep-comment channel. |
+| Appinn / 小众软件 | Pending queue and 发现频道 | `awaiting_mod_approval`; pending queue still shows the TraceMind submission, public 发现频道 does not. | No repost. | Check pending queue and public category again tomorrow. |
+
+#### New Public Replies
+
+| Channel | Source | Reply URL | Fit | Notes |
+| --- | --- | --- | --- | --- |
+| X Vibe Coding Community | Johnny Nel reply on the TraceMind community post | `https://x.com/old_farmer_/status/2055939454217638329` | A0 / AI builder community, medium signal. | Reframed TraceMind as the post-launch behavior-evidence loop after AI-built products ship. |
+| V2EX | lymanli: transparent-background PNG tool | `https://www.v2ex.com/t/1213280?p=1#reply3` | Lightweight tool site with a concrete generate/download path. | No TraceMind link; focused on upload, style choice, generation wait, and download drop-off. |
+| V2EX | pengdw: `AI·朝夕有记` app rewrite | `https://www.v2ex.com/t/1213275?p=1#reply5` | AI product with an active discussion about old-user adaptation. | Replied to the old-user behavior question and positioned TraceMind as evidence for whether the new path works. |
+
+#### New Candidates Found
+
+- X Vibe Coding Community: Ubiquity Systems SaaS translating pseudocode to TypeScript; Dylan Foster's Ansel disk-usage analyzer; John Odell's SparkStation NFC/Supabase app. All are lower priority than direct AI-builder behavior-analysis conversations.
+- 小红书 search-state candidates: 子圭时安 `Day20｜我用 Vibe Coding 做的开源 AI 产品`, 独库车神 `想要什么App，就用codex自己vibe coding`, 502Lab first app testing post, 元气少女Vivi子 AI Vibe Coding product roundup. These need valid web/app access before commenting.
+- V2EX create board produced several tool/app candidates; the PNG generator and `AI·朝夕有记` rewrite were the only high-enough fits acted on today.
+
+#### Retrospective
+
+- What worked: X Vibe Coding Community produced the clearest explicit wording match: founders ship but skip behavior analysis.
+- What did not work: main posts collected views but did not create direct conversations; Appinn is still pending moderation; 小红书 direct note URLs are gated in web.
+- Best channel today: X community for explicit feedback, V2EX for fast high-context public replies, 小红书 for ICP discovery but not reliable web execution.
+- Best wording: for AI-builder channels, lead with the post-launch gap: after shipping, the next loop needs behavior evidence instead of only more building.
+- Weakest assumption: prior 即刻 comment visibility is not stable from the current web session, so do not count those as confirmed active threads without rechecking.
+- Workflow change for tomorrow: prioritize follow-up on Johnny's thread, Appinn moderation state, and valid 小红书 search-state/mobile checks before adding more net-new comments.

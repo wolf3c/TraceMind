@@ -42,6 +42,7 @@ AI 自动埋点，AI 分析数据，AI 驱动产品迭代闭环。
 | Date | Version | Change | Reason / Feedback |
 | --- | --- | --- | --- |
 | 2026-05-17 | v1 | 固化“三个核心优势”：AI 自动埋点、AI 分析数据、AI 迭代闭环。 | 初版基于客户视角，强调简洁、易懂和产品特色。 |
+| 2026-05-17 | v1.1 | 面向 AI-builder / vibe-coding 社区时，优先使用“产品上线后的下一轮迭代需要行为证据，而不只是继续 ship”这个角度。 | X Vibe Coding Community 中 Johnny Nel 对“founders skip behavior analysis after shipping”的回复是本轮最清晰的 medium signal。 |
 
 ## 后续优化依据
 

@@ -1,6 +1,6 @@
 ---
 name: tracemind-daily-customer-acquisition
-description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, Appinn/小众软件, or similar platforms when needed, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
+description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, Appinn/小众软件, or similar platforms when needed, drafts candidate/reply tables for user approval before outbound replies, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
 ---
 
 # TraceMind Daily Customer Acquisition
@@ -11,15 +11,33 @@ Run TraceMind's daily seed-customer acquisition workflow from the repository doc
 
 When the user invokes this skill, first resolve the requested run mode. If the user names a mode, run only that slice. If the user says to run the daily workflow or gives no mode, use `full-day`.
 
-Treat the chosen mode as authorization to execute the documented acquisition plan inside that scope, including checking social platforms and sending public replies that clearly match the plan's outreach rules.
+Treat the chosen mode as authorization to read docs, check planned platforms, find candidates, draft replies, update local docs, and prepare the next workplan. The chosen mode is not authorization to send public replies, comments, private messages, emails, or new original posts.
 
-Still pause for confirmation before:
+Always pause for confirmation before:
 
+- Sending any public reply or comment.
 - Sending private messages or emails.
 - Posting in a new community not already covered by the plan.
 - Paying for promotion, submitting to a launch platform, or changing account settings.
-- Replying where relevance is weak or the comment would read as generic promotion.
-- Publishing original posts on 小红书, 少数派, or Appinn/小众软件 unless the day's plan explicitly includes the exact post and the user has confirmed it.
+- Publishing original posts on 小红书, 少数派, X/Twitter, Appinn/小众软件, or similar platforms unless the current user message already provides the exact target, exact copy, and an explicit instruction to publish.
+
+## Approval Gate For Outbound Replies
+
+Before sending any public reply or comment, prepare a review table or list and ask the user to approve specific rows. Do not send until the user explicitly approves.
+
+Use this table shape when possible:
+
+| ID | Platform | Source / Author | Post Summary | Fit | Proposed Reply | Risk / Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+
+Guidelines:
+
+- Summarize the other person's post in one or two sentences before proposing a reply.
+- Make the proposed reply specific to that post and keep it editable.
+- Include weak relevance, platform-rule, tone, or promotion-risk notes.
+- Prefer asking the user to approve row IDs, for example `Approve A and C`.
+- After approval, reply only to the approved rows, one by one. Do not substitute new targets or materially different copy without asking again.
+- If the user rejects or edits a draft, record the decision as `skipped_by_user`, `needs_rewrite`, or `approved_with_edits` in the local target/progress docs when useful.
 
 ## Source Documents
 
@@ -51,18 +69,19 @@ Use for the first check of the day.
 - Read yesterday's latest workplan and progress.
 - Check replies, likes, follows, comments, and visible engagement on already-posted content.
 - Classify signals as `high`, `medium`, `low`, `not_fit`, or `no_response`.
-- Reply only to `high` or clearly promising `medium` interactions.
+- Draft replies only for `high` or clearly promising `medium` interactions, then present them for approval.
 - Update `docs/customer_acquisition_progress.md` and target statuses.
 - Do not create a new tomorrow plan unless the user asks.
 
 ### `outreach-block`
 
-Use for a focused 30-90 minute block of finding posts, recommending TraceMind, and replying publicly.
+Use for a focused 30-90 minute block of finding posts and drafting TraceMind reply recommendations.
 
 - Read the latest workplan, target list, and messaging doc.
 - Search only the channels or keywords requested by the user; if none are specified, use the workplan priorities.
-- Send only high-relevance public replies that satisfy the reply rules.
-- Record every contacted or skipped candidate with status and reason.
+- Prepare candidate summaries and proposed replies only for high-relevance public posts that satisfy the reply rules.
+- Present the candidate table and wait for user approval before sending any replies.
+- Record every drafted, contacted, or skipped candidate with status and reason.
 - End with a short note on which channel looked most promising.
 - Do not run a full retrospective or write tomorrow's plan.
 
@@ -72,7 +91,7 @@ Use when the user asks to publish a specific public post or community post.
 
 - Draft or reuse the approved post copy.
 - Prefer X communities over main-profile posts when the community is relevant and already covered by the plan.
-- Confirm before posting only when the copy is new, risky, or not already approved.
+- Post directly only when the current user message gives the exact target, exact copy, and explicit publish instruction. Otherwise, present the draft and wait for approval.
 - After publishing, record URL, channel, copy version, visible engagement if available, and any blockers.
 - Do not search for new candidates unless the user asks.
 
@@ -91,7 +110,7 @@ Use near the end of the day.
 
 Use when the user asks for the complete daily run or gives no mode.
 
-- Run the full workflow below: review plan, check feedback, reply to high-intent interactions, do one outreach block, handle screenshot follow-up, update progress, run retrospective, and create tomorrow's workplan.
+- Run the full workflow below: review plan, check feedback, draft high-intent follow-ups, do one candidate outreach block, present proposed replies for approval, handle approved outbound work if the user approves, update progress, run retrospective, and create tomorrow's workplan.
 
 ## Daily Workflow
 
@@ -131,7 +150,7 @@ For each platform in the plan:
 
 Do not inspect cookies, local storage, passwords, or unrelated private browser data.
 
-### 4. Reply To High-Intent Interactions
+### 4. Draft Replies To High-Intent Interactions
 
 Prioritize people who:
 
@@ -141,7 +160,7 @@ Prioritize people who:
 - Built with Codex, Claude Code, Cursor, Trae, or similar AI coding agents; include Lovable, Base44, Bolt, and Replit when targeting no-code or weak-technical builders.
 - Are non-technical or weak-technical creators who shipped with vibe coding.
 
-Use short, specific replies. Anchor each reply in the other person's product before mentioning TraceMind.
+Use short, specific draft replies. Anchor each draft in the other person's product before mentioning TraceMind.
 
 Preferred value angle:
 
@@ -162,9 +181,11 @@ Avoid:
 - Dropping links in every reply.
 - Commenting under unrelated discussions.
 
-### 5. Do Second-Batch Outreach
+Do not send these replies yet. Add them to the approval table with the post summary, fit, proposed reply, and risk notes.
 
-If the plan calls for new outreach, search the planned channels.
+### 5. Do Second-Batch Candidate Discovery
+
+If the plan calls for new outreach, search the planned channels and prepare candidate reply drafts.
 
 Default search prompts:
 
@@ -184,7 +205,7 @@ Channel intent:
 - 少数派: tool and productivity audience; prioritize polished tools, plugins, workflows, and app authors. Use more substantive, less salesy comments; ask before submitting articles or original posts.
 - Appinn/小众软件: low-frequency tool discovery audience; publish as `开发者自荐` only after user confirmation. Use practical wording: what problem it solves, who it is for, setup effort, current trial status, homepage, and feedback requested.
 
-Only reply when at least two are true:
+Only include a candidate when at least two are true:
 
 - The post promotes the author's own product.
 - The author asks for feedback, users, or validation.
@@ -192,9 +213,22 @@ Only reply when at least two are true:
 - TraceMind naturally helps answer their stated problem.
 - The reply can be personalized to their product.
 
-Record every candidate, even skipped ones, with a short reason.
+Record every candidate, even skipped ones, with a short reason. Do not send replies in this step.
 
-### 6. Handle Screenshot Follow-Up
+### 6. Present Reply Approval Table
+
+Before any outbound comment, present the candidate table to the user and wait.
+
+Include:
+
+- Each post's approximate content.
+- Why the post fits or does not fit.
+- The exact proposed reply.
+- Any concern that the reply may feel promotional, too generic, or against channel norms.
+
+If the user approves rows, send only those rows and then record the result. If the user does not approve yet, stop after the table and do not continue into sending or final retrospective that assumes replies were sent.
+
+### 7. Handle Screenshot Follow-Up
 
 If the plan includes adding screenshots:
 
@@ -202,7 +236,7 @@ If the plan includes adding screenshots:
 - If Chrome upload fails due file permissions, do not work around it. Record the blocker and tell the user to enable Chrome extension file URL access.
 - Never upload screenshots containing accounts, emails, tokens, or private dashboard data.
 
-### 7. Update Progress
+### 8. Update Progress
 
 Append a dated section to `docs/customer_acquisition_progress.md`.
 
@@ -214,6 +248,7 @@ Use this structure:
 - Workplan used:
 - Channels checked:
 - Public replies sent:
+- Public replies proposed / awaiting approval:
 - Private messages sent:
 - New candidates found:
 - High-intent leads:
@@ -234,7 +269,9 @@ For each interaction:
 - Follow-up:
 ```
 
-### 8. Run Daily Retrospective
+Use statuses such as `drafted_for_approval`, `awaiting_user_approval`, `approved_to_reply`, `commented`, `replied`, `blocked`, `skipped`, `skipped_by_user`, and `needs_rewrite`.
+
+### 9. Run Daily Retrospective
 
 Compare today's work with yesterday's plan and prior results. The goal is to improve the operating system, not just list activity.
 
@@ -279,7 +316,7 @@ Use the retrospective to make concrete changes. Examples:
 - If a lead asks about setup effort, update `docs/customer_messaging.md` with a shorter setup answer.
 - If screenshot upload is still blocked, keep it as a blocker instead of spending more time on it.
 
-### 9. Update Operating Docs
+### 10. Update Operating Docs
 
 Based on the retrospective, update the relevant docs:
 
@@ -290,15 +327,15 @@ Based on the retrospective, update the relevant docs:
 
 Keep changes evidence-based. Do not rewrite the strategy just because one post had no response.
 
-### 10. Update Candidate Documents
+### 11. Update Candidate Documents
 
 Update the relevant target/pipeline docs:
 
-- Set contacted targets to `commented`, `replied`, `dm_drafted`, `blocked`, or `skipped`.
+- Set targets to `drafted_for_approval`, `awaiting_user_approval`, `approved_to_reply`, `commented`, `replied`, `dm_drafted`, `blocked`, `skipped`, `skipped_by_user`, or `needs_rewrite`.
 - Add new candidate URLs and reply drafts.
 - Keep comments and drafts concise.
 
-### 11. Create Tomorrow's Workplan
+### 12. Create Tomorrow's Workplan
 
 Create `docs/customer_acquisition_workplan_YYYY-MM-DD.md` for tomorrow.
 
@@ -324,6 +361,7 @@ Keep the final response short and operational:
 - Mode used.
 - What was checked.
 - What was sent.
+- What was proposed and still needs approval.
 - What was updated.
 - Any blockers.
 - Tomorrow's plan file path.

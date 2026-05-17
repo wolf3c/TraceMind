@@ -32,9 +32,9 @@
 
 | Priority | Author / Post | URL | Fit | Draft Reply | Status |
 | --- | --- | --- | --- | --- | --- |
-| P0 | Dreamer妍妍：vibe coding 做了“AI 设计风格百科全书” | https://web.okjike.com/u/D0EC08CC-47CB-4E99-8F45-137314B2F449/post/6a02cfe505d49c015c8a0e62 | 明确 vibe coding 产品，已有用户反馈，适合看真实使用路径。 | 这个方向挺适合继续看真实使用路径：用户是停在选择风格、看结果、复制提示词，还是跳到小红书。我们在做 TraceMind，想找几个 vibe coding 产品试点，自动记录行为后可以直接问 AI 用户卡在哪、哪类风格最有用。如果你愿意，我可以帮你看一版早期行为诊断。 | commented |
-| P0 | 诸葛子房：做了一个 xxx test，已开出一单 | https://web.okjike.com/u/2a3547bf-9a41-4620-821d-472c8d399752/post/69fef715a110301e1b4b31e5 | 轻量工具站/测试站，已有转化，适合验证漏斗。 | 这种测试站已经出单，下一步最值得看的可能是“访问 -> 开始测试 -> 完成测试 -> 付费”哪一步最影响转化。我们在做 TraceMind，AI 自动记录用户行为，不用自己搭 analytics，直接问 AI 用户卡在哪。想找类似轻量产品试点，如果你感兴趣可以一起看一版。 | commented |
-| P0 | ThirtyThr33：非科班 vibe coding 多个 SaaS，第二款到 4500+ MRR | https://web.okjike.com/u/4D1BA507-7BB5-44E1-8B75-B603BBEEE09E/post/69e34a8dd71a18985bf6a3f0 | 高价值 ICP，本人经历高度符合“非技术/弱技术靠 AI 做产品”。更适合长回复或私信。 | 你这个经历和我们现在想服务的人很重合：不是先搭一整套数据体系，而是产品上线后尽快知道哪款、哪个功能、哪段转化真的有价值。我们在做 TraceMind：AI 自动埋点，直接问 AI 用户卡在哪，改完再验证效果。想找你这样的 builder 做一次试点反馈。 | commented |
+| P0 | Dreamer妍妍：vibe coding 做了“AI 设计风格百科全书” | https://web.okjike.com/u/D0EC08CC-47CB-4E99-8F45-137314B2F449/post/6a02cfe505d49c015c8a0e62 | 明确 vibe coding 产品，已有用户反馈，适合看真实使用路径。 | 这个方向挺适合继续看真实使用路径：用户是停在选择风格、看结果、复制提示词，还是跳到小红书。我们在做 TraceMind，想找几个 vibe coding 产品试点，自动记录行为后可以直接问 AI 用户卡在哪、哪类风格最有用。如果你愿意，我可以帮你看一版早期行为诊断。 | commented_no_response |
+| P0 | 诸葛子房：做了一个 xxx test，已开出一单 | https://web.okjike.com/u/2a3547bf-9a41-4620-821d-472c8d399752/post/69fef715a110301e1b4b31e5 | 轻量工具站/测试站，已有转化，适合验证漏斗。 | 这种测试站已经出单，下一步最值得看的可能是“访问 -> 开始测试 -> 完成测试 -> 付费”哪一步最影响转化。我们在做 TraceMind，AI 自动记录用户行为，不用自己搭 analytics，直接问 AI 用户卡在哪。想找类似轻量产品试点，如果你感兴趣可以一起看一版。 | commented_unverified |
+| P0 | ThirtyThr33：非科班 vibe coding 多个 SaaS，第二款到 4500+ MRR | https://web.okjike.com/u/4D1BA507-7BB5-44E1-8B75-B603BBEEE09E/post/69e34a8dd71a18985bf6a3f0 | 高价值 ICP，本人经历高度符合“非技术/弱技术靠 AI 做产品”。更适合长回复或私信。 | 你这个经历和我们现在想服务的人很重合：不是先搭一整套数据体系，而是产品上线后尽快知道哪款、哪个功能、哪段转化真的有价值。我们在做 TraceMind：AI 自动埋点，直接问 AI 用户卡在哪，改完再验证效果。想找你这样的 builder 做一次试点反馈。 | commented_unverified |
 | P1 | 潦草学者：获取网页 design.md 的 skill，插件审核中 | https://web.okjike.com/u/0AAFF9E4-E571-4D8D-8D21-0FC0DB8B3DA0/post/69f0e304657481ea4eeb0ded | AI skill / 浏览器插件，适合上线后看安装、首次使用、复制结果路径。 | 等插件上线后，这类工具最关键的可能是安装后第一次成功使用：打开网页、生成 design.md、复制到 agent，每一步用户有没有卡住。我们在做 TraceMind，想找 AI-built 工具试点，接入后可以直接问 AI 用户卡在哪、哪类页面生成效果最好。 | candidate |
 | P1 | 愚人哲：PageFly 个人知识 OS | https://web.okjike.com/u/CAC32117-F8CB-4E29-B994-CB0E830FD380/post/69d7dfee9f3cd84f65c4d226 | vibe coding 出来的开源产品，链路较长，适合行为诊断。 | PageFly 这种“采集 -> 分类 -> 编译 -> 查询”的路径很适合看真实行为，不然很难知道用户到底卡在导入、等待编译，还是后续查询。我们在做 TraceMind，能自动记录行为，再让 AI 总结卡点和迭代效果。后面如果想找早期用户试用，可以一起试点。 | candidate |
 | P2 | 王登科：咔咔小票 app | https://web.okjike.com/u/2d619b75-fc6a-4151-8125-156762ab46dc/post/69dc8e8fc5a1d4e649f0dd17 | 普通 app 发布帖，不确定是否 AI-built，作为低优先级。 | 小票收集这个场景很具体，后续可以重点看用户第一次打开后有没有完成拍照/录入/分类。我们在做 TraceMind，适合早期产品不用搭复杂看板，直接让 AI 看用户行为并总结卡点。 | candidate |
@@ -45,7 +45,8 @@
 | --- | --- | --- | --- | --- | --- |
 | P0 | v2reach：把网文自动变成动漫短视频的工具，不确定有没有人需要 | https://www.v2ex.com/t/1213256#reply15 | 明确求需求验证，非常适合 TraceMind 的“用户卡在哪”价值。 | 这个问题很适合先看真实用户行为，而不是继续猜需求。比如用户是停在看示例、上传文本、生成视频，还是导出/分享。我们在做 TraceMind，正找这类 AI-built 产品试点：自动记录用户路径，然后让 AI 总结用户卡在哪、改完有没有改善。感兴趣可以聊下。 | commented |
 | P0 | KURANADO：Vibe Coding 了一个将 B 站评论区变为结构化数据的 Chrome 插件 | https://www.v2ex.com/t/1213245#reply6 | 明确 vibe coding + 插件产品，适合看安装和首次成功路径。 | 这个很适合看真实使用路径：安装插件、打开 B 站评论区、完成结构化、复制/导出结果，哪一步掉得最多。我们在做 TraceMind，想找几个 AI-built / vibe coding 产品试点，接入后可以直接问 AI 用户卡在哪、改完有没有变好。如果你愿意，我可以帮你看一版早期用户行为诊断。 | commented |
-| P1 | lymanli：生成透明背景 PNG 的工具 | https://www.v2ex.com/t/1213280#reply2 | 轻量工具站，适合验证上传、风格选择、下载路径。 | 这类工具站很适合用真实行为快速验证：用户进来后是卡在上传、风格选择、生成等待，还是下载结果。我们在做 TraceMind，想找工具站试点，接入后不用搭看板，直接问 AI 用户在哪一步流失。 | candidate |
+| P1 | lymanli：生成透明背景 PNG 的工具 | https://www.v2ex.com/t/1213280?p=1#reply3 | 轻量工具站，适合验证描述/上传、风格选择、生成等待、下载路径。 | 这类工具站很适合用真实行为快速验证：用户进来后是卡在描述/上传、风格选择、生成等待，还是下载结果。我们在做 TraceMind，想找轻量工具站试点，接入后不用搭复杂看板，直接让 AI 看用户在哪一步流失、哪种风格最常被用。 | commented |
+| P1 | pengdw：`AI·朝夕有记` 删除一半页面的 AI 产品重构 | https://www.v2ex.com/t/1213275?p=1#reply5 | AI 产品重构，评论区正在讨论老用户是否适应新路径，适合 TraceMind 的行为证据价值。 | 这个重构最值得验证的不是页面少了多少，而是老用户在新路径里有没有顺利完成原来的关键动作：记录、回顾、追问、继续复用。你们已经在讨论“老用户习惯吗”，这类问题很适合用真实行为证据看，不用只靠主观感觉。我们在做 TraceMind，想找 AI 产品试点，把用户路径自动整理给 AI 分析：用户卡在哪、哪些入口真的被用、改完有没有变好。 | commented |
 | P1 | zhiyingzhou：自托管订阅管理工具 Renewlet | https://www.v2ex.com/t/1213250#reply1 | 独立工具产品，但偏技术自托管，优先级低于 A0 ICP。 | 自托管工具的早期用户路径一般会卡在部署、导入订阅、第一次提醒这几步。我们在做 TraceMind，适合早期产品用 AI 看用户行为，不用先维护一套 analytics 看板。后续如果想看试用用户卡点，可以试点接入。 | candidate |
 | P2 | hanliang：掘金自动发图文 CLI / MCP 工具 | https://www.v2ex.com/t/1213212#reply0 | 偏技术，适合作为 MCP/agent 工具场景备选。 | 这种 CLI/MCP 工具后续如果有人试用，最有价值的是知道用户是卡在配置、首次运行、还是发布成功前。我们在做 TraceMind，能把这些行为变成 AI 可读证据，再直接问 AI 用户卡在哪里。 | candidate |
 
@@ -53,6 +54,7 @@
 
 | Priority | Author / Post | URL | Fit | Draft Reply | Status |
 | --- | --- | --- | --- | --- | --- |
+| P0 | Johnny Nel：X Vibe Coding Community 中回复 founders often skip behavior analysis after shipping | https://x.com/old_farmer_/status/2055939454217638329 | 明确认可 TraceMind 的 post-launch behavior analysis 问题，是本轮最清晰的 medium signal。 | Exactly. That post-launch gap is what I’m validating: once an AI-built product has real users, the next loop needs behavior evidence, not just more shipping. I’m looking for small products to pilot TraceMind and turn behavior into an AI-readable diagnosis. | replied |
 | P0 | @Veyric404：HireLoop，Lovable vibe-coded AI mock interview app，邀请大家 break/rate it | https://x.com/Veyric404/status/2051949966935900355 | 明确 Lovable / vibe-coded，正在求反馈。 | Nice launch. HireLoop has the exact funnel where behavior tells you more than a dashboard: start mock interview, finish, review feedback, then come back. I’m building TraceMind for AI-built apps: auto-capture user behavior, ask AI where users got stuck, then verify if changes worked. Looking for a few Lovable/vibe-coded products to pilot it. | candidate |
 | P0 | @LearningBill：Lovable + Claude 做的 scheduling / notification app，用户正在注册 | https://x.com/LearningBill/status/2049607928915874142 | 非典型开发者做真实业务 app，正在紧张看用户注册。 | Congrats on getting real users in. For a first live app, the most useful signal is often not a dashboard, but knowing where signups slow down and which notification flow people actually complete. I’m building TraceMind for AI-built products: auto-capture behavior, ask AI where users got stuck, and verify fixes. Happy to pilot it with apps like this. | candidate |
 | P1 | @ModelMischiefX：BuildSnitch beta，欢迎反馈 | https://x.com/ModelMischiefX/status/2040861446532124689 | beta + any feedback welcome，但偏开发者工具。 | BuildSnitch has a good early-user loop: scan a site, understand the result, then share or act on it. I’m building TraceMind for AI-built tools so founders can auto-capture behavior and ask AI where users got stuck. If you’re still collecting beta feedback, this could be a useful pilot. | candidate |
@@ -61,12 +63,12 @@
 
 ## 小红书候选
 
-原创新帖状态：`blocked_file_upload`。已进入创作中心，但上传 3 张产品介绍截图时 Chrome 扩展返回 `Not allowed`，因此没有发布小红书原创新帖。后续需要先给 Codex Chrome Extension 开启 `Allow access to file URLs`，再发布带截图版本。
+原创新帖状态：`blocked_file_upload_not_retested`。已进入创作中心，但上传 3 张产品介绍截图时 Chrome 扩展返回 `Not allowed`，因此没有发布小红书原创新帖。本次 follow-up 以评论反馈和候选检查为主，未在没有明确确认的情况下发布原创新帖。
 
 | Priority | Author / Post | URL | Fit | Sent Reply | Status |
 | --- | --- | --- | --- | --- | --- |
-| P0 | 菠萝头：纯零基础，第一个 Vibe Coding 作品终于上架了 | https://www.xiaohongshu.com/explore/69a9937e0000000026031c05 | 非技术/弱技术用户用 AI 做出 iOS app 并上架，A0 ICP 高匹配。 | 这个经历很适合看真实用户路径：用户是卡在首次打开、创建任务、同步数据，还是后续复用。我们在做 TraceMind，想找几个 AI 做出来的产品试点，自动记录行为后直接问 AI 用户卡在哪、改完有没有变好。 | commented |
-| P0 | Sherotree：3 月独立开发总结，插件收入 426 美元 | https://www.xiaohongshu.com/explore/69ccadc8000000001b001ba5 | 独立产品已有收入和 AdSense 反馈，适合验证安装、试用、付费路径。 | 已经有插件收入和 AdSense 反馈了，下一步很适合看真实用户路径：用户从看到功能、安装/试用，到付费或复购，哪一步掉得最多。我们在做 TraceMind，帮 AI-built 产品自动记录行为，然后直接问 AI 用户卡在哪、改完有没有变好。 | commented |
+| P0 | 菠萝头：纯零基础，第一个 Vibe Coding 作品终于上架了 | https://www.xiaohongshu.com/explore/69a9937e0000000026031c05 | 非技术/弱技术用户用 AI 做出 iOS app 并上架，A0 ICP 高匹配。 | 这个经历很适合看真实用户路径：用户是卡在首次打开、创建任务、同步数据，还是后续复用。我们在做 TraceMind，想找几个 AI 做出来的产品试点，自动记录行为后直接问 AI 用户卡在哪、改完有没有变好。 | commented_unverified |
+| P0 | Sherotree：3 月独立开发总结，插件收入 426 美元 | https://www.xiaohongshu.com/explore/69ccadc8000000001b001ba5 | 独立产品已有收入和 AdSense 反馈，适合验证安装、试用、付费路径。 | 已经有插件收入和 AdSense 反馈了，下一步很适合看真实用户路径：用户从看到功能、安装/试用，到付费或复购，哪一步掉得最多。我们在做 TraceMind，帮 AI-built 产品自动记录行为，然后直接问 AI 用户卡在哪、改完有没有变好。 | commented_no_response |
 | P1 | Cyrus宇：两个月通过 AI 赚到 1w | https://www.xiaohongshu.com/explore/69ee2d27000000003502030b | AI 变现相关，但需要进一步确认是否是自有产品。 | 如果是自有 AI 产品，后续最值得看的是用户从看到价值、开始试用，到付费或复用，哪一步掉得最多。TraceMind 可以自动记录行为，再直接问 AI 用户卡在哪、改完有没有改善。 | candidate |
 
 ## 少数派候选
@@ -97,3 +99,5 @@
 - 2026-05-17: X 补图回复因本地文件上传权限被 Chrome 扩展拦截，未发送。
 - 2026-05-17: 小红书登录后完成 2 条评论触达；原创新帖因本地截图上传权限被 Chrome 扩展拦截，未发布。
 - 2026-05-17: 少数派登录后完成 MioKit 文章评论；其余候选保留为后续低频深评论对象。
+- 2026-05-17: Full-day follow-up checked V2EX, X, 即刻, 小红书, 少数派, Appinn. 新增 3 条公开回复：X community Johnny thread、V2EX PNG 工具、V2EX `AI·朝夕有记` 重构帖；没有发送私信。
+- 2026-05-17: Appinn 自荐帖仍在待审核队列；XHS 直达笔记页存在 web gating，Sherotree 评论通过有效登录/搜索态确认可见，菠萝头暂未确认。
