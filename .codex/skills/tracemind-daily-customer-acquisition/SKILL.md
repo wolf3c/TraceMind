@@ -1,6 +1,6 @@
 ---
 name: tracemind-daily-customer-acquisition
-description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, or similar platforms when needed, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
+description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, Appinn/小众软件, or similar platforms when needed, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
 ---
 
 # TraceMind Daily Customer Acquisition
@@ -19,7 +19,7 @@ Still pause for confirmation before:
 - Posting in a new community not already covered by the plan.
 - Paying for promotion, submitting to a launch platform, or changing account settings.
 - Replying where relevance is weak or the comment would read as generic promotion.
-- Publishing original posts on 小红书 or 少数派 unless the day's plan explicitly includes the exact post and the user has confirmed it.
+- Publishing original posts on 小红书, 少数派, or Appinn/小众软件 unless the day's plan explicitly includes the exact post and the user has confirmed it.
 
 ## Source Documents
 
@@ -38,6 +38,7 @@ Use the latest dated files when multiple exist. If no current workplan exists, c
 
 - X communities can produce more attention than ordinary profile posts when the community is tightly matched to TraceMind's ICP. When a relevant X community is already covered by the plan, prioritize community-native posts and replies before standalone profile posts, while still following community rules and avoiding duplicate shilling. Record community engagement separately from main-profile X posts.
 - In X/community copy, lead with `Codex`, `Claude Code`, `Cursor`, and `Trae` because they have stronger recognition and larger user bases among AI coding builders. Treat `Lovable`, `Base44`, `Bolt`, and `Replit` as optional secondary examples for no-code or weak-technical vibe coding segments. Do not make Lovable/Base44/Bolt/Replit the main examples unless the day's ICP experiment explicitly targets those builders.
+- Appinn/小众软件 is a low-frequency Chinese tool self-recommendation channel, not a daily comment-spam channel. Use it for polished `开发者自荐` posts when TraceMind has a clear homepage, screenshots, trial ask, and concise setup explanation. Avoid repeated bumps or unrelated comments.
 
 ## Run Modes
 
@@ -172,6 +173,7 @@ Default search prompts:
 - X: `"built with Codex" app`, `"built with Claude Code" app`, `"built this with Cursor" feedback`, `"built with Trae" app`, `"AI coding agent" launch`, `"vibe coded" app launch`; add `"built with Lovable" feedback` and `"made with Lovable" app` only for no-code-focused searches.
 - 小红书: `vibe coding`, `AI 做产品`, `用 AI 做了一个 app`, `Codex 做产品`, `Claude Code 做产品`, `Cursor 做产品`, `Trae 做产品`, `Lovable 做网站`, `零基础 做 app`
 - 少数派: `AI 工具`, `独立开发`, `效率工具`, `我做了一个`, `产品上线`, `插件`
+- Appinn/小众软件: `meta.appinn.net` 投稿/发现频道；只在准备 `开发者自荐` 或重要版本更新时使用，不做每日搜索式触达。
 
 Channel intent:
 
@@ -180,6 +182,7 @@ Channel intent:
 - X: prioritize relevant X communities first when engagement is stronger; primarily target Codex, Claude Code, Cursor, and Trae builders with short comments matched to the specific community. Add Lovable, Bolt, Replit, and Base44 only when the post/community is explicitly no-code or weak-technical.
 - 小红书: discovery-heavy A0 source; prioritize non-technical or weak-technical creators showing AI-built products, workflows, or launch screenshots. Default to candidate collection and reply drafts; ask before publishing original posts.
 - 少数派: tool and productivity audience; prioritize polished tools, plugins, workflows, and app authors. Use more substantive, less salesy comments; ask before submitting articles or original posts.
+- Appinn/小众软件: low-frequency tool discovery audience; publish as `开发者自荐` only after user confirmation. Use practical wording: what problem it solves, who it is for, setup effort, current trial status, homepage, and feedback requested.
 
 Only reply when at least two are true:
 
@@ -271,6 +274,7 @@ Use the retrospective to make concrete changes. Examples:
 - If V2EX replies are too technical and low-converting, shift tomorrow's first hour to 即刻.
 - If 小红书 shows more non-technical AI builders than developer forums, allocate tomorrow's search time there and keep comments casual and specific.
 - If 少数派 candidates are higher quality but lower volume, use it for weekly deeper outreach rather than daily volume.
+- If Appinn/小众软件 brings higher-trust but lower-volume feedback, keep it as a milestone/update channel rather than a daily outreach target.
 - If "AI 自动埋点" is unclear, lead with "不用搭 analytics，看用户卡在哪".
 - If a lead asks about setup effort, update `docs/customer_messaging.md` with a shorter setup answer.
 - If screenshot upload is still blocked, keep it as a blocker instead of spending more time on it.
