@@ -33,7 +33,7 @@
 
 | Channel | Status | URL / Location | Notes |
 | --- | --- | --- | --- |
-| X / Twitter main post | posted | 待补充最终帖 URL | 用户手动确认已发布。 |
+| X / Twitter main post | posted | https://x.com/old_farmer_/status/2055893615612924388 | 用户手动确认已发布，已补充最终帖 URL。 |
 | X Vibe Coding Community | posted | https://x.com/i/communities/1898129646782497027 | 按 `r/vibecoding` 规则加入社区并发布 TraceMind 工具介绍/审核申请。 |
 | Reddit `r/nocode` | awaiting_mod_approval | https://www.reddit.com/r/nocode/?created=t3_1tfhbv3&createdPostType=text&is_eligible_for_nudge_to_crosspost_modal=true | 已用问题/求反馈口吻提交，未放 TraceMind 链接；当前等待版主审核。 |
 | 即刻 | posted | https://web.okjike.com/following | 已发布中文试点招募帖，timeline 可见。 |
@@ -61,3 +61,10 @@
 3. 登录 Indie Hackers 后发布英文试点招募帖。
 4. 监控 X / 即刻 / V2EX 的评论、私信和点击反馈。
 5. 将任何真实回复补充到线索表，并优先推进 2-3 个愿意接入的试点。
+
+### 回复型获客候选
+
+- 已开始收集即刻、V2EX、X 上正在宣传产品、求反馈、找用户的帖子。
+- 新增候选与回复草稿文档：`docs/social_reply_targets_2026-05-17.md`。
+- 已完成第一批 5 条候选评论：即刻 3 条、V2EX 2 条。
+- 已保存 3 张社交传播截图到 `docs/assets/social/`。X 补图回复因 Chrome 扩展文件上传权限受限未发送，后续开启 `Allow access to file URLs` 后可继续补图。
