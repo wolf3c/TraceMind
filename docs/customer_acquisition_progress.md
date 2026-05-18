@@ -149,3 +149,57 @@
 - Best wording: for AI-builder channels, lead with the post-launch gap: after shipping, the next loop needs behavior evidence instead of only more building.
 - Weakest assumption: prior 即刻 comment visibility is not stable from the current web session, so do not count those as confirmed active threads without rechecking.
 - Workflow change for tomorrow: prioritize follow-up on Johnny's thread, Appinn moderation state, and valid 小红书 search-state/mobile checks before adding more net-new comments.
+
+## 2026-05-18
+
+### Daily Run
+
+- Workplan used: `docs/customer_acquisition_workplan_2026-05-18.md`.
+- Channels checked: V2EX, X / Twitter, 即刻, 小红书, 少数派, Appinn / 小众软件.
+- Public replies sent: 0.
+- Public replies proposed / awaiting approval: 6 rows in `docs/social_reply_targets_2026-05-18.md`.
+- Private messages sent: 0.
+- New candidates found: 9, including 6 drafted for approval and 3 skipped / held.
+- High-intent leads: none with explicit trial intent today; Johnny Nel remains the strongest medium-signal thread.
+- Blockers: 小红书 direct note URLs still return web gating; screenshot upload was not re-tested because no original 小红书 post was approved for publishing; outbound replies are paused at the approval gate.
+- Retrospective: see below.
+- Next actions: ask user to approve specific reply rows; if approved, send only those rows and record URLs/statuses.
+
+#### Feedback Checked
+
+| Channel | Source | Signal | Action Taken | Follow-Up |
+| --- | --- | --- | --- | --- |
+| V2EX | Main TraceMind post `https://www.v2ex.com/t/1213290` | `low`; 370 clicks, 119 registered views, 4 Google clicks, still no replies. | No repost. | Keep as background visibility; do not count views as intent. |
+| V2EX | `https://www.v2ex.com/t/1213256#reply15` | `no_response`; comment visible, thread now has 30 replies but none directed to TraceMind. | No follow-up. | Recheck only if OP or a relevant user replies. |
+| V2EX | `https://www.v2ex.com/t/1213245#reply6` | `no_response`; comment visible, author is responding to product bug feedback from others. | No follow-up. | Wait for direct interest before another comment. |
+| V2EX | `https://www.v2ex.com/t/1213280?p=1#reply3` | `no_response`; comment remains last visible reply. | No follow-up. | No additional action. |
+| V2EX | `https://www.v2ex.com/t/1213275?p=1#reply5` | `no_response`; thread has later critical comments but no reply to TraceMind. | No follow-up. | Avoid piling on. |
+| X / Twitter | English main post `https://x.com/old_farmer_/status/2055893615612924388` | `low`; 12 views, no replies. | No follow-up. | Main-profile X remains weak. |
+| X / Twitter | Chinese main post `https://x.com/old_farmer_/status/2055922795939565621` | `low`; 20 views, no replies. | No follow-up. | Keep as background presence. |
+| X Vibe Coding Community | Community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium`; 81 views, 1 reply, 1 repost/like-level visible counts; Johnny thread still the clearest signal. | No new reply sent. | Follow if Johnny or another member responds again. |
+| X Vibe Coding Community | Follow-up reply `https://x.com/old_farmer_/status/2055939454217638329` | `low`; 4 views, no further reply. | No follow-up. | Do not continue thread without a new signal. |
+| 即刻 | Own post from following timeline | `low`; 0 visible reactions / comments. | No follow-up. | Keep monitoring but do not repost. |
+| 即刻 | Dreamer妍妍 post | `no_response`; TraceMind comment visible, no reply. | No follow-up. | Wait. |
+| 即刻 | 诸葛子房 post | `no_response`; TraceMind comment visible, no reply. | No follow-up. | Wait. |
+| 即刻 | ThirtyThr33 post | `blocked` / `unverified`; direct page currently shows no comments, so previous comment still cannot be confirmed. | No follow-up. | Treat as `commented_unverified`. |
+| 小红书 | 菠萝头 note | `blocked`; web direct page says current note cannot be browsed and asks to open the app. | No follow-up. | Recheck only through valid search-state or mobile. |
+| 小红书 | Sherotree note | `blocked`; web direct page now also returns the unavailable-note page. | No follow-up. | Recheck only through valid search-state or mobile. |
+| 少数派 | MioKit article `https://sspai.com/post/108082` | `no_response`; comment visible, total comments unchanged at 3. | No follow-up. | Keep 少数派 low-frequency. |
+| Appinn / 小众软件 | TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low` but positive visibility; moderation passed, public topic visible with 37 views, 0 replies. | No bump/repost. | Check replies and views tomorrow. |
+
+#### New Candidates Found
+
+- Drafted for approval in `docs/social_reply_targets_2026-05-18.md`: WeaveFox, V2EX video player, SignalTabs, B 站 popup player, X FixVibe, X Monitrova.
+- Skipped / held: V2EX temporary email post had only a link and too little context; X Credyt looked relevant but replying with another product under billing infra has higher promotion risk; X search results for Codex-built apps were mostly support questions or older posts.
+
+#### Retrospective
+
+- What worked: Appinn moved from moderation pending to public long-tail visibility; V2EX `分享创造` produced fresh AI-built / vibe-coding product candidates; X Vibe Coding Community still has the best matching language around post-launch behavior analysis.
+- What did not work: Main-profile X posts and 即刻 post did not create direct conversations; 小红书 web direct links are still gated; V2EX prior comments did not convert into replies.
+- Best channel today: V2EX for candidate discovery and Appinn for passive qualified exposure.
+- Best customer signal: Appinn approval plus the still-visible X community thread, but neither is trial intent yet.
+- Best wording: "产品上线后的下一轮需要行为证据" and "不用搭复杂看板，直接看用户卡在哪".
+- Weakest assumption: Replying under any adjacent product post without an explicit feedback ask can feel promotional, even when the product fit is real.
+- Workflow change for tomorrow: Process only user-approved rows first, then do another small discovery block; keep 小红书 secondary unless a valid search-state/mobile path is available.
+- Messaging change for tomorrow: Keep first-touch replies no-link by default and anchor on one concrete user path before mentioning TraceMind.
+- Candidate selection change for tomorrow: Prefer posts with a shipped product, visible usage/launch context, and a natural activation/drop-off path; skip one-line tool links with no context.
