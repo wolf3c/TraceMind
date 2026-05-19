@@ -55,6 +55,7 @@ Use the latest dated files when multiple exist. If no current workplan exists, c
 ## Operating Learnings
 
 - X communities can produce more attention than ordinary profile posts when the community is tightly matched to TraceMind's ICP. When a relevant X community is already covered by the plan, prioritize community-native posts and replies before standalone profile posts, while still following community rules and avoiding duplicate shilling. Record community engagement separately from main-profile X posts.
+- Build in Public and Vibe Coding are primary recurring X community channels. In each outreach block, inspect posts from the most recent 24 hours in both communities first, then select product-author posts that naturally match TraceMind before searching broader X. Draft replies that recommend TraceMind only for suitable product posts, and still require row-level user approval before sending.
 - In X/community copy, lead with `Codex`, `Claude Code`, `Cursor`, and `Trae` because they have stronger recognition and larger user bases among AI coding builders. Treat `Lovable`, `Base44`, `Bolt`, and `Replit` as optional secondary examples for no-code or weak-technical vibe coding segments. Do not make Lovable/Base44/Bolt/Replit the main examples unless the day's ICP experiment explicitly targets those builders.
 - Appinn/小众软件 is a low-frequency Chinese tool self-recommendation channel, not a daily comment-spam channel. Use it for polished `开发者自荐` posts when TraceMind has a clear homepage, screenshots, trial ask, and concise setup explanation. Avoid repeated bumps or unrelated comments.
 
@@ -200,7 +201,7 @@ Channel intent:
 
 - 即刻: primary Chinese A0 source; prioritize vibe coding builders and AI product experiments.
 - V2EX: product/tool launch source; prioritize people asking for feedback or validation.
-- X: prioritize relevant X communities first when engagement is stronger; primarily target Codex, Claude Code, Cursor, and Trae builders with short comments matched to the specific community. Add Lovable, Bolt, Replit, and Base44 only when the post/community is explicitly no-code or weak-technical.
+- X: prioritize Build in Public and Vibe Coding posts from the last 24 hours first, then other relevant X communities, then public X search. Primarily target Codex, Claude Code, Cursor, and Trae builders with short comments matched to the specific product post. Add Lovable, Bolt, Replit, and Base44 only when the post/community is explicitly no-code or weak-technical.
 - 小红书: discovery-heavy A0 source; prioritize non-technical or weak-technical creators showing AI-built products, workflows, or launch screenshots. Default to candidate collection and reply drafts; ask before publishing original posts.
 - 少数派: tool and productivity audience; prioritize polished tools, plugins, workflows, and app authors. Use more substantive, less salesy comments; ask before submitting articles or original posts.
 - Appinn/小众软件: low-frequency tool discovery audience; publish as `开发者自荐` only after user confirmation. Use practical wording: what problem it solves, who it is for, setup effort, current trial status, homepage, and feedback requested.
