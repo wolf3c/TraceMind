@@ -7,7 +7,7 @@ import java.util.UUID
 
 object TraceMindSDK {
   const val VERSION = "0.1.0"
-  const val CONTENT_HASH = "sha256:4a4021126208f8d58635d3664090bb8bceae0e6e8b64e0b19a845e75a7d6a7da"
+  const val CONTENT_HASH = "sha256:a4a39f8cc0f1001da9c5d627d2213c087f17b44eefe76ddfa6391c250750fba6"
 }
 
 data class TraceMindTarget(

@@ -1,6 +1,6 @@
 {
   "manifestVersion": 1,
-  "generatedAt": "2026-05-18T02:28:26.461Z",
+  "generatedAt": "2026-05-20T15:14:30.682Z",
   "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
   "sourceRef": "tracemind-release-2026.5.18-1",
   "sdks": [
@@ -19,16 +19,18 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored swift SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for swift based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "swift test --package-path sdk/ios"
-      ]
+      ],
+      "distributionMode": "local_source",
+      "publishStatus": "not_published"
     },
     {
       "sdkName": "android",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:4a4021126208f8d58635d3664090bb8bceae0e6e8b64e0b19a845e75a7d6a7da",
+      "contentHash": "sha256:a4a39f8cc0f1001da9c5d627d2213c087f17b44eefe76ddfa6391c250750fba6",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.5.18-1",
       "sdkSourcePath": "sdk/android",
@@ -39,16 +41,39 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored android SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for android based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "npm run test:sdk:android"
-      ]
+      ],
+      "distributionMode": "registry",
+      "publishStatus": "published",
+      "registry": {
+        "type": "maven_central",
+        "packageName": "io.github.wolf3c.tracemind:tracemind-android",
+        "groupId": "io.github.wolf3c.tracemind",
+        "artifactId": "tracemind-android",
+        "packageVersion": "2026.5.18-1",
+        "contentHash": "sha256:a4a39f8cc0f1001da9c5d627d2213c087f17b44eefe76ddfa6391c250750fba6",
+        "installCommands": [
+          "Ensure mavenCentral() is present in dependencyResolutionManagement or repositories.",
+          "Add implementation(\"io.github.wolf3c.tracemind:tracemind-android:2026.5.18-1\") to the Android app module dependencies."
+        ],
+        "verificationCommands": [
+          "Resolve io.github.wolf3c.tracemind:tracemind-android:2026.5.18-1 from mavenCentral()"
+        ]
+      },
+      "localSourceFallback": {
+        "distributionMode": "local_source",
+        "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+        "sourceRef": "tracemind-release-2026.5.18-1",
+        "sdkSourcePath": "sdk/android"
+      }
     },
     {
       "sdkName": "react_native",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:2eaa878c4adce521b7d1f34a77d66713f9e361857df54f69610fe0930b68544a",
+      "contentHash": "sha256:cf2e50fba498f1624d2478fef2c81e13a0fd1224ec51d178bd985325e67812da",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.5.18-1",
       "sdkSourcePath": "sdk/react-native",
@@ -59,16 +84,39 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored react_native SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for react_native based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "npm test --prefix sdk/react-native"
-      ]
+      ],
+      "distributionMode": "registry",
+      "publishStatus": "published",
+      "registry": {
+        "type": "npm",
+        "packageName": "@tracemind/react-native",
+        "packageVersion": "2026.5.18-1",
+        "contentHash": "sha256:cf2e50fba498f1624d2478fef2c81e13a0fd1224ec51d178bd985325e67812da",
+        "installCommands": [
+          "npm install @tracemind/react-native@2026.5.18-1",
+          "pnpm add @tracemind/react-native@2026.5.18-1",
+          "yarn add @tracemind/react-native@2026.5.18-1",
+          "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
+        ],
+        "verificationCommands": [
+          "npm view @tracemind/react-native@2026.5.18-1 version"
+        ]
+      },
+      "localSourceFallback": {
+        "distributionMode": "local_source",
+        "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+        "sourceRef": "tracemind-release-2026.5.18-1",
+        "sdkSourcePath": "sdk/react-native"
+      }
     },
     {
       "sdkName": "mini_program",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:ed695293003f2a3c422a35aa0e20c355d0102091d86e27afa9d6c8c4494ec0aa",
+      "contentHash": "sha256:b20b5e2625e07275b2a3db12fbc4b7df4f42d446b797334419a6c4a154f577c4",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.5.18-1",
       "sdkSourcePath": "sdk/mini-program",
@@ -79,16 +127,39 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored mini_program SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for mini_program based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "npm test --prefix sdk/mini-program"
-      ]
+      ],
+      "distributionMode": "registry",
+      "publishStatus": "published",
+      "registry": {
+        "type": "npm",
+        "packageName": "@tracemind/mini-program",
+        "packageVersion": "2026.5.18-1",
+        "contentHash": "sha256:b20b5e2625e07275b2a3db12fbc4b7df4f42d446b797334419a6c4a154f577c4",
+        "installCommands": [
+          "npm install @tracemind/mini-program@2026.5.18-1",
+          "pnpm add @tracemind/mini-program@2026.5.18-1",
+          "yarn add @tracemind/mini-program@2026.5.18-1",
+          "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
+        ],
+        "verificationCommands": [
+          "npm view @tracemind/mini-program@2026.5.18-1 version"
+        ]
+      },
+      "localSourceFallback": {
+        "distributionMode": "local_source",
+        "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+        "sourceRef": "tracemind-release-2026.5.18-1",
+        "sdkSourcePath": "sdk/mini-program"
+      }
     },
     {
       "sdkName": "browser_extension",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:cbd3c9df52bc5548ce8dfcaa7db9aa1c55ac201fc670eb395d9bb3c53c57d47d",
+      "contentHash": "sha256:761e51dfbeb898f8df5d0d2a3187cac027eda2b271a047ff77dca5b96e8b9a33",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.5.18-1",
       "sdkSourcePath": "sdk/browser-extension",
@@ -99,16 +170,39 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored browser_extension SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for browser_extension based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "npm test --prefix sdk/browser-extension"
-      ]
+      ],
+      "distributionMode": "registry",
+      "publishStatus": "published",
+      "registry": {
+        "type": "npm",
+        "packageName": "@tracemind/browser-extension",
+        "packageVersion": "2026.5.18-1",
+        "contentHash": "sha256:761e51dfbeb898f8df5d0d2a3187cac027eda2b271a047ff77dca5b96e8b9a33",
+        "installCommands": [
+          "npm install @tracemind/browser-extension@2026.5.18-1",
+          "pnpm add @tracemind/browser-extension@2026.5.18-1",
+          "yarn add @tracemind/browser-extension@2026.5.18-1",
+          "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
+        ],
+        "verificationCommands": [
+          "npm view @tracemind/browser-extension@2026.5.18-1 version"
+        ]
+      },
+      "localSourceFallback": {
+        "distributionMode": "local_source",
+        "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+        "sourceRef": "tracemind-release-2026.5.18-1",
+        "sdkSourcePath": "sdk/browser-extension"
+      }
     },
     {
       "sdkName": "mcp_node",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:14771368102e2278847c81f05d89d2bb3399693abd0c568e291a6564307e3736",
+      "contentHash": "sha256:93db7aee1392bc4bd9c9947a6987eae1801a9d9c707aaff9703c81cbd38e4c7c",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.5.18-1",
       "sdkSourcePath": "sdk/mcp-node",
@@ -120,11 +214,34 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored mcp_node SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for mcp_node based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "npm test --prefix sdk/mcp-node"
-      ]
+      ],
+      "distributionMode": "registry",
+      "publishStatus": "published",
+      "registry": {
+        "type": "npm",
+        "packageName": "@tracemind/mcp-node",
+        "packageVersion": "2026.5.18-1",
+        "contentHash": "sha256:93db7aee1392bc4bd9c9947a6987eae1801a9d9c707aaff9703c81cbd38e4c7c",
+        "installCommands": [
+          "npm install @tracemind/mcp-node@2026.5.18-1",
+          "pnpm add @tracemind/mcp-node@2026.5.18-1",
+          "yarn add @tracemind/mcp-node@2026.5.18-1",
+          "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
+        ],
+        "verificationCommands": [
+          "npm view @tracemind/mcp-node@2026.5.18-1 version"
+        ]
+      },
+      "localSourceFallback": {
+        "distributionMode": "local_source",
+        "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+        "sourceRef": "tracemind-release-2026.5.18-1",
+        "sdkSourcePath": "sdk/mcp-node"
+      }
     },
     {
       "sdkName": "mcp_python",
@@ -140,16 +257,37 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored mcp_python SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for mcp_python based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "PYTHONPATH=sdk/mcp-python python3 -m unittest discover -s sdk/mcp-python/tests"
-      ]
+      ],
+      "distributionMode": "registry",
+      "publishStatus": "published",
+      "registry": {
+        "type": "pypi",
+        "packageName": "tracemind-mcp",
+        "packageVersion": "2026.5.18.post1",
+        "contentHash": "sha256:e13435d521ce6a41e19e0e6e835f0ddfa8a3f14c877fca57df4f5b8b163ae573",
+        "installCommands": [
+          "pip install tracemind-mcp==2026.5.18.post1",
+          "python -m pip install tracemind-mcp==2026.5.18.post1"
+        ],
+        "verificationCommands": [
+          "python -m pip install --dry-run --no-deps tracemind-mcp==2026.5.18.post1"
+        ]
+      },
+      "localSourceFallback": {
+        "distributionMode": "local_source",
+        "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+        "sourceRef": "tracemind-release-2026.5.18-1",
+        "sdkSourcePath": "sdk/mcp-python"
+      }
     },
     {
       "sdkName": "server_node",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:77bc22cff95e1505bd2153340c68549c2f19758a3dc62705d0a2fa906db3dd2d",
+      "contentHash": "sha256:a6e6694913e98c9bb1c920cda26680403e52bab342a506c6656ef214e24069b5",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.5.18-1",
       "sdkSourcePath": "sdk/server-node",
@@ -160,11 +298,34 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored server_node SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for server_node based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "npm test --prefix sdk/server-node"
-      ]
+      ],
+      "distributionMode": "registry",
+      "publishStatus": "published",
+      "registry": {
+        "type": "npm",
+        "packageName": "@tracemind/server-node",
+        "packageVersion": "2026.5.18-1",
+        "contentHash": "sha256:a6e6694913e98c9bb1c920cda26680403e52bab342a506c6656ef214e24069b5",
+        "installCommands": [
+          "npm install @tracemind/server-node@2026.5.18-1",
+          "pnpm add @tracemind/server-node@2026.5.18-1",
+          "yarn add @tracemind/server-node@2026.5.18-1",
+          "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
+        ],
+        "verificationCommands": [
+          "npm view @tracemind/server-node@2026.5.18-1 version"
+        ]
+      },
+      "localSourceFallback": {
+        "distributionMode": "local_source",
+        "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+        "sourceRef": "tracemind-release-2026.5.18-1",
+        "sdkSourcePath": "sdk/server-node"
+      }
     },
     {
       "sdkName": "server_python",
@@ -180,11 +341,32 @@
       "upgradePolicy": {
         "level": "recommended",
         "reason": "TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.",
-        "agentPrompt": "Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored server_python SDK, run verificationCommands, and report the result."
+        "agentPrompt": "Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for server_python based on distributionMode, run verificationCommands, and report the result."
       },
       "verificationCommands": [
         "PYTHONPATH=sdk/server-python python3 -m unittest discover -s sdk/server-python/tests"
-      ]
+      ],
+      "distributionMode": "registry",
+      "publishStatus": "published",
+      "registry": {
+        "type": "pypi",
+        "packageName": "tracemind-server",
+        "packageVersion": "2026.5.18.post1",
+        "contentHash": "sha256:25af77eb59bf420a8e6ac6a721aea03002c5d9b2ae673a4f33d351f8dad31969",
+        "installCommands": [
+          "pip install tracemind-server==2026.5.18.post1",
+          "python -m pip install tracemind-server==2026.5.18.post1"
+        ],
+        "verificationCommands": [
+          "python -m pip install --dry-run --no-deps tracemind-server==2026.5.18.post1"
+        ]
+      },
+      "localSourceFallback": {
+        "distributionMode": "local_source",
+        "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
+        "sourceRef": "tracemind-release-2026.5.18-1",
+        "sdkSourcePath": "sdk/server-python"
+      }
     }
   ]
 }

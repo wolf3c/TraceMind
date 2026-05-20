@@ -1,0 +1,12 @@
+project:
+  name: tracemind-android
+  version: "{{ Env.TRACEMIND_SDK_PUBLISH_VERSION }}"
+
+deploy:
+  maven:
+    mavenCentral:
+      tracemind:
+        active: ALWAYS
+        url: https://central.sonatype.com/api/v1/publisher
+        stagingRepositories:
+          - sdk/android/build/maven-staging

@@ -39,6 +39,12 @@ const SDK_CONFIGS = [
     sdkName: 'android',
     sdkSourcePath: 'sdk/android',
     platforms: ['android'],
+    registry: {
+      type: 'maven_central',
+      packageName: 'io.github.wolf3c.tracemind:tracemind-android',
+      groupId: 'io.github.wolf3c.tracemind',
+      artifactId: 'tracemind-android',
+    },
     versionFiles: [{ file: 'sdk/android/src/main/java/com/tracemind/TraceMindPayloadBuilder.kt', kind: 'kotlin' }],
     runtimeRoots: [
       { path: 'sdk/android/build.gradle.kts', type: 'file' },
@@ -51,6 +57,10 @@ const SDK_CONFIGS = [
     sdkName: 'react_native',
     sdkSourcePath: 'sdk/react-native',
     platforms: ['react_native'],
+    registry: {
+      type: 'npm',
+      packageName: '@tracemind/react-native',
+    },
     versionFiles: [
       { file: 'sdk/react-native/package.json', kind: 'package_json' },
       { file: 'sdk/react-native/index.js', kind: 'js' },
@@ -67,6 +77,10 @@ const SDK_CONFIGS = [
     sdkName: 'mini_program',
     sdkSourcePath: 'sdk/mini-program',
     platforms: ['mini_program'],
+    registry: {
+      type: 'npm',
+      packageName: '@tracemind/mini-program',
+    },
     versionFiles: [
       { file: 'sdk/mini-program/package.json', kind: 'package_json' },
       { file: 'sdk/mini-program/index.js', kind: 'js' },
@@ -78,6 +92,10 @@ const SDK_CONFIGS = [
     sdkName: 'browser_extension',
     sdkSourcePath: 'sdk/browser-extension',
     platforms: ['browser_extension'],
+    registry: {
+      type: 'npm',
+      packageName: '@tracemind/browser-extension',
+    },
     versionFiles: [
       { file: 'sdk/browser-extension/package.json', kind: 'package_json' },
       { file: 'sdk/browser-extension/index.js', kind: 'js' },
@@ -89,6 +107,10 @@ const SDK_CONFIGS = [
     sdkName: 'mcp_node',
     sdkSourcePath: 'sdk/mcp-node',
     platforms: ['mcp_node', 'agent_skill'],
+    registry: {
+      type: 'npm',
+      packageName: '@tracemind/mcp-node',
+    },
     versionFiles: [
       { file: 'sdk/mcp-node/package.json', kind: 'package_json' },
       { file: 'sdk/mcp-node/index.js', kind: 'js' },
@@ -100,6 +122,10 @@ const SDK_CONFIGS = [
     sdkName: 'mcp_python',
     sdkSourcePath: 'sdk/mcp-python',
     platforms: ['mcp_python'],
+    registry: {
+      type: 'pypi',
+      packageName: 'tracemind-mcp',
+    },
     versionFiles: [{ file: 'sdk/mcp-python/tracemind_mcp/__init__.py', kind: 'python' }],
     runtimeRoots: [{ path: 'sdk/mcp-python/tracemind_mcp', extensions: ['.py'] }],
     verificationCommands: ['PYTHONPATH=sdk/mcp-python python3 -m unittest discover -s sdk/mcp-python/tests'],
@@ -108,6 +134,10 @@ const SDK_CONFIGS = [
     sdkName: 'server_node',
     sdkSourcePath: 'sdk/server-node',
     platforms: ['server_node'],
+    registry: {
+      type: 'npm',
+      packageName: '@tracemind/server-node',
+    },
     versionFiles: [
       { file: 'sdk/server-node/package.json', kind: 'package_json' },
       { file: 'sdk/server-node/index.js', kind: 'js' },
@@ -119,6 +149,10 @@ const SDK_CONFIGS = [
     sdkName: 'server_python',
     sdkSourcePath: 'sdk/server-python',
     platforms: ['server_python'],
+    registry: {
+      type: 'pypi',
+      packageName: 'tracemind-server',
+    },
     versionFiles: [{ file: 'sdk/server-python/tracemind_server/__init__.py', kind: 'python' }],
     runtimeRoots: [{ path: 'sdk/server-python/tracemind_server', extensions: ['.py'] }],
     verificationCommands: ['PYTHONPATH=sdk/server-python python3 -m unittest discover -s sdk/server-python/tests'],
@@ -279,7 +313,87 @@ function defaultUpgradePolicy(sdkName) {
   return {
     level: 'recommended',
     reason: 'TraceMind uses SDK content hash as the source of truth so coding agents can detect updates even if a human forgets a version bump.',
-    agentPrompt: `Ask your coding agent to run tracemind.project_health, read .tracemind-sdk.json, call tracemind.capture_setup({ platform }), update the vendored ${sdkName} SDK, run verificationCommands, and report the result.`,
+    agentPrompt: `Ask your coding agent to run tracemind.project_health, call tracemind.capture_setup({ platform }), follow the returned upgradeCommands for ${sdkName} based on distributionMode, run verificationCommands, and report the result.`,
+  };
+}
+
+function upgradePolicyFor(config, existing) {
+  const current = existing.upgradePolicy;
+  if (!current) return defaultUpgradePolicy(config.sdkName);
+  if (current.agentPrompt?.includes('read .tracemind-sdk.json') && current.agentPrompt?.includes('update the vendored')) {
+    return defaultUpgradePolicy(config.sdkName);
+  }
+  return current;
+}
+
+function registryInstallCommands(registry, version) {
+  if (registry.type === 'npm') {
+    return [
+      `npm install ${registry.packageName}@${version}`,
+      `pnpm add ${registry.packageName}@${version}`,
+      `yarn add ${registry.packageName}@${version}`,
+      'Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together.',
+    ];
+  }
+  if (registry.type === 'pypi') {
+    return [
+      `pip install ${registry.packageName}==${version}`,
+      `python -m pip install ${registry.packageName}==${version}`,
+    ];
+  }
+  if (registry.type === 'maven_central') {
+    return [
+      'Ensure mavenCentral() is present in dependencyResolutionManagement or repositories.',
+      `Add implementation("${registry.groupId}:${registry.artifactId}:${version}") to the Android app module dependencies.`,
+    ];
+  }
+  return [];
+}
+
+function registryVerificationCommands(registry, version) {
+  if (registry.type === 'npm') return [`npm view ${registry.packageName}@${version} version`];
+  if (registry.type === 'pypi') return [`python -m pip install --dry-run --no-deps ${registry.packageName}==${version}`];
+  if (registry.type === 'maven_central') return [`Resolve ${registry.groupId}:${registry.artifactId}:${version} from mavenCentral()`];
+  return [];
+}
+
+function registryPackageVersion(registry, version) {
+  if (registry.type === 'pypi') {
+    return version.replace(/-(\d+)$/, '.post$1');
+  }
+  return version;
+}
+
+function registryMetadata(config, existing, hash, ref) {
+  if (!config.registry) {
+    return {
+      distributionMode: 'local_source',
+      publishStatus: 'not_published',
+    };
+  }
+  const previous = existing.registry || {};
+  const previousVersionIsCanonical = previous.packageVersion
+    && previous.packageVersion === registryPackageVersion(config.registry, previous.packageVersion);
+  const version = previous.contentHash === hash && previousVersionIsCanonical
+    ? previous.packageVersion
+    : registryPackageVersion(config.registry, packageVersion());
+  const registry = {
+    ...config.registry,
+    packageVersion: version,
+    contentHash: hash,
+    installCommands: registryInstallCommands(config.registry, version),
+    verificationCommands: registryVerificationCommands(config.registry, version),
+  };
+  return {
+    distributionMode: 'registry',
+    publishStatus: 'published',
+    registry,
+    localSourceFallback: {
+      distributionMode: 'local_source',
+      sourceRepo: SOURCE_REPO,
+      sourceRef: ref,
+      sdkSourcePath: config.sdkSourcePath,
+    },
   };
 }
 
@@ -298,8 +412,9 @@ function buildManifest(existingManifest = null) {
       sdkSourcePath: config.sdkSourcePath,
       platforms: config.platforms,
       minimumSupportedHash: existing.minimumSupportedHash || hash,
-      upgradePolicy: existing.upgradePolicy || defaultUpgradePolicy(config.sdkName),
+      upgradePolicy: upgradePolicyFor(config, existing),
       verificationCommands: config.verificationCommands,
+      ...registryMetadata(config, existing, hash, ref),
     };
   });
 

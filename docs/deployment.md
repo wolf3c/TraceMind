@@ -38,10 +38,13 @@ git tag tracemind-release-<version>
 git push origin main
 git push origin tracemind-release-<version>
 npm run check:deploy-git-publication -- <version>
+npm run check:sdk-registry-publication -- <version>
 npm run deploy
 ```
 
 If `check:deploy-git-publication` fails, do not deploy. It verifies `package.json.version`, the manifest `sourceRef`, clean `main`, `origin/main`, and the remote release tag so the Galaxy app cannot advertise SDK source that is missing or mismatched on GitHub.
+
+The release tag also triggers the `SDK Publish` GitHub Actions workflow. That workflow publishes registry-backed SDKs to npm, PyPI, and Maven Central and does not run `npm run deploy`. `$deploy` remains the only path that runs the Meteor deploy command. If `check:sdk-registry-publication` fails, do not deploy; the app must not advertise registry install commands until every registry-backed SDK in `sdk/release_manifest.json` is visible in its package registry. Swift remains a local-source SDK in this flow.
 
 Tail production logs:
 

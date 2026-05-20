@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tracemind-server"
+version = "0.1.0"
+description = "TraceMind server-side manual capture SDK for Python."
+requires-python = ">=3.9"
+license = { text = "UNLICENSED" }
+
+[project.urls]
+Repository = "https://github.com/wolf3c/TraceMind"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tracemind_server"]

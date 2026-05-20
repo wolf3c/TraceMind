@@ -159,3 +159,11 @@ Then add the capture snippet to a small test web page, generate several interact
 - Updated `tracemind.capture_setup`, README, MCP design, public Skill, AGENTS snippet, and agent setup prompts so SDK platforms use explicit `distributionMode: "local_source"` install guidance with GitHub clone, `vendor/` copy, local file dependency, SwiftPM local path, Gradle module, or PYTHONPATH instructions instead of implying registry-published packages.
 - Added SDK release governance for vibe-coding customers: `sdk/release_manifest.json`, `npm run update:sdk-manifest`, `npm run test:sdk-release`, CI gating, `.tracemind-sdk.json` vendored install manifests, runtime `sourceDetails.sdkVersion/sdkContentHash`, and `project_health` SDK upgrade findings.
 - Added the deploy-time SDK GitHub source publication gate: release manifests point at immutable `tracemind-release-<version>` tags, `$deploy` must push `origin main` plus the release tag before Galaxy deployment, and `npm run check:deploy-git-publication -- <version>` verifies the remote refs match `HEAD`.
+
+## 2026-05-20
+
+### Completed
+
+- Added registry-first SDK release metadata so npm, PyPI, and Maven Central backed SDKs can return package-manager install commands from `tracemind.capture_setup`, while Swift remains local source.
+- Added the `SDK Publish` tag workflow and `npm run check:sdk-registry-publication -- <version>` gate so `$deploy` waits for registry publication before the single Meteor deploy step.
+- Added npm/PyPI/Android publication metadata and package staging support for release-tag driven SDK publishing without committing registry credentials.

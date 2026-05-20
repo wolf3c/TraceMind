@@ -1,9 +1,21 @@
 {
   "name": "@tracemind/server-node",
   "version": "0.1.0",
-  "private": true,
+  "description": "TraceMind server-side manual capture SDK for Node.js.",
+  "license": "UNLICENSED",
   "main": "index.js",
+  "files": [
+    "index.js"
+  ],
   "scripts": {
     "test": "node --test test/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wolf3c/TraceMind.git",
+    "directory": "sdk/server-node"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

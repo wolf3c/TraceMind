@@ -1,11 +1,25 @@
 {
   "name": "@tracemind/react-native",
   "version": "0.1.0",
-  "private": true,
+  "description": "TraceMind React Native bridge SDK.",
+  "license": "UNLICENSED",
   "main": "index.js",
   "react-native": "index.js",
+  "files": [
+    "index.js",
+    "ios",
+    "android"
+  ],
   "scripts": {
     "test": "node --test test/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wolf3c/TraceMind.git",
+    "directory": "sdk/react-native"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "peerDependencies": {
     "react-native": ">=0.72"
