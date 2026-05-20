@@ -258,3 +258,61 @@
 - X Community change for tomorrow: Treat suitable X Communities as a dedicated acquisition channel. Find 3-5 communities around AI coding, vibe coding, build in public, indie hackers, and AI MVP builders; qualify rules/activity/product-author density before drafting replies.
 - X Community recurring rule: In future outreach blocks, inspect Build in Public and Vibe Coding posts from the last 24 hours first, then draft TraceMind recommendation replies only for suitable product-author posts.
 - Candidate selection change for tomorrow: Prefer explicit conversion, retention, or "不知道为什么" posts over generic launch celebration posts.
+
+## 2026-05-20
+
+### Daily Run
+
+- Workplan used: `docs/customer_acquisition_workplan_2026-05-20.md`.
+- Channels checked: V2EX, X / Twitter, Appinn / 小众软件.
+- Public replies sent: 6.
+- Public replies proposed / awaiting approval: 1 row in `docs/social_reply_targets_2026-05-20.md` remains unsent; 6 carry-over rows remain in `docs/social_reply_targets_2026-05-18.md`.
+- Private messages sent: 0.
+- New candidates found: 7 drafted for approval, including 3 direct follow-ups to already-sent V2EX replies and 1 X Chinese-search candidate.
+- High-intent leads: 秒译, GPT Image2, and Markra all replied directly to yesterday's TraceMind comments.
+- Blockers: no public reply can be sent until row-level approval; X search did not produce a strong recent product-author candidate today; X Johnny direct status URL loaded blank, but the parent thread remained readable.
+- Retrospective: see below.
+- Next actions: monitor replies to K, L, M, O, P, and Q; row N remains unsent unless explicitly approved later.
+
+#### Feedback Checked
+
+| Channel | Source | Signal | Action Taken | Follow-Up |
+| --- | --- | --- | --- | --- |
+| V2EX | Main TraceMind post `https://www.v2ex.com/t/1213290` | `low`; 561 clicks, 161 registered views, 4 Google clicks, still no replies. | No repost. | Keep as background visibility; do not treat views as trial intent. |
+| V2EX | 秒译 `https://www.v2ex.com/t/1213722#reply5` | `high`; OP directly asked `@wolf3c 怎么使用呢`. | Sent row K: `https://www.v2ex.com/t/1213722#reply11`. | Monitor for setup/trial reply. |
+| V2EX | GPT Image2 `https://www.v2ex.com/t/1213620#reply30` | `high`; OP recognized the TraceMind angle as a user-path problem. | Sent row L: `https://www.v2ex.com/t/1213620#reply37`. | Monitor for diagnostic/trial reply. |
+| V2EX | chatshell `https://www.v2ex.com/t/1213649#reply7` | `no_response`; no direct reply to TraceMind, though OP fixed another user's PDF/SQL feedback. | No follow-up. | Wait for direct interest. |
+| V2EX | Markra `https://www.v2ex.com/t/1213587#reply16` | `high`; OP asked whether this requires behavioral instrumentation. | Sent row M: `https://www.v2ex.com/t/1213587#reply19`. | Monitor for technical setup reply. |
+| Appinn / 小众软件 | TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; public topic remains visible, 56 views, 1 homepage link click, 0 replies. | No bump/repost. | Check comments and link clicks tomorrow. |
+| X / Twitter | Community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium-low`; 122 views, Johnny remains the only reply. | No new reply. | Follow only if Johnny or another member replies again. |
+| X / Twitter | Johnny follow-up `https://x.com/old_farmer_/status/2055939454217638329` | `low` / `partially_blocked`; parent thread shows no further reply, direct status URL loaded blank. | No new reply. | Use parent thread for future checks if direct URL remains unreliable. |
+| X / Twitter | Chinese search block | `medium`; Chinese X queries found one draftable Codex-built product-author post and several lower-fit discussion/product mentions. | Sent row Q: `https://x.com/MZlwbg/status/2056722454501060942`. | Monitor for reply or profile visit; keep Chinese X search in future blocks. |
+
+#### New Candidates Found
+
+- Drafted for approval in `docs/social_reply_targets_2026-05-20.md`: 秒译 follow-up, GPT Image2 follow-up, Markra follow-up, Termark, 育儿食用建议 App, HanGrid, X Chinese-search row Q.
+- Skipped / held: chatshell because there was no direct reply to TraceMind; Scripod because the thread already had another tool promotion and the fit was weaker; English X search results because they were mostly safety opinions, old launch posts, generic discussion, or no result; Chinese X skipped results because they were not product-author posts, not feedback contexts, or could not be opened reliably.
+
+#### New Public Replies
+
+| Channel | Source | Reply URL | Fit | Notes |
+| --- | --- | --- | --- | --- |
+| V2EX | 秒译 follow-up | `https://www.v2ex.com/t/1213722#reply11` | High; author asked how to use TraceMind. | Explained minimal Web vs native SDK/key-event path and offered a minimal setup diagnosis. |
+| V2EX | GPT Image2 follow-up | `https://www.v2ex.com/t/1213620#reply37` | High; author recognized the user-path diagnosis angle. | Positioned TraceMind as AI-readable behavior evidence for SEO traffic with no paid conversion. |
+| V2EX | Markra follow-up | `https://www.v2ex.com/t/1213587#reply19` | High; author asked whether behavior instrumentation is required. | Clarified that behavior capture is needed, but the first pass can focus on a small set of key paths. |
+| V2EX | 育儿食用建议 App | `https://www.v2ex.com/t/1213924#reply6` | High; vibe-coded App with real trial feedback and differentiation questions. | Focused on product behavior path only, avoiding health advice. |
+| V2EX | HanGrid | `https://www.v2ex.com/t/1213769#reply26` | Medium-high; AI-built game with dense gameplay feedback. | Focused on first-5-minute retention and validating mechanics changes. |
+| X / 独立开发者 Community | B 站 UP 主内容监控系统 | `https://x.com/MZlwbg/status/2056722454501060942` | Medium-high; Codex-built Chinese product-author post. | Used concise praise -> TraceMind value -> link wording. |
+
+#### Retrospective
+
+- What worked: V2EX comments finally generated concrete direct replies, especially questions about usage, user paths, and whether TraceMind requires behavioral instrumentation.
+- What did not work: owned posts and Appinn continued to produce visibility but no public replies; X recent-search discovery was weaker than V2EX today.
+- Best channel today: V2EX, specifically follow-up replies under high-context product posts.
+- Best customer signal: 秒译 asking "怎么使用呢" is the clearest trial-adjacent signal; Markra asking about instrumentation is the clearest technical-fit signal.
+- Best wording: anchoring on one concrete path before naming TraceMind made the replies feel like product diagnosis rather than generic promotion.
+- Weakest assumption: X Build in Public / Vibe Coding search does not guarantee high-fit daily candidates; when recent posts are weak, forcing X volume would reduce reply quality.
+- Search correction: X must be searched with Chinese keywords as well as English keywords; the Chinese block found a better ICP-adjacent product-author candidate than the English-only block.
+- Workflow change for tomorrow: prioritize approved high-intent follow-ups before any new discovery; do not add more candidates until K-M are either sent, rejected, or rewritten.
+- Messaging change for tomorrow: when asked "how to use", be precise that native apps still need SDK/key-event setup while Web can start with lighter auto capture.
+- Candidate selection change for tomorrow: treat direct replies to existing TraceMind comments as higher priority than fresh cold replies, even if the fresh thread looks high volume.

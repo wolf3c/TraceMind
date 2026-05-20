@@ -57,6 +57,7 @@ Use the latest dated files when multiple exist. If no current workplan exists, c
 - X communities can produce more attention than ordinary profile posts when the community is tightly matched to TraceMind's ICP. When a relevant X community is already covered by the plan, prioritize community-native posts and replies before standalone profile posts, while still following community rules and avoiding duplicate shilling. Record community engagement separately from main-profile X posts.
 - Build in Public and Vibe Coding are primary recurring X community channels. In each outreach block, inspect posts from the most recent 24 hours in both communities first, then select product-author posts that naturally match TraceMind before searching broader X. Draft replies that recommend TraceMind only for suitable product posts, and still require row-level user approval before sending.
 - In X/community copy, lead with `Codex`, `Claude Code`, `Cursor`, and `Trae` because they have stronger recognition and larger user bases among AI coding builders. Treat `Lovable`, `Base44`, `Bolt`, and `Replit` as optional secondary examples for no-code or weak-technical vibe coding segments. Do not make Lovable/Base44/Bolt/Replit the main examples unless the day's ICP experiment explicitly targets those builders.
+- X search must include Chinese keywords as well as English keywords. Do not assume X product-author discovery is English-only; in each X outreach block, run at least one Chinese query set for AI coding / vibe coding builders before judging X candidate quality. Prefer intent-based Chinese query combinations over fixed phrases like `做了` / `做了一个`, because product authors may say `实现了`, `完成了`, `搞定了`, `上线`, `发布`, `内测`, `coding`, `vibe`, or simply describe the product.
 - Appinn/小众软件 is a low-frequency Chinese tool self-recommendation channel, not a daily comment-spam channel. Use it for polished `开发者自荐` posts when TraceMind has a clear homepage, screenshots, trial ask, and concise setup explanation. Avoid repeated bumps or unrelated comments.
 
 ## Run Modes
@@ -161,7 +162,25 @@ Prioritize people who:
 - Built with Codex, Claude Code, Cursor, Trae, or similar AI coding agents; include Lovable, Base44, Bolt, and Replit when targeting no-code or weak-technical builders.
 - Are non-technical or weak-technical creators who shipped with vibe coding.
 
-Use short, specific draft replies. Anchor each draft in the other person's product before mentioning TraceMind.
+Use short, specific draft replies. For comment-based invitations, use this order:
+
+1. Praise the other person's product or progress with one concrete detail. Keep it human and lightweight, not like a formal review.
+2. Recommend TraceMind as something "I am building" and state the specific value it can provide to that product.
+3. Put the link last.
+
+The goal is an invitation, not a long diagnosis. Do not lead with a multi-sentence analysis of their product and then append TraceMind. Convert the observation into the value TraceMind can provide.
+
+For Chinese X replies, prefer a concise pattern:
+
+```text
+<具体称赞>。我做的 TraceMind 可以帮你<具体看见/验证的价值>，希望帮你<下一阶段结果>。欢迎试用：<link>
+```
+
+Example:
+
+```text
+2 天从0到1 👍。我做的 TraceMind 可以帮你看用户是否添加对标账号、看懂洞察、后续回来追踪，希望帮你实现从1到n。欢迎试用：<link>
+```
 
 Preferred value angle:
 
@@ -192,7 +211,13 @@ Default search prompts:
 
 - 即刻: `vibe coding 做了`, `做了一个 产品`, `欢迎反馈`, `Codex 做了`, `Claude Code 做了`, `Cursor 做了一个`, `Trae 做了`, `Lovable 做了`, `上线了 求反馈`
 - V2EX: `https://www.v2ex.com/go/create`, `https://www.v2ex.com/go/ideas`
-- X: `"built with Codex" app`, `"built with Claude Code" app`, `"built this with Cursor" feedback`, `"built with Trae" app`, `"AI coding agent" launch`, `"vibe coded" app launch`; add `"built with Lovable" feedback` and `"made with Lovable" app` only for no-code-focused searches.
+- X English: `"built with Codex" app`, `"built with Claude Code" app`, `"built this with Cursor" feedback`, `"built with Trae" app`, `"AI coding agent" launch`, `"vibe coded" app launch`; add `"built with Lovable" feedback` and `"made with Lovable" app` only for no-code-focused searches.
+- X Chinese: use query combinations across these buckets instead of relying on `做了` / `做了一个`:
+  - AI coding tools: `Codex`, `Claude Code`, `Cursor`, `Trae`, `AI 编程`, `AI coding`, `vibe coding`, `氛围编程`.
+  - Build verbs: `实现了`, `完成了`, `搞定了`, `上线`, `发布`, `内测`, `公测`, `coding`, `vibe`, `ship`, `launch`.
+  - Product intent: `产品`, `app`, `工具`, `插件`, `网站`, `SaaS`, `独立开发`, `一人公司`, `种子用户`, `早期用户`, `求反馈`, `欢迎试用`.
+  - Diagnosis intent: `没人付费`, `没有转化`, `留存`, `用户路径`, `用户卡住`, `功能没人用`, `找用户`, `增长`.
+  - Example queries: `Codex 上线 产品`, `Claude Code 内测 工具`, `Cursor 插件 求反馈`, `vibe coding app 欢迎试用`, `AI 编程 独立开发 找用户`, `AI 产品 没人付费`, `产品 用户路径 转化`.
 - 小红书: `vibe coding`, `AI 做产品`, `用 AI 做了一个 app`, `Codex 做产品`, `Claude Code 做产品`, `Cursor 做产品`, `Trae 做产品`, `Lovable 做网站`, `零基础 做 app`
 - 少数派: `AI 工具`, `独立开发`, `效率工具`, `我做了一个`, `产品上线`, `插件`
 - Appinn/小众软件: `meta.appinn.net` 投稿/发现频道；只在准备 `开发者自荐` 或重要版本更新时使用，不做每日搜索式触达。
@@ -201,7 +226,7 @@ Channel intent:
 
 - 即刻: primary Chinese A0 source; prioritize vibe coding builders and AI product experiments.
 - V2EX: product/tool launch source; prioritize people asking for feedback or validation.
-- X: prioritize Build in Public and Vibe Coding posts from the last 24 hours first, then other relevant X communities, then public X search. Primarily target Codex, Claude Code, Cursor, and Trae builders with short comments matched to the specific product post. Add Lovable, Bolt, Replit, and Base44 only when the post/community is explicitly no-code or weak-technical.
+- X: prioritize Build in Public and Vibe Coding posts from the last 24 hours first, then other relevant X communities, then public X search. Search both English and Chinese keywords before judging the channel. Primarily target Codex, Claude Code, Cursor, and Trae builders with short comments matched to the specific product post. Add Lovable, Bolt, Replit, and Base44 only when the post/community is explicitly no-code or weak-technical.
 - 小红书: discovery-heavy A0 source; prioritize non-technical or weak-technical creators showing AI-built products, workflows, or launch screenshots. Default to candidate collection and reply drafts; ask before publishing original posts.
 - 少数派: tool and productivity audience; prioritize polished tools, plugins, workflows, and app authors. Use more substantive, less salesy comments; ask before submitting articles or original posts.
 - Appinn/小众软件: low-frequency tool discovery audience; publish as `开发者自荐` only after user confirmation. Use practical wording: what problem it solves, who it is for, setup effort, current trial status, homepage, and feedback requested.

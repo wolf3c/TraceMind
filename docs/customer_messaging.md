@@ -32,6 +32,18 @@ AI 自动埋点，AI 分析数据，AI 驱动产品迭代闭环。
 - V2EX 和 X 等高相关公开回复可以在末尾给出 TraceMind 官网链接和“欢迎试用”，避免转化链路过长；弱相关或规则敏感社区仍先不放链接。
 - 评论中的外联链接只保留 `utm_source` 来源参数，避免链接过长。不把作者名、帖子标题、私密上下文或个人信息写进 URL。
 
+## 公开回复结构
+
+评价或推荐 TraceMind 时，默认使用三段式：
+
+1. 称赞对方产品或进展，并点出一个具体细节。
+2. 推荐 TraceMind，说明它能给对方提供的具体价值。
+3. 最后放链接。
+
+语气要像自然回复，不要像产品诊断报告。中文 X 回复可以用更轻的表达，例如“2 天从0到1 👍。我做的 TraceMind 可以帮你……希望帮你实现从1到n。”
+
+不要先写长篇产品诊断再顺带推荐 TraceMind；公开评论要短、正向、明确。
+
 ## 外联链接规则
 
 默认格式：
@@ -76,7 +88,7 @@ Happy to have you try it: https://tracemind.sandbox.galaxycloud.app/?utm_source=
 - Build in Public 和 Vibe Coding 是固定优先渠道；每次外联块先看这两个社区最近 24 小时内的新帖。
 - 社区优先级：vibe coding / AI coding builders > build in public / indie hackers > AI MVP / no-code builders > 泛 AI 工具社区。
 - 只回复适合 TraceMind 的产品作者帖：已经发布产品、展示 demo、找用户/反馈/beta、或在讨论转化、留存、功能使用、改版效果。
-- 评论先像一个认真看过产品的人：指出对方产品里的一个路径、转化点、激活点或留存问题，再轻提 TraceMind。
+- 评论先像一个认真看过产品的人：先称赞一个具体进展或产品细节，再推荐 TraceMind 能帮他看的路径、转化点、激活点或留存问题，最后放链接。
 - 社区规则或氛围不鼓励推广时，不放链接，只做有价值评论或跳过。
 - 同一社区同一天不要连续发相似 TraceMind 回复，避免看起来像批量推广。
 
@@ -91,6 +103,7 @@ Happy to have you try it: https://tracemind.sandbox.galaxycloud.app/?utm_source=
 | 2026-05-19 | v1.4 | 评论中的外联链接只保留 `utm_source` 来源参数。 | 用户要求社交媒体链接可追踪来源，但评论链接不要携带其他 UTM 参数。 |
 | 2026-05-19 | v1.5 | 将 X Community 作为独立获客渠道，优先筛选 AI coding、vibe coding、build in public、indie hacker 社区中的产品作者帖。 | 用户指出 X Community 是好渠道，应主动找到适合 TraceMind 的社区推广产品。 |
 | 2026-05-19 | v1.6 | 固化 Build in Public 和 Vibe Coding 最近 24 小时帖子筛选流程，针对适合 TraceMind 的产品作者帖准备推荐回复。 | 用户希望后续持续从这两个社区寻找当天新产品帖，并在合适场景回复推荐 TraceMind。 |
+| 2026-05-20 | v1.7 | 公开评价/推荐回复改为“称赞 -> 推荐 TraceMind 及具体价值 -> 链接”。 | 用户要求推荐自家产品时先正向评价对方，再清晰说明 TraceMind 能提供什么价值，最后给链接。 |
 
 ## 后续优化依据
 
