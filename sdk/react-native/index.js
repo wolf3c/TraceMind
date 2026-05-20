@@ -1,5 +1,5 @@
 const SDK_VERSION = '0.1.0';
-const SDK_CONTENT_HASH = 'sha256:2eaa878c4adce521b7d1f34a77d66713f9e361857df54f69610fe0930b68544a';
+const SDK_CONTENT_HASH = 'sha256:cf2e50fba498f1624d2478fef2c81e13a0fd1224ec51d178bd985325e67812da';
 const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|token|secret|password|email|phone|input|enteredtext)/i;
 const FEEDBACK_FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|sourcecode|sourcediff|codediff|toolarguments|toolresult|resourcecontent)/i;
 const FULL_QUERY_URL_PATTERN = /https?:\/\/[^\s?#]+[^\s]*\?[^\s"'<>)]*/i;

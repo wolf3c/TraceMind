@@ -1160,8 +1160,41 @@ function sdkGovernanceFields(sdkName, sdkSourcePath, customerVendorPath) {
     sdkSourcePath: sdk.sdkSourcePath,
     minimumSupportedHash: sdk.minimumSupportedHash,
     verificationCommands: sdk.verificationCommands,
+    distributionMode: sdk.distributionMode,
+    publishStatus: sdk.publishStatus,
+    ...(sdk.registry ? { registry: sdk.registry } : {}),
+    ...(sdk.localSourceFallback ? { localSourceFallback: sdk.localSourceFallback } : {}),
   };
-  const installedSdkManifest = installedSdkManifestFor(sdkName, sdkSourcePath, customerVendorPath);
+  const isRegistryPublished = sdk.distributionMode === 'registry' && sdk.registry;
+  const installedSdkManifest = isRegistryPublished ? null : installedSdkManifestFor(sdkName, sdkSourcePath, customerVendorPath);
+  if (isRegistryPublished) {
+    return {
+      latestSdk,
+      registry: sdk.registry,
+      localSourceFallback: {
+        ...sdk.localSourceFallback,
+        customerVendorPath,
+        sdkSourceCheckoutDir: TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR,
+        installCommands: localSourceCopyCommands(sdkSourcePath, customerVendorPath),
+      },
+      installedVersionDetection: {
+        packageName: sdk.registry.packageName,
+        packageVersion: sdk.registry.packageVersion,
+        detectionOrder: [
+          `Check the package manager lockfile for ${sdk.registry.packageName} at ${sdk.registry.packageVersion}.`,
+          'Compare sourceDetails.sdkContentHash from tracemind.project_health with latestSdk.contentHash when runtime events are available.',
+          'If the registry package cannot be installed, use localSourceFallback only after confirming the registry outage.',
+        ],
+      },
+      upgradePolicy: sdk.upgradePolicy,
+      upgradeCommands: [
+        'Call tracemind.project_health to see whether TraceMind already found an SDK update or unknown SDK version.',
+        ...sdk.registry.installCommands,
+        'Run the returned verificationCommands in the customer project, then report success or the exact failing command.',
+        'For TraceMind SDK source changes, run npm run update:sdk-manifest, npm run test:sdk-release, and npm run check:sdk-registry-publication -- <version> before deployment.',
+      ],
+    };
+  }
   return {
     latestSdk,
     installedSdkManifest,
@@ -1225,6 +1258,31 @@ function localJsSdkSetup({ packageName, sdkSourcePath, customerVendorPath }) {
   };
 }
 
+function registryJsSdkSetup({ packageName, sdkName, sdkSourcePath, customerVendorPath }) {
+  const sdk = latestSdkForSetup(sdkName);
+  if (sdk?.distributionMode !== 'registry' || !sdk.registry) {
+    return localJsSdkSetup({ packageName, sdkSourcePath, customerVendorPath });
+  }
+  return {
+    distributionMode: 'registry',
+    publishStatus: sdk.publishStatus,
+    ...sdkGovernanceFields(sdkName, sdkSourcePath, customerVendorPath),
+    packageManagerNotes: [
+      'Choose exactly one dependency command based on the project lockfile: package-lock.json uses npm, pnpm-lock.yaml uses pnpm, yarn.lock uses yarn.',
+      `The registry package keeps imports stable as ${packageName}.`,
+    ],
+    dependencyEdits: [
+      `package.json dependencies should resolve ${packageName} from the registry version ${sdk.registry.packageVersion}.`,
+    ],
+    installCommands: sdk.registry.installCommands,
+    idempotencyChecks: [
+      `Search package.json for an existing ${packageName} dependency.`,
+      `Search the source for imports from ${packageName}.`,
+      'Do not vendor a local SDK copy unless localSourceFallback is explicitly needed.',
+    ],
+  };
+}
+
 function localSwiftSdkSetup() {
   const customerVendorPath = 'vendor/TraceMind';
   return {
@@ -1275,6 +1333,35 @@ function localAndroidSdkSetup() {
   };
 }
 
+function registryAndroidSdkSetup() {
+  const sdkName = 'android';
+  const sdkSourcePath = 'sdk/android';
+  const customerVendorPath = 'vendor/tracemind-android';
+  const sdk = latestSdkForSetup(sdkName);
+  if (sdk?.distributionMode !== 'registry' || !sdk.registry) {
+    return localAndroidSdkSetup();
+  }
+  return {
+    distributionMode: 'registry',
+    publishStatus: sdk.publishStatus,
+    ...sdkGovernanceFields(sdkName, sdkSourcePath, customerVendorPath),
+    packageManagerNotes: [
+      'Use Maven Central for normal Android installs.',
+      'Use localSourceFallback only when Maven Central is unavailable or a locked-down environment requires vendored source.',
+    ],
+    dependencyEdits: [
+      'settings.gradle(.kts): ensure mavenCentral() is present.',
+      `app/build.gradle(.kts): implementation("${sdk.registry.groupId}:${sdk.registry.artifactId}:${sdk.registry.packageVersion}")`,
+    ],
+    installCommands: sdk.registry.installCommands,
+    idempotencyChecks: [
+      `Check Gradle files for an existing ${sdk.registry.groupId}:${sdk.registry.artifactId} dependency.`,
+      'Check AndroidManifest.xml for the Application class that owns startup.',
+      'Search the app for TraceMind.start(',
+    ],
+  };
+}
+
 function localPythonSdkSetup({ packageLabel, moduleName, sdkSourcePath, customerVendorPath }) {
   const sdkSetup = localSourceSdkBase(sdkSourcePath, customerVendorPath);
   return {
@@ -1303,10 +1390,37 @@ function localPythonSdkSetup({ packageLabel, moduleName, sdkSourcePath, customer
   };
 }
 
+function registryPythonSdkSetup({ packageLabel, moduleName, sdkName, sdkSourcePath, customerVendorPath }) {
+  const sdk = latestSdkForSetup(sdkName);
+  if (sdk?.distributionMode !== 'registry' || !sdk.registry) {
+    return localPythonSdkSetup({ packageLabel, moduleName, sdkSourcePath, customerVendorPath });
+  }
+  return {
+    distributionMode: 'registry',
+    publishStatus: sdk.publishStatus,
+    ...sdkGovernanceFields(sdkName, sdkSourcePath, customerVendorPath),
+    packageManagerNotes: [
+      `Install ${packageLabel} from PyPI for normal Python projects.`,
+      'Use localSourceFallback only when PyPI is unavailable or a locked-down environment requires vendored source.',
+    ],
+    dependencyEdits: [
+      `Add ${packageLabel}==${sdk.registry.packageVersion} to pyproject.toml, requirements.txt, or the equivalent dependency file.`,
+      `Python imports should resolve ${moduleName} from the installed ${packageLabel} package.`,
+    ],
+    installCommands: sdk.registry.installCommands,
+    idempotencyChecks: [
+      `Search Python dependency files for an existing ${packageLabel} dependency.`,
+      `Search Python files for imports from ${moduleName}.`,
+      'Do not vendor a local SDK copy unless localSourceFallback is explicitly needed.',
+    ],
+  };
+}
+
 function miniProgramSetup(project, provider) {
   const common = commonSetup(project, 'mini_program');
-  const sdkSetup = localJsSdkSetup({
+  const sdkSetup = registryJsSdkSetup({
     packageName: '@tracemind/mini-program',
+    sdkName: 'mini_program',
     sdkSourcePath: 'sdk/mini-program',
     customerVendorPath: 'vendor/tracemind/mini-program',
   });
@@ -1320,7 +1434,9 @@ function miniProgramSetup(project, provider) {
     provider,
     providerLabel,
     eventPlatform: 'mini_program',
-    install: `Vendor @tracemind/mini-program from the TraceMind GitHub source repo, install it as a local file dependency, and configure provider: "${provider}" for ${providerLabel}.`,
+    install: sdkSetup.distributionMode === 'registry'
+      ? `Install @tracemind/mini-program from npm and configure provider: "${provider}" for ${providerLabel}.`
+      : `Vendor @tracemind/mini-program from the TraceMind GitHub source repo, install it as a local file dependency, and configure provider: "${provider}" for ${providerLabel}.`,
     installCommands: [
       ...sdkSetup.installCommands,
       `Initialize TraceMind once in ${exampleFile} with provider: "${provider}".`,
@@ -1374,8 +1490,9 @@ function miniProgramSetup(project, provider) {
 
 function browserExtensionSetup(project) {
   const common = commonSetup(project, 'browser_extension');
-  const sdkSetup = localJsSdkSetup({
+  const sdkSetup = registryJsSdkSetup({
     packageName: '@tracemind/browser-extension',
+    sdkName: 'browser_extension',
     sdkSourcePath: 'sdk/browser-extension',
     customerVendorPath: 'vendor/tracemind/browser-extension',
   });
@@ -1384,7 +1501,9 @@ function browserExtensionSetup(project) {
     ...sdkSetup,
     platform: 'browser_extension',
     eventPlatform: 'browser_extension',
-    install: 'Vendor @tracemind/browser-extension from the TraceMind GitHub source repo, install it as a local file dependency, and initialize it from extension-owned popup/options/sidebar/devtools pages; use background/service worker only for manual capture.',
+    install: sdkSetup.distributionMode === 'registry'
+      ? 'Install @tracemind/browser-extension from npm and initialize it from extension-owned popup/options/sidebar/devtools pages; use background/service worker only for manual capture.'
+      : 'Vendor @tracemind/browser-extension from the TraceMind GitHub source repo, install it as a local file dependency, and initialize it from extension-owned popup/options/sidebar/devtools pages; use background/service worker only for manual capture.',
     installCommands: [
       ...sdkSetup.installCommands,
       'Initialize TraceMind once from popup, options, sidebar, or devtools entrypoints that own extension UI DOM.',
@@ -1456,13 +1575,13 @@ function platformSetup(project, platform, options = {}) {
     const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
     const captureSnippet = `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" data-tracemind-framework="hybrid" async></script>`;
     const swiftSdkSetup = localSwiftSdkSetup();
-    const androidSdkSetup = localAndroidSdkSetup();
+    const androidSdkSetup = registryAndroidSdkSetup();
     return {
       ...common,
       platform: 'hybrid',
       eventPlatform: 'web_plus_native',
-      distributionMode: 'web_snippet_plus_local_source_native',
-      publishStatus: 'not_published',
+      distributionMode: 'web_snippet_plus_registry_native',
+      publishStatus: 'partially_published',
       sdkSourceRepo: TRACE_MIND_SDK_SOURCE_REPO,
       sdkSourceCheckoutDir: TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR,
       nativeSdkInstallOptions: [
@@ -1498,9 +1617,8 @@ function platformSetup(project, platform, options = {}) {
       install: 'Install Web Auto Capture in the WebView document and the matching native SDK in the app shell, then connect identity and deeplink handling through a narrow bridge.',
       installCommands: [
         'Add captureSnippet to the WebView HTML document, root layout, or bundled H5 entry loaded inside the shell.',
-        `Native shell SDKs are local-source installs: clone ${TRACE_MIND_SDK_SOURCE_REPO} into ${TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR}, then vendor only the matching SDK.`,
         'For iOS/macOS shells: copy .tracemind-sdk-source/sdk/ios/. into vendor/TraceMind/ and add a local Swift Package dependency with .package(path: "vendor/TraceMind").',
-        'For Android shells: copy .tracemind-sdk-source/sdk/android/. into vendor/tracemind-android/, then add include(":tracemind") and implementation(project(":tracemind")).',
+        ...androidSdkSetup.installCommands,
         'Initialize TraceMind once in the native startup path and once in the WebView document using the same projectKey.',
         'After login, call identify in both layers with the same stable internal userId; use the bridge only for identity, sanitized route/source metadata, and deeplink handoff.',
       ],
@@ -1548,8 +1666,9 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'server_node') {
-    const sdkSetup = localJsSdkSetup({
+    const sdkSetup = registryJsSdkSetup({
       packageName: '@tracemind/server-node',
+      sdkName: 'server_node',
       sdkSourcePath: 'sdk/server-node',
       customerVendorPath: 'vendor/tracemind/server-node',
     });
@@ -1558,7 +1677,9 @@ function platformSetup(project, platform, options = {}) {
       ...sdkSetup,
       platform: 'server_node',
       eventPlatform: 'server',
-      install: 'Vendor @tracemind/server-node from the TraceMind GitHub source repo, install it as a local file dependency, and add manual capture at stable server-side business outcomes.',
+      install: sdkSetup.distributionMode === 'registry'
+        ? 'Install @tracemind/server-node from npm and add manual capture at stable server-side business outcomes.'
+        : 'Vendor @tracemind/server-node from the TraceMind GitHub source repo, install it as a local file dependency, and add manual capture at stable server-side business outcomes.',
       installCommands: [
         ...sdkSetup.installCommands,
         'Import TraceMindServer in the backend entrypoint or instrumentation module.',
@@ -1598,9 +1719,10 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'server_python') {
-    const sdkSetup = localPythonSdkSetup({
+    const sdkSetup = registryPythonSdkSetup({
       packageLabel: 'tracemind-server',
       moduleName: 'tracemind_server',
+      sdkName: 'server_python',
       sdkSourcePath: 'sdk/server-python',
       customerVendorPath: 'vendor/tracemind_server',
     });
@@ -1609,7 +1731,9 @@ function platformSetup(project, platform, options = {}) {
       ...sdkSetup,
       platform: 'server_python',
       eventPlatform: 'server',
-      install: 'Vendor tracemind_server from the TraceMind GitHub source repo, add it to the Python source path, and add manual capture at stable server-side business outcomes.',
+      install: sdkSetup.distributionMode === 'registry'
+        ? 'Install tracemind-server from PyPI and add manual capture at stable server-side business outcomes.'
+        : 'Vendor tracemind_server from the TraceMind GitHub source repo, add it to the Python source path, and add manual capture at stable server-side business outcomes.',
       installCommands: [
         ...sdkSetup.installCommands,
         'Import TraceMindServer in the backend entrypoint or instrumentation module.',
@@ -1714,8 +1838,9 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'mcp_node') {
-    const sdkSetup = localJsSdkSetup({
+    const sdkSetup = registryJsSdkSetup({
       packageName: '@tracemind/mcp-node',
+      sdkName: 'mcp_node',
       sdkSourcePath: 'sdk/mcp-node',
       customerVendorPath: 'vendor/tracemind/mcp-node',
     });
@@ -1724,7 +1849,9 @@ function platformSetup(project, platform, options = {}) {
       ...sdkSetup,
       platform: 'mcp_node',
       eventPlatform: 'server',
-      install: 'Vendor @tracemind/mcp-node from the TraceMind GitHub source repo, install it as a local file dependency, and initialize it around the MCP server instance.',
+      install: sdkSetup.distributionMode === 'registry'
+        ? 'Install @tracemind/mcp-node from npm and initialize it around the MCP server instance.'
+        : 'Vendor @tracemind/mcp-node from the TraceMind GitHub source repo, install it as a local file dependency, and initialize it around the MCP server instance.',
       installCommands: [
         ...sdkSetup.installCommands,
         'Import TraceMindMCP in the MCP server entrypoint.',
@@ -1763,9 +1890,10 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'mcp_python') {
-    const sdkSetup = localPythonSdkSetup({
+    const sdkSetup = registryPythonSdkSetup({
       packageLabel: 'tracemind-mcp',
       moduleName: 'tracemind_mcp',
+      sdkName: 'mcp_python',
       sdkSourcePath: 'sdk/mcp-python',
       customerVendorPath: 'vendor/tracemind_mcp',
     });
@@ -1774,7 +1902,9 @@ function platformSetup(project, platform, options = {}) {
       ...sdkSetup,
       platform: 'mcp_python',
       eventPlatform: 'server',
-      install: 'Vendor tracemind_mcp from the TraceMind GitHub source repo, add it to the Python source path, and initialize it around the Python MCP server instance.',
+      install: sdkSetup.distributionMode === 'registry'
+        ? 'Install tracemind-mcp from PyPI and initialize it around the Python MCP server instance.'
+        : 'Vendor tracemind_mcp from the TraceMind GitHub source repo, add it to the Python source path, and initialize it around the Python MCP server instance.',
       installCommands: [
         ...sdkSetup.installCommands,
         'Import TraceMindMCP in the MCP server entrypoint.',
@@ -1952,13 +2082,15 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'android') {
-    const sdkSetup = localAndroidSdkSetup();
+    const sdkSetup = registryAndroidSdkSetup();
     return {
       ...common,
       ...sdkSetup,
       platform: 'android',
       eventPlatform: 'android',
-      install: 'Vendor the TraceMind Android SDK from the TraceMind GitHub source repo, add it as a local Gradle module, and initialize TraceMind from Application.onCreate().',
+      install: sdkSetup.distributionMode === 'registry'
+        ? 'Install the TraceMind Android SDK from Maven Central and initialize TraceMind from Application.onCreate().'
+        : 'Vendor the TraceMind Android SDK from the TraceMind GitHub source repo, add it as a local Gradle module, and initialize TraceMind from Application.onCreate().',
       installCommands: [
         ...sdkSetup.installCommands,
         'Import com.tracemind.TraceMind in the Application class.',
@@ -1996,8 +2128,9 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'react_native') {
-    const sdkSetup = localJsSdkSetup({
+    const sdkSetup = registryJsSdkSetup({
       packageName: '@tracemind/react-native',
+      sdkName: 'react_native',
       sdkSourcePath: 'sdk/react-native',
       customerVendorPath: 'vendor/tracemind/react-native',
     });
@@ -2006,7 +2139,9 @@ function platformSetup(project, platform, options = {}) {
       ...sdkSetup,
       platform: 'react_native',
       eventPlatform: 'ios_or_android',
-      install: 'Vendor @tracemind/react-native from the TraceMind GitHub source repo, install it as a local file dependency, and run the native package install step for iOS and Android.',
+      install: sdkSetup.distributionMode === 'registry'
+        ? 'Install @tracemind/react-native from npm and run the native package install step for iOS and Android.'
+        : 'Vendor @tracemind/react-native from the TraceMind GitHub source repo, install it as a local file dependency, and run the native package install step for iOS and Android.',
       installCommands: [
         ...sdkSetup.installCommands,
         'Run the native dependency install step required by the target React Native app, such as pod install for iOS.',

@@ -69,6 +69,23 @@ function assertLocalJsDependency(setup, vendorPath) {
   assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('do not run npm, pnpm, and yarn together')));
 }
 
+function assertRegistrySetup(setup, sdkName, registryType, packageName) {
+  const latestSdk = latestSdkForSetup(sdkName);
+  assert.ok(latestSdk?.registry, `missing registry metadata for ${sdkName}`);
+  assert.strictEqual(setup.structuredContent.distributionMode, 'registry');
+  assert.strictEqual(setup.structuredContent.publishStatus, 'published');
+  assert.strictEqual(setup.structuredContent.latestSdk.registry.type, registryType);
+  assert.strictEqual(setup.structuredContent.latestSdk.registry.packageName, packageName);
+  assert.strictEqual(setup.structuredContent.latestSdk.registry.packageVersion, latestSdk.registry.packageVersion);
+  assert.strictEqual(setup.structuredContent.registry.packageName, packageName);
+  assert.strictEqual(setup.structuredContent.registry.packageVersion, latestSdk.registry.packageVersion);
+  assert.ok(setup.structuredContent.localSourceFallback);
+  assert.strictEqual(setup.structuredContent.localSourceFallback.distributionMode, 'local_source');
+  assert.ok(setup.structuredContent.installedVersionDetection.detectionOrder.some((step) => step.includes('sourceDetails.sdkContentHash')));
+  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes(latestSdk.registry.packageVersion)));
+  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('verificationCommands')));
+}
+
 function assertSdkGovernance(setup, sdkName, vendorPath) {
   const latestSdk = latestSdkForSetup(sdkName);
   assert.ok(latestSdk, `missing latest SDK manifest for ${sdkName}`);
@@ -78,21 +95,23 @@ function assertSdkGovernance(setup, sdkName, vendorPath) {
   assert.strictEqual(setup.structuredContent.latestSdk.sourceRef, latestSdk.sourceRef);
   assert.match(setup.structuredContent.latestSdk.sourceRef, /^tracemind-release-\d{4}\.\d{1,2}\.\d{1,2}-\d+$/);
   assert.notStrictEqual(setup.structuredContent.latestSdk.sourceRef, 'main');
-  assert.ok(setup.structuredContent.installCommands.some((step) => step.includes(latestSdk.sourceRef)));
   assert.deepStrictEqual(setup.structuredContent.latestSdk.verificationCommands, latestSdk.verificationCommands);
   assert.ok(setup.structuredContent.latestSdk.contentHash.startsWith('sha256:'));
-  assert.ok(setup.structuredContent.installedVersionDetection.manifestPath.includes('.tracemind-sdk.json'));
   assert.ok(setup.structuredContent.installedVersionDetection.detectionOrder.some((step) => step.includes('contentHash')));
   assert.ok(setup.structuredContent.upgradePolicy.agentPrompt.includes('coding agent'));
-  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('npm run test:sdk-release')));
-  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes(vendorPath)));
-  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('git -C .tracemind-sdk-source fetch --depth 1 origin')));
-  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes(latestSdk.sourceRef)));
-  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('source hash mismatch')));
-  assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.startsWith('node -e ') && command.includes(`${vendorPath}/.tracemind-sdk.json`)));
-  assert.strictEqual(setup.structuredContent.installedSdkManifest.sdkName, sdkName);
-  assert.strictEqual(setup.structuredContent.installedSdkManifest.contentHash, latestSdk.contentHash);
-  assert.strictEqual(setup.structuredContent.installedSdkManifest.vendorPath, vendorPath);
+  if (setup.structuredContent.distributionMode === 'local_source') {
+    assert.ok(setup.structuredContent.installCommands.some((step) => step.includes(latestSdk.sourceRef)));
+    assert.ok(setup.structuredContent.installedVersionDetection.manifestPath.includes('.tracemind-sdk.json'));
+    assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('npm run test:sdk-release')));
+    assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes(vendorPath)));
+    assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('git -C .tracemind-sdk-source fetch --depth 1 origin')));
+    assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes(latestSdk.sourceRef)));
+    assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.includes('source hash mismatch')));
+    assert.ok(setup.structuredContent.upgradeCommands.some((command) => command.startsWith('node -e ') && command.includes(`${vendorPath}/.tracemind-sdk.json`)));
+    assert.strictEqual(setup.structuredContent.installedSdkManifest.sdkName, sdkName);
+    assert.strictEqual(setup.structuredContent.installedSdkManifest.contentHash, latestSdk.contentHash);
+    assert.strictEqual(setup.structuredContent.installedSdkManifest.vendorPath, vendorPath);
+  }
 }
 
 describe('TraceMind', function () {
@@ -184,7 +203,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('anomaly or drop investigation'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
       assert.ok(prompt.includes('Call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
-      assert.ok(prompt.includes('If the setup returns `distributionMode: "local_source"`'));
+      assert.ok(prompt.includes('Use registry install commands when `distributionMode: "registry"`'));
       assert.ok(!prompt.includes('If only global configuration is available, tell me first and wait for confirmation'));
       assert.ok(!prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
@@ -249,13 +268,13 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('{ "platform": "browser_extension" }'));
       assert.ok(skill.includes('@tracemind/browser-extension'));
       assert.ok(skill.includes('local-source GitHub clone'));
-      assert.ok(skill.includes('.tracemind-sdk.json'));
+      assert.ok(skill.includes('distributionMode` is `registry`'));
       assert.ok(skill.includes('sdkContentHash'));
       assert.ok(skill.includes('latestSdk.sourceRef'));
       assert.ok(skill.includes('tracemind-release-<version>'));
       assert.ok(skill.includes('npm run update:sdk-manifest'));
       assert.ok(skill.includes('npm run prepare:sdk-release-ref -- <version>'));
-      assert.ok(skill.includes('PYTHONPATH'));
+      assert.ok(skill.includes('npm run check:sdk-registry-publication -- <version>'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
@@ -264,8 +283,8 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
       assert.ok(snippet.includes('installCommands'));
+      assert.ok(snippet.includes('distributionMode: "registry"'));
       assert.ok(snippet.includes('distributionMode: "local_source"'));
-      assert.ok(snippet.includes('.tracemind-sdk.json'));
       assert.ok(snippet.includes('sdkContentHash'));
       assert.ok(snippet.includes('latestSdk'));
       assert.ok(snippet.includes('latestSdk.sourceRef'));
@@ -312,7 +331,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.platforms.includes('server_http'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_info'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
-      assert.ok(manifest.sdkUpgradePolicy.includes('.tracemind-sdk.json'));
+      assert.ok(manifest.sdkUpgradePolicy.includes('distributionMode is registry'));
       assert.ok(manifest.sdkUpgradePolicy.includes('sdkContentHash'));
       assert.ok(manifest.sdkUpgradePolicy.includes('latestSdk.sourceRef'));
       assert.ok(manifest.sdkUpgradePolicy.includes('tracemind-release-<version>'));
@@ -337,6 +356,24 @@ describe('TraceMind', function () {
         assert.ok(Array.isArray(sdk.verificationCommands));
         assert.ok(sdk.verificationCommands.length > 0);
         assert.ok(sdk.upgradePolicy.agentPrompt.includes('coding agent'));
+        if (sdk.sdkName === 'swift') {
+          assert.strictEqual(sdk.distributionMode, 'local_source');
+          assert.strictEqual(sdk.publishStatus, 'not_published');
+        } else {
+          assert.strictEqual(sdk.distributionMode, 'registry');
+          assert.strictEqual(sdk.publishStatus, 'published');
+          assert.ok(sdk.registry.packageName);
+          assert.ok(sdk.registry.packageVersion);
+          if (sdk.registry.type === 'pypi') {
+            assert.ok(!sdk.registry.packageVersion.includes('-'));
+            assert.match(sdk.registry.packageVersion, /\.post\d+$/);
+          }
+          assert.strictEqual(sdk.registry.contentHash, sdk.contentHash);
+          assert.ok(Array.isArray(sdk.registry.installCommands));
+          assert.ok(sdk.registry.installCommands.length > 0);
+          assert.strictEqual(sdk.localSourceFallback.distributionMode, 'local_source');
+          assert.strictEqual(sdk.localSourceFallback.sourceRef, sdk.sourceRef);
+        }
       });
     });
 
@@ -2001,12 +2038,11 @@ describe('TraceMind', function () {
       assert.ok(macos.structuredContent.manualCaptureExample.includes('TraceMind.capture'));
 
       assert.strictEqual(android.structuredContent.platform, 'android');
-      assertLocalSourceSetup(android, 'vendor/tracemind-android');
+      assertRegistrySetup(android, 'android', 'maven_central', 'io.github.wolf3c.tracemind:tracemind-android');
       assertSdkGovernance(android, 'android', 'vendor/tracemind-android');
-      assert.ok(android.structuredContent.installCommands.some((step) => step.includes('include(":tracemind")')));
-      assert.ok(android.structuredContent.installCommands.some((step) => step.includes('implementation(project(":tracemind"))')));
-      assert.ok(android.structuredContent.install.includes('Gradle'));
-      assert.ok(android.structuredContent.installCommands.some((step) => step.includes('Gradle')));
+      assert.ok(android.structuredContent.installCommands.some((step) => step.includes('implementation("io.github.wolf3c.tracemind:tracemind-android:')));
+      assert.ok(android.structuredContent.install.includes('Maven Central'));
+      assert.ok(android.structuredContent.installCommands.some((step) => step.includes('mavenCentral()')));
       assert.ok(android.structuredContent.filesToEdit.some((file) => file.includes('AndroidManifest.xml')));
       assert.ok(android.structuredContent.initLocation.includes('Application.onCreate()'));
       assert.ok(android.structuredContent.idempotencyChecks.some((check) => check.includes('Gradle')));
@@ -2023,7 +2059,7 @@ describe('TraceMind', function () {
       assert.ok(android.structuredContent.networkRestrictionChecks.some((check) => check.includes('network_security_config')));
 
       assert.strictEqual(reactNative.structuredContent.platform, 'react_native');
-      assertLocalJsDependency(reactNative, 'vendor/tracemind/react-native');
+      assertRegistrySetup(reactNative, 'react_native', 'npm', '@tracemind/react-native');
       assertSdkGovernance(reactNative, 'react_native', 'vendor/tracemind/react-native');
       assert.ok(reactNative.structuredContent.install.includes('@tracemind/react-native'));
       assert.ok(reactNative.structuredContent.packageManagerNotes.some((note) => note.includes('@tracemind/react-native')));
@@ -2074,13 +2110,13 @@ describe('TraceMind', function () {
       assert.strictEqual(hybrid.structuredContent.ok, true);
       assert.strictEqual(hybrid.structuredContent.platform, 'hybrid');
       assert.strictEqual(hybrid.structuredContent.eventPlatform, 'web_plus_native');
-      assert.strictEqual(hybrid.structuredContent.distributionMode, 'web_snippet_plus_local_source_native');
-      assert.strictEqual(hybrid.structuredContent.publishStatus, 'not_published');
+      assert.strictEqual(hybrid.structuredContent.distributionMode, 'web_snippet_plus_registry_native');
+      assert.strictEqual(hybrid.structuredContent.publishStatus, 'partially_published');
       assert.ok(hybrid.structuredContent.nativeSdkInstallOptions.some((option) => option.latestSdk.sdkName === 'swift'));
       assert.ok(hybrid.structuredContent.nativeSdkInstallOptions.some((option) => option.latestSdk.sdkName === 'android'));
       assert.ok(hybrid.structuredContent.upgradeCommands.some((command) => command.includes('.tracemind-sdk.json')));
       assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('vendor/TraceMind')));
-      assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('vendor/tracemind-android')));
+      assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('implementation("io.github.wolf3c.tracemind:tracemind-android:')));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('/capture.js'));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_hybrid"'));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-framework="hybrid"'));
@@ -2130,7 +2166,7 @@ describe('TraceMind', function () {
       assert.strictEqual(wechat.structuredContent.platform, 'mini_program');
       assert.strictEqual(wechat.structuredContent.provider, 'wechat');
       assert.strictEqual(wechat.structuredContent.eventPlatform, 'mini_program');
-      assertLocalJsDependency(wechat, 'vendor/tracemind/mini-program');
+      assertRegistrySetup(wechat, 'mini_program', 'npm', '@tracemind/mini-program');
       assertSdkGovernance(wechat, 'mini_program', 'vendor/tracemind/mini-program');
       assert.ok(wechat.structuredContent.install.includes('@tracemind/mini-program'));
       assert.ok(wechat.structuredContent.installCommands.some((step) => step.includes('provider: "wechat"')));
@@ -2184,7 +2220,7 @@ describe('TraceMind', function () {
       assert.strictEqual(extension.structuredContent.ok, true);
       assert.strictEqual(extension.structuredContent.platform, 'browser_extension');
       assert.strictEqual(extension.structuredContent.eventPlatform, 'browser_extension');
-      assertLocalJsDependency(extension, 'vendor/tracemind/browser-extension');
+      assertRegistrySetup(extension, 'browser_extension', 'npm', '@tracemind/browser-extension');
       assertSdkGovernance(extension, 'browser_extension', 'vendor/tracemind/browser-extension');
       assert.ok(extension.structuredContent.install.includes('@tracemind/browser-extension'));
       assert.ok(extension.structuredContent.installCommands.some((step) => step.includes('popup')));
@@ -2235,7 +2271,7 @@ describe('TraceMind', function () {
 
       assert.strictEqual(node.structuredContent.platform, 'mcp_node');
       assert.strictEqual(node.structuredContent.eventPlatform, 'server');
-      assertLocalJsDependency(node, 'vendor/tracemind/mcp-node');
+      assertRegistrySetup(node, 'mcp_node', 'npm', '@tracemind/mcp-node');
       assertSdkGovernance(node, 'mcp_node', 'vendor/tracemind/mcp-node');
       assert.ok(node.structuredContent.initSnippet.includes('TraceMindMCP.start(server'));
       assert.ok(node.structuredContent.initSnippet.includes('projectKey: "tm_proj_mcp_sdk"'));
@@ -2247,13 +2283,12 @@ describe('TraceMind', function () {
 
       assert.strictEqual(python.structuredContent.platform, 'mcp_python');
       assert.strictEqual(python.structuredContent.eventPlatform, 'server');
-      assertLocalSourceSetup(python, 'vendor/tracemind_mcp');
+      assertRegistrySetup(python, 'mcp_python', 'pypi', 'tracemind-mcp');
       assertSdkGovernance(python, 'mcp_python', 'vendor/tracemind_mcp');
-      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('PYTHONPATH')));
-      assert.ok(!JSON.stringify(python.structuredContent.installCommands).includes('pip install'));
+      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('pip install tracemind-mcp==')));
       assert.ok(python.structuredContent.initSnippet.includes('TraceMindMCP.start(server'));
       assert.ok(python.structuredContent.initSnippet.includes('project_key="tm_proj_mcp_sdk"'));
-      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('tracemind_mcp')));
+      assert.ok(python.structuredContent.idempotencyChecks.some((step) => step.includes('tracemind_mcp')));
       assert.ok(python.structuredContent.manualCaptureExample.includes('TraceMindMCP.capture'));
 
       assert.strictEqual(skill.structuredContent.platform, 'agent_skill');
@@ -2292,7 +2327,7 @@ describe('TraceMind', function () {
 
       assert.strictEqual(node.structuredContent.platform, 'server_node');
       assert.strictEqual(node.structuredContent.eventPlatform, 'server');
-      assertLocalJsDependency(node, 'vendor/tracemind/server-node');
+      assertRegistrySetup(node, 'server_node', 'npm', '@tracemind/server-node');
       assertSdkGovernance(node, 'server_node', 'vendor/tracemind/server-node');
       assert.ok(node.structuredContent.initSnippet.includes('TraceMindServer.start'));
       assert.ok(node.structuredContent.initSnippet.includes('projectKey: "tm_proj_server_sdk"'));
@@ -2303,10 +2338,9 @@ describe('TraceMind', function () {
 
       assert.strictEqual(python.structuredContent.platform, 'server_python');
       assert.strictEqual(python.structuredContent.eventPlatform, 'server');
-      assertLocalSourceSetup(python, 'vendor/tracemind_server');
+      assertRegistrySetup(python, 'server_python', 'pypi', 'tracemind-server');
       assertSdkGovernance(python, 'server_python', 'vendor/tracemind_server');
-      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('PYTHONPATH')));
-      assert.ok(!JSON.stringify(python.structuredContent.installCommands).includes('pip install'));
+      assert.ok(python.structuredContent.installCommands.some((step) => step.includes('pip install tracemind-server==')));
       assert.ok(python.structuredContent.initSnippet.includes('TraceMindServer.start'));
       assert.ok(python.structuredContent.initSnippet.includes('project_key="tm_proj_server_sdk"'));
       assert.ok(python.structuredContent.manualCaptureExample.includes('TraceMindServer.capture'));

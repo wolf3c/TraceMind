@@ -1,5 +1,5 @@
 const SDK_VERSION = '0.1.0';
-const SDK_CONTENT_HASH = 'sha256:cbd3c9df52bc5548ce8dfcaa7db9aa1c55ac201fc670eb395d9bb3c53c57d47d';
+const SDK_CONTENT_HASH = 'sha256:761e51dfbeb898f8df5d0d2a3187cac027eda2b271a047ff77dca5b96e8b9a33';
 const DEFAULT_CAPTURE_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/capture';
 const DEFAULT_PRESENCE_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/presence';
 const DEFAULT_FEEDBACK_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback';

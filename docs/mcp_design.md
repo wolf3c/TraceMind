@@ -262,7 +262,7 @@ Output:
 
 ### `tracemind.capture_setup`
 
-返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主，浏览器插件使用通用 WebExtension SDK。SDK 平台当前不假设包已发布到 registry；返回 `distributionMode: "local_source"` 时，agent 必须按返回的 GitHub clone、`vendor/` 复制、本地依赖、SwiftPM local path、Gradle module 或 PYTHONPATH 指令执行，并把 `installedSdkManifest` 写入 vendored SDK 目录的 `.tracemind-sdk.json`。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
+返回当前项目的 Auto Capture 公开项目 key、指定平台的一行接入代码、结构化安装指南和安全说明。Coding agent 应先调用它获取当前项目 key；Web 项目验证 `/capture.js` 和 `data-tracemind-token`，Native 项目使用返回的 SDK 安装步骤和初始化代码，小程序使用通用 SDK 并通过 `provider` 区分宿主，浏览器插件使用通用 WebExtension SDK。registry-backed SDK 返回 `distributionMode: "registry"` 和 npm、PyPI 或 Maven Central 安装命令；Swift iOS/macOS 继续返回 `distributionMode: "local_source"`。当 registry 不可用或企业环境需要 vendoring 时，agent 才使用返回的 `localSourceFallback`、GitHub clone、`vendor/` 复制、本地依赖、SwiftPM local path、Gradle module 或 PYTHONPATH 指令。返回的 `projectKey` 只能用于 Auto Capture 写入，不能替代 MCP token。
 
 Input:
 
