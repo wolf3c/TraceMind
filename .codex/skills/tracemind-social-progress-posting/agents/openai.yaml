@@ -1,0 +1,4 @@
+interface:
+  display_name: "TraceMind Social Progress Posting"
+  short_description: "Draft and publish TraceMind product update posts."
+  default_prompt: "Use $tracemind-social-progress-posting to draft product progress posts from recent TraceMind commits for my approval, then publish approved rows."
