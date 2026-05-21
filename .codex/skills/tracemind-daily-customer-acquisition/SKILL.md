@@ -59,6 +59,7 @@ Use the latest dated files when multiple exist. If no current workplan exists, c
 - In X/community copy, lead with `Codex`, `Claude Code`, `Cursor`, and `Trae` because they have stronger recognition and larger user bases among AI coding builders. Treat `Lovable`, `Base44`, `Bolt`, and `Replit` as optional secondary examples for no-code or weak-technical vibe coding segments. Do not make Lovable/Base44/Bolt/Replit the main examples unless the day's ICP experiment explicitly targets those builders.
 - X search must include Chinese keywords as well as English keywords. Do not assume X product-author discovery is English-only; in each X outreach block, run at least one Chinese query set for AI coding / vibe coding builders before judging X candidate quality. Prefer intent-based Chinese query combinations over fixed phrases like `做了` / `做了一个`, because product authors may say `实现了`, `完成了`, `搞定了`, `上线`, `发布`, `内测`, `coding`, `vibe`, or simply describe the product.
 - Appinn/小众软件 is a low-frequency Chinese tool self-recommendation channel, not a daily comment-spam channel. Use it for polished `开发者自荐` posts when TraceMind has a clear homepage, screenshots, trial ask, and concise setup explanation. Avoid repeated bumps or unrelated comments.
+- Public outreach comments should default to one short recommendation, not a product diagnosis: `specific praise -> TraceMind makes your coding AI understand user behavior -> one AI-native value -> promotion link`. Emphasize that TraceMind is AI-native infrastructure for AI-coded products: it auto-captures product behavior, turns it into AI-readable evidence, lets builders ask AI where users get stuck, and verifies whether AI-coded changes worked.
 
 ## Run Modes
 
@@ -162,24 +163,30 @@ Prioritize people who:
 - Built with Codex, Claude Code, Cursor, Trae, or similar AI coding agents; include Lovable, Base44, Bolt, and Replit when targeting no-code or weak-technical builders.
 - Are non-technical or weak-technical creators who shipped with vibe coding.
 
-Use short, specific draft replies. For comment-based invitations, use this order:
+Use short, specific draft replies. For comment-based invitations, the default format is always:
 
-1. Praise the other person's product or progress with one concrete detail. Keep it human and lightweight, not like a formal review.
-2. Recommend TraceMind as something "I am building" and state the specific value it can provide to that product.
+1. Praise the other person's product or progress with one concrete detail.
+2. Say the core TraceMind pitch: it lets their coding AI understand user behavior.
 3. Put the link last.
 
-The goal is an invitation, not a long diagnosis. Do not lead with a multi-sentence analysis of their product and then append TraceMind. Convert the observation into the value TraceMind can provide.
+The goal is a concise recommendation, not a long diagnosis. Do not lead with a multi-sentence analysis of their product and then append TraceMind. Do not list several possible user paths. Pick one product-specific value point and tie it to TraceMind's AI-native loop: auto-capture behavior, make it AI-readable, ask AI where users get stuck, and verify whether changes worked.
+
+Default Chinese pattern for V2EX, X, 即刻, 小红书, 少数派, and similar public comments:
+
+```text
+<具体称赞>。我做的 TraceMind 可以让你的 coding AI 读懂用户行为，帮你<一个 AI-native 价值：自动采集/AI 可读/直接问 AI/验证改版效果>。欢迎试用：<link>
+```
 
 For Chinese X replies, prefer a concise pattern:
 
 ```text
-<具体称赞>。我做的 TraceMind 可以帮你<具体看见/验证的价值>，希望帮你<下一阶段结果>。欢迎试用：<link>
+<具体称赞>。我做的 TraceMind 可以让你的 coding AI 读懂用户行为，帮你<具体看见/验证的价值>。欢迎试用：<link>
 ```
 
 Example:
 
 ```text
-2 天从0到1 👍。我做的 TraceMind 可以帮你看用户是否添加对标账号、看懂洞察、后续回来追踪，希望帮你实现从1到n。欢迎试用：<link>
+2 天从0到1 👍。我做的 TraceMind 可以让你的 coding AI 读懂用户行为，帮你看用户是否添加对标账号、看懂洞察、后续回来追踪。欢迎试用：<link>
 ```
 
 Preferred value angle:
@@ -188,14 +195,17 @@ Preferred value angle:
 TraceMind 自动采集用户行为，不用先搭复杂 analytics。你可以直接问 AI 用户卡在哪、哪个功能真的被用、改完有没有变好。
 ```
 
-Offer a low-friction next step:
+When space is tight, prefer this even shorter core pitch:
 
 ```text
-如果你愿意，我可以帮你先看一版早期用户行为诊断。
+TraceMind 让你的 coding AI 读懂用户行为，直接问 AI 用户卡在哪、改完有没有变好。
 ```
 
 Avoid:
 
+- Long product reviews or multi-paragraph analysis.
+- Explaining several user paths in one comment.
+- Ending with extra consultation offers by default; add one only when the user explicitly asks for help.
 - Generic "try our product" comments.
 - Posting the same wording repeatedly.
 - Dropping links in every reply.

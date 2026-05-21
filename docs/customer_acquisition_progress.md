@@ -286,7 +286,7 @@
 | Appinn / 小众软件 | TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; public topic remains visible, 56 views, 1 homepage link click, 0 replies. | No bump/repost. | Check comments and link clicks tomorrow. |
 | X / Twitter | Community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium-low`; 122 views, Johnny remains the only reply. | No new reply. | Follow only if Johnny or another member replies again. |
 | X / Twitter | Johnny follow-up `https://x.com/old_farmer_/status/2055939454217638329` | `low` / `partially_blocked`; parent thread shows no further reply, direct status URL loaded blank. | No new reply. | Use parent thread for future checks if direct URL remains unreliable. |
-| X / Twitter | Chinese search block | `medium`; Chinese X queries found one draftable Codex-built product-author post and several lower-fit discussion/product mentions. | Sent row Q: `https://x.com/MZlwbg/status/2056722454501060942`. | Monitor for reply or profile visit; keep Chinese X search in future blocks. |
+| X / Twitter | Chinese search block | `medium`; Chinese X queries found one draftable Codex-built product-author post and several lower-fit discussion/product mentions. | Sent row Q: `https://x.com/old_farmer_/status/2056928446413197561`. | Monitor for reply or profile visit; keep Chinese X search in future blocks. |
 
 #### New Candidates Found
 
@@ -302,7 +302,7 @@
 | V2EX | Markra follow-up | `https://www.v2ex.com/t/1213587#reply19` | High; author asked whether behavior instrumentation is required. | Clarified that behavior capture is needed, but the first pass can focus on a small set of key paths. |
 | V2EX | 育儿食用建议 App | `https://www.v2ex.com/t/1213924#reply6` | High; vibe-coded App with real trial feedback and differentiation questions. | Focused on product behavior path only, avoiding health advice. |
 | V2EX | HanGrid | `https://www.v2ex.com/t/1213769#reply26` | Medium-high; AI-built game with dense gameplay feedback. | Focused on first-5-minute retention and validating mechanics changes. |
-| X / 独立开发者 Community | B 站 UP 主内容监控系统 | `https://x.com/MZlwbg/status/2056722454501060942` | Medium-high; Codex-built Chinese product-author post. | Used concise praise -> TraceMind value -> link wording. |
+| X / 独立开发者 Community | B 站 UP 主内容监控系统 | `https://x.com/old_farmer_/status/2056928446413197561` | Medium-high; Codex-built Chinese product-author post. | Used concise praise -> TraceMind value -> link wording. |
 
 #### Retrospective
 
@@ -316,3 +316,60 @@
 - Workflow change for tomorrow: prioritize approved high-intent follow-ups before any new discovery; do not add more candidates until K-M are either sent, rejected, or rewritten.
 - Messaging change for tomorrow: when asked "how to use", be precise that native apps still need SDK/key-event setup while Web can start with lighter auto capture.
 - Candidate selection change for tomorrow: treat direct replies to existing TraceMind comments as higher priority than fresh cold replies, even if the fresh thread looks high volume.
+
+## 2026-05-21
+
+### Daily Run
+
+- Workplan used: `docs/customer_acquisition_workplan_2026-05-21.md`.
+- Channels checked: V2EX, X / Twitter, Appinn / 小众软件.
+- Public replies sent: 6.
+- Public replies proposed / awaiting approval: 0 new rows in `docs/social_reply_targets_2026-05-21.md`; row N remains in `docs/social_reply_targets_2026-05-20.md`; rows A-F remain in `docs/social_reply_targets_2026-05-18.md`.
+- Private messages sent: 0.
+- New candidates found: 6 inspected and sent after user approval / expansion.
+- High-intent leads: no new direct replies today; Markra and HanGrid each produced a low-positive like on the prior TraceMind reply.
+- Blockers: row N and rows A-F remain approval-gated; X direct status checks require the logged-in Chrome view for reliable reply-level counts.
+- Retrospective: see below.
+- Next actions: monitor rows R-W and prior sent rows once tomorrow.
+
+#### Feedback Checked
+
+| Channel | Source | Signal | Action Taken | Follow-Up |
+| --- | --- | --- | --- | --- |
+| V2EX | Main TraceMind post `https://www.v2ex.com/t/1213290` | `low`; 575 views, 0 replies. | No bump/repost. | Keep as passive visibility. |
+| V2EX | 秒译 row K `https://www.v2ex.com/t/1213722#reply11` | `no_response`; TraceMind reply remains last visible reply. | No follow-up. | Recheck once tomorrow. |
+| V2EX | GPT Image2 row L `https://www.v2ex.com/t/1213620#reply37` | `no_response`; one later unrelated reply, no direct author response. | No follow-up. | Recheck only for direct author response. |
+| V2EX | Markra row M `https://www.v2ex.com/t/1213587#reply19` | `low_positive`; TraceMind reply has 1 like, but later OP replies are directed to another user. | No follow-up. | Treat as weak signal, not trial intent. |
+| V2EX | 育儿食用建议 App row O `https://www.v2ex.com/t/1213924#reply6` | `no_response`; reply remains last visible reply. | No follow-up. | Recheck once tomorrow. |
+| V2EX | HanGrid row P `https://www.v2ex.com/t/1213769#reply26` | `low_positive`; TraceMind reply has 1 like, no direct follow-up. | No follow-up. | Treat as weak signal, not trial intent. |
+| Appinn / 小众软件 | TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; 58 views, 11 homepage-link clicks, 0 replies. | No bump/repost. | Continue low-frequency monitoring. |
+| X / Twitter | Community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium-low`; 128 views, 1 reply, 1 like. | No new reply. | Follow only if a new reply appears. |
+| X / Twitter | Johnny follow-up `https://x.com/old_farmer_/status/2055939454217638329` | `low`; 10 views, 0 replies, 0 likes. | No follow-up. | Do not continue without a new signal. |
+| X / Twitter | Row Q reply `https://x.com/old_farmer_/status/2056928446413197561` | `low`; 12 views, 0 replies, 0 likes. | Corrected the stored reply URL in the 2026-05-20 target file. | Recheck once tomorrow. |
+
+#### New Candidates Found
+
+- Sent after user approval / expansion in `docs/social_reply_targets_2026-05-21.md`: SparkBin, Cuehour, BriefFeed AI Insights, Poplingo, Drowsebook, Papr.
+
+#### New Public Replies
+
+| ID | Channel | Source | Fit | Status |
+| --- | --- | --- | --- | --- |
+| R | V2EX | SparkBin `https://www.v2ex.com/t/1214266?p=1#reply2` | High; vibe-coding AI project coach with explicit validation-stage feedback ask. | commented |
+| S | V2EX | Cuehour `https://www.v2ex.com/t/1214221?p=1#reply3` | High; product-positioning failure and real-user validation problem. | commented |
+| T | V2EX | BriefFeed AI Insights `https://www.v2ex.com/t/1214295?p=1#reply1` | Medium-high; AI browser extension with a clear activation and insight-consumption path. | commented |
+| U | V2EX | Poplingo `https://www.v2ex.com/t/1214283?p=1#reply40` | Medium-high; AI translation plugin with real feedback. | commented |
+| V | V2EX | Drowsebook `https://www.v2ex.com/t/1214142?p=1#reply77` | Medium; reading app with dense real-user feedback. | commented |
+| W | V2EX | Papr `https://www.v2ex.com/t/1214281?p=1#reply9` | Medium-high; local-first RSS reader with AI summary/Q&A paths. | commented |
+
+#### Retrospective
+
+- What worked: V2EX again produced the best current candidates; short `称赞 -> 价值 -> 链接` replies were faster to send and better aligned with the user's requested public tone.
+- What did not work: yesterday's high-intent follow-ups did not produce new author replies today; Appinn and X produced visibility but no conversation.
+- Best channel today: V2EX `分享创造`.
+- Best customer signal: SparkBin's Validate-stage request and Cuehour's positioning-miss post are closer to TraceMind's core evidence loop than generic launch posts.
+- Best wording: concise praise plus one concrete TraceMind value, with the link last.
+- Weakest assumption: a like on a V2EX reply is only a weak signal; do not count it as trial intent without a direct reply, signup, or explicit setup question.
+- Workflow change for tomorrow: recheck newly sent rows R-W before adding more cold outreach volume.
+- Messaging change for tomorrow: keep public comments short; avoid turning each reply into a product diagnosis.
+- Candidate selection change for tomorrow: prefer posts where the author already names a learning gap, such as validation, conversion, retention, usage, or positioning.

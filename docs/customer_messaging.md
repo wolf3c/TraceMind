@@ -34,13 +34,17 @@ AI 自动埋点，AI 分析数据，AI 驱动产品迭代闭环。
 
 ## 公开回复结构
 
-评价或推荐 TraceMind 时，默认使用三段式：
+评价或推荐 TraceMind 时，默认使用短三段式：
 
 1. 称赞对方产品或进展，并点出一个具体细节。
-2. 推荐 TraceMind，说明它能给对方提供的具体价值。
+2. 推荐 TraceMind，核心表达是“让你的 coding AI 读懂用户行为”，再接一个具体 AI-native 价值。
 3. 最后放链接。
 
-语气要像自然回复，不要像产品诊断报告。中文 X 回复可以用更轻的表达，例如“2 天从0到1 👍。我做的 TraceMind 可以帮你……希望帮你实现从1到n。”
+语气要像自然回复，不要像产品诊断报告。公开评论控制在 1-2 句，不展开多段分析；如果要诊断，只保留一个最能体现 TraceMind 价值的用户路径或验证点。中文 X / V2EX 回复默认使用：
+
+```text
+<具体称赞>。我做的 TraceMind 可以让你的 coding AI 读懂用户行为，帮你<一个具体 AI-native 价值>。欢迎试用：<link>
+```
 
 不要先写长篇产品诊断再顺带推荐 TraceMind；公开评论要短、正向、明确。
 
@@ -104,6 +108,8 @@ Happy to have you try it: https://tracemind.sandbox.galaxycloud.app/?utm_source=
 | 2026-05-19 | v1.5 | 将 X Community 作为独立获客渠道，优先筛选 AI coding、vibe coding、build in public、indie hacker 社区中的产品作者帖。 | 用户指出 X Community 是好渠道，应主动找到适合 TraceMind 的社区推广产品。 |
 | 2026-05-19 | v1.6 | 固化 Build in Public 和 Vibe Coding 最近 24 小时帖子筛选流程，针对适合 TraceMind 的产品作者帖准备推荐回复。 | 用户希望后续持续从这两个社区寻找当天新产品帖，并在合适场景回复推荐 TraceMind。 |
 | 2026-05-20 | v1.7 | 公开评价/推荐回复改为“称赞 -> 推荐 TraceMind 及具体价值 -> 链接”。 | 用户要求推荐自家产品时先正向评价对方，再清晰说明 TraceMind 能提供什么价值，最后给链接。 |
+| 2026-05-21 | v1.8 | 公开回复进一步压缩，避免做过多评论或产品诊断，控制为短称赞、一个具体价值点和推广链接。 | 用户指出 V2EX 回复过于冗长，应更像简洁推荐而不是长评。 |
+| 2026-05-21 | v1.9 | 将公开回复核心句优化为“TraceMind 可以让你的 coding AI 读懂用户行为”，再接一个具体 AI-native 价值和推广链接。 | 用户要求突出 AI-native 重点，让评论更简洁有力。 |
 
 ## 后续优化依据
 
