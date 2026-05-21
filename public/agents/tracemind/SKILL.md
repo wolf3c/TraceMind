@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.17.7
+version: 2026.05.21.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -14,16 +14,17 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
 3. For product behavior analysis, use `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
 4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
-5. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
-6. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
-7. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
-8. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
-9. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
-10. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
-11. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
-12. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
-13. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
-14. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
+5. If local TraceMind Skill or AGENTS rules may be stale, call `tracemind.check_agent_setup` with the local Skill, AGENTS/rules, and manifest text before editing instrumentation or SDK setup.
+6. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
+7. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
+8. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
+9. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
+10. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
+11. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
+12. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+13. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
+14. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
+15. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
 
 ## Product Behavior Analysis Workflows
 
@@ -196,4 +197,4 @@ Use `tracemind.privacy_check` when a field name or sample value might be sensiti
 
 ## Update Rule
 
-Before TraceMind instrumentation work, compare this version with `tracemind.agent_guidance`. If a newer version exists, tell the user what will be updated and ask for confirmation before changing local skill or instruction files. Do not silently overwrite user-edited files.
+Before TraceMind instrumentation or SDK setup work, compare this version with `tracemind.agent_guidance`. If a local Skill, AGENTS snippet, manifest, or project rules file may be stale, call `tracemind.check_agent_setup` with the local file content. If the tool reports `missing`, `outdated`, or `incomplete`, tell the user which files will be updated, merge only the missing rules, and ask for confirmation before editing. Do not silently overwrite user-edited files, duplicate the full TraceMind block, or commit MCP URLs, tokens, project keys, or secrets.

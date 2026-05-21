@@ -31,7 +31,7 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.17.7';
+const AGENT_GUIDANCE_VERSION = '2026.05.21.1';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
@@ -86,6 +86,15 @@ const AGENT_GUIDANCE_RESOURCES = {
   agentSnippet: '/agents/tracemind/AGENTS_SNIPPET.md',
   manifest: '/agents/tracemind/manifest.json',
 };
+const AGENT_SETUP_CHECK_TOOL = 'tracemind.check_agent_setup';
+const AGENT_SETUP_CONTENT_LIMIT = 120000;
+const AGENT_SETUP_SAFE_UPDATE_INSTRUCTIONS = [
+  'Tell the user which local files will be updated before editing.',
+  'Do not overwrite user-edited rules; merge only missing TraceMind guidance.',
+  'Do not duplicate a full TraceMind rules block when the project already has one.',
+  'Keep MCP URLs, Bearer tokens, mcpToken values, projectKey values, and secrets out of committed instruction files.',
+  'After updating, call tracemind.check_agent_setup again and report the new status.',
+];
 const FORBIDDEN_ANALYTICS_KEYS = [
   'email',
   'phone',
@@ -239,16 +248,43 @@ export function mcpTools(project) {
     {
       name: 'tracemind.agent_guidance',
       title: projectScopedTitle('TraceMind Agent Guidance', project),
-      description: projectScopedDescription('返回当前 TraceMind coding agent 指导版本、公开 skill/rules 资源和推荐工作流。', project),
+      description: projectScopedDescription('返回当前 TraceMind coding agent 权威指导版本、公开 skill/rules 资源和推荐工作流；老用户应对比本地 Skill/AGENTS，必要时调用 tracemind.check_agent_setup。', project),
       inputSchema: {
         type: 'object',
         properties: {},
       },
     },
     {
+      name: AGENT_SETUP_CHECK_TOOL,
+      title: projectScopedTitle('TraceMind Check Agent Setup', project),
+      description: projectScopedDescription('检查客户仓库中已安装的 TraceMind Skill / AGENTS rules 是否过期，是否包含 registry SDK 指引、project binding、agent_guidance 和 capture_setup 更新规则，并返回安全合并建议。', project),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          skillContent: {
+            type: 'string',
+            description: '本地 TraceMind Skill/SKILL.md 内容。只用于文本级规则检查，不会原文回显。',
+          },
+          agentInstructionContent: {
+            type: 'string',
+            description: '本地 AGENTS.md、CLAUDE.md、Codex instructions 或同类 agent rules 内容。只用于文本级规则检查，不会原文回显。',
+          },
+          manifestContent: {
+            type: 'string',
+            description: '可选的 TraceMind manifest.json 内容。只用于文本级规则检查，不会原文回显。',
+          },
+          fileHints: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '可选的本地文件路径提示，例如 .codex/skills/tracemind/SKILL.md、AGENTS.md。',
+          },
+        },
+      },
+    },
+    {
       name: 'tracemind.project_health',
       title: projectScopedTitle('TraceMind Project Health', project),
-      description: projectScopedDescription('读取由小时报告聚合的项目健康报告和 SDK 升级提示，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
+      description: projectScopedDescription('读取由小时报告聚合的项目健康报告、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -271,7 +307,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.capture_setup',
       title: projectScopedTitle('TraceMind Capture Setup', project),
-      description: projectScopedDescription('返回当前项目的 Auto Capture 项目 key 和指定平台的接入代码与步骤。', project),
+      description: projectScopedDescription('返回当前项目的 Auto Capture 项目 key 和指定平台的接入代码与步骤；接 SDK 前如果本地 TraceMind Skill/AGENTS 可能过期，应先调用 tracemind.check_agent_setup。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -729,6 +765,7 @@ function projectHealthResult(project, reportDate, report, health = {}) {
       hourlyComparison: health.hourlyComparison || {},
     },
     delivery: report?.delivery || {},
+    agentSetupNotice: agentSetupNotice(),
   };
 }
 
@@ -779,11 +816,22 @@ function textResult(text, structuredContent) {
   };
 }
 
+function agentSetupNotice(extra = {}) {
+  return {
+    guidanceVersion: AGENT_GUIDANCE_VERSION,
+    resources: AGENT_GUIDANCE_RESOURCES,
+    checkTool: AGENT_SETUP_CHECK_TOOL,
+    recommendedAction: 'If local TraceMind Skill or AGENTS rules may be stale, read them and call tracemind.check_agent_setup before instrumentation or SDK setup; merge only missing guidance after user confirmation.',
+    ...extra,
+  };
+}
+
 function guidanceResult(extra = {}) {
   return {
     ok: true,
     guidanceVersion: AGENT_GUIDANCE_VERSION,
     resources: AGENT_GUIDANCE_RESOURCES,
+    agentSetupNotice: agentSetupNotice(),
     analysisWorkflows: [
       {
         name: 'Daily health check',
@@ -825,12 +873,13 @@ function guidanceResult(extra = {}) {
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
+      'If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.',
       'When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.',
       'Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.',
       'Prefer evidence references over raw copied content, screenshots, source diffs, raw prompts, tool arguments, tool results, request bodies, response bodies, headers, cookies, authorization values, or full query URLs.',
       'When implementing an end-user feedback entry in a customer app, use the SDK user feedback API: TraceMind.submitFeedback / window.TraceMind.submitFeedback / TraceMindServer.submitFeedback. Do not use /api/capture, capture("custom"), or tracemind.submit_feedback for terminal user feedback.',
       'For terminal user feedback triage, use tracemind.query_user_feedback to read reports and tracemind.update_user_feedback to update status, notes, resolution, linkedIssueUrl, or duplicateOf.',
-      'Ask the user before updating local skill or instruction files.',
+      'Ask the user before updating local skill or instruction files; merge missing TraceMind guidance instead of overwriting custom rules.',
     ],
     ...extra,
   };
@@ -843,6 +892,230 @@ function addFinding(findings, severity, code, message, path) {
     message,
     ...(path ? { path } : {}),
   });
+}
+
+function setupCheckContent(value) {
+  return String(value || '').slice(0, AGENT_SETUP_CONTENT_LIMIT);
+}
+
+function parseManifestGuidanceVersion(manifestContent) {
+  if (!manifestContent) return '';
+  try {
+    const manifest = JSON.parse(manifestContent);
+    return safeString(manifest.guidanceVersion, 80);
+  } catch (error) {
+    return '';
+  }
+}
+
+function extractGuidanceVersion(skillContent, manifestContent, combinedContent) {
+  const skillMatch = skillContent.match(/\bversion:\s*[`'"]?(\d{4}\.\d{2}\.\d{2}\.\d+)[`'"]?/i);
+  if (skillMatch) return skillMatch[1];
+
+  const manifestVersion = parseManifestGuidanceVersion(manifestContent);
+  if (manifestVersion) return manifestVersion;
+
+  const combinedMatch = combinedContent.match(/\bguidanceVersion\b[^0-9]{0,20}(\d{4}\.\d{2}\.\d{2}\.\d+)/);
+  return combinedMatch ? combinedMatch[1] : '';
+}
+
+function compareGuidanceVersions(a, b) {
+  const left = String(a || '').split('.').map((item) => Number(item) || 0);
+  const right = String(b || '').split('.').map((item) => Number(item) || 0);
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if ((left[index] || 0) < (right[index] || 0)) return -1;
+    if ((left[index] || 0) > (right[index] || 0)) return 1;
+  }
+  return 0;
+}
+
+function contentHasPattern(content, patterns) {
+  return patterns.some((pattern) => pattern.test(content));
+}
+
+function detectSensitiveAgentSetupContent(findings, contents) {
+  Object.entries(contents).forEach(([path, content]) => {
+    if (!content) return;
+    const hasSensitiveContent = [
+      /tm_mcp_[A-Za-z0-9._-]+/i,
+      /bearer\s+[A-Za-z0-9._~+/=-]{6,}/i,
+      /tm_proj_[A-Za-z0-9._-]+/i,
+      /https?:\/\/[^\s`"']+\/mcp\?[^\s`"']*(?:mcpToken|token)=/i,
+      /\b(api[_-]?key|access[_-]?token|client[_-]?secret|authorization)\b\s*[:=]/i,
+    ].some((pattern) => pattern.test(content));
+
+    if (hasSensitiveContent) {
+      addFinding(
+        findings,
+        'warning',
+        'sensitive_content_present',
+        'Local agent setup content appears to include MCP URLs, tokens, project keys, or secret-like values. Keep credentials out of committed instruction files.',
+        path,
+      );
+    }
+  });
+}
+
+function checkAgentSetupResult(args = {}) {
+  const input = args && typeof args === 'object' ? args : {};
+  const skillContent = setupCheckContent(input.skillContent);
+  const agentInstructionContent = setupCheckContent(input.agentInstructionContent);
+  const manifestContent = setupCheckContent(input.manifestContent);
+  const combinedContent = [skillContent, agentInstructionContent, manifestContent].filter(Boolean).join('\n');
+  const fileHintCount = Array.isArray(input.fileHints) ? input.fileHints.filter(Boolean).slice(0, 20).length : 0;
+  const findings = [];
+
+  detectSensitiveAgentSetupContent(findings, {
+    skillContent,
+    agentInstructionContent,
+    manifestContent,
+  });
+
+  if (!combinedContent.trim()) {
+    addFinding(
+      findings,
+      'info',
+      'no_agent_setup_content',
+      'No local TraceMind Skill, AGENTS rules, or manifest content was provided. Read the local files and call this tool again.',
+    );
+    return {
+      ok: true,
+      guidanceVersion: AGENT_GUIDANCE_VERSION,
+      status: 'unknown',
+      installedGuidanceVersion: null,
+      findings,
+      recommendedActions: [
+        'Read the local TraceMind Skill file if one is installed.',
+        'Read project instruction files such as AGENTS.md, CLAUDE.md, .cursorrules, or Codex rules.',
+        'Read a local .tracemind-sdk.json or TraceMind manifest if present.',
+        'Call tracemind.check_agent_setup again with the file contents before changing instrumentation or SDK setup.',
+      ],
+      resources: AGENT_GUIDANCE_RESOURCES,
+      fileHintCount,
+      agentSetupNotice: agentSetupNotice({ status: 'unknown' }),
+      safeUpdateInstructions: AGENT_SETUP_SAFE_UPDATE_INSTRUCTIONS,
+    };
+  }
+
+  if (!skillContent && !agentInstructionContent) {
+    addFinding(
+      findings,
+      'warning',
+      'agent_rules_missing',
+      'No local TraceMind Skill or AGENTS-style instruction content was provided.',
+    );
+  }
+
+  const installedGuidanceVersion = extractGuidanceVersion(skillContent, manifestContent, combinedContent) || null;
+  if (!installedGuidanceVersion) {
+    addFinding(
+      findings,
+      'warning',
+      'guidance_version_missing',
+      'Local TraceMind rules do not include a detectable guidance version.',
+    );
+  } else if (compareGuidanceVersions(installedGuidanceVersion, AGENT_GUIDANCE_VERSION) < 0) {
+    addFinding(
+      findings,
+      'warning',
+      'skill_version_outdated',
+      `Local TraceMind guidance version is older than ${AGENT_GUIDANCE_VERSION}.`,
+    );
+  }
+
+  [
+    {
+      code: 'missing_agent_guidance_check',
+      message: 'Local rules should call tracemind.agent_guidance before TraceMind instrumentation or SDK setup work.',
+      patterns: [/tracemind\.agent_guidance/],
+    },
+    {
+      code: 'missing_agent_setup_check',
+      message: 'Local rules should call tracemind.check_agent_setup when the installed TraceMind Skill or AGENTS rules may be stale.',
+      patterns: [/tracemind\.check_agent_setup/],
+    },
+    {
+      code: 'missing_capture_setup',
+      message: 'Local rules should call tracemind.capture_setup before installing SDKs or adding manual capture.',
+      patterns: [/tracemind\.capture_setup/],
+    },
+    {
+      code: 'missing_registry_guidance',
+      message: 'Local rules should use registry install commands when capture_setup returns distributionMode: "registry".',
+      patterns: [/distributionMode[^.\n]{0,80}registry/i, /registry install/i, /npm[\s\S]{0,80}PyPI[\s\S]{0,80}Maven Central/i],
+    },
+    {
+      code: 'missing_source_ref_guidance',
+      message: 'Local rules should treat latestSdk.sourceRef as the immutable SDK source reference for local-source fallback installs.',
+      patterns: [/latestSdk\.sourceRef/],
+    },
+    {
+      code: 'missing_content_hash_guidance',
+      message: 'Local rules should compare latestSdk.contentHash or sourceDetails.sdkContentHash instead of relying only on displayVersion.',
+      patterns: [/contentHash/, /sdkContentHash/],
+    },
+    {
+      code: 'missing_project_binding',
+      message: 'Local rules should include TraceMind project binding checks with Project ID, expected MCP server, and tracemind.project_info verification.',
+      patterns: [/TraceMind Project Binding/i, /TraceMind project binding/i, /Project ID[\s\S]{0,240}Expected MCP server/i],
+    },
+  ].forEach((check) => {
+    if (!contentHasPattern(combinedContent, check.patterns)) {
+      addFinding(findings, 'warning', check.code, check.message);
+    }
+  });
+
+  if (/(^|\n)\s*-?\s*Expected MCP server:\s*`?tracemind`?\s*(\n|$)/i.test(combinedContent)
+    || /MCP server named [`'"]?tracemind[`'"]?/i.test(combinedContent)) {
+    addFinding(
+      findings,
+      'warning',
+      'old_mcp_server_name',
+      'Local rules appear to reference the old shared MCP server name "tracemind"; prefer the project-scoped tracemind-<project-code> name and verify with tracemind.project_info.',
+    );
+  }
+
+  const findingCodes = new Set(findings.map((finding) => finding.code));
+  const status = findingCodes.has('agent_rules_missing')
+    ? 'missing'
+    : findingCodes.has('skill_version_outdated')
+      ? 'outdated'
+      : [...findingCodes].some((code) => code.startsWith('missing_') || code === 'guidance_version_missing' || code === 'sensitive_content_present' || code === 'old_mcp_server_name')
+        ? 'incomplete'
+        : 'current';
+
+  const recommendedActions = [];
+  if (status === 'missing') {
+    recommendedActions.push('Read the public TraceMind Skill and AGENTS snippet, then install or merge them into the customer project with user approval.');
+  }
+  if (status === 'outdated') {
+    recommendedActions.push('Read the current public TraceMind Skill and AGENTS snippet, then merge only the missing guidance into the local files.');
+  }
+  if (status === 'incomplete') {
+    recommendedActions.push('Patch only the missing TraceMind rules listed in findings; do not append a duplicate full block.');
+  }
+  if (findingCodes.has('sensitive_content_present')) {
+    recommendedActions.push('Remove committed MCP URLs, tokens, project keys, and secret-like values from local instruction files.');
+  }
+  if (findingCodes.has('old_mcp_server_name')) {
+    recommendedActions.push('Prefer a project-scoped MCP server name such as tracemind-<project-code> and verify the binding with tracemind.project_info.');
+  }
+  recommendedActions.push('Call tracemind.agent_guidance to confirm the current authority version before instrumentation work.');
+  recommendedActions.push('Call tracemind.capture_setup for the target platform and use registry install commands when distributionMode is registry.');
+
+  return {
+    ok: true,
+    guidanceVersion: AGENT_GUIDANCE_VERSION,
+    status,
+    installedGuidanceVersion,
+    findings,
+    recommendedActions,
+    resources: AGENT_GUIDANCE_RESOURCES,
+    fileHintCount,
+    agentSetupNotice: agentSetupNotice({ status }),
+    safeUpdateInstructions: AGENT_SETUP_SAFE_UPDATE_INSTRUCTIONS,
+  };
 }
 
 const AUTO_CAPTURE_SIGNALS = [
@@ -2359,6 +2632,7 @@ function captureSetupResult(project, args = {}) {
   if (!project?.projectKey) {
     return {
       ok: false,
+      agentSetupNotice: agentSetupNotice(),
       findings: [{
         severity: 'error',
         code: 'missing_project_key',
@@ -2386,6 +2660,7 @@ function captureSetupResult(project, args = {}) {
     ok: true,
     projectKey: project.projectKey,
     tokenType: 'public_auto_capture_project_key',
+    agentSetupNotice: agentSetupNotice(),
     ...platformSetup(project, platform, { provider }),
   };
 }
@@ -3357,6 +3632,14 @@ export async function callMcpTool(project, name, args = {}, options = {}) {
         projectName: projectInfo.projectName,
         mcpServerName: projectInfo.mcpServerName,
       }),
+    );
+  }
+
+  if (name === AGENT_SETUP_CHECK_TOOL) {
+    const result = checkAgentSetupResult(args);
+    return textResult(
+      `TraceMind agent setup status: ${result.status}.`,
+      result,
     );
   }
 

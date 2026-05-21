@@ -161,6 +161,8 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('`tracemind.recent_online` 查看实时在线态势'));
       assert.ok(prompt.includes('功能使用分析'));
       assert.ok(prompt.includes('异常或下降原因分析'));
+      assert.ok(prompt.includes('先调用 `tracemind.agent_guidance` 确认当前权威版本'));
+      assert.ok(prompt.includes('调用 `tracemind.check_agent_setup` 并传入本地文件内容'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
       assert.ok(prompt.includes('通过 `tracemind.capture_setup` 获取 Web Auto Capture 接入脚本'));
       assert.ok(prompt.includes('如果返回 `distributionMode: "local_source"`'));
@@ -209,8 +211,10 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('`tracemind.recent_online` for real-time online status'));
       assert.ok(prompt.includes('feature usage analysis'));
       assert.ok(prompt.includes('anomaly or drop investigation'));
+      assert.ok(prompt.includes('call `tracemind.agent_guidance` to confirm the current authority version'));
+      assert.ok(prompt.includes('call `tracemind.check_agent_setup` with the local file contents'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
-      assert.ok(prompt.includes('Call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
+      assert.ok(prompt.includes('call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
       assert.ok(prompt.includes('Use registry install commands when `distributionMode: "registry"`'));
       assert.ok(!prompt.includes('If only global configuration is available, tell me first and wait for confirmation'));
       assert.ok(!prompt.includes('pending-global-confirmation'));
@@ -237,7 +241,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.17.7'));
+      assert.ok(skill.includes('version: 2026.05.21.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -285,7 +289,10 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('npm run check:sdk-registry-publication -- <version>'));
       assert.ok(skill.includes('identifySnippet'));
       assert.ok(skill.includes('tracemind.project_info'));
+      assert.ok(skill.includes('tracemind.check_agent_setup'));
+      assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
+      assert.ok(snippet.includes('Guidance version: `2026.05.21.1`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -316,11 +323,14 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
       assert.ok(snippet.includes('tracemind.update_user_feedback'));
       assert.ok(snippet.includes('tracemind.project_info'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.17.7');
+      assert.ok(snippet.includes('tracemind.check_agent_setup'));
+      assert.ok(snippet.includes('agentSetupNotice'));
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.21.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
       assert.ok(manifest.mcp.tools.includes('tracemind.project_info'));
+      assert.ok(manifest.mcp.tools.includes('tracemind.check_agent_setup'));
       assert.ok(manifest.mcp.tools.includes('tracemind.project_health'));
       assert.ok(manifest.mcp.tools.includes('tracemind.recent_online'));
       assert.ok(manifest.mcp.tools.includes('tracemind.capture_setup'));
@@ -339,6 +349,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.platforms.includes('server_http'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_info'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
+      assert.ok(manifest.updatePolicy.includes('tracemind.check_agent_setup'));
       assert.ok(manifest.sdkUpgradePolicy.includes('distributionMode is registry'));
       assert.ok(manifest.sdkUpgradePolicy.includes('sdkContentHash'));
       assert.ok(manifest.sdkUpgradePolicy.includes('latestSdk.sourceRef'));
@@ -1158,6 +1169,7 @@ describe('TraceMind', function () {
 
       const toolNames = mcpTools().map((tool) => tool.name);
       assert.ok(toolNames.includes('tracemind.agent_guidance'));
+      assert.ok(toolNames.includes('tracemind.check_agent_setup'));
       assert.ok(toolNames.includes('tracemind.project_info'));
       assert.ok(toolNames.includes('tracemind.project_health'));
       assert.ok(toolNames.includes('tracemind.recent_online'));
@@ -1182,6 +1194,13 @@ describe('TraceMind', function () {
         && tool.title.includes('Agent Guidance Project')
         && tool.description.includes('Agent Guidance Project')
       )));
+      const checkSetupTool = projectTools.find((tool) => tool.name === 'tracemind.check_agent_setup');
+      const captureSetupTool = projectTools.find((tool) => tool.name === 'tracemind.capture_setup');
+      const healthTool = projectTools.find((tool) => tool.name === 'tracemind.project_health');
+      assert.ok(checkSetupTool.description.includes('Skill / AGENTS rules'));
+      assert.ok(checkSetupTool.description.includes('registry SDK'));
+      assert.ok(captureSetupTool.description.includes('tracemind.check_agent_setup'));
+      assert.ok(healthTool.description.includes('agent setup'));
 
       const projectInfo = await callMcpTool({
         ...project,
@@ -1204,12 +1223,16 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.17.7');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.21.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.21.1');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
       assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
+      assert.ok(guidance.structuredContent.workflow.includes('If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
@@ -1274,6 +1297,82 @@ describe('TraceMind', function () {
       assert.strictEqual(mcpAutoDiffValidation.structuredContent.ok, true);
       assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.path === 'eventName'));
       assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.message.includes('promptName')));
+    });
+
+    it('checks local agent setup freshness without echoing sensitive content', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
+      const currentRules = `---
+version: 2026.05.21.1
+---
+TraceMind Project Binding
+Project ID: project-agent-setup-check
+Expected MCP server: tracemind-agent-setup-check
+Call tracemind.project_info first.
+Call tracemind.agent_guidance before instrumentation.
+Call tracemind.check_agent_setup when local rules may be stale.
+Call tracemind.capture_setup before setup.
+Use distributionMode: "registry" install commands from npm, PyPI, or Maven Central.
+Treat latestSdk.sourceRef and contentHash as SDK source of truth.`;
+
+      const empty = await callMcpTool(project, 'tracemind.check_agent_setup', {});
+      assert.strictEqual(empty.structuredContent.ok, true);
+      assert.strictEqual(empty.structuredContent.status, 'unknown');
+      assert.ok(empty.structuredContent.findings.some((finding) => finding.code === 'no_agent_setup_content'));
+      assert.ok(empty.structuredContent.recommendedActions.some((action) => action.includes('Read the local TraceMind Skill')));
+
+      const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules,
+        agentInstructionContent: currentRules,
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.05.21.1' }),
+      });
+      assert.strictEqual(current.structuredContent.status, 'current');
+      assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
+      assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
+
+      const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('version: 2026.05.21.1', 'version: 2026.05.17.7'),
+        agentInstructionContent: currentRules,
+      });
+      assert.strictEqual(outdated.structuredContent.status, 'outdated');
+      assert.ok(outdated.structuredContent.findings.some((finding) => finding.code === 'skill_version_outdated'));
+
+      const missingRegistry = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('Use distributionMode: "registry" install commands from npm, PyPI, or Maven Central.', 'Use returned package install commands.'),
+        agentInstructionContent: currentRules,
+      });
+      assert.strictEqual(missingRegistry.structuredContent.status, 'current');
+
+      const incompleteRegistry = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('Use distributionMode: "registry" install commands from npm, PyPI, or Maven Central.', 'Use returned package install commands.'),
+      });
+      assert.strictEqual(incompleteRegistry.structuredContent.status, 'incomplete');
+      assert.ok(incompleteRegistry.structuredContent.findings.some((finding) => finding.code === 'missing_registry_guidance'));
+
+      const missingBinding = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules
+          .replace('TraceMind Project Binding\nProject ID: project-agent-setup-check\nExpected MCP server: tracemind-agent-setup-check\nCall tracemind.project_info first.\n', ''),
+      });
+      assert.strictEqual(missingBinding.structuredContent.status, 'incomplete');
+      assert.ok(missingBinding.structuredContent.findings.some((finding) => finding.code === 'missing_project_binding'));
+
+      const oldMcpName = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('Expected MCP server: tracemind-agent-setup-check', 'Expected MCP server: tracemind'),
+      });
+      assert.strictEqual(oldMcpName.structuredContent.status, 'incomplete');
+      assert.ok(oldMcpName.structuredContent.findings.some((finding) => finding.code === 'old_mcp_server_name'));
+
+      const sensitive = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: `${currentRules}
+MCP URL: https://example.com/mcp?mcpToken=tm_mcp_super_secret
+Authorization: Bearer topsecret
+projectKey: tm_proj_sensitive`,
+      });
+      const sensitiveJson = JSON.stringify(sensitive.structuredContent);
+      assert.ok(sensitive.structuredContent.findings.some((finding) => finding.code === 'sensitive_content_present'));
+      assert.ok(!sensitiveJson.includes('tm_mcp_super_secret'));
+      assert.ok(!sensitiveJson.includes('Bearer topsecret'));
+      assert.ok(!sensitiveJson.includes('tm_proj_sensitive'));
     });
 
     it('returns materialized project health through MCP without internal actor hashes', async function () {
@@ -1386,6 +1485,8 @@ describe('TraceMind', function () {
       assert.strictEqual(structured.previousReportDate, '2026-05-11');
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
+      assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.05.21.1');
       assert.strictEqual(structured.health.current.eventCount, 6);
       assert.strictEqual(structured.health.previous.eventCount, 20);
       assert.strictEqual(structured.health.trends.events, -0.7);
@@ -1414,6 +1515,7 @@ describe('TraceMind', function () {
       assert.strictEqual(structured.ok, true);
       assert.strictEqual(structured.reportDate, '2026-04-01');
       assert.strictEqual(structured.status, 'missing');
+      assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(structured.health.current.eventCount, 0);
       assert.strictEqual(structured.health.previous.eventCount, 0);
       assert.deepStrictEqual(structured.delivery, {});
@@ -1949,6 +2051,8 @@ describe('TraceMind', function () {
       assert.strictEqual(setup.structuredContent.ok, true);
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.21.1');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
       assert.ok(setup.structuredContent.captureSnippet.includes('/capture.js'));
       assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
