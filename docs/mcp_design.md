@@ -209,6 +209,28 @@ Output:
       "sessions": -0.53,
       "events": -0.73
     },
+    "hourlyComparison": {
+      "granularity": "hour_rollup",
+      "comparisonMode": "completed_hours",
+      "currentHourCount": 16,
+      "previousHourCount": 16,
+      "metrics": {
+        "activeUsers": [
+          {
+            "hourLabel": "00:00",
+            "current": 2,
+            "previous": 3,
+            "currentStartAt": "2026-05-14T16:00:00.000Z",
+            "currentEndAt": "2026-05-14T17:00:00.000Z",
+            "previousStartAt": "2026-05-13T16:00:00.000Z",
+            "previousEndAt": "2026-05-13T17:00:00.000Z"
+          }
+        ],
+        "sessions": [],
+        "averageActiveDuration": [],
+        "events": []
+      }
+    },
     "attentionItems": [
       {
         "code": "sessions_dropped",
@@ -225,6 +247,8 @@ Output:
   }
 }
 ```
+
+`health.hourlyComparison` 面向 Dashboard 和 Agent 的结构化解释：它只包含可展示的小时标签、当前窗口值、前一日同小时值和窗口边界，不包含内部 actor/session 去重键。Dashboard 使用它在活跃用户、活跃会话、人均活跃时长和总事件卡片内展示小时折线；Agent 可用同一字段解释下降发生在哪些小时。
 
 ### `tracemind.recent_online`
 

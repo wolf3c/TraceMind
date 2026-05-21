@@ -2044,6 +2044,86 @@ code {
   font-size: 0.8rem;
 }
 
+.hourly-trend-card summary {
+  min-height: 192px;
+  grid-template-rows: auto auto minmax(62px, 1fr) auto auto;
+  gap: 6px;
+}
+
+.health-metric-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: end;
+  min-width: 0;
+}
+
+.health-metric-row > strong {
+  margin-top: 0 !important;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.health-metric-side {
+  display: grid !important;
+  gap: 4px;
+  align-self: end;
+  overflow: visible;
+}
+
+.trend-popover-wrap {
+  position: relative;
+  display: inline-block !important;
+  width: max-content;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.trend-popover-button {
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 760;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.trend-popover-button:focus-visible {
+  outline: 2px solid rgba(24, 167, 122, 0.35);
+  outline-offset: 3px;
+}
+
+.trend-popover {
+  position: absolute;
+  z-index: 6;
+  top: 24px;
+  left: 0;
+  min-width: 150px;
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 10px 26px rgba(22, 43, 36, 0.13);
+  color: var(--deep) !important;
+  background: #fffefa;
+  font-size: 0.7rem !important;
+  font-weight: 650 !important;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.trend-popover-wrap:hover .trend-popover,
+.trend-popover-wrap.active .trend-popover,
+.trend-popover-button:focus-visible + .trend-popover {
+  opacity: 1;
+}
+
 .realtime-online-card summary {
   min-height: 124px;
   grid-template-rows: auto auto minmax(62px, 1fr) auto;
@@ -2134,6 +2214,176 @@ code {
   font-weight: 650;
 }
 
+.hourly-sparkline {
+  display: block;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 62px;
+  border: 0;
+  padding: 0;
+  overflow: visible;
+  cursor: crosshair;
+  background: transparent;
+  text-align: inherit;
+}
+
+.hourly-sparkline:focus-visible {
+  outline: 2px solid rgba(24, 167, 122, 0.28);
+  outline-offset: 3px;
+}
+
+.hourly-chart {
+  display: block;
+  width: 100%;
+  height: 62px;
+  overflow: visible;
+}
+
+.hourly-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hourly-line.current {
+  stroke: #18a77a;
+  stroke-width: 4.5;
+}
+
+.hourly-line.previous {
+  stroke: #8ca39a;
+  stroke-width: 4;
+  stroke-dasharray: 7 7;
+}
+
+.hourly-guide {
+  opacity: 0;
+  pointer-events: none;
+  stroke: #bfd0c8;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.hourly-point {
+  opacity: 0;
+  pointer-events: none;
+  stroke: #fffefa;
+  stroke-width: 2.5;
+}
+
+.hourly-point.current {
+  fill: #18a77a;
+}
+
+.hourly-point.previous {
+  fill: #8ca39a;
+}
+
+.hourly-sparkline:hover .hourly-guide,
+.hourly-sparkline:hover .hourly-point,
+.hourly-sparkline:focus .hourly-guide,
+.hourly-sparkline:focus .hourly-point {
+  opacity: 1;
+}
+
+.hourly-tooltip {
+  position: absolute;
+  z-index: 5;
+  bottom: 66px;
+  min-width: 172px;
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 10px 26px rgba(22, 43, 36, 0.13);
+  color: var(--deep);
+  background: #fffefa;
+  font-size: 0.7rem;
+  font-weight: 650;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.hourly-sparkline:hover .hourly-tooltip,
+.hourly-sparkline:focus .hourly-tooltip {
+  opacity: 1;
+}
+
+.tooltip-hour {
+  margin-bottom: 4px;
+  color: var(--deep);
+  font-weight: 780;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  color: #60756c;
+}
+
+.tooltip-row span {
+  display: inline !important;
+  color: #60756c !important;
+  font-size: 0.7rem !important;
+  font-weight: 650 !important;
+}
+
+.tooltip-row strong {
+  display: inline !important;
+  margin: 0 !important;
+  color: var(--deep);
+  font-size: 0.7rem !important;
+  line-height: 1.45 !important;
+}
+
+.tooltip-row.current strong {
+  color: #18a77a !important;
+}
+
+.tooltip-row.previous strong {
+  color: #60756c !important;
+}
+
+.tooltip-row.delta strong {
+  color: #8b2f18 !important;
+}
+
+.hourly-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  color: #60756c;
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.hourly-legend span {
+  display: inline-block !important;
+  color: #60756c !important;
+  font-size: 0.7rem !important;
+  font-weight: 650 !important;
+}
+
+.hourly-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 3px solid #18a77a;
+}
+
+.hourly-legend span:last-child::before {
+  border-top-color: #8ca39a;
+  border-top-style: dashed;
+}
+
 .health-card span,
 .health-card strong,
 .health-card small,
@@ -2208,6 +2458,22 @@ code {
   color: #60756c;
   font-size: 0.76rem;
   font-style: normal;
+}
+
+.health-metric-side,
+.trend-popover-wrap {
+  display: inline-block !important;
+  overflow: visible;
+}
+
+.health-metric-side {
+  display: grid !important;
+}
+
+.tooltip-row span,
+.tooltip-row strong,
+.hourly-legend span {
+  display: inline !important;
 }
 
 .trend-positive {
@@ -2651,6 +2917,22 @@ code {
   .workflow h2,
   .console h2 {
     font-size: clamp(28px, 8.6vw, 36px);
+  }
+
+  .health-metric-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    align-items: start;
+  }
+
+  .trend-popover-button,
+  .health-metric-side em {
+    white-space: normal;
+  }
+
+  .trend-popover {
+    min-width: 136px;
+    white-space: normal;
   }
 
   .one-line-example,

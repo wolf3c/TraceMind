@@ -726,6 +726,7 @@ function projectHealthResult(project, reportDate, report, health = {}) {
       current: health.current || {},
       previous: health.previous || {},
       trends: health.trends || {},
+      hourlyComparison: health.hourlyComparison || {},
     },
     delivery: report?.delivery || {},
   };

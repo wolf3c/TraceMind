@@ -954,18 +954,25 @@
     })}%`;
   }
 
-  function formatTrend(value, comparisonMode = "full_day") {
+  function formatTrend(value) {
     const numericValue = Number(value || 0);
-    const comparisonText = comparisonMode === "completed_hours"
-      ? translateNow("vs yesterday same hours")
-      : translateNow("vs previous day");
-    if (!numericValue) {
-      return comparisonMode === "completed_hours"
-        ? translateNow("Flat vs yesterday same hours")
-        : translateNow("Flat vs previous day");
-    }
+    if (!numericValue) return translateNow("Flat");
     const direction = numericValue > 0 ? "↑" : "↓";
-    return `${direction} ${Math.round(Math.abs(numericValue) * 100)}% ${comparisonText}`;
+    return `${direction} ${Math.round(Math.abs(numericValue) * 100)}%`;
+  }
+
+  function formatTrendContext(value, comparisonMode = "full_day") {
+    const numericValue = Number(value || 0);
+    const comparison = comparisonMode === "completed_hours"
+      ? translateNow("Compared with yesterday same hours")
+      : translateNow("Compared with previous day");
+    if (!numericValue) return comparison;
+    const direction = numericValue > 0 ? translateNow("increased") : translateNow("decreased");
+    return translateNow("{{comparison}} {{direction}} {{percent}}", {
+      comparison,
+      direction,
+      percent: `${Math.round(Math.abs(numericValue) * 100)}%`,
+    });
   }
 
   function trendClass(value) {
@@ -1266,6 +1273,7 @@
           {formatTime}
           {compactDate}
           {formatTrend}
+          {formatTrendContext}
           {trendClass}
           {retentionText}
           {topCountText}

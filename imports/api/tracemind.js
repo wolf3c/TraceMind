@@ -24,6 +24,8 @@ export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
 export const DAILY_REPORT_TIMEZONE = 'Asia/Shanghai';
 export const DAILY_REPORT_DRAFT_MIN_REFRESH_MS = 60 * 1000;
 
+const DAILY_REPORT_TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAILY_REPORT_DAY_MS = 24 * 60 * 60 * 1000;
 const PASSIVE_BOUNCE_EVENT_NAMES = new Set(['page_view', 'route_change']);
 const EXPLICIT_BOUNCE_INTERACTION_EVENT_TYPES = new Set(['click', 'input', 'submit', 'change', 'custom']);
 const ATTRIBUTION_REFERRER_TYPES = new Set(['direct', 'internal', 'external', 'search', 'social']);
@@ -1291,6 +1293,104 @@ function emptyHealthWindow() {
   };
 }
 
+function emptyHourlyComparison({
+  comparisonMode = 'full_day',
+  currentHourCount = 0,
+  previousHourCount = 0,
+} = {}) {
+  return {
+    granularity: 'hour_rollup',
+    comparisonMode,
+    currentHourCount,
+    previousHourCount,
+    metrics: {
+      activeUsers: [],
+      sessions: [],
+      averageActiveDuration: [],
+      events: [],
+    },
+  };
+}
+
+function localHourLabelForReport(date) {
+  const resolved = validDate(date);
+  if (!resolved) return '';
+  return new Date(resolved.getTime() + DAILY_REPORT_TZ_OFFSET_MS).toISOString().slice(11, 16);
+}
+
+function hourlyMetricValue(report = {}, field) {
+  const value = Number(report.current?.[field] || 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function hourlyComparisonPoint(currentReport = {}, previousReport = {}, field) {
+  const currentStartAt = validDate(currentReport.hourStartAt) || validDate(currentReport.sourceWindow?.startAt);
+  const currentEndAt = validDate(currentReport.hourEndAt) || validDate(currentReport.sourceWindow?.endAt);
+  const previousStartAt = validDate(previousReport.hourStartAt) || validDate(previousReport.sourceWindow?.startAt);
+  const previousEndAt = validDate(previousReport.hourEndAt) || validDate(previousReport.sourceWindow?.endAt);
+
+  return {
+    hourLabel: localHourLabelForReport(currentStartAt),
+    current: hourlyMetricValue(currentReport, field),
+    previous: hourlyMetricValue(previousReport, field),
+    currentStartAt,
+    currentEndAt,
+    previousStartAt,
+    previousEndAt,
+  };
+}
+
+function hourlyReportStartTime(report = {}) {
+  const startAt = validDate(report.hourStartAt) || validDate(report.sourceWindow?.startAt);
+  return startAt ? startAt.getTime() : null;
+}
+
+function previousHourlyReportForCurrent(currentReport = {}, previousReportsByStartTime = new Map(), previousReports = [], index = 0) {
+  const currentStartTime = hourlyReportStartTime(currentReport);
+  if (currentStartTime !== null) {
+    return previousReportsByStartTime.get(currentStartTime - DAILY_REPORT_DAY_MS) || {};
+  }
+  return previousReports[index] || {};
+}
+
+export function buildProjectHealthHourlyComparison(currentHourlyReports = [], previousHourlyReports = [], {
+  comparisonMode = 'full_day',
+} = {}) {
+  const currentReports = [...currentHourlyReports].sort((left, right) => (
+    new Date(left.hourStartAt || left.sourceWindow?.startAt || 0) - new Date(right.hourStartAt || right.sourceWindow?.startAt || 0)
+  ));
+  const previousReports = [...previousHourlyReports].sort((left, right) => (
+    new Date(left.hourStartAt || left.sourceWindow?.startAt || 0) - new Date(right.hourStartAt || right.sourceWindow?.startAt || 0)
+  ));
+  const hourlyComparison = emptyHourlyComparison({
+    comparisonMode,
+    currentHourCount: currentReports.length,
+    previousHourCount: previousReports.length,
+  });
+  const previousReportsByStartTime = new Map(
+    previousReports
+      .map((report) => [hourlyReportStartTime(report), report])
+      .filter(([startTime]) => startTime !== null),
+  );
+
+  hourlyComparison.metrics = {
+    activeUsers: currentReports.map((report, index) => (
+      hourlyComparisonPoint(report, previousHourlyReportForCurrent(report, previousReportsByStartTime, previousReports, index), 'activeUsers')
+    )),
+    sessions: currentReports.map((report, index) => (
+      hourlyComparisonPoint(report, previousHourlyReportForCurrent(report, previousReportsByStartTime, previousReports, index), 'sessionCount')
+    )),
+    averageActiveDuration: currentReports.map((report, index) => (
+      hourlyComparisonPoint(report, previousHourlyReportForCurrent(report, previousReportsByStartTime, previousReports, index), 'averageActiveDurationMs')
+    )),
+    events: currentReports.map((report, index) => (
+      hourlyComparisonPoint(report, previousHourlyReportForCurrent(report, previousReportsByStartTime, previousReports, index), 'eventCount')
+    )),
+  };
+
+  return hourlyComparison;
+}
+
 function mergeCountEntries(target, entries = [], key = 'label') {
   entries.forEach((entry) => {
     const label = entry?.[key] || entry?.label || entry?.path;
@@ -1652,6 +1752,11 @@ export function summarizeProjectHealthFromDailyReports({
       timezone: DAILY_REPORT_TIMEZONE,
       retentionDays: HEALTH_RETENTION_DAYS,
     },
+    hourlyComparison: currentReport?.hourlyComparison || emptyHourlyComparison({
+      comparisonMode,
+      currentHourCount: Number(currentReport?.comparisonWindow?.currentHourCount || 0),
+      previousHourCount: Number(currentReport?.comparisonWindow?.previousHourCount || 0),
+    }),
     status: attentionItems.length || sdkUpgradeFindings.length ? 'needs_attention' : 'normal',
     attentionSummary: attentionItems[0]?.message || sdkUpgradeFindings[0]?.message || '',
     attentionItems,

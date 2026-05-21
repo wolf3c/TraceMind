@@ -4358,6 +4358,7 @@ describe('TraceMind', function () {
     });
 
     it('builds today daily health from completed hourly reports and matching previous hours', async function () {
+      this.timeout(5000);
       const projectId = `project-hourly-health-${Date.now()}`;
       await ProjectDailyReports.removeAsync({ projectId });
       await ProjectHourlyReports.removeAsync({ projectId });
@@ -4476,6 +4477,12 @@ describe('TraceMind', function () {
       assert.strictEqual(report.previous.activeUsers, 2);
       assert.strictEqual(report.previous.sessionCount, 2);
       assert.strictEqual(report.trends.events, 0);
+      assert.deepStrictEqual(report.hourlyComparison.metrics.events.map((point) => point.hourLabel), ['00:00', '01:00']);
+      assert.deepStrictEqual(report.hourlyComparison.metrics.events.map((point) => point.current), [1, 1]);
+      assert.deepStrictEqual(report.hourlyComparison.metrics.events.map((point) => point.previous), [1, 1]);
+      assert.deepStrictEqual(report.hourlyComparison.metrics.activeUsers.map((point) => point.current), [1, 1]);
+      assert.deepStrictEqual(report.hourlyComparison.metrics.sessions.map((point) => point.current), [1, 1]);
+      assert.deepStrictEqual(report.hourlyComparison.metrics.averageActiveDuration.map((point) => point.current), [900000, 900000]);
       assert.ok(report.activeActorKeys.every((key) => !key.includes('same-user')));
       assert.ok(report.sessionKeys.every((key) => !key.includes('session-shared')));
 
@@ -4491,6 +4498,28 @@ describe('TraceMind', function () {
       assert.strictEqual(mcpHealth.structuredContent.health.window.previousHourCount, 2);
       assert.strictEqual(mcpHealth.structuredContent.previousReportDate, '2026-05-12');
       assert.strictEqual(mcpHealth.structuredContent.health.previous.eventCount, 2);
+      assert.deepStrictEqual(
+        mcpHealth.structuredContent.health.hourlyComparison.metrics.averageActiveDuration.map((point) => point.previous),
+        [300000, 300000],
+      );
+      const missingPreviousHourComparison = TraceMindApi.buildProjectHealthHourlyComparison(
+        [
+          { hourStartAt: new Date('2026-05-12T16:00:00.000Z'), current: { eventCount: 10 } },
+          { hourStartAt: new Date('2026-05-12T17:00:00.000Z'), current: { eventCount: 20 } },
+        ],
+        [
+          { hourStartAt: new Date('2026-05-11T17:00:00.000Z'), current: { eventCount: 2 } },
+        ],
+        { comparisonMode: 'completed_hours' },
+      );
+      assert.deepStrictEqual(
+        missingPreviousHourComparison.metrics.events.map((point) => point.previous),
+        [0, 2],
+      );
+      assert.strictEqual(
+        JSON.stringify(mcpHealth.structuredContent.health.hourlyComparison).includes('same-user'),
+        false,
+      );
 
       const hourlyReports = await ProjectHourlyReports.find({ projectId }).fetchAsync();
       assert.strictEqual(hourlyReports.length, 4);
@@ -4533,6 +4562,8 @@ describe('TraceMind', function () {
       assert.strictEqual(report.current.eventCount, 0);
       assert.strictEqual(report.current.activeUsers, 0);
       assert.strictEqual(report.previous.eventCount, 0);
+      assert.deepStrictEqual(report.hourlyComparison.metrics.events, []);
+      assert.deepStrictEqual(report.hourlyComparison.metrics.activeUsers, []);
       assert.strictEqual(await ProjectHourlyReports.find({ projectId }).countAsync(), 0);
     });
 

@@ -17,6 +17,7 @@ import {
   SemanticEvents,
   UserFeedbackReports,
   aggregateProjectHealthHourlyReports,
+  buildProjectHealthHourlyComparison,
   summarizeCaptureDelivery,
   summarizeProjectHealthRollupForWindow,
   summarizeProjectHealthFromDailyReports,
@@ -305,6 +306,7 @@ export async function computeProjectDailyReport(projectId, reportDateInput, { fi
   const trends = trendsFor(current, previous);
   const currentHourCount = currentHourlyReports.length;
   const previousHourCount = previousHourlyReports.length;
+  const comparisonMode = sourceEndAt.getTime() < endAt.getTime() ? 'completed_hours' : 'full_day';
   const report = {
     projectId,
     reportDate,
@@ -319,7 +321,7 @@ export async function computeProjectDailyReport(projectId, reportDateInput, { fi
     },
     comparisonWindow: {
       granularity: 'hour_rollup',
-      mode: sourceEndAt.getTime() < endAt.getTime() ? 'completed_hours' : 'full_day',
+      mode: comparisonMode,
       currentStartAt: startAt,
       currentEndAt: sourceEndAt,
       previousStartAt,
@@ -335,6 +337,9 @@ export async function computeProjectDailyReport(projectId, reportDateInput, { fi
     current,
     previous,
     trends,
+    hourlyComparison: buildProjectHealthHourlyComparison(currentHourlyReports, previousHourlyReports, {
+      comparisonMode,
+    }),
     delivery: summarizeCaptureDelivery(deliveryReports),
     updatedAt: computedAt,
   };

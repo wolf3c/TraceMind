@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TraceMind 小时趋势卡片 Demo</title>
+  <style>
+    :root {
+      --deep: #0f2f2a;
+      --muted: #60756c;
+      --line: #d9e3de;
+      --bg: #fbfaf4;
+      --card: #f8faf7;
+      --green: #18a77a;
+      --dash: #8ca39a;
+      --red: #8b2f18;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 28px;
+      background: var(--bg);
+      color: var(--deep);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      max-width: 1320px;
+    }
+
+    .card {
+      position: relative;
+      min-width: 0;
+      min-height: 214px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px 12px;
+      background: var(--card);
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 17px;
+      font-weight: 750;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 14px;
+      align-items: end;
+      margin-top: 12px;
+    }
+
+    .value {
+      color: var(--deep);
+      font-size: 42px;
+      font-weight: 820;
+      line-height: 1;
+    }
+
+    .trend-wrap {
+      position: relative;
+      display: inline-block;
+      width: max-content;
+      max-width: 100%;
+    }
+
+    .trend {
+      margin-top: 0;
+      border: 0;
+      border-radius: 6px;
+      padding: 0;
+      color: var(--red);
+      background: transparent;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: inherit;
+      line-height: 1.2;
+      white-space: nowrap;
+      cursor: help;
+    }
+
+    .trend-tip {
+      position: absolute;
+      z-index: 4;
+      top: 28px;
+      left: 0;
+      min-width: 148px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      box-shadow: 0 10px 26px rgba(22, 43, 36, 0.13);
+      color: var(--deep);
+      background: #fffefa;
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.45;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease;
+      white-space: nowrap;
+    }
+
+    .trend-wrap:hover .trend-tip,
+    .trend:focus-visible + .trend-tip,
+    .trend[aria-expanded="true"] + .trend-tip {
+      opacity: 1;
+    }
+
+    .trend:focus-visible {
+      outline: 2px solid rgba(24, 167, 122, 0.35);
+      outline-offset: 3px;
+    }
+
+    .sub {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .chart {
+      width: 100%;
+      height: 62px;
+      overflow: visible;
+      cursor: crosshair;
+    }
+
+    .chart-area {
+      position: relative;
+      margin-top: 12px;
+    }
+
+    .chart .previous-line,
+    .chart .current-line {
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .chart .previous-line {
+      stroke: var(--dash);
+      stroke-width: 4;
+      stroke-dasharray: 7 7;
+    }
+
+    .chart .current-line {
+      stroke: var(--green);
+      stroke-width: 4.5;
+    }
+
+    .hover-guide {
+      opacity: 0;
+      pointer-events: none;
+      stroke: #bfd0c8;
+      stroke-width: 1.5;
+      stroke-dasharray: 4 4;
+    }
+
+    .hover-point {
+      opacity: 0;
+      pointer-events: none;
+      stroke: #fffefa;
+      stroke-width: 2.5;
+    }
+
+    .hover-point.current {
+      fill: var(--green);
+    }
+
+    .hover-point.previous {
+      fill: var(--dash);
+    }
+
+    .chart-area:hover .hover-guide,
+    .chart-area:hover .hover-point {
+      opacity: 1;
+    }
+
+    .chart-tooltip {
+      position: absolute;
+      z-index: 3;
+      left: 0;
+      bottom: 68px;
+      min-width: 172px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      box-shadow: 0 10px 26px rgba(22, 43, 36, 0.13);
+      color: var(--deep);
+      background: #fffefa;
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.45;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-50%);
+      transition: opacity 120ms ease;
+      white-space: nowrap;
+    }
+
+    .chart-area:hover .chart-tooltip {
+      opacity: 1;
+    }
+
+    .tooltip-hour {
+      margin-bottom: 4px;
+      color: var(--deep);
+      font-weight: 780;
+    }
+
+    .tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      color: var(--muted);
+    }
+
+    .tooltip-row strong {
+      color: var(--deep);
+    }
+
+    .tooltip-row.current strong {
+      color: var(--green);
+    }
+
+    .tooltip-row.previous strong {
+      color: #60756c;
+    }
+
+    .tooltip-row.delta strong {
+      color: var(--red);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 18px;
+      height: 0;
+      margin-right: 6px;
+      vertical-align: middle;
+      border-top: 3px solid var(--green);
+    }
+
+    .legend span:last-child::before {
+      border-top-color: var(--dash);
+      border-top-style: dashed;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 560px) {
+      body {
+        padding: 16px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        align-items: start;
+      }
+
+      .trend,
+      .sub {
+        white-space: normal;
+      }
+
+      .trend-tip {
+        white-space: normal;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>项目健康概览</h1>
+  <p class="subtitle">按已结束小时统计，与昨天同一时段对比。</p>
+
+  <section class="grid" aria-label="小时趋势健康指标卡片">
+    <article class="card">
+      <div class="label">活跃用户数</div>
+      <div class="metric-row">
+        <div class="value">10</div>
+        <div>
+          <div class="trend-wrap">
+            <button class="trend" type="button" aria-expanded="false">↓ 76%</button>
+            <span class="trend-tip">较昨天同小时下降 76%</span>
+          </div>
+          <div class="sub">5 新用户</div>
+        </div>
+      </div>
+      <div class="chart-area" data-format="number" data-hours="00:00-01:00,01:00-02:00,02:00-03:00,03:00-04:00,04:00-05:00,05:00-06:00,06:00-07:00" data-current="2,3,2,5,4,8,10" data-previous="12,14,13,15,18,21,20">
+        <svg class="chart" viewBox="0 0 260 62" role="img" aria-label="活跃用户小时趋势">
+          <polyline class="previous-line" />
+          <polyline class="current-line" />
+          <line class="hover-guide" y1="8" y2="56" />
+          <circle class="hover-point previous" r="5" />
+          <circle class="hover-point current" r="5" />
+        </svg>
+        <div class="chart-tooltip" role="status" aria-live="polite"></div>
+      </div>
+      <div class="legend"><span>所选日期</span><span>昨天同小时</span></div>
+    </article>
+
+    <article class="card">
+      <div class="label">活跃会话</div>
+      <div class="metric-row">
+        <div class="value">134</div>
+        <div>
+          <div class="trend-wrap">
+            <button class="trend" type="button" aria-expanded="false">↓ 47%</button>
+            <span class="trend-tip">较昨天同小时下降 47%</span>
+          </div>
+          <div class="sub">1.7 事件/会话</div>
+        </div>
+      </div>
+      <div class="chart-area" data-format="number" data-hours="00:00-01:00,01:00-02:00,02:00-03:00,03:00-04:00,04:00-05:00,05:00-06:00,06:00-07:00" data-current="18,22,20,31,38,55,64" data-previous="56,70,74,82,95,108,122">
+        <svg class="chart" viewBox="0 0 260 62" role="img" aria-label="活跃会话小时趋势">
+          <polyline class="previous-line" />
+          <polyline class="current-line" />
+          <line class="hover-guide" y1="8" y2="56" />
+          <circle class="hover-point previous" r="5" />
+          <circle class="hover-point current" r="5" />
+        </svg>
+        <div class="chart-tooltip" role="status" aria-live="polite"></div>
+      </div>
+      <div class="legend"><span>所选日期</span><span>昨天同小时</span></div>
+    </article>
+
+    <article class="card">
+      <div class="label">人均活跃时长</div>
+      <div class="metric-row">
+        <div class="value">2m 23s</div>
+        <div>
+          <div class="trend-wrap">
+            <button class="trend" type="button" aria-expanded="false">↓ 31%</button>
+            <span class="trend-tip">较昨天同小时下降 31%</span>
+          </div>
+          <div class="sub">按活跃用户平均</div>
+        </div>
+      </div>
+      <div class="chart-area" data-format="duration" data-hours="00:00-01:00,01:00-02:00,02:00-03:00,03:00-04:00,04:00-05:00,05:00-06:00,06:00-07:00" data-current="90,95,82,125,115,143,138" data-previous="130,150,142,170,162,190,205">
+        <svg class="chart" viewBox="0 0 260 62" role="img" aria-label="人均活跃时长小时趋势">
+          <polyline class="previous-line" />
+          <polyline class="current-line" />
+          <line class="hover-guide" y1="8" y2="56" />
+          <circle class="hover-point previous" r="5" />
+          <circle class="hover-point current" r="5" />
+        </svg>
+        <div class="chart-tooltip" role="status" aria-live="polite"></div>
+      </div>
+      <div class="legend"><span>所选日期</span><span>昨天同小时</span></div>
+    </article>
+
+    <article class="card">
+      <div class="label">总事件数</div>
+      <div class="metric-row">
+        <div class="value">233</div>
+        <div>
+          <div class="trend-wrap">
+            <button class="trend" type="button" aria-expanded="false">↓ 83%</button>
+            <span class="trend-tip">较昨天同小时下降 83%</span>
+          </div>
+          <div class="sub">所选日期用户行为事件</div>
+        </div>
+      </div>
+      <div class="chart-area" data-format="number" data-hours="00:00-01:00,01:00-02:00,02:00-03:00,03:00-04:00,04:00-05:00,05:00-06:00,06:00-07:00" data-current="22,28,16,37,29,51,50" data-previous="144,132,158,149,172,161,182">
+        <svg class="chart" viewBox="0 0 260 62" role="img" aria-label="总事件数小时趋势">
+          <polyline class="previous-line" />
+          <polyline class="current-line" />
+          <line class="hover-guide" y1="8" y2="56" />
+          <circle class="hover-point previous" r="5" />
+          <circle class="hover-point current" r="5" />
+        </svg>
+        <div class="chart-tooltip" role="status" aria-live="polite"></div>
+      </div>
+      <div class="legend"><span>所选日期</span><span>昨天同小时</span></div>
+    </article>
+  </section>
+
+  <script>
+    const chartBounds = {
+      width: 260,
+      height: 62,
+      left: 8,
+      right: 252,
+      top: 8,
+      bottom: 56,
+    };
+
+    function parseSeries(value) {
+      return String(value || "")
+        .split(",")
+        .map((item) => Number(item.trim()))
+        .filter((item) => Number.isFinite(item));
+    }
+
+    function formatValue(value, format) {
+      if (format === "duration") {
+        const seconds = Math.max(0, Math.round(value));
+        const minutes = Math.floor(seconds / 60);
+        const restSeconds = seconds % 60;
+        return minutes ? `${minutes}m ${restSeconds}s` : `${restSeconds}s`;
+      }
+      return new Intl.NumberFormat("zh-CN").format(value);
+    }
+
+    function percentChange(current, previous) {
+      if (!previous) return current ? "+100%" : "0%";
+      const value = Math.round(((current - previous) / previous) * 100);
+      return `${value > 0 ? "+" : ""}${value}%`;
+    }
+
+    function pointFor(value, index, total, maxValue) {
+      const x = total <= 1
+        ? (chartBounds.left + chartBounds.right) / 2
+        : chartBounds.left + ((chartBounds.right - chartBounds.left) * index) / (total - 1);
+      const y = chartBounds.bottom - ((chartBounds.bottom - chartBounds.top) * value) / Math.max(1, maxValue);
+      return { x, y };
+    }
+
+    function pointsAttribute(series, maxValue) {
+      return series
+        .map((value, index) => {
+          const point = pointFor(value, index, series.length, maxValue);
+          return `${point.x},${point.y}`;
+        })
+        .join(" ");
+    }
+
+    function positionTooltip(area, index, current, previous, hours, maxValue) {
+      const format = area.dataset.format;
+      const currentPoint = pointFor(current[index], index, current.length, maxValue);
+      const previousPoint = pointFor(previous[index], index, previous.length, maxValue);
+      const guide = area.querySelector(".hover-guide");
+      const currentDot = area.querySelector(".hover-point.current");
+      const previousDot = area.querySelector(".hover-point.previous");
+      const tooltip = area.querySelector(".chart-tooltip");
+      const areaRect = area.getBoundingClientRect();
+
+      guide.setAttribute("x1", currentPoint.x);
+      guide.setAttribute("x2", currentPoint.x);
+      currentDot.setAttribute("cx", currentPoint.x);
+      currentDot.setAttribute("cy", currentPoint.y);
+      previousDot.setAttribute("cx", previousPoint.x);
+      previousDot.setAttribute("cy", previousPoint.y);
+
+      tooltip.innerHTML = `
+        <div class="tooltip-hour">${hours[index]}</div>
+        <div class="tooltip-row current"><span>所选日期</span><strong>${formatValue(current[index], format)}</strong></div>
+        <div class="tooltip-row previous"><span>昨天同小时</span><strong>${formatValue(previous[index], format)}</strong></div>
+        <div class="tooltip-row delta"><span>差异</span><strong>${percentChange(current[index], previous[index])}</strong></div>
+      `;
+
+      const xInPixels = (currentPoint.x / chartBounds.width) * areaRect.width;
+      tooltip.style.left = `${Math.min(Math.max(xInPixels, 86), areaRect.width - 86)}px`;
+    }
+
+    document.querySelectorAll(".chart-area").forEach((area) => {
+      const current = parseSeries(area.dataset.current);
+      const previous = parseSeries(area.dataset.previous);
+      const hours = String(area.dataset.hours || "").split(",");
+      const maxValue = Math.max(1, ...current, ...previous);
+      const previousLine = area.querySelector(".previous-line");
+      const currentLine = area.querySelector(".current-line");
+
+      previousLine.setAttribute("points", pointsAttribute(previous, maxValue));
+      currentLine.setAttribute("points", pointsAttribute(current, maxValue));
+      positionTooltip(area, current.length - 1, current, previous, hours, maxValue);
+
+      area.addEventListener("mousemove", (event) => {
+        const rect = area.querySelector(".chart").getBoundingClientRect();
+        const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+        const index = Math.round(ratio * (current.length - 1));
+        positionTooltip(area, index, current, previous, hours, maxValue);
+      });
+    });
+
+    document.querySelectorAll(".trend").forEach((button) => {
+      button.addEventListener("click", () => {
+        const expanded = button.getAttribute("aria-expanded") === "true";
+        document.querySelectorAll(".trend[aria-expanded='true']").forEach((openButton) => {
+          if (openButton !== button) openButton.setAttribute("aria-expanded", "false");
+        });
+        button.setAttribute("aria-expanded", expanded ? "false" : "true");
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (event.target.closest(".trend-wrap")) return;
+      document.querySelectorAll(".trend[aria-expanded='true']").forEach((button) => {
+        button.setAttribute("aria-expanded", "false");
+      });
+    });
+  </script>
+</body>
+</html>

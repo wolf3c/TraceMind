@@ -29,6 +29,7 @@ const DAILY_REPORT_PUBLIC_FIELDS = {
   current: 1,
   previous: 1,
   trends: 1,
+  hourlyComparison: 1,
   delivery: 1,
   createdAt: 1,
   updatedAt: 1,

@@ -1,4 +1,5 @@
 <script>
+  import HourlyTrendSparkline from "./HourlyTrendSparkline.svelte";
   import { t } from "./i18n/i18n";
 
   let {
@@ -28,6 +29,7 @@
     formatTime,
     compactDate,
     formatTrend,
+    formatTrendContext,
     trendClass,
     retentionText,
     topCountText,
@@ -39,11 +41,23 @@
   let recentOnlineMaxBucket = $derived(Math.max(1, ...recentOnlineBuckets.map((bucket) => Number(bucket.onlineUsers || 0))));
   let completedHoursComparison = $derived(health?.window?.comparisonMode === "completed_hours");
   let healthSamplesPending = $derived(completedHoursComparison && Number(health?.window?.currentHourCount || 0) === 0);
+  let hourlyMetrics = $derived(health?.hourlyComparison?.metrics || {});
+  let activeTrendTip = $state("");
 
   function recentOnlineBarHeight(bucket) {
     const value = Number(bucket?.onlineUsers || 0);
     if (!value) return "2px";
     return `${Math.max(8, Math.round((value / recentOnlineMaxBucket) * 100))}%`;
+  }
+
+  function toggleTrendTip(event, key) {
+    event.preventDefault();
+    event.stopPropagation();
+    activeTrendTip = activeTrendTip === key ? "" : key;
+  }
+
+  function closeTrendTip(key) {
+    if (activeTrendTip === key) activeTrendTip = "";
   }
 </script>
 
@@ -171,14 +185,28 @@
       </dl>
     </details>
   {/if}
-  <details class="health-card">
+  <details class="health-card hourly-trend-card">
     <summary>
       <span>{$t("Active users")}</span>
-      <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.activeUsers)}</strong>
-      <small class={healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.activeUsers)}>
-        {healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.activeUsers, health?.window?.comparisonMode)}
-      </small>
-      <em>{healthSamplesPending ? $t("Current hour is excluded") : `${formatNumber(healthCurrent.newUsers)} ${$t("new users")}`}</em>
+      <div class="health-metric-row">
+        <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.activeUsers)}</strong>
+        <span class="health-metric-side">
+          <span class:active={activeTrendTip === "activeUsers"} class="trend-popover-wrap">
+            <button
+              class={`trend-popover-button ${healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.activeUsers)}`}
+              type="button"
+              aria-expanded={activeTrendTip === "activeUsers"}
+              onclick={(event) => toggleTrendTip(event, "activeUsers")}
+              onblur={() => closeTrendTip("activeUsers")}
+            >{healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.activeUsers)}</button>
+            <span class="trend-popover" role="tooltip">{formatTrendContext(health?.trends?.activeUsers, health?.window?.comparisonMode)}</span>
+          </span>
+          <em>{healthSamplesPending ? $t("Current hour is excluded") : `${formatNumber(healthCurrent.newUsers)} ${$t("new users")}`}</em>
+        </span>
+      </div>
+      {#if !healthSamplesPending}
+        <HourlyTrendSparkline points={hourlyMetrics.activeUsers} formatValue={formatNumber} />
+      {/if}
     </summary>
     <dl class="health-detail-list">
       <div><dt>{$t("New users")}</dt><dd>{formatNumber(healthCurrent.newUsers)}</dd></div>
@@ -190,14 +218,28 @@
       <div><dt>{$t("User devices")}</dt><dd>{topCountText(healthCurrent.deviceDistribution?.[0])}</dd></div>
     </dl>
   </details>
-  <details class="health-card">
+  <details class="health-card hourly-trend-card">
     <summary>
       <span>{$t("Active sessions")}</span>
-      <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.sessionCount)}</strong>
-      <small class={healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.sessions)}>
-        {healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.sessions, health?.window?.comparisonMode)}
-      </small>
-      <em>{healthSamplesPending ? $t("Current hour is excluded") : `${formatDecimal(healthCurrent.averageSessionEvents)} ${$t("events/session")}`}</em>
+      <div class="health-metric-row">
+        <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.sessionCount)}</strong>
+        <span class="health-metric-side">
+          <span class:active={activeTrendTip === "sessions"} class="trend-popover-wrap">
+            <button
+              class={`trend-popover-button ${healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.sessions)}`}
+              type="button"
+              aria-expanded={activeTrendTip === "sessions"}
+              onclick={(event) => toggleTrendTip(event, "sessions")}
+              onblur={() => closeTrendTip("sessions")}
+            >{healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.sessions)}</button>
+            <span class="trend-popover" role="tooltip">{formatTrendContext(health?.trends?.sessions, health?.window?.comparisonMode)}</span>
+          </span>
+          <em>{healthSamplesPending ? $t("Current hour is excluded") : `${formatDecimal(healthCurrent.averageSessionEvents)} ${$t("events/session")}`}</em>
+        </span>
+      </div>
+      {#if !healthSamplesPending}
+        <HourlyTrendSparkline points={hourlyMetrics.sessions} formatValue={formatNumber} />
+      {/if}
     </summary>
     <dl class="health-detail-list">
       <div><dt>{$t("Session sources")}</dt><dd>{topCountText(healthCurrent.sessionSources?.[0])}</dd></div>
@@ -289,7 +331,7 @@
       </div>
     </dl>
   </details>
-  <details class="health-card">
+  <details class="health-card hourly-trend-card">
     <summary>
       <span class="health-card-title">
         {$t("Average active time per user")}
@@ -306,11 +348,25 @@
           </span>
         {/if}
       </span>
-      <strong>{healthSamplesPending ? $t("No samples yet") : formatDuration(healthCurrent.averageActiveDurationMs)}</strong>
-      <small class={healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.averageActiveDuration)}>
-        {healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.averageActiveDuration, health?.window?.comparisonMode)}
-      </small>
-      <em>{healthSamplesPending ? $t("Current hour is excluded") : $t("averaged by active users")}</em>
+      <div class="health-metric-row">
+        <strong>{healthSamplesPending ? $t("No samples yet") : formatDuration(healthCurrent.averageActiveDurationMs)}</strong>
+        <span class="health-metric-side">
+          <span class:active={activeTrendTip === "averageActiveDuration"} class="trend-popover-wrap">
+            <button
+              class={`trend-popover-button ${healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.averageActiveDuration)}`}
+              type="button"
+              aria-expanded={activeTrendTip === "averageActiveDuration"}
+              onclick={(event) => toggleTrendTip(event, "averageActiveDuration")}
+              onblur={() => closeTrendTip("averageActiveDuration")}
+            >{healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.averageActiveDuration)}</button>
+            <span class="trend-popover" role="tooltip">{formatTrendContext(health?.trends?.averageActiveDuration, health?.window?.comparisonMode)}</span>
+          </span>
+          <em>{healthSamplesPending ? $t("Current hour is excluded") : $t("averaged by active users")}</em>
+        </span>
+      </div>
+      {#if !healthSamplesPending}
+        <HourlyTrendSparkline points={hourlyMetrics.averageActiveDuration} formatValue={formatDuration} />
+      {/if}
     </summary>
     <dl class="health-detail-list">
       <div><dt>{$t("Average active time per user")}</dt><dd>{formatDuration(healthCurrent.averageActiveDurationMs)}</dd></div>
@@ -388,14 +444,28 @@
       </div>
     </dl>
   </details>
-  <details class="health-card">
+  <details class="health-card hourly-trend-card">
     <summary>
       <span>{$t("Total events")}</span>
-      <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.eventCount)}</strong>
-      <small class={healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.events)}>
-        {healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.events, health?.window?.comparisonMode)}
-      </small>
-      <em>{healthSamplesPending ? $t("Current hour is excluded") : $t("user behavior events on selected day")}</em>
+      <div class="health-metric-row">
+        <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.eventCount)}</strong>
+        <span class="health-metric-side">
+          <span class:active={activeTrendTip === "events"} class="trend-popover-wrap">
+            <button
+              class={`trend-popover-button ${healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.events)}`}
+              type="button"
+              aria-expanded={activeTrendTip === "events"}
+              onclick={(event) => toggleTrendTip(event, "events")}
+              onblur={() => closeTrendTip("events")}
+            >{healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.events)}</button>
+            <span class="trend-popover" role="tooltip">{formatTrendContext(health?.trends?.events, health?.window?.comparisonMode)}</span>
+          </span>
+          <em>{healthSamplesPending ? $t("Current hour is excluded") : $t("user behavior events on selected day")}</em>
+        </span>
+      </div>
+      {#if !healthSamplesPending}
+        <HourlyTrendSparkline points={hourlyMetrics.events} formatValue={formatNumber} />
+      {/if}
     </summary>
     <dl class="health-detail-list">
       <div class="health-detail-row-stacked">
