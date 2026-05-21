@@ -218,12 +218,16 @@ test('checkSdkRegistryPublication rejects deploys with missing registry metadata
 
 test('sdk publish workflow cannot run the Meteor deploy command', () => {
   const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/sdk-publish.yml'), 'utf8');
+  const jreleaser = fs.readFileSync(path.join(__dirname, '../sdk/android/jreleaser.yml'), 'utf8');
   assert.ok(workflow.includes('SDK Publish'));
   assert.ok(!workflow.includes('npm run deploy'));
   assert.ok(!workflow.includes('meteor deploy'));
   assert.ok(!workflow.includes('npm install -g npm@latest'));
   assert.ok(!workflow.includes("run: python - <<'PY'"));
   assert.ok(workflow.includes('arguments: deploy --config-file sdk/android/jreleaser.yml'));
+  assert.ok(jreleaser.includes('groupId: io.github.wolf3c.tracemind'));
+  assert.ok(jreleaser.includes('namespace: io.github.wolf3c'));
+  assert.ok(jreleaser.includes('signing:'));
 });
 
 test('deploy skill waits for registry publication before its only deploy step', () => {
