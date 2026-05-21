@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
 .deploy/
+.codex/private/
 
 # Meteor Modern-Tools build context directories
 _build

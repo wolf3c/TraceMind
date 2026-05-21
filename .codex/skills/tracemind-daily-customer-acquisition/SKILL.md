@@ -1,6 +1,6 @@
 ---
 name: tracemind-daily-customer-acquisition
-description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, Appinn/小众软件, or similar platforms when needed, drafts candidate/reply tables for user approval before outbound replies, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
+description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, customer usage/retention review, win-back operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as customer-usage-review, morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs and private ignored ops reports, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, Appinn/小众软件, or similar platforms when needed, drafts customer win-back and candidate/reply tables for user approval before outbound replies/messages/emails, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
 ---
 
 # TraceMind Daily Customer Acquisition
@@ -11,7 +11,7 @@ Run TraceMind's daily seed-customer acquisition workflow from the repository doc
 
 When the user invokes this skill, first resolve the requested run mode. If the user names a mode, run only that slice. If the user says to run the daily workflow or gives no mode, use `full-day`.
 
-Treat the chosen mode as authorization to read docs, check planned platforms, find candidates, draft replies, update local docs, and prepare the next workplan. The chosen mode is not authorization to send public replies, comments, private messages, emails, or new original posts.
+Treat the chosen mode as authorization to read docs, check planned platforms, run private customer usage checks, write ignored `.codex/private/` customer usage reports, find candidates, draft replies, update local docs, and prepare the next workplan. The chosen mode is not authorization to send public replies, comments, private messages, emails, or new original posts.
 
 Always pause for confirmation before:
 
@@ -23,7 +23,7 @@ Always pause for confirmation before:
 
 ## Approval Gate For Outbound Replies
 
-Before sending any public reply or comment, prepare a review table or list and ask the user to approve specific rows. Do not send until the user explicitly approves.
+Before sending any public reply, comment, private message, or email, prepare a review table or list and ask the user to approve specific rows. Do not send until the user explicitly approves.
 
 Use this table shape when possible:
 
@@ -39,6 +39,17 @@ Guidelines:
 - After approval, reply only to the approved rows, one by one. Do not substitute new targets or materially different copy without asking again.
 - If the user rejects or edits a draft, record the decision as `skipped_by_user`, `needs_rewrite`, or `approved_with_edits` in the local target/progress docs when useful.
 
+## Private Customer Usage Reports
+
+Customer usage health and win-back work is part of TraceMind's own internal operations. The workflow belongs in this skill, but the operational records do not belong in tracked repo docs.
+
+- Store customer usage reports only under `.codex/private/customer_usage_reviews/YYYY-MM-DD.md`.
+- `.codex/private/` is gitignored; verify with `git check-ignore .codex/private/customer_usage_reviews/YYYY-MM-DD.md` if unsure.
+- Private reports may include customer emails when needed for follow-up.
+- Never write customer emails, full win-back lists, auth tokens, project keys, MCP tokens, or equivalent private operational data into `docs/`, `README.md`, `AGENTS.md`, skill files, source code, or any tracked file.
+- Tracked acquisition docs may only contain PII-free aggregate notes such as "customer usage reviewed; 2 win-back drafts awaiting approval".
+- Do not send win-back emails/messages automatically. Present drafts in the final response or private report and wait for explicit row-level approval.
+
 ## Source Documents
 
 Read these first, if present:
@@ -51,6 +62,8 @@ Read these first, if present:
 - `docs/social_promotion_posts_YYYY-MM-DD.md`
 
 Use the latest dated files when multiple exist. If no current workplan exists, create one before doing outbound work.
+
+For customer usage review, also read the latest `.codex/private/customer_usage_reviews/YYYY-MM-DD.md` if present. Do not copy its private contents into tracked docs.
 
 ## Operating Learnings
 
@@ -65,15 +78,31 @@ Use the latest dated files when multiple exist. If no current workplan exists, c
 
 Use one of these modes so the skill can run multiple times per day without repeating the entire workflow.
 
+### `customer-usage-review`
+
+Use for a focused internal customer health and win-back pass.
+
+- Confirm `.codex/private/customer_usage_reviews/YYYY-MM-DD.md` is ignored before writing private report content.
+- Confirm the TraceMind MCP binding with `tracemind.project_info`; continue only when `projectId` is `BJuZgMywBxYYWrTpB`.
+- Query `customer_project_capture_active` with `tracemind.summary` for today, yesterday, and the last 7 days in Asia/Shanghai.
+- Use `tracemind.query_events` when available to drill into `customerAccountId`, `customerProjectId`, and `activitySource`.
+- Read internal customer/project data only when needed to map inactive projects to contact info. Only select safe fields: `Developers._id`, `Developers.email`, `Developers.createdAt`, `Projects._id`, `Projects.developerId`, `Projects.name`, and `Projects.createdAt`.
+- Never select, print, or persist `authToken`, `projectKey`, `mcpTokens`, capture tokens, secrets, or project-key-like values.
+- Classify customers and projects as `active`, `never_activated`, `dropped`, `at_risk`, `recovered`, or `internal_dogfood`.
+- Infer likely reasons from evidence: no project means account setup friction; project but no capture/presence means install or deploy not completed; one-time usage means value not reached; previously active then silent means drop-off or broken integration.
+- Draft win-back actions and email/message copy, but do not send them.
+- End with the private report path, aggregate counts, and approval-needed rows.
+
 ### `morning-review`
 
 Use for the first check of the day.
 
 - Read yesterday's latest workplan and progress.
+- Run a compact `customer-usage-review` first and write the private report under `.codex/private/customer_usage_reviews/`.
 - Check replies, likes, follows, comments, and visible engagement on already-posted content.
 - Classify signals as `high`, `medium`, `low`, `not_fit`, or `no_response`.
 - Draft replies only for `high` or clearly promising `medium` interactions, then present them for approval.
-- Update `docs/customer_acquisition_progress.md` and target statuses.
+- Update `docs/customer_acquisition_progress.md` and target statuses with only PII-free usage aggregates and private report path.
 - Do not create a new tomorrow plan unless the user asks.
 
 ### `outreach-block`
@@ -103,8 +132,9 @@ Use when the user asks to publish a specific public post or community post.
 Use near the end of the day.
 
 - Read today's progress and target docs.
+- Read today's private customer usage report if present; if it is missing, run `customer-usage-review` before the retro.
 - Compare planned work against actual output and visible engagement.
-- Identify what worked, what did not, best channel, best wording, best ICP signal, and weakest assumption.
+- Identify what worked, what did not, best channel, best wording, best ICP signal, customer activation/drop-off signal, and weakest assumption.
 - Update `docs/customer_acquisition_progress.md`, `docs/social_reply_targets_YYYY-MM-DD.md`, and `docs/customer_messaging.md` only if wording changed.
 - Create or update tomorrow's workplan.
 - Do not send new outreach unless the user explicitly asks.
@@ -113,7 +143,7 @@ Use near the end of the day.
 
 Use when the user asks for the complete daily run or gives no mode.
 
-- Run the full workflow below: review plan, check feedback, draft high-intent follow-ups, do one candidate outreach block, present proposed replies for approval, handle approved outbound work if the user approves, update progress, run retrospective, and create tomorrow's workplan.
+- Run the full workflow below: review plan, run customer usage review, check feedback, draft high-intent follow-ups and win-back actions, do one candidate outreach block, present proposed replies/messages for approval, handle approved outbound work if the user approves, update progress, run retrospective, and create tomorrow's workplan.
 
 ## Daily Workflow
 
@@ -141,7 +171,45 @@ Extract:
 
 Keep the execution scope tight to the documented plan unless the user explicitly expands it.
 
-### 3. Check Feedback
+### 3. Review Customer Usage And Win-Back Candidates
+
+Run this step for `full-day`, `morning-review`, `end-of-day-retro` when no private report exists yet, and explicit `customer-usage-review` mode.
+
+1. Verify the private output path:
+   - Use `.codex/private/customer_usage_reviews/YYYY-MM-DD.md`.
+   - Confirm it is ignored before writing private customer data.
+2. Confirm TraceMind MCP binding:
+   - Use MCP server `tracemind-ywrtpb`.
+   - Call `tracemind.project_info`.
+   - Continue only if `projectId` is `BJuZgMywBxYYWrTpB`.
+3. Query usage:
+   - `tracemind.summary({ eventName: "customer_project_capture_active", eventType: "custom", startAt, endAt })` for today, yesterday, and the last 7 days.
+   - Interpret `summary.totalEvents` as active customer projects for that window.
+   - Interpret `summary.uniqueUsers` as active customer accounts for that window.
+   - Use `tracemind.query_events` when available to collect customer/project IDs and `activitySource` evidence.
+4. Join customer/project records only when needed:
+   - Select only developer `_id`, `email`, `createdAt`.
+   - Select only project `_id`, `developerId`, `name`, `createdAt`.
+   - Exclude TraceMind's own product usage project and mark known internal dogfood projects as `internal_dogfood`.
+   - Never read or output `authToken`, `projectKey`, `mcpTokens`, raw request bodies, headers, cookies, authorization values, or secrets.
+5. Classify usage:
+   - `active`: has customer product usage evidence in the current window.
+   - `never_activated`: account/project exists but no capture or presence evidence after setup.
+   - `dropped`: active in the last 7 days but inactive today/yesterday.
+   - `at_risk`: only one short-lived signal, only partial project adoption, or capture stopped after initial trial.
+   - `recovered`: previously inactive but active today.
+   - `internal_dogfood`: owned TraceMind/internal projects, useful for diagnostics but not win-back.
+6. Write the private report:
+   - Include usage counts, evidence windows, customer/project table, likely reasons, recommended actions, and draft win-back messages.
+   - Keep the report under `.codex/private/customer_usage_reviews/`.
+   - Never mirror full customer emails or win-back lists into tracked docs.
+7. Approval gate:
+   - Present win-back drafts as rows such as `W1`, `W2`, and wait for explicit approval before sending.
+   - If no contact info is available, report the blocker instead of guessing.
+
+If the self-instrumented usage event is empty but raw capture/presence shows activity, call that out as an instrumentation/configuration issue before making customer-health conclusions.
+
+### 4. Check Feedback
 
 Use Chrome for logged-in platform checks when needed.
 
@@ -153,7 +221,7 @@ For each platform in the plan:
 
 Do not inspect cookies, local storage, passwords, or unrelated private browser data.
 
-### 4. Draft Replies To High-Intent Interactions
+### 5. Draft Replies To High-Intent Interactions
 
 Prioritize people who:
 
@@ -213,7 +281,7 @@ Avoid:
 
 Do not send these replies yet. Add them to the approval table with the post summary, fit, proposed reply, and risk notes.
 
-### 5. Do Second-Batch Candidate Discovery
+### 6. Do Second-Batch Candidate Discovery
 
 If the plan calls for new outreach, search the planned channels and prepare candidate reply drafts.
 
@@ -251,7 +319,7 @@ Only include a candidate when at least two are true:
 
 Record every candidate, even skipped ones, with a short reason. Do not send replies in this step.
 
-### 6. Present Reply Approval Table
+### 7. Present Reply Approval Table
 
 Before any outbound comment, present the candidate table to the user and wait.
 
@@ -264,7 +332,7 @@ Include:
 
 If the user approves rows, send only those rows and then record the result. If the user does not approve yet, stop after the table and do not continue into sending or final retrospective that assumes replies were sent.
 
-### 7. Handle Screenshot Follow-Up
+### 8. Handle Screenshot Follow-Up
 
 If the plan includes adding screenshots:
 
@@ -272,7 +340,7 @@ If the plan includes adding screenshots:
 - If Chrome upload fails due file permissions, do not work around it. Record the blocker and tell the user to enable Chrome extension file URL access.
 - Never upload screenshots containing accounts, emails, tokens, or private dashboard data.
 
-### 8. Update Progress
+### 9. Update Progress
 
 Append a dated section to `docs/customer_acquisition_progress.md`.
 
@@ -286,6 +354,9 @@ Use this structure:
 - Public replies sent:
 - Public replies proposed / awaiting approval:
 - Private messages sent:
+- Customer usage reviewed:
+- Private customer usage report:
+- Win-back messages proposed / awaiting approval:
 - New candidates found:
 - High-intent leads:
 - Blockers:
@@ -307,13 +378,16 @@ For each interaction:
 
 Use statuses such as `drafted_for_approval`, `awaiting_user_approval`, `approved_to_reply`, `commented`, `replied`, `blocked`, `skipped`, `skipped_by_user`, and `needs_rewrite`.
 
-### 9. Run Daily Retrospective
+For customer usage fields in tracked progress docs, write only aggregate counts and the private report path. Do not include customer emails, full inactive customer lists, tokens, project keys, or message drafts in tracked docs.
+
+### 10. Run Daily Retrospective
 
 Compare today's work with yesterday's plan and prior results. The goal is to improve the operating system, not just list activity.
 
 Assess:
 
 - Which channels produced signals: reply, like, follow, DM, click proxy, or no response.
+- Which customer usage signals changed: active accounts/projects, never activated projects, dropped projects, recovered projects, or self-instrumentation gaps.
 - Which ICP type responded best: non-technical builder, weak-technical builder, technical indie hacker, tool maker, SaaS founder, plugin author.
 - Which value angle worked best:
   - `AI 自动埋点`
@@ -336,6 +410,7 @@ Write a `Retrospective` subsection in the day's progress entry:
 - Best customer signal:
 - Best wording:
 - Weakest assumption:
+- Customer usage / retention change:
 - Workflow change for tomorrow:
 - Messaging change for tomorrow:
 - Candidate selection change for tomorrow:
@@ -352,7 +427,7 @@ Use the retrospective to make concrete changes. Examples:
 - If a lead asks about setup effort, update `docs/customer_messaging.md` with a shorter setup answer.
 - If screenshot upload is still blocked, keep it as a blocker instead of spending more time on it.
 
-### 10. Update Operating Docs
+### 11. Update Operating Docs
 
 Based on the retrospective, update the relevant docs:
 
@@ -363,7 +438,9 @@ Based on the retrospective, update the relevant docs:
 
 Keep changes evidence-based. Do not rewrite the strategy just because one post had no response.
 
-### 11. Update Candidate Documents
+Do not write private customer usage details into tracked docs. Keep emails, customer-specific win-back tables, and draft private messages only in `.codex/private/customer_usage_reviews/YYYY-MM-DD.md` or the current chat approval table.
+
+### 12. Update Candidate Documents
 
 Update the relevant target/pipeline docs:
 
@@ -371,7 +448,7 @@ Update the relevant target/pipeline docs:
 - Add new candidate URLs and reply drafts.
 - Keep comments and drafts concise.
 
-### 12. Create Tomorrow's Workplan
+### 13. Create Tomorrow's Workplan
 
 Create `docs/customer_acquisition_workplan_YYYY-MM-DD.md` for tomorrow.
 
@@ -380,6 +457,7 @@ Include:
 - Goal for the day.
 - Retrospective carry-over: what to continue, stop, and test.
 - Feedback to check.
+- Customer usage review window and private report follow-up.
 - High-intent people to follow up.
 - New outreach target count.
 - Channels and search keywords.
@@ -399,6 +477,7 @@ Keep the final response short and operational:
 - What was sent.
 - What was proposed and still needs approval.
 - What was updated.
+- Private customer usage report path, if one was written.
 - Any blockers.
 - Tomorrow's plan file path.
 
