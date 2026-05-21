@@ -19,6 +19,16 @@ The deploy files live under `.deploy/`, which is intentionally ignored because i
 - `.deploy/settings.json` can provide Galaxy runtime variables under `galaxy.meteor.com.env`, including `MONGO_URL`.
 - `.deploy/mup.js` is legacy self-hosted deployment config. Use it only if TraceMind is moved back to a custom server/domain, and provide `TRACEMIND_DOMAIN` explicitly.
 
+## Product Usage Instrumentation
+
+TraceMind can dogfood its own server-side manual capture to measure daily customer projects and accounts that send capture or presence data. The app uses the public `@tracemind/server-node` SDK in the same shape as a customer Node service. This is disabled unless both private settings or environment variables are present:
+
+- `TRACEMIND_PRODUCT_USAGE_PROJECT_ID`: TraceMind's own internal project id, used to skip recursive self-capture.
+- `TRACEMIND_PRODUCT_USAGE_PROJECT_KEY`: TraceMind's own public project key, used only for writing the internal `customer_project_capture_active` event.
+- `TRACEMIND_PRODUCT_USAGE_ENDPOINT`: optional capture endpoint override; defaults to this app's `/api/capture`.
+
+Keep these values in private Meteor settings or Galaxy environment variables. Do not commit MCP tokens, auth tokens, or private deployment settings.
+
 ## Deploy Commands
 
 Deploy or redeploy TraceMind:

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { WebApp } from 'meteor/webapp';
 import { Random } from 'meteor/random';
 import { Meteor } from 'meteor/meteor';
+import { TraceMindServer } from '@tracemind/server-node';
 import {
   CaptureDeliveryReports,
   ACTIVE_IDLE_TIMEOUT_MS,
@@ -9,6 +10,7 @@ import {
   FeedbackReports,
   PRESENCE_HEARTBEAT_INTERVAL_MS,
   PresenceSessions,
+  ProductUsageMarkers,
   RawBehaviors,
   SemanticEvents,
   UserFeedbackReports,
@@ -33,6 +35,8 @@ const AGENT_GUIDANCE_VERSION = '2026.05.17.7';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
+const PRODUCT_USAGE_EVENT_NAME = 'customer_project_capture_active';
+const PRODUCT_USAGE_SOURCE_KEY = 'tracemind-server';
 const SDK_NAME_BY_SOURCE_PATH = {
   'sdk/ios': 'swift',
   'sdk/android': 'android',
@@ -535,6 +539,139 @@ function safeLimit(value, fallback, max) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return fallback;
   return Math.min(Math.floor(number), max);
+}
+
+let productUsageConfig = null;
+const productUsageTasks = new Set();
+
+function privateSettings() {
+  return Meteor.settings?.private || {};
+}
+
+function configuredValue(settingsKey, envKey, fallback = '') {
+  return String(privateSettings()[settingsKey] || process.env[envKey] || fallback || '').trim();
+}
+
+function resolveProductUsageConfig(overrides = {}) {
+  const productProjectId = String(
+    overrides.productProjectId
+      || configuredValue('TRACEMIND_PRODUCT_USAGE_PROJECT_ID', 'TRACEMIND_PRODUCT_USAGE_PROJECT_ID'),
+  ).trim();
+  const productProjectKey = String(
+    overrides.productProjectKey
+      || configuredValue('TRACEMIND_PRODUCT_USAGE_PROJECT_KEY', 'TRACEMIND_PRODUCT_USAGE_PROJECT_KEY'),
+  ).trim();
+  const endpoint = String(
+    overrides.endpoint
+      || configuredValue('TRACEMIND_PRODUCT_USAGE_ENDPOINT', 'TRACEMIND_PRODUCT_USAGE_ENDPOINT', Meteor.absoluteUrl('/api/capture')),
+  ).trim();
+
+  return {
+    productProjectId,
+    productProjectKey,
+    endpoint,
+    sourceKey: String(overrides.sourceKey || PRODUCT_USAGE_SOURCE_KEY).trim() || PRODUCT_USAGE_SOURCE_KEY,
+    now: overrides.now,
+    transport: overrides.transport,
+    logger: overrides.logger,
+  };
+}
+
+export function startProductUsageInstrumentation(overrides = {}) {
+  const config = resolveProductUsageConfig(overrides);
+  if (!config.productProjectId || !config.productProjectKey) {
+    productUsageConfig = null;
+    return false;
+  }
+
+  productUsageConfig = config;
+  TraceMindServer.start({
+    projectKey: config.productProjectKey,
+    sourceKey: config.sourceKey,
+    endpoint: config.endpoint,
+    ...(config.now ? { now: config.now } : {}),
+    ...(config.transport ? { transport: config.transport } : {}),
+  });
+  return true;
+}
+
+function productUsageActivityDate(payload = {}) {
+  const occurredAt = payload.occurredAt ? new Date(payload.occurredAt) : null;
+  if (occurredAt && !Number.isNaN(occurredAt.getTime())) return occurredAt;
+  return productUsageConfig?.now?.() || new Date();
+}
+
+function duplicateKey(error) {
+  return error?.code === 11000
+    || error?.error === 11000
+    || String(error?.message || '').includes('E11000');
+}
+
+async function insertProductUsageMarker(project, activitySource, reportDate, now) {
+  try {
+    await ProductUsageMarkers.insertAsync({
+      projectId: project._id,
+      developerId: project.developerId,
+      reportDate,
+      activitySource,
+      createdAt: now,
+    });
+    return true;
+  } catch (error) {
+    if (duplicateKey(error)) return false;
+    throw error;
+  }
+}
+
+async function recordProductUsageActivity(project, activitySource, payload = {}) {
+  if (!productUsageConfig?.productProjectId || !productUsageConfig?.productProjectKey) return;
+  if (!project?._id || !project.developerId) return;
+  if (project._id === productUsageConfig.productProjectId) return;
+
+  const now = productUsageConfig.now?.() || new Date();
+  const reportDate = reportDateForDate(productUsageActivityDate(payload));
+  const inserted = await insertProductUsageMarker(project, activitySource, reportDate, now);
+  if (!inserted) return;
+
+  TraceMindServer.capture('custom', {
+    eventName: PRODUCT_USAGE_EVENT_NAME,
+    userId: project.developerId,
+    path: '/internal/product-usage',
+    properties: {
+      reportDate,
+      customerAccountId: project.developerId,
+      customerProjectId: project._id,
+      activitySource,
+    },
+    context: {
+      source: 'capture_ingestion',
+      platform: 'server',
+    },
+  });
+  await TraceMindServer.flush();
+}
+
+function queueProductUsageActivity(project, activitySource, payload = {}) {
+  const task = recordProductUsageActivity(project, activitySource, payload).catch((error) => {
+    (productUsageConfig?.logger || console.error)('[TraceMind] product usage instrumentation failed', error);
+  });
+  productUsageTasks.add(task);
+  task.finally(() => productUsageTasks.delete(task));
+}
+
+export async function drainProductUsageInstrumentationForTest() {
+  while (productUsageTasks.size) {
+    await Promise.allSettled([...productUsageTasks]);
+  }
+}
+
+export function configureProductUsageInstrumentationForTest(overrides = {}) {
+  return startProductUsageInstrumentation(overrides);
+}
+
+export function resetProductUsageInstrumentationForTest() {
+  productUsageConfig = null;
+  productUsageTasks.clear();
 }
 
 async function loadProjectEvents(project, limit) {
@@ -4430,6 +4567,7 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     semanticStatus: 'pending',
     createdAt: new Date(),
   });
+  queueProductUsageActivity(project, 'capture', payload);
 
   return { ok: true, ignored: false };
 }
@@ -4551,6 +4689,7 @@ async function upsertPresenceEvent(project, payload = {}, req = {}) {
     modifier,
     { upsert: true },
   );
+  queueProductUsageActivity(project, 'presence', payload);
 
   return { ok: true, ignored: false };
 }

@@ -32,6 +32,7 @@
   "dependencies": {
     "@babel/runtime": "^7.23.5",
     "@swc/helpers": "^0.5.17",
+    "@tracemind/server-node": "2026.5.18-1",
     "meteor-node-stubs": "^1.2.12"
   },
   "devDependencies": {

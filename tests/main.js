@@ -6,6 +6,7 @@ import {
   Developers,
   FeedbackReports,
   PresenceSessions,
+  ProductUsageMarkers,
   ProjectDailyReports,
   Projects,
   RawBehaviors,
@@ -3526,6 +3527,9 @@ describe('TraceMind', function () {
     let resolveProjectDailyHealth;
     let resolveProjectByMcpToken;
     let extractSemanticEventsOnce;
+    let configureProductUsageInstrumentationForTest;
+    let drainProductUsageInstrumentationForTest;
+    let resetProductUsageInstrumentationForTest;
 
     before(async function () {
       const captureRoutes = await import('../server/capture_routes');
@@ -3540,6 +3544,13 @@ describe('TraceMind', function () {
       resolveProjectDailyHealth = dailyReports.resolveProjectDailyHealth;
       resolveProjectByMcpToken = methods.resolveProjectByMcpToken;
       extractSemanticEventsOnce = semanticJobs.extractSemanticEventsOnce;
+      configureProductUsageInstrumentationForTest = captureRoutes.configureProductUsageInstrumentationForTest;
+      drainProductUsageInstrumentationForTest = captureRoutes.drainProductUsageInstrumentationForTest;
+      resetProductUsageInstrumentationForTest = captureRoutes.resetProductUsageInstrumentationForTest;
+    });
+
+    afterEach(async function () {
+      resetProductUsageInstrumentationForTest?.();
     });
 
     it('creates indexes for capture, MCP, presence, and event query paths', async function () {
@@ -3557,6 +3568,7 @@ describe('TraceMind', function () {
       const feedbackIndexes = await indexNames(FeedbackReports);
       const userFeedbackIndexes = await indexNames(TraceMindApi.UserFeedbackReports);
       const reportIndexes = await indexNames(ProjectDailyReports);
+      const productUsageMarkerIndexes = await indexNames(ProductUsageMarkers);
 
       [
         'project_key_unique',
@@ -3600,6 +3612,270 @@ describe('TraceMind', function () {
         'user_feedback_project_fingerprint_time',
       ].forEach((name) => assert.ok(userFeedbackIndexes.has(name), `missing ${name}`));
       assert.ok(reportIndexes.has('projectId_1_reportDate_1'));
+      assert.ok(productUsageMarkerIndexes.has('product_usage_project_day_unique'));
+    });
+
+    it('records one self-instrumented capture usage event per customer project day', async function () {
+      const batches = [];
+      const projectId = `project-product-usage-capture-${Date.now()}`;
+      const projectKey = `tm_proj_product_usage_capture_${Date.now()}`;
+      const developerId = `developer-product-usage-capture-${Date.now()}`;
+
+      await ProductUsageMarkers.removeAsync({ projectId });
+      configureProductUsageInstrumentationForTest({
+        productProjectId: `self-product-usage-${Date.now()}`,
+        productProjectKey: `tm_proj_self_usage_capture_${Date.now()}`,
+        now: () => new Date('2026-05-21T02:00:00.000Z'),
+        transport: async (body) => {
+          batches.push(body);
+          return { ok: true, accepted: body.events.length };
+        },
+      });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId,
+        name: 'Product Usage Capture Project',
+        projectKey,
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const first = await ingestCapturePayload({
+        projectKey,
+        type: 'page_view',
+        path: '/',
+        occurredAt: '2026-05-20T16:30:00.000Z',
+      }, { headers: {}, socket: {} });
+      const duplicate = await ingestCapturePayload({
+        projectKey,
+        type: 'click',
+        path: '/',
+        occurredAt: '2026-05-20T17:00:00.000Z',
+      }, { headers: {}, socket: {} });
+      await drainProductUsageInstrumentationForTest();
+
+      const markers = await ProductUsageMarkers.find({ projectId }).fetchAsync();
+      const event = batches[0].events[0];
+
+      assert.deepStrictEqual(first, { ok: true, ignored: false });
+      assert.deepStrictEqual(duplicate, { ok: true, ignored: false });
+      assert.strictEqual(markers.length, 1);
+      assert.strictEqual(markers[0].reportDate, '2026-05-21');
+      assert.strictEqual(markers[0].activitySource, 'capture');
+      assert.strictEqual(batches.length, 1);
+      assert.strictEqual(batches[0].projectKey.startsWith('tm_proj_self_usage_capture_'), true);
+      assert.strictEqual(event.platform, 'server');
+      assert.strictEqual(event.source.type, 'server_app');
+      assert.strictEqual(event.source.key, 'tracemind-server');
+      assert.ok(event.source.details.sdkContentHash);
+      assert.strictEqual(event.type, 'custom');
+      assert.strictEqual(event.eventName, 'customer_project_capture_active');
+      assert.strictEqual(event.userId, developerId);
+      assert.deepStrictEqual(event.properties, {
+        reportDate: '2026-05-21',
+        customerAccountId: developerId,
+        customerProjectId: projectId,
+        activitySource: 'capture',
+      });
+      assert.deepStrictEqual(event.context, {
+        source: 'capture_ingestion',
+        platform: 'server',
+      });
+    });
+
+    it('records presence-only product usage and dedupes later capture for the same day', async function () {
+      const batches = [];
+      const projectId = `project-product-usage-presence-${Date.now()}`;
+      const projectKey = `tm_proj_product_usage_presence_${Date.now()}`;
+      const developerId = `developer-product-usage-presence-${Date.now()}`;
+
+      await ProductUsageMarkers.removeAsync({ projectId });
+      configureProductUsageInstrumentationForTest({
+        productProjectId: `self-product-usage-${Date.now()}`,
+        productProjectKey: `tm_proj_self_usage_presence_${Date.now()}`,
+        now: () => new Date('2026-05-21T02:00:00.000Z'),
+        transport: async (body) => {
+          batches.push(body);
+          return { ok: true, accepted: body.events.length };
+        },
+      });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId,
+        name: 'Product Usage Presence Project',
+        projectKey,
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      await ingestPresencePayload({
+        projectKey,
+        presenceId: 'tm_pres_product_usage',
+        path: '/',
+        state: 'start',
+        occurredAt: '2026-05-20T16:15:00.000Z',
+      }, { headers: {}, socket: {} });
+      await ingestCapturePayload({
+        projectKey,
+        type: 'page_view',
+        path: '/',
+        occurredAt: '2026-05-20T16:45:00.000Z',
+      }, { headers: {}, socket: {} });
+      await drainProductUsageInstrumentationForTest();
+
+      const markers = await ProductUsageMarkers.find({ projectId }).fetchAsync();
+
+      assert.strictEqual(markers.length, 1);
+      assert.strictEqual(markers[0].activitySource, 'presence');
+      assert.strictEqual(batches.length, 1);
+      assert.strictEqual(batches[0].events[0].eventName, 'customer_project_capture_active');
+      assert.strictEqual(batches[0].events[0].properties.activitySource, 'presence');
+    });
+
+    it('lets MCP summary count active capture projects and accounts from self-instrumented events', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const selfProjectId = `project-product-usage-self-${Date.now()}`;
+      const selfProjectKey = `tm_proj_product_usage_self_${Date.now()}`;
+      const developerId = `developer-product-usage-summary-${Date.now()}`;
+      const projectAId = `project-product-usage-summary-a-${Date.now()}`;
+      const projectBId = `project-product-usage-summary-b-${Date.now()}`;
+      const projectAKey = `tm_proj_product_usage_summary_a_${Date.now()}`;
+      const projectBKey = `tm_proj_product_usage_summary_b_${Date.now()}`;
+
+      await ProductUsageMarkers.removeAsync({ projectId: { $in: [selfProjectId, projectAId, projectBId] } });
+      await Projects.insertAsync({
+        _id: selfProjectId,
+        developerId: `developer-self-${Date.now()}`,
+        name: 'TraceMind Self Project',
+        projectKey: selfProjectKey,
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+      await Projects.insertAsync({
+        _id: projectAId,
+        developerId,
+        name: 'Usage Summary A',
+        projectKey: projectAKey,
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+      await Projects.insertAsync({
+        _id: projectBId,
+        developerId,
+        name: 'Usage Summary B',
+        projectKey: projectBKey,
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+      configureProductUsageInstrumentationForTest({
+        productProjectId: selfProjectId,
+        productProjectKey: selfProjectKey,
+        now: () => new Date('2026-05-21T02:00:00.000Z'),
+        transport: (body) => ingestCapturePayload(body, { headers: {}, socket: {} }),
+      });
+
+      await ingestCapturePayload({
+        projectKey: projectAKey,
+        type: 'page_view',
+        path: '/',
+        occurredAt: '2026-05-20T18:00:00.000Z',
+      }, { headers: {}, socket: {} });
+      await ingestPresencePayload({
+        projectKey: projectBKey,
+        presenceId: 'tm_pres_usage_summary_b',
+        state: 'start',
+        path: '/',
+        occurredAt: '2026-05-20T18:30:00.000Z',
+      }, { headers: {}, socket: {} });
+      await drainProductUsageInstrumentationForTest();
+      await extractSemanticEventsOnce();
+
+      const summary = await callMcpTool(
+        { _id: selfProjectId, name: 'TraceMind Self Project' },
+        'tracemind.summary',
+        {
+          eventName: 'customer_project_capture_active',
+          startAt: '2026-05-21T00:00:00.000Z',
+          endAt: '2026-05-21T23:59:59.999Z',
+          limit: 20,
+        },
+      );
+
+      assert.strictEqual(summary.structuredContent.summary.totalEvents, 2);
+      assert.strictEqual(summary.structuredContent.summary.uniqueUsers, 1);
+    });
+
+    it('skips the configured TraceMind self project to avoid recursive usage events', async function () {
+      const batches = [];
+      const selfProjectId = `project-product-usage-skip-self-${Date.now()}`;
+      const selfProjectKey = `tm_proj_product_usage_skip_self_${Date.now()}`;
+
+      await ProductUsageMarkers.removeAsync({ projectId: selfProjectId });
+      configureProductUsageInstrumentationForTest({
+        productProjectId: selfProjectId,
+        productProjectKey: selfProjectKey,
+        now: () => new Date('2026-05-21T02:00:00.000Z'),
+        transport: async (body) => {
+          batches.push(body);
+          return { ok: true, accepted: body.events.length };
+        },
+      });
+      await Projects.insertAsync({
+        _id: selfProjectId,
+        developerId: `developer-self-skip-${Date.now()}`,
+        name: 'TraceMind Self Skip Project',
+        projectKey: selfProjectKey,
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey: selfProjectKey,
+        type: 'custom',
+        eventName: 'customer_project_capture_active',
+        occurredAt: '2026-05-20T18:00:00.000Z',
+      }, { headers: {}, socket: {} });
+      await drainProductUsageInstrumentationForTest();
+
+      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.strictEqual(await ProductUsageMarkers.find({ projectId: selfProjectId }).countAsync(), 0);
+      assert.strictEqual(batches.length, 0);
+    });
+
+    it('does not fail customer capture when self-instrumentation flush fails', async function () {
+      const projectId = `project-product-usage-flush-fail-${Date.now()}`;
+      const projectKey = `tm_proj_product_usage_flush_fail_${Date.now()}`;
+
+      await ProductUsageMarkers.removeAsync({ projectId });
+      configureProductUsageInstrumentationForTest({
+        productProjectId: `self-product-usage-${Date.now()}`,
+        productProjectKey: `tm_proj_self_usage_flush_fail_${Date.now()}`,
+        now: () => new Date('2026-05-21T02:00:00.000Z'),
+        logger: () => {},
+        transport: async () => {
+          throw new Error('self instrumentation offline');
+        },
+      });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-product-usage-flush-fail-${Date.now()}`,
+        name: 'Product Usage Flush Failure Project',
+        projectKey,
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        type: 'page_view',
+        path: '/',
+        occurredAt: '2026-05-20T18:00:00.000Z',
+      }, { headers: {}, socket: {} });
+      await drainProductUsageInstrumentationForTest();
+
+      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 1);
+      assert.strictEqual(await ProductUsageMarkers.find({ projectId }).countAsync(), 1);
     });
 
     it('publishes owned daily reports without internal actor hash fields', async function () {

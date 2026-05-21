@@ -9,6 +9,7 @@ import {
   HEALTH_RETENTION_DAYS,
   PresenceSessions,
   ProjectDailyReports,
+  ProductUsageMarkers,
   Projects,
   RawBehaviors,
   SemanticEvents,
@@ -325,6 +326,10 @@ export async function ensureTraceMindIndexes() {
     UserFeedbackReports.rawCollection().createIndex(
       { projectId: 1, rateKeys: 1, createdAt: -1 },
       { name: 'user_feedback_project_rate_keys_time' },
+    ),
+    ProductUsageMarkers.rawCollection().createIndex(
+      { projectId: 1, reportDate: 1 },
+      { unique: true, name: 'product_usage_project_day_unique' },
     ),
   ]);
 }

@@ -10,6 +10,7 @@ export const CaptureDeliveryReports = new Mongo.Collection('tracemind_capture_de
 export const FeedbackReports = new Mongo.Collection('tracemind_feedback_reports');
 export const UserFeedbackReports = new Mongo.Collection('tracemind_user_feedback_reports');
 export const ProjectDailyReports = new Mongo.Collection('tracemind_project_daily_reports');
+export const ProductUsageMarkers = new Mongo.Collection('tracemind_product_usage_markers');
 
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;

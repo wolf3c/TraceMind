@@ -167,3 +167,11 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added registry-first SDK release metadata so npm, PyPI, and Maven Central backed SDKs can return package-manager install commands from `tracemind.capture_setup`, while Swift remains local source.
 - Added the `SDK Publish` tag workflow and `npm run check:sdk-registry-publication -- <version>` gate so `$deploy` waits for registry publication before the single Meteor deploy step.
 - Added npm/PyPI/Android publication metadata and package staging support for release-tag driven SDK publishing without committing registry credentials.
+
+## 2026-05-21
+
+### Completed
+
+- Added TraceMind self-instrumentation for product usage with the public `@tracemind/server-node` SDK: the server records one internal `customer_project_capture_active` custom event per customer project per Asia/Shanghai day when `/api/capture` or `/api/presence` first accepts data.
+- Kept the metric queryable through existing MCP analysis tools: `summary.totalEvents` counts active customer projects and `summary.uniqueUsers` counts active customer accounts for the internal event.
+- Added a `tracemind_product_usage_markers` de-duplication collection so capture and presence can both trigger the metric without double-counting the same project/day, while skipping TraceMind's own internal project to avoid recursive pollution.
