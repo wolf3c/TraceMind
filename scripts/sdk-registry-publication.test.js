@@ -221,7 +221,9 @@ test('sdk publish workflow cannot run the Meteor deploy command', () => {
   assert.ok(workflow.includes('SDK Publish'));
   assert.ok(!workflow.includes('npm run deploy'));
   assert.ok(!workflow.includes('meteor deploy'));
+  assert.ok(!workflow.includes('npm install -g npm@latest'));
   assert.ok(!workflow.includes("run: python - <<'PY'"));
+  assert.ok(workflow.includes('arguments: deploy --config-file sdk/android/jreleaser.yml'));
 });
 
 test('deploy skill waits for registry publication before its only deploy step', () => {

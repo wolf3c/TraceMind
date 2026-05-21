@@ -28,7 +28,8 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
-      - run: npm install -g npm@latest
+      - name: Install npm publish CLI
+        run: npm install --prefix "$RUNNER_TEMP/tracemind-npm" npm@11.6.2
       - name: Stage package
         run: node scripts/stage-sdk-registry-package.js --sdk "${{ matrix.sdk }}" --out ".sdk-publish/${{ matrix.sdk }}"
       - name: Read package identity
@@ -38,12 +39,12 @@ jobs:
       - name: Check existing package
         id: exists
         continue-on-error: true
-        run: npm view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version
+        run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version
       - name: Publish package
         if: steps.exists.outcome != 'success'
-        run: npm publish ".sdk-publish/${{ matrix.sdk }}" --access public
+        run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" publish ".sdk-publish/${{ matrix.sdk }}" --access public
       - name: Verify package
-        run: npm view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version
+        run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version
 
   pypi:
     name: Publish PyPI SDKs
@@ -94,8 +95,17 @@ jobs:
       - name: Verify package
         run: |
           python - <<'PY'
-          import urllib.request
-          urllib.request.urlopen("https://pypi.org/pypi/${{ steps.package.outputs.name }}/${{ steps.package.outputs.version }}/json", timeout=20).read()
+          import time, urllib.request
+
+          url = "https://pypi.org/pypi/${{ steps.package.outputs.name }}/${{ steps.package.outputs.version }}/json"
+          for attempt in range(18):
+              try:
+                  urllib.request.urlopen(url, timeout=20).read()
+                  break
+              except Exception:
+                  if attempt == 17:
+                      raise
+                  time.sleep(10)
           PY
 
   android:
@@ -143,8 +153,7 @@ jobs:
         if: steps.exists.outcome != 'success'
         uses: jreleaser/release-action@v2
         with:
-          arguments: deploy
-          config-file: sdk/android/jreleaser.yml
+          arguments: deploy --config-file sdk/android/jreleaser.yml
         env:
           TRACEMIND_SDK_PUBLISH_VERSION: ${{ steps.package.outputs.version }}
           JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
@@ -155,4 +164,9 @@ jobs:
       - name: Verify package
         run: |
           VERSION="${{ steps.package.outputs.version }}"
-          curl -fsSL "https://repo1.maven.org/maven2/io/github/wolf3c/tracemind/tracemind-android/${VERSION}/tracemind-android-${VERSION}.pom" >/dev/null
+          URL="https://repo1.maven.org/maven2/io/github/wolf3c/tracemind/tracemind-android/${VERSION}/tracemind-android-${VERSION}.pom"
+          for attempt in $(seq 1 60); do
+            curl -fsSL "$URL" >/dev/null && exit 0
+            sleep 10
+          done
+          curl -fsSL "$URL" >/dev/null
