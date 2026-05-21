@@ -248,7 +248,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.project_health',
       title: projectScopedTitle('TraceMind Project Health', project),
-      description: projectScopedDescription('读取按自然日物化的项目健康报告和 SDK 升级提示，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
+      description: projectScopedDescription('读取由小时报告聚合的项目健康报告和 SDK 升级提示，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -786,7 +786,7 @@ function guidanceResult(extra = {}) {
     analysisWorkflows: [
       {
         name: 'Daily health check',
-        prompt: 'Check whether the product is healthy today, what changed versus the previous day, and which attention item should be handled first.',
+        prompt: 'Check whether the product is healthy today, what changed in the reported comparison window, and which attention item should be handled first.',
         steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary', 'tracemind.query_events if drilldown is needed'],
       },
       {

@@ -154,7 +154,7 @@ Output:
 
 ### `tracemind.project_health`
 
-读取当前 MCP token 绑定项目的自然日健康报告，帮助 Agent 先回答“今天产品是否正常、哪里需要关注、较前一天发生了什么变化”，再决定是否下钻到语义事件或原始行为。工具只返回项目级健康、趋势、关注项和上报健康，不返回内部 actor hash 字段。
+读取当前 MCP token 绑定项目的健康报告，帮助 Agent 先回答“今天产品是否正常、哪里需要关注、较前一天发生了什么变化”，再决定是否下钻到语义事件或原始行为。报告由小时级健康数据聚合而来：历史日期按完整自然日对比，今天只使用已结束小时并与昨天同一小时段对比。工具只返回项目级健康、趋势、关注项和上报健康，不返回内部 actor/session hash 字段。
 
 Input:
 
@@ -182,11 +182,18 @@ Output:
   "computedAt": "2026-05-15T08:30:00.000Z",
   "sourceWindow": {
     "startAt": "2026-05-14T16:00:00.000Z",
-    "endAt": "2026-05-15T15:59:59.999Z"
+    "endAt": "2026-05-15T08:00:00.000Z",
+    "fullEndAt": "2026-05-15T16:00:00.000Z"
   },
   "health": {
+    "window": {
+      "granularity": "hour_rollup",
+      "comparisonMode": "completed_hours",
+      "currentHourCount": 16,
+      "previousHourCount": 16
+    },
     "status": "needs_attention",
-    "attentionSummary": "所选日期活跃会话较前一天下降 53%。",
+    "attentionSummary": "所选日期已结束小时活跃会话较昨天同一时段下降 53%。",
     "current": {
       "activeUsers": 14,
       "sessionCount": 95,
@@ -206,7 +213,7 @@ Output:
       {
         "code": "sessions_dropped",
         "severity": "medium",
-        "message": "所选日期活跃会话较前一天下降 53%。"
+        "message": "所选日期已结束小时活跃会话较昨天同一时段下降 53%。"
       }
     ]
   },
@@ -703,7 +710,7 @@ Input:
 ## 推荐 LLM 查询顺序
 
 1. 调用 `tracemind.project_info` 确认当前 MCP 绑定项目。
-2. 调用 `tracemind.project_health` 获取日报健康、较前一日变化、需关注项和上报健康；需要实时态势时并列调用 `tracemind.recent_online`。
+2. 调用 `tracemind.project_health` 获取日报健康、当前报告窗口的对比变化、需关注项和上报健康；需要实时态势时并列调用 `tracemind.recent_online`。
 3. 调用 `tracemind.summary` 获取相关时间窗口内的概览、DAU/设备数和 presence 在线时长。
 4. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
 5. 只有当语义事件含义不够或需要排查采集问题时，调用 `tracemind.query_raw_behaviors`。

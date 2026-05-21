@@ -8,6 +8,7 @@ import {
   PresenceSessions,
   ProductUsageMarkers,
   ProjectDailyReports,
+  ProjectHourlyReports,
   Projects,
   RawBehaviors,
   SemanticEvents,
@@ -3568,6 +3569,7 @@ describe('TraceMind', function () {
       const feedbackIndexes = await indexNames(FeedbackReports);
       const userFeedbackIndexes = await indexNames(TraceMindApi.UserFeedbackReports);
       const reportIndexes = await indexNames(ProjectDailyReports);
+      const hourlyReportIndexes = await indexNames(ProjectHourlyReports);
       const productUsageMarkerIndexes = await indexNames(ProductUsageMarkers);
 
       [
@@ -3612,6 +3614,8 @@ describe('TraceMind', function () {
         'user_feedback_project_fingerprint_time',
       ].forEach((name) => assert.ok(userFeedbackIndexes.has(name), `missing ${name}`));
       assert.ok(reportIndexes.has('projectId_1_reportDate_1'));
+      assert.ok(hourlyReportIndexes.has('project_hour_unique'));
+      assert.ok(hourlyReportIndexes.has('projectId_1_hourStartAt_1'));
       assert.ok(productUsageMarkerIndexes.has('product_usage_project_day_unique'));
     });
 
@@ -4256,6 +4260,185 @@ describe('TraceMind', function () {
       assert.strictEqual(savedReports.length, 1);
     });
 
+    it('builds today daily health from completed hourly reports and matching previous hours', async function () {
+      const projectId = `project-hourly-health-${Date.now()}`;
+      await ProjectDailyReports.removeAsync({ projectId });
+      await ProjectHourlyReports.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Hourly Health App',
+        projectKey: `tm_proj_hourly_${Date.now()}`,
+        authToken: `tm_auth_hourly_${Date.now()}`,
+        createdAt: new Date(),
+      });
+
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'checkout_started',
+        anonymousId: 'same-user',
+        sessionId: 'session-shared',
+        occurredAt: new Date('2026-05-12T16:10:00.000Z'),
+        createdAt: new Date('2026-05-12T16:10:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'checkout_started',
+        anonymousId: 'same-user',
+        sessionId: 'session-shared',
+        occurredAt: new Date('2026-05-12T17:10:00.000Z'),
+        createdAt: new Date('2026-05-12T17:10:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'current_hour_excluded',
+        anonymousId: 'current-hour-user',
+        sessionId: 'session-current-hour',
+        occurredAt: new Date('2026-05-12T18:05:00.000Z'),
+        createdAt: new Date('2026-05-12T18:05:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'previous_matching_hour',
+        anonymousId: 'previous-user-a',
+        sessionId: 'session-previous-a',
+        occurredAt: new Date('2026-05-11T16:20:00.000Z'),
+        createdAt: new Date('2026-05-11T16:20:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'previous_matching_hour',
+        anonymousId: 'previous-user-b',
+        sessionId: 'session-previous-b',
+        occurredAt: new Date('2026-05-11T17:20:00.000Z'),
+        createdAt: new Date('2026-05-11T17:20:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'previous_late_excluded',
+        anonymousId: 'previous-late-user',
+        sessionId: 'session-previous-late',
+        occurredAt: new Date('2026-05-11T20:20:00.000Z'),
+        createdAt: new Date('2026-05-11T20:20:00.000Z'),
+      });
+      await PresenceSessions.insertAsync({
+        projectId,
+        presenceId: 'presence-previous-a',
+        anonymousId: 'previous-user-a',
+        sessionId: 'session-previous-a',
+        path: '/checkout',
+        startedAt: new Date('2026-05-11T16:10:00.000Z'),
+        lastSeenAt: new Date('2026-05-11T16:25:00.000Z'),
+        endedAt: new Date('2026-05-11T16:25:00.000Z'),
+        activeDurationMs: 300000,
+      });
+      await PresenceSessions.insertAsync({
+        projectId,
+        presenceId: 'presence-previous-b',
+        anonymousId: 'previous-user-b',
+        sessionId: 'session-previous-b',
+        path: '/checkout',
+        startedAt: new Date('2026-05-11T17:10:00.000Z'),
+        lastSeenAt: new Date('2026-05-11T17:25:00.000Z'),
+        endedAt: new Date('2026-05-11T17:25:00.000Z'),
+        activeDurationMs: 300000,
+      });
+      await PresenceSessions.insertAsync({
+        projectId,
+        presenceId: 'presence-cross-hour',
+        anonymousId: 'same-user',
+        sessionId: 'session-shared',
+        path: '/checkout',
+        startedAt: new Date('2026-05-12T16:30:00.000Z'),
+        lastSeenAt: new Date('2026-05-12T17:30:00.000Z'),
+        endedAt: new Date('2026-05-12T17:30:00.000Z'),
+        activeDurationMs: 1800000,
+      });
+
+      const report = await computeProjectDailyReport(projectId, '2026-05-13', {
+        final: false,
+        now: new Date('2026-05-12T18:20:00.000Z'),
+        force: true,
+      });
+
+      assert.strictEqual(report.status, 'draft');
+      assert.strictEqual(report.sourceWindow.endAt.getTime(), new Date('2026-05-12T18:00:00.000Z').getTime());
+      assert.strictEqual(report.comparisonWindow.mode, 'completed_hours');
+      assert.strictEqual(report.comparisonWindow.currentHourCount, 2);
+      assert.strictEqual(report.current.eventCount, 2);
+      assert.strictEqual(report.current.activeUsers, 1);
+      assert.strictEqual(report.current.sessionCount, 1);
+      assert.strictEqual(report.current.averageActiveDurationMs, 1800000);
+      assert.strictEqual(report.previous.eventCount, 2);
+      assert.strictEqual(report.previous.activeUsers, 2);
+      assert.strictEqual(report.previous.sessionCount, 2);
+      assert.strictEqual(report.trends.events, 0);
+      assert.ok(report.activeActorKeys.every((key) => !key.includes('same-user')));
+      assert.ok(report.sessionKeys.every((key) => !key.includes('session-shared')));
+
+      const { callMcpTool } = await import('../server/capture_routes');
+      const mcpHealth = await callMcpTool(
+        { _id: projectId, name: 'Hourly Health App', mcpTokens: [{ token: 'tm_mcp_hourly_health' }] },
+        'tracemind.project_health',
+        { reportDate: '2026-05-13' },
+      );
+      assert.strictEqual(mcpHealth.structuredContent.health.window.granularity, 'hour_rollup');
+      assert.strictEqual(mcpHealth.structuredContent.health.window.comparisonMode, 'completed_hours');
+      assert.strictEqual(mcpHealth.structuredContent.health.window.currentHourCount, 2);
+      assert.strictEqual(mcpHealth.structuredContent.health.window.previousHourCount, 2);
+      assert.strictEqual(mcpHealth.structuredContent.previousReportDate, '2026-05-12');
+      assert.strictEqual(mcpHealth.structuredContent.health.previous.eventCount, 2);
+
+      const hourlyReports = await ProjectHourlyReports.find({ projectId }).fetchAsync();
+      assert.strictEqual(hourlyReports.length, 4);
+      assert.ok(hourlyReports.every((hourlyReport) => hourlyReport.status === 'final'));
+      assert.ok(hourlyReports.every((hourlyReport) => hourlyReport.activeActorKeys.every((key) => !key.includes('same-user'))));
+    });
+
+    it('leaves today daily health empty before the first completed hour', async function () {
+      const projectId = `project-hourly-empty-${Date.now()}`;
+      await ProjectDailyReports.removeAsync({ projectId });
+      await ProjectHourlyReports.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Hourly Empty App',
+        projectKey: `tm_proj_hourly_empty_${Date.now()}`,
+        authToken: `tm_auth_hourly_empty_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'current_hour_excluded',
+        anonymousId: 'first-hour-user',
+        sessionId: 'session-first-hour',
+        occurredAt: new Date('2026-05-12T16:10:00.000Z'),
+        createdAt: new Date('2026-05-12T16:10:00.000Z'),
+      });
+
+      const report = await computeProjectDailyReport(projectId, '2026-05-13', {
+        final: false,
+        now: new Date('2026-05-12T16:20:00.000Z'),
+        force: true,
+      });
+
+      assert.strictEqual(report.sourceWindow.endAt.getTime(), new Date('2026-05-12T16:00:00.000Z').getTime());
+      assert.strictEqual(report.comparisonWindow.mode, 'completed_hours');
+      assert.strictEqual(report.comparisonWindow.currentHourCount, 0);
+      assert.strictEqual(report.comparisonWindow.previousHourCount, 0);
+      assert.strictEqual(report.current.eventCount, 0);
+      assert.strictEqual(report.current.activeUsers, 0);
+      assert.strictEqual(report.previous.eventCount, 0);
+      assert.strictEqual(await ProjectHourlyReports.find({ projectId }).countAsync(), 0);
+    });
+
     it('reads materialized daily reports for project health trends without synchronously backfilling history', async function () {
       const projectId = `project-daily-health-${Date.now()}`;
       await ProjectDailyReports.removeAsync({ projectId });
@@ -4320,6 +4503,7 @@ describe('TraceMind', function () {
       assert.strictEqual(first.health.current.eventCount, 1);
       assert.strictEqual(first.health.previous.eventCount, 1);
       assert.strictEqual(first.health.trends.events, 0);
+      assert.strictEqual(first.health.window.granularity, 'hour_rollup');
 
       const missing = await resolveProjectDailyHealth(projectId, '2026-04-01', {
         now: new Date('2026-05-12T03:00:30.000Z'),

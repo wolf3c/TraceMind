@@ -953,11 +953,18 @@
     })}%`;
   }
 
-  function formatTrend(value) {
+  function formatTrend(value, comparisonMode = "full_day") {
     const numericValue = Number(value || 0);
-    if (!numericValue) return translateNow("Flat vs previous day");
+    const comparisonText = comparisonMode === "completed_hours"
+      ? translateNow("vs yesterday same hours")
+      : translateNow("vs previous day");
+    if (!numericValue) {
+      return comparisonMode === "completed_hours"
+        ? translateNow("Flat vs yesterday same hours")
+        : translateNow("Flat vs previous day");
+    }
     const direction = numericValue > 0 ? "↑" : "↓";
-    return `${direction} ${Math.round(Math.abs(numericValue) * 100)}% ${translateNow("vs previous day")}`;
+    return `${direction} ${Math.round(Math.abs(numericValue) * 100)}% ${comparisonText}`;
   }
 
   function trendClass(value) {

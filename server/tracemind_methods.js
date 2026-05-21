@@ -7,6 +7,7 @@ import {
   FeedbackReports,
   PresenceSessions,
   ProjectDailyReports,
+  ProjectHourlyReports,
   Projects,
   RECENT_ONLINE_WINDOW_MS,
   RawBehaviors,
@@ -374,6 +375,7 @@ Meteor.methods({
     await FeedbackReports.removeAsync({ projectId: project._id });
     await UserFeedbackReports.removeAsync({ projectId: project._id });
     await ProjectDailyReports.removeAsync({ projectId: project._id });
+    await ProjectHourlyReports.removeAsync({ projectId: project._id });
     await Projects.removeAsync(project._id);
     return { removed: true, projectId: project._id };
   },

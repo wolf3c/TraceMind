@@ -7,15 +7,18 @@ import {
   Developers,
   FeedbackReports,
   HEALTH_RETENTION_DAYS,
+  HEALTH_ROLLUP_HOUR_MS,
   PresenceSessions,
   ProjectDailyReports,
+  ProjectHourlyReports,
   ProductUsageMarkers,
   Projects,
   RawBehaviors,
   SemanticEvents,
   UserFeedbackReports,
+  aggregateProjectHealthHourlyReports,
   summarizeCaptureDelivery,
-  summarizeProjectHealthForWindow,
+  summarizeProjectHealthRollupForWindow,
   summarizeProjectHealthFromDailyReports,
 } from '/imports/api/tracemind';
 
@@ -90,6 +93,52 @@ function activeActorKeysFor(projectId, events = [], sessions = []) {
   ]);
 }
 
+function sessionIdForPresence(session = {}) {
+  return session.sessionId || session.presenceId || '';
+}
+
+function sessionKeysFor(projectId, sessions = []) {
+  return uniqueSorted(sessions.map((session) => actorKey(projectId, sessionIdForPresence(session))));
+}
+
+function hourStartForDate(value = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return hourStartForDate(new Date());
+  return new Date(Math.floor(date.getTime() / HEALTH_ROLLUP_HOUR_MS) * HEALTH_ROLLUP_HOUR_MS);
+}
+
+function hourKeyForDate(value = new Date()) {
+  return hourStartForDate(value).toISOString();
+}
+
+function completedReportEnd(startAt, endAt, { final = false, now = new Date() } = {}) {
+  if (final) return endAt;
+  const completedHour = hourStartForDate(now);
+  return new Date(Math.min(Math.max(startAt.getTime(), completedHour.getTime()), endAt.getTime()));
+}
+
+function hourStartsBetween(startAt, endAt) {
+  const starts = [];
+  for (let time = startAt.getTime(); time < endAt.getTime(); time += HEALTH_ROLLUP_HOUR_MS) {
+    starts.push(new Date(time));
+  }
+  return starts;
+}
+
+function reportPercentChange(current, previous) {
+  if (!previous) return current ? 1 : 0;
+  return (current - previous) / previous;
+}
+
+function trendsFor(current = {}, previous = {}) {
+  return {
+    activeUsers: reportPercentChange(current.activeUsers, previous.activeUsers),
+    sessions: reportPercentChange(current.sessionCount, previous.sessionCount),
+    averageActiveDuration: reportPercentChange(current.averageActiveDurationMs, previous.averageActiveDurationMs),
+    events: reportPercentChange(current.eventCount, previous.eventCount),
+  };
+}
+
 function emptyRetention() {
   return Object.fromEntries(
     HEALTH_RETENTION_DAYS.map((day) => [`d${day}`, { sampleSize: 0, retainedUsers: 0, rate: null }]),
@@ -159,34 +208,107 @@ async function retentionForExistingReports(projectId, reportDate, activeActorKey
   );
 }
 
+export async function computeProjectHourlyReport(projectId, hourStartInput, { force = false, now = new Date() } = {}) {
+  const hourStartAt = hourStartForDate(hourStartInput);
+  const hourEndAt = new Date(hourStartAt.getTime() + HEALTH_ROLLUP_HOUR_MS);
+  const hourKey = hourKeyForDate(hourStartAt);
+  const existing = await ProjectHourlyReports.findOneAsync({ projectId, hourKey });
+  if (existing && !force) return existing;
+
+  const computedAt = new Date(now);
+  const events = await loadDayEvents(projectId, hourStartAt, hourEndAt);
+  const presenceSessions = await loadDayPresenceSessions(projectId, hourStartAt, hourEndAt);
+  const deliveryReports = await loadDayDeliveryReports(projectId, hourStartAt, hourEndAt);
+  const activeActorKeys = activeActorKeysFor(projectId, events, presenceSessions);
+  const sessionKeys = sessionKeysFor(projectId, presenceSessions);
+  const summary = summarizeProjectHealthRollupForWindow({
+    events,
+    presenceSessions,
+    currentStart: hourStartAt,
+    currentEnd: hourEndAt,
+    now: hourEndAt,
+  });
+  const { rollup, ...current } = summary;
+  current.activeUsers = activeActorKeys.length;
+  current.sessionCount = sessionKeys.length;
+
+  const report = {
+    projectId,
+    hourKey,
+    hourStartAt,
+    hourEndAt,
+    timezone: DAILY_REPORT_TIMEZONE,
+    status: 'final',
+    computedAt,
+    sourceWindow: {
+      startAt: hourStartAt,
+      endAt: hourEndAt,
+    },
+    actorSetVersion: ACTOR_SET_VERSION,
+    activeActorKeys,
+    sessionKeys,
+    current,
+    rollup,
+    delivery: summarizeCaptureDelivery(deliveryReports),
+    updatedAt: computedAt,
+  };
+
+  await ProjectHourlyReports.updateAsync(
+    { projectId, hourKey },
+    {
+      $set: report,
+      $setOnInsert: { createdAt: computedAt },
+    },
+    { upsert: true },
+  );
+
+  return ProjectHourlyReports.findOneAsync({ projectId, hourKey });
+}
+
+async function ensureHourlyReports(projectId, startAt, endAt, { force = false, now = new Date() } = {}) {
+  return Promise.all(
+    hourStartsBetween(startAt, endAt).map((hourStartAt) => (
+      computeProjectHourlyReport(projectId, hourStartAt, { force, now })
+    )),
+  );
+}
+
 export async function computeProjectDailyReport(projectId, reportDateInput, { final = false, force = false, now = new Date() } = {}) {
   const reportDate = reportDateInput || reportDateForDate(now);
+  const previousReportDate = addReportDays(reportDate, -1);
   const existing = await ProjectDailyReports.findOneAsync({ projectId, reportDate });
   if (existing?.status === 'final' && final && !force) return existing;
 
   const { startAt, endAt } = reportDateBounds(reportDate);
   const computedAt = new Date(now);
-  const sourceEndAt = final ? endAt : new Date(Math.min(computedAt.getTime(), endAt.getTime()));
-  const events = await loadDayEvents(projectId, startAt, sourceEndAt);
-  const presenceSessions = await loadDayPresenceSessions(projectId, startAt, sourceEndAt);
-  const deliveryReports = await loadDayDeliveryReports(projectId, startAt, sourceEndAt);
-  const activeActorKeys = activeActorKeysFor(projectId, events, presenceSessions);
+  const sourceEndAt = completedReportEnd(startAt, endAt, { final, now: computedAt });
+  const comparisonDurationMs = Math.max(0, sourceEndAt.getTime() - startAt.getTime());
+  const previousStartAt = new Date(startAt.getTime() - DAY_MS);
+  const previousEndAt = new Date(previousStartAt.getTime() + comparisonDurationMs);
+  const [currentHourlyReports, previousHourlyReports, deliveryReports] = await Promise.all([
+    ensureHourlyReports(projectId, startAt, sourceEndAt, { force: true, now: computedAt }),
+    ensureHourlyReports(projectId, previousStartAt, previousEndAt, { force, now: computedAt }),
+    loadDayDeliveryReports(projectId, startAt, sourceEndAt),
+  ]);
+  const currentAggregate = aggregateProjectHealthHourlyReports(currentHourlyReports);
+  const previousAggregate = aggregateProjectHealthHourlyReports(previousHourlyReports);
+  const activeActorKeys = currentAggregate.activeActorKeys;
   const seenBefore = await previousActorKeys(projectId, reportDate);
   const newActorKeys = activeActorKeys.filter((key) => !seenBefore.has(key));
   const retention = await retentionForExistingReports(projectId, reportDate, activeActorKeys);
-  const current = summarizeProjectHealthForWindow({
-    events,
-    presenceSessions,
-    currentStart: startAt,
-    currentEnd: sourceEndAt,
-    previousStart: new Date(startAt.getTime() - DAY_MS),
-    previousEnd: startAt,
-    now: sourceEndAt,
+  const current = {
+    ...currentAggregate.current,
     newUsers: newActorKeys.length,
-  }).current;
+    retention,
+  };
+  const previous = previousAggregate.current;
+  const trends = trendsFor(current, previous);
+  const currentHourCount = currentHourlyReports.length;
+  const previousHourCount = previousHourlyReports.length;
   const report = {
     projectId,
     reportDate,
+    previousReportDate,
     timezone: DAILY_REPORT_TIMEZONE,
     status: final ? 'final' : 'draft',
     computedAt,
@@ -195,15 +317,24 @@ export async function computeProjectDailyReport(projectId, reportDateInput, { fi
       endAt: sourceEndAt,
       fullEndAt: endAt,
     },
+    comparisonWindow: {
+      granularity: 'hour_rollup',
+      mode: sourceEndAt.getTime() < endAt.getTime() ? 'completed_hours' : 'full_day',
+      currentStartAt: startAt,
+      currentEndAt: sourceEndAt,
+      previousStartAt,
+      previousEndAt,
+      currentHourCount,
+      previousHourCount,
+    },
     actorSetVersion: ACTOR_SET_VERSION,
     activeActorKeys,
+    sessionKeys: currentAggregate.sessionKeys,
     newActorKeys,
     firstSeenActorKeys: newActorKeys,
-    current: {
-      ...current,
-      newUsers: newActorKeys.length,
-      retention,
-    },
+    current,
+    previous,
+    trends,
     delivery: summarizeCaptureDelivery(deliveryReports),
     updatedAt: computedAt,
   };
@@ -271,6 +402,8 @@ export function queueProjectDailyHealthRefresh(projectId, reportDateInput, { now
 export async function ensureTraceMindIndexes() {
   await Promise.all([
     ProjectDailyReports.rawCollection().createIndex({ projectId: 1, reportDate: 1 }, { unique: true }),
+    ProjectHourlyReports.rawCollection().createIndex({ projectId: 1, hourKey: 1 }, { unique: true, name: 'project_hour_unique' }),
+    ProjectHourlyReports.rawCollection().createIndex({ projectId: 1, hourStartAt: 1 }),
     Projects.rawCollection().createIndex({ projectKey: 1 }, { unique: true, name: 'project_key_unique' }),
     Projects.rawCollection().createIndex(
       { 'mcpTokens.token': 1 },

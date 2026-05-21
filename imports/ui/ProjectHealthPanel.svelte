@@ -37,6 +37,8 @@
 
   let recentOnlineBuckets = $derived(recentOnline?.buckets || []);
   let recentOnlineMaxBucket = $derived(Math.max(1, ...recentOnlineBuckets.map((bucket) => Number(bucket.onlineUsers || 0))));
+  let completedHoursComparison = $derived(health?.window?.comparisonMode === "completed_hours");
+  let healthSamplesPending = $derived(completedHoursComparison && Number(health?.window?.currentHourCount || 0) === 0);
 
   function recentOnlineBarHeight(bucket) {
     const value = Number(bucket?.onlineUsers || 0);
@@ -54,7 +56,7 @@
       </strong>
     </div>
     <h3>{primaryProject?.name || $t("Project")}</h3>
-    <p>{$t("Daily report compared with the previous day.")}</p>
+    <p>{completedHoursComparison ? $t("Completed hours compared with yesterday same hours.") : $t("Daily report compared with the previous day.")}</p>
     <div class="report-date-control" aria-label={$t("Project health report date")}>
       <button class:active={selectedReportDate === todayReportDate} type="button" onclick={() => selectReportDate(todayReportDate)}>
         {$t("Today")}
@@ -172,9 +174,11 @@
   <details class="health-card">
     <summary>
       <span>{$t("Active users")}</span>
-      <strong>{formatNumber(healthCurrent.activeUsers)}</strong>
-      <small class={trendClass(health?.trends?.activeUsers)}>{formatTrend(health?.trends?.activeUsers)}</small>
-      <em>{formatNumber(healthCurrent.newUsers)} {$t("new users")}</em>
+      <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.activeUsers)}</strong>
+      <small class={healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.activeUsers)}>
+        {healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.activeUsers, health?.window?.comparisonMode)}
+      </small>
+      <em>{healthSamplesPending ? $t("Current hour is excluded") : `${formatNumber(healthCurrent.newUsers)} ${$t("new users")}`}</em>
     </summary>
     <dl class="health-detail-list">
       <div><dt>{$t("New users")}</dt><dd>{formatNumber(healthCurrent.newUsers)}</dd></div>
@@ -189,9 +193,11 @@
   <details class="health-card">
     <summary>
       <span>{$t("Active sessions")}</span>
-      <strong>{formatNumber(healthCurrent.sessionCount)}</strong>
-      <small class={trendClass(health?.trends?.sessions)}>{formatTrend(health?.trends?.sessions)}</small>
-      <em>{formatDecimal(healthCurrent.averageSessionEvents)} {$t("events/session")}</em>
+      <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.sessionCount)}</strong>
+      <small class={healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.sessions)}>
+        {healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.sessions, health?.window?.comparisonMode)}
+      </small>
+      <em>{healthSamplesPending ? $t("Current hour is excluded") : `${formatDecimal(healthCurrent.averageSessionEvents)} ${$t("events/session")}`}</em>
     </summary>
     <dl class="health-detail-list">
       <div><dt>{$t("Session sources")}</dt><dd>{topCountText(healthCurrent.sessionSources?.[0])}</dd></div>
@@ -202,11 +208,11 @@
   <details class="health-card">
     <summary>
       <span>{$t("Traffic sources")}</span>
-      <strong>{healthCurrent.trafficSources?.[0] ? topItemLabel(healthCurrent.trafficSources[0]) : $t("No data")}</strong>
+      <strong>{healthSamplesPending ? $t("No samples yet") : (healthCurrent.trafficSources?.[0] ? topItemLabel(healthCurrent.trafficSources[0]) : $t("No data"))}</strong>
       <small class="trend-flat">
-        {healthCurrent.trafficSources?.[0] ? `${formatNumber(healthCurrent.trafficSources[0].count)} ${$t("visits")}` : $t("No data")}
+        {healthSamplesPending ? $t("Waiting for completed hour") : (healthCurrent.trafficSources?.[0] ? `${formatNumber(healthCurrent.trafficSources[0].count)} ${$t("visits")}` : $t("No data"))}
       </small>
-      <em>{$t("first-touch attribution")}</em>
+      <em>{healthSamplesPending ? $t("Current hour is excluded") : $t("first-touch attribution")}</em>
     </summary>
     <dl class="health-detail-list">
       <div class="health-detail-row-stacked">
@@ -300,9 +306,11 @@
           </span>
         {/if}
       </span>
-      <strong>{formatDuration(healthCurrent.averageActiveDurationMs)}</strong>
-      <small class={trendClass(health?.trends?.averageActiveDuration)}>{formatTrend(health?.trends?.averageActiveDuration)}</small>
-      <em>{$t("averaged by active users")}</em>
+      <strong>{healthSamplesPending ? $t("No samples yet") : formatDuration(healthCurrent.averageActiveDurationMs)}</strong>
+      <small class={healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.averageActiveDuration)}>
+        {healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.averageActiveDuration, health?.window?.comparisonMode)}
+      </small>
+      <em>{healthSamplesPending ? $t("Current hour is excluded") : $t("averaged by active users")}</em>
     </summary>
     <dl class="health-detail-list">
       <div><dt>{$t("Average active time per user")}</dt><dd>{formatDuration(healthCurrent.averageActiveDurationMs)}</dd></div>
@@ -383,9 +391,11 @@
   <details class="health-card">
     <summary>
       <span>{$t("Total events")}</span>
-      <strong>{formatNumber(healthCurrent.eventCount)}</strong>
-      <small class={trendClass(health?.trends?.events)}>{formatTrend(health?.trends?.events)}</small>
-      <em>{$t("user behavior events on selected day")}</em>
+      <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.eventCount)}</strong>
+      <small class={healthSamplesPending ? "trend-flat" : trendClass(health?.trends?.events)}>
+        {healthSamplesPending ? $t("Waiting for completed hour") : formatTrend(health?.trends?.events, health?.window?.comparisonMode)}
+      </small>
+      <em>{healthSamplesPending ? $t("Current hour is excluded") : $t("user behavior events on selected day")}</em>
     </summary>
     <dl class="health-detail-list">
       <div class="health-detail-row-stacked">

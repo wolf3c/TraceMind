@@ -10,12 +10,14 @@ export const CaptureDeliveryReports = new Mongo.Collection('tracemind_capture_de
 export const FeedbackReports = new Mongo.Collection('tracemind_feedback_reports');
 export const UserFeedbackReports = new Mongo.Collection('tracemind_user_feedback_reports');
 export const ProjectDailyReports = new Mongo.Collection('tracemind_project_daily_reports');
+export const ProjectHourlyReports = new Mongo.Collection('tracemind_project_hourly_reports');
 export const ProductUsageMarkers = new Mongo.Collection('tracemind_product_usage_markers');
 
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
 export const ACTIVE_IDLE_TIMEOUT_MS = 60 * 1000;
 export const HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const HEALTH_ROLLUP_HOUR_MS = 60 * 60 * 1000;
 export const RECENT_ONLINE_WINDOW_MS = 30 * 60 * 1000;
 export const RECENT_ONLINE_BUCKET_MS = 5 * 60 * 1000;
 export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
@@ -815,6 +817,21 @@ function activeDurationMsForPresence(session = {}) {
   return Number.isFinite(durationMs) ? Math.max(0, Math.floor(durationMs)) : 0;
 }
 
+function activeDurationMsInWindow(session = {}, windowStart, windowEnd, now = new Date()) {
+  const activeDurationMs = activeDurationMsForPresence(session);
+  if (!activeDurationMs) return 0;
+
+  const clippedMs = clippedDurationMs(session, windowStart, windowEnd, now);
+  if (!clippedMs) return 0;
+
+  const totalPresenceMs = durationForPresence(session, now);
+  if (!totalPresenceMs || activeDurationMs >= totalPresenceMs) {
+    return Math.min(activeDurationMs, clippedMs);
+  }
+
+  return Math.min(clippedMs, Math.round(activeDurationMs * (clippedMs / totalPresenceMs)));
+}
+
 function increment(map, key, amount = 1) {
   const label = String(key || 'Unknown');
   map.set(label, (map.get(label) || 0) + amount);
@@ -825,6 +842,10 @@ function topCounts(map, limit = 3) {
     .sort((left, right) => right[1] - left[1])
     .slice(0, limit)
     .map(([label, count]) => ({ label, count }));
+}
+
+function allCounts(map) {
+  return topCounts(map, Number.MAX_SAFE_INTEGER);
 }
 
 function topAttributionCounts(map, limit = 3) {
@@ -839,6 +860,10 @@ function topPathCounts(map, limit = 3) {
     .sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])))
     .slice(0, limit)
     .map(([path, count]) => ({ path, count }));
+}
+
+function allPathCounts(map) {
+  return topPathCounts(map, Number.MAX_SAFE_INTEGER);
 }
 
 function attributionRecordKey(record = {}) {
@@ -1077,7 +1102,16 @@ function formatPercentForMessage(value) {
   return `${Math.round(Math.abs(value) * 100)}%`;
 }
 
-function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
+function summarizeWindow({
+  events,
+  sessions,
+  windowStart,
+  windowEnd,
+  now,
+}, {
+  includeRollupDetails = false,
+  distributeActiveDuration = false,
+} = {}) {
   const activeUsers = new Set();
   const eventCounts = new Map();
   const regionCounts = new Map();
@@ -1127,10 +1161,12 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     const startedAt = sessionStart(session);
     const endedAt = sessionEnd(session, now);
     if (!overlapsWindow(startedAt, endedAt, windowStart, windowEnd)) return;
-    const durationMs = Math.min(
-      activeDurationMsForPresence(session),
-      clippedDurationMs(session, windowStart, windowEnd, now),
-    );
+    const durationMs = distributeActiveDuration
+      ? activeDurationMsInWindow(session, windowStart, windowEnd, now)
+      : Math.min(
+        activeDurationMsForPresence(session),
+        clippedDurationMs(session, windowStart, windowEnd, now),
+      );
     windowSessions.push(session);
     trafficRecords.push(session);
     sdkRecords.push(session);
@@ -1166,7 +1202,8 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
   const totalDurationMs = [...durationUsers.values()].reduce((sum, item) => sum + item.durationMs, 0);
   const sessionCount = windowSessions.length;
 
-  return {
+  const trafficSummary = summarizeTrafficAttribution(trafficRecords, { dedupe: true, limit: 3 });
+  const result = {
     activeUsers: activeUsers.size,
     eventCount,
     sessionCount,
@@ -1180,12 +1217,28 @@ function summarizeWindow({ events, sessions, windowStart, windowEnd, now }) {
     deviceDistribution: topCounts(deviceCounts, 5),
     sessionSources: topCounts(sourceCounts, 3),
     sessionPaths: topCounts(sessionPathCounts, 3).map((item) => ({ path: item.label, count: item.count })),
-    ...summarizeTrafficAttribution(trafficRecords, { dedupe: true, limit: 3 }),
+    ...trafficSummary,
     topDurationUsers: topDurations(durationUsers, 3),
     topDurationPaths: topDurations(durationPaths, 3),
     topBouncePages: topBouncePagesForSessions(bounceSessions, 3),
     sdkUpgradeFindings: sdkUpgradeFindingsForRecords(sdkRecords),
   };
+
+  if (includeRollupDetails) {
+    result.rollup = {
+      eventCounts: allCounts(eventCounts),
+      userRegions: allCounts(regionCounts),
+      deviceDistribution: allCounts(deviceCounts),
+      sessionSources: allCounts(sourceCounts),
+      sessionPaths: allPathCounts(sessionPathCounts),
+      ...summarizeTrafficAttribution(trafficRecords, { dedupe: true, limit: Number.MAX_SAFE_INTEGER }),
+      durationUsers: topDurations(durationUsers, Number.MAX_SAFE_INTEGER),
+      durationPaths: topDurations(durationPaths, Number.MAX_SAFE_INTEGER),
+      topBouncePages: topBouncePagesForSessions(bounceSessions, Number.MAX_SAFE_INTEGER),
+    };
+  }
+
+  return result;
 }
 
 function retentionSummary(firstSeenByActor, activeCurrentActors, now, day) {
@@ -1238,7 +1291,172 @@ function emptyHealthWindow() {
   };
 }
 
+function mergeCountEntries(target, entries = [], key = 'label') {
+  entries.forEach((entry) => {
+    const label = entry?.[key] || entry?.label || entry?.path;
+    const count = Number(entry?.count || 0);
+    if (!label || !Number.isFinite(count) || count <= 0) return;
+    target.set(String(label), (target.get(String(label)) || 0) + count);
+  });
+}
+
+function mergeDurationEntries(target, entries = [], key = 'label') {
+  entries.forEach((entry) => {
+    const label = entry?.[key] || entry?.label || entry?.path;
+    const durationMs = Number(entry?.durationMs || 0);
+    if (!label || !Number.isFinite(durationMs) || durationMs <= 0) return;
+    const existing = target.get(String(label)) || { [key]: String(label), durationMs: 0, sessions: 0 };
+    existing.durationMs += durationMs;
+    existing.sessions += Number(entry?.sessions || 0);
+    target.set(String(label), existing);
+  });
+}
+
+function mergeBouncePageEntries(target, entries = []) {
+  entries.forEach((entry) => {
+    const path = String(entry?.path || '');
+    const bounces = Number(entry?.bounces || 0);
+    if (!path || !Number.isFinite(bounces) || bounces <= 0) return;
+    const existing = target.get(path) || { path, sessions: 0, bounces: 0, totalBounceDurationMs: 0 };
+    existing.sessions += Number(entry?.sessions || 0);
+    existing.bounces += bounces;
+    existing.totalBounceDurationMs += Number(entry?.totalBounceDurationMs || 0)
+      || Number(entry?.averageBounceDurationMs || 0) * bounces;
+    target.set(path, existing);
+  });
+}
+
+function aggregatedBouncePages(map, limit = 3) {
+  return [...map.values()]
+    .map((page) => ({
+      path: page.path,
+      sessions: page.sessions,
+      bounces: page.bounces,
+      bounceRate: page.sessions ? page.bounces / page.sessions : 0,
+      averageBounceDurationMs: page.bounces ? Math.round(page.totalBounceDurationMs / page.bounces) : 0,
+    }))
+    .sort((left, right) => (
+      right.bounceRate - left.bounceRate
+      || right.bounces - left.bounces
+      || right.sessions - left.sessions
+      || left.path.localeCompare(right.path)
+    ))
+    .slice(0, limit);
+}
+
+function uniqueFindings(findings = []) {
+  const seen = new Set();
+  return findings.filter((finding) => {
+    const key = JSON.stringify({
+      code: finding?.code || '',
+      sdkName: finding?.sdkName || '',
+      sourceKey: finding?.sourceKey || '',
+      message: finding?.message || '',
+    });
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
+  retention = null,
+  newUsers = null,
+} = {}) {
+  const reports = [...hourlyReports].sort((left, right) => (
+    new Date(right.hourStartAt || right.sourceWindow?.startAt || 0) - new Date(left.hourStartAt || left.sourceWindow?.startAt || 0)
+  ));
+  const activeActorKeys = new Set();
+  const sessionKeys = new Set();
+  const eventCounts = new Map();
+  const regionCounts = new Map();
+  const deviceCounts = new Map();
+  const sourceCounts = new Map();
+  const sessionPathCounts = new Map();
+  const trafficSourceCounts = new Map();
+  const trafficMediumCounts = new Map();
+  const trafficCampaignCounts = new Map();
+  const trafficLandingPathCounts = new Map();
+  const durationUsers = new Map();
+  const durationPaths = new Map();
+  const bouncePages = new Map();
+  const sdkUpgradeFindings = [];
+  let eventCount = 0;
+  let failureEventCount = 0;
+  let lastEventAt = null;
+
+  reports.forEach((report) => {
+    (report.activeActorKeys || []).forEach((key) => activeActorKeys.add(key));
+    (report.sessionKeys || []).forEach((key) => sessionKeys.add(key));
+    const current = report.current || {};
+    const rollup = report.rollup || {};
+
+    eventCount += Number(current.eventCount || 0);
+    failureEventCount += Number(current.failureEventCount || 0);
+    const reportLastEventAt = validDate(current.lastEventAt);
+    if (reportLastEventAt && (!lastEventAt || reportLastEventAt > lastEventAt)) lastEventAt = reportLastEventAt;
+
+    mergeCountEntries(eventCounts, rollup.eventCounts || current.topEvents);
+    mergeCountEntries(regionCounts, rollup.userRegions || current.userRegions);
+    mergeCountEntries(deviceCounts, rollup.deviceDistribution || current.deviceDistribution);
+    mergeCountEntries(sourceCounts, rollup.sessionSources || current.sessionSources);
+    mergeCountEntries(sessionPathCounts, rollup.sessionPaths || current.sessionPaths, 'path');
+    mergeCountEntries(trafficSourceCounts, rollup.trafficSources || current.trafficSources);
+    mergeCountEntries(trafficMediumCounts, rollup.trafficMediums || current.trafficMediums);
+    mergeCountEntries(trafficCampaignCounts, rollup.trafficCampaigns || current.trafficCampaigns);
+    mergeCountEntries(trafficLandingPathCounts, rollup.trafficLandingPaths || current.trafficLandingPaths, 'path');
+    mergeDurationEntries(durationUsers, rollup.durationUsers || current.topDurationUsers, 'label');
+    mergeDurationEntries(durationPaths, rollup.durationPaths || current.topDurationPaths, 'path');
+    mergeBouncePageEntries(bouncePages, rollup.topBouncePages || current.topBouncePages);
+    sdkUpgradeFindings.push(...(current.sdkUpgradeFindings || []));
+  });
+
+  const totalDurationMs = [...durationUsers.values()].reduce((sum, item) => sum + item.durationMs, 0);
+  const sessionCount = sessionKeys.size || reports.reduce((sum, report) => sum + Number(report.current?.sessionCount || 0), 0);
+  const activeUsers = activeActorKeys.size || reports.reduce((sum, report) => sum + Number(report.current?.activeUsers || 0), 0);
+
+  return {
+    activeActorKeys: [...activeActorKeys].sort(),
+    sessionKeys: [...sessionKeys].sort(),
+    current: {
+      ...emptyHealthWindow(),
+      activeUsers,
+      eventCount,
+      sessionCount,
+      failureEventCount,
+      lastEventAt,
+      totalDurationMs,
+      averageActiveDurationMs: activeUsers ? Math.round(totalDurationMs / activeUsers) : 0,
+      averageSessionEvents: sessionCount ? eventCount / sessionCount : 0,
+      topEvents: topCounts(eventCounts, 3),
+      userRegions: topCounts(regionCounts, 5),
+      deviceDistribution: topCounts(deviceCounts, 5),
+      sessionSources: topCounts(sourceCounts, 3),
+      sessionPaths: topPathCounts(sessionPathCounts, 3),
+      trafficSources: topAttributionCounts(trafficSourceCounts, 3),
+      trafficMediums: topAttributionCounts(trafficMediumCounts, 3),
+      trafficCampaigns: topAttributionCounts(trafficCampaignCounts, 3),
+      trafficLandingPaths: topPathCounts(trafficLandingPathCounts, 3),
+      topDurationUsers: topDurations(durationUsers, 3),
+      topDurationPaths: topDurations(durationPaths, 3),
+      topBouncePages: aggregatedBouncePages(bouncePages, 3),
+      sdkUpgradeFindings: uniqueFindings(sdkUpgradeFindings),
+      newUsers: Number.isFinite(newUsers) ? Math.max(0, newUsers) : 0,
+      retention: retention || emptyHealthWindow().retention,
+    },
+  };
+}
+
 function attentionWindowLabels(comparisonWindow) {
+  if (comparisonWindow === 'completed_hours') {
+    return {
+      currentWindow: '所选日期已结束小时',
+      previousWindow: '昨天同一时段',
+      previousFullWindow: '昨天同一时段',
+      trailingWindow: '最近 3 个已结束小时',
+    };
+  }
+
   if (comparisonWindow === 'day') {
     return {
       currentWindow: '所选日期',
@@ -1375,28 +1593,47 @@ export function summarizeProjectHealthForWindow({
   };
 }
 
+export function summarizeProjectHealthRollupForWindow({
+  events = [],
+  presenceSessions = [],
+  currentStart,
+  currentEnd,
+  now = currentEnd,
+} = {}) {
+  const windowEnd = validDate(currentEnd) || validDate(now) || new Date();
+  const resolvedCurrentStart = validDate(currentStart) || new Date(windowEnd.getTime() - HEALTH_ROLLUP_HOUR_MS);
+  return summarizeWindow({
+    events,
+    sessions: presenceSessions,
+    windowStart: resolvedCurrentStart,
+    windowEnd,
+    now: windowEnd,
+  }, { includeRollupDetails: true, distributeActiveDuration: true });
+}
+
 export function summarizeProjectHealthFromDailyReports({
   currentReport,
   previousReport,
   retention = null,
 } = {}) {
+  const comparisonMode = currentReport?.comparisonWindow?.mode || 'full_day';
   const current = {
     ...emptyHealthWindow(),
     ...(currentReport?.current || {}),
-    newUsers: Number(currentReport?.current?.newUsers || currentReport?.newActorKeys?.length || 0),
+    newUsers: Number(currentReport?.current?.newUsers ?? currentReport?.newActorKeys?.length ?? 0),
     retention: retention || emptyHealthWindow().retention,
   };
   const previous = {
     ...emptyHealthWindow(),
-    ...(previousReport?.current || {}),
-    newUsers: Number(previousReport?.current?.newUsers || previousReport?.newActorKeys?.length || 0),
+    ...(currentReport?.previous || previousReport?.current || {}),
+    newUsers: Number(currentReport?.previous?.newUsers ?? previousReport?.current?.newUsers ?? previousReport?.newActorKeys?.length ?? 0),
   };
   const currentStart = validDate(currentReport?.sourceWindow?.startAt);
   const currentEnd = validDate(currentReport?.sourceWindow?.endAt);
-  const previousStart = validDate(previousReport?.sourceWindow?.startAt);
-  const previousEnd = validDate(previousReport?.sourceWindow?.endAt);
+  const previousStart = validDate(currentReport?.comparisonWindow?.previousStartAt) || validDate(previousReport?.sourceWindow?.startAt);
+  const previousEnd = validDate(currentReport?.comparisonWindow?.previousEndAt) || validDate(previousReport?.sourceWindow?.endAt);
   const attentionItems = attentionItemsForHealth(current, previous, currentEnd || new Date(), {
-    comparisonWindow: 'day',
+    comparisonWindow: comparisonMode === 'completed_hours' ? 'completed_hours' : 'day',
   });
   const sdkUpgradeFindings = current.sdkUpgradeFindings || [];
 
@@ -1407,8 +1644,11 @@ export function summarizeProjectHealthFromDailyReports({
       previousStart,
       previousEnd,
       reportDate: currentReport?.reportDate || '',
-      previousReportDate: previousReport?.reportDate || '',
-      granularity: 'day',
+      previousReportDate: currentReport?.previousReportDate || previousReport?.reportDate || '',
+      granularity: currentReport?.comparisonWindow?.granularity || 'day',
+      comparisonMode,
+      currentHourCount: Number(currentReport?.comparisonWindow?.currentHourCount || 0),
+      previousHourCount: Number(currentReport?.comparisonWindow?.previousHourCount || 0),
       timezone: DAILY_REPORT_TIMEZONE,
       retentionDays: HEALTH_RETENTION_DAYS,
     },
@@ -1418,7 +1658,7 @@ export function summarizeProjectHealthFromDailyReports({
     sdkUpgradeFindings,
     current,
     previous,
-    trends: {
+    trends: currentReport?.trends || {
       activeUsers: percentChange(current.activeUsers, previous.activeUsers),
       sessions: percentChange(current.sessionCount, previous.sessionCount),
       averageActiveDuration: percentChange(current.averageActiveDurationMs, previous.averageActiveDurationMs),
