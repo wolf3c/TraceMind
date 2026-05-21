@@ -18,5 +18,11 @@ deploy:
         active: ALWAYS
         url: https://central.sonatype.com/api/v1/publisher
         namespace: io.github.wolf3c
+        verifyPom: false
+        artifactOverrides:
+          - groupId: io.github.wolf3c.tracemind
+            artifactId: tracemind-android
+            jar: false
+            verifyPom: false
         stagingRepositories:
           - build/maven-staging

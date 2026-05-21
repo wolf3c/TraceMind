@@ -227,6 +227,9 @@ test('sdk publish workflow cannot run the Meteor deploy command', () => {
   assert.ok(workflow.includes('arguments: deploy --config-file sdk/android/jreleaser.yml'));
   assert.ok(jreleaser.includes('groupId: io.github.wolf3c.tracemind'));
   assert.ok(jreleaser.includes('namespace: io.github.wolf3c'));
+  assert.ok(jreleaser.includes('verifyPom: false'));
+  assert.ok(jreleaser.includes('artifactOverrides:'));
+  assert.ok(jreleaser.includes('jar: false'));
   assert.ok(jreleaser.includes('build/maven-staging'));
   assert.ok(!jreleaser.includes('sdk/android/build/maven-staging'));
   assert.ok(jreleaser.includes('signing:'));
