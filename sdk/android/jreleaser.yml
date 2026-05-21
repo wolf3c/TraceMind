@@ -1,6 +1,5 @@
 project:
   name: tracemind-android
-  version: "{{Env.TRACEMIND_SDK_PUBLISH_VERSION}}"
   languages:
     java:
       groupId: io.github.wolf3c.tracemind

@@ -156,6 +156,7 @@ jobs:
           arguments: deploy --config-file sdk/android/jreleaser.yml
         env:
           TRACEMIND_SDK_PUBLISH_VERSION: ${{ steps.package.outputs.version }}
+          JRELEASER_PROJECT_VERSION: ${{ steps.package.outputs.version }}
           JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
           JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
           JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.GPG_PUBLIC_KEY }}

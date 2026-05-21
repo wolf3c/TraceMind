@@ -228,6 +228,8 @@ test('sdk publish workflow cannot run the Meteor deploy command', () => {
   assert.ok(jreleaser.includes('groupId: io.github.wolf3c.tracemind'));
   assert.ok(jreleaser.includes('namespace: io.github.wolf3c'));
   assert.ok(jreleaser.includes('signing:'));
+  assert.ok(workflow.includes('JRELEASER_PROJECT_VERSION: ${{ steps.package.outputs.version }}'));
+  assert.ok(!jreleaser.includes('version: "{{'));
   assert.ok(!jreleaser.includes('{{ Env.'));
 });
 
