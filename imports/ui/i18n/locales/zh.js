@@ -364,6 +364,7 @@ export default {
   "Hourly comparison trend": "小时对比趋势",
   "Selected date": "所选日期",
   "Yesterday same hours": "昨天同小时",
+  "Through {{time}}": "截止 {{time}}",
   "Difference": "差异",
   "Detailed event stream": "详细操作事件流",
   "Recent behavior evidence from the selected project.": "所选项目最近的行为证据。",

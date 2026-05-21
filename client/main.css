@@ -2060,68 +2060,26 @@ code {
 
 .health-metric-row > strong {
   margin-top: 0 !important;
-  font-size: 2rem;
-  line-height: 1;
+  font-size: 2rem !important;
+  line-height: 1 !important;
 }
 
 .health-metric-side {
   display: grid !important;
   gap: 4px;
   align-self: end;
+  min-width: 0;
   overflow: visible;
 }
 
-.trend-popover-wrap {
-  position: relative;
-  display: inline-block !important;
-  width: max-content;
-  max-width: 100%;
-  overflow: visible;
-}
-
-.trend-popover-button {
-  border: 0;
-  border-radius: 6px;
-  padding: 0;
-  background: transparent;
-  font: inherit;
-  font-size: 0.82rem;
+.trend-inline {
+  display: inline-flex !important;
+  align-items: baseline;
+  color: #60756c;
+  font-size: 0.76rem;
   font-weight: 760;
   line-height: 1.2;
   white-space: nowrap;
-  cursor: help;
-}
-
-.trend-popover-button:focus-visible {
-  outline: 2px solid rgba(24, 167, 122, 0.35);
-  outline-offset: 3px;
-}
-
-.trend-popover {
-  position: absolute;
-  z-index: 6;
-  top: 24px;
-  left: 0;
-  min-width: 150px;
-  border: 1px solid #d9e3de;
-  border-radius: 8px;
-  padding: 8px 10px;
-  box-shadow: 0 10px 26px rgba(22, 43, 36, 0.13);
-  color: var(--deep) !important;
-  background: #fffefa;
-  font-size: 0.7rem !important;
-  font-weight: 650 !important;
-  line-height: 1.45;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
-  white-space: nowrap;
-}
-
-.trend-popover-wrap:hover .trend-popover,
-.trend-popover-wrap.active .trend-popover,
-.trend-popover-button:focus-visible + .trend-popover {
-  opacity: 1;
 }
 
 .realtime-online-card summary {
@@ -2215,14 +2173,18 @@ code {
 }
 
 .hourly-sparkline {
+  appearance: none;
   display: block;
   position: relative;
   width: 100%;
   min-width: 0;
   min-height: 62px;
   border: 0;
+  border-radius: 0;
   padding: 0;
   overflow: visible;
+  box-shadow: none;
+  color: inherit;
   cursor: crosshair;
   background: transparent;
   text-align: inherit;
@@ -2231,6 +2193,18 @@ code {
 .hourly-sparkline:focus-visible {
   outline: 2px solid rgba(24, 167, 122, 0.28);
   outline-offset: 3px;
+}
+
+.hourly-cutoff {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  color: #60756c !important;
+  font-size: 0.64rem !important;
+  font-weight: 650 !important;
+  line-height: 1.1 !important;
+  pointer-events: none;
 }
 
 .hourly-chart {
@@ -2295,7 +2269,7 @@ code {
   border: 1px solid #d9e3de;
   border-radius: 8px;
   padding: 8px 10px;
-  box-shadow: 0 10px 26px rgba(22, 43, 36, 0.13);
+  box-shadow: none;
   color: var(--deep);
   background: #fffefa;
   font-size: 0.7rem;
@@ -2460,14 +2434,9 @@ code {
   font-style: normal;
 }
 
-.health-metric-side,
-.trend-popover-wrap {
-  display: inline-block !important;
-  overflow: visible;
-}
-
 .health-metric-side {
   display: grid !important;
+  overflow: visible;
 }
 
 .tooltip-row span,
@@ -2925,13 +2894,8 @@ code {
     align-items: start;
   }
 
-  .trend-popover-button,
+  .trend-inline,
   .health-metric-side em {
-    white-space: normal;
-  }
-
-  .trend-popover {
-    min-width: 136px;
     white-space: normal;
   }
 

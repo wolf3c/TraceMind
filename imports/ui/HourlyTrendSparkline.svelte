@@ -4,6 +4,7 @@
   let {
     points = [],
     formatValue = (value) => String(value ?? 0),
+    timezoneOffsetMs = 8 * 60 * 60 * 1000,
   } = $props();
 
   const chart = {
@@ -31,6 +32,7 @@
   let activeCurrentPoint = $derived(activePoint ? pointFor(Number(activePoint.current || 0), activeIndex) : null);
   let activePreviousPoint = $derived(activePoint ? pointFor(Number(activePoint.previous || 0), activeIndex) : null);
   let tooltipLeft = $derived(activeCurrentPoint ? Math.min(Math.max((activeCurrentPoint.x / chart.width) * 100, 18), 82) : 50);
+  let cutoffTime = $derived(cutoffTimeLabel());
 
   let pinned = $derived(pinnedIndex !== null);
 
@@ -114,6 +116,24 @@
     const percent = Math.round(((current - previous) / previous) * 100);
     return `${percent > 0 ? "+" : ""}${percent}%`;
   }
+
+  function reportTimeLabel(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (!Number.isFinite(date.getTime())) return "";
+    return new Date(date.getTime() + timezoneOffsetMs).toISOString().slice(11, 16);
+  }
+
+  function nextHourLabel(label) {
+    const [hour, minute] = String(label || "").split(":").map(Number);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return "";
+    const nextMinutes = (hour * 60 + minute + 60) % (24 * 60);
+    return `${String(Math.floor(nextMinutes / 60)).padStart(2, "0")}:${String(nextMinutes % 60).padStart(2, "0")}`;
+  }
+
+  function cutoffTimeLabel() {
+    const lastPoint = safePoints[safePoints.length - 1];
+    return reportTimeLabel(lastPoint?.currentEndAt) || nextHourLabel(lastPoint?.hourLabel);
+  }
 </script>
 
 {#if safePoints.length}
@@ -126,6 +146,9 @@
     onclick={togglePinned}
     onkeydown={handleKeydown}
   >
+    {#if cutoffTime}
+      <span class="hourly-cutoff">{$t("Through {{time}}", { time: cutoffTime })}</span>
+    {/if}
     <svg class="hourly-chart" viewBox="0 0 260 62" aria-hidden="true">
       <polyline class="hourly-line previous" points={previousPolyline}></polyline>
       <polyline class="hourly-line current" points={currentPolyline}></polyline>
