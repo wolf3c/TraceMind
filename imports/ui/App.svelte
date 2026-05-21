@@ -1164,12 +1164,12 @@
     {logout}
   />
   <section id="console" class="console">
-    <div class="console-header">
-      <span class="tm-badge tm-badge-muted">{$t("Developer console")}</span>
-      <h2>{$t("Capture real user behavior after login")}</h2>
-    </div>
-
     {#if consoleState === "signed-out"}
+      <div class="console-header">
+        <span class="tm-badge tm-badge-muted">{$t("Developer console")}</span>
+        <h2>{$t("Capture real user behavior after login")}</h2>
+      </div>
+
       <AuthPanel
         bind:email
         bind:code
