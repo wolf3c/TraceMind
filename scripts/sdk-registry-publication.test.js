@@ -228,6 +228,7 @@ test('sdk publish workflow cannot run the Meteor deploy command', () => {
   assert.ok(jreleaser.includes('groupId: io.github.wolf3c.tracemind'));
   assert.ok(jreleaser.includes('namespace: io.github.wolf3c'));
   assert.ok(jreleaser.includes('signing:'));
+  assert.ok(!jreleaser.includes('{{ Env.'));
 });
 
 test('deploy skill waits for registry publication before its only deploy step', () => {
