@@ -152,6 +152,8 @@ Ask the user to approve specific row IDs or provide edits. Do not publish until 
 
 Use Chrome logged-in sessions for platforms that require browser authentication. Do not inspect unrelated private browser data, cookies, passwords, or local storage.
 
+For 小红书 original posts, first open the creator publish page and confirm the current browser context is logged in. If it shows a login dialog, `登录后查看搜索结果`, no account/profile entry, or otherwise lacks a usable publish form, pause and ask the user to scan/login, then retry the same publish page after the user confirms. Do not abandon 小红书 solely because the current browser context is logged out.
+
 Publish one approved row at a time:
 
 1. Open the target platform or community.
