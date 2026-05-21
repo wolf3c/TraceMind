@@ -43,6 +43,12 @@ import {
 import enMessages from '../imports/ui/i18n/locales/en';
 import zhMessages from '../imports/ui/i18n/locales/zh';
 import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n';
+import {
+  FEEDBACK_ERRORS,
+  buildFeedbackMessage,
+  feedbackContainsForbiddenContent,
+  normalizeFeedbackKind,
+} from '../imports/ui/feedback_payload';
 
 function assertLocalSourceSetup(setup, vendorPath) {
   assert.strictEqual(setup.structuredContent.distributionMode, 'local_source');
@@ -2414,6 +2420,93 @@ describe('TraceMind', function () {
     });
   });
 
+  describe('Feedback payload', function () {
+    it('omits contact details when the user has not consented', function () {
+      const address = ['founder', 'example.com'].join('@');
+      const result = buildFeedbackMessage({
+        kind: 'issue',
+        title: 'Login problem',
+        body: 'The login code never arrived.',
+        contactConsent: false,
+        contactAddress: address,
+      });
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.message.kind, 'issue');
+      assert.deepStrictEqual(result.message.contact, { consent: false });
+      assert.deepStrictEqual(result.message.attachments, []);
+    });
+
+    it('uses the signed-in account email only after consent', function () {
+      const address = ['founder', 'example.com'].join('@');
+      const result = buildFeedbackMessage({
+        kind: 'idea',
+        body: 'Please add a faster onboarding check.',
+        contactConsent: true,
+        contactAddress: address,
+      });
+
+      assert.strictEqual(result.ok, true);
+      assert.deepStrictEqual(result.message.contact, {
+        consent: true,
+        email: address,
+      });
+    });
+
+    it('accepts optional signed-out contact email after consent', function () {
+      const address = ['pilot', 'example.com'].join('@');
+      const result = buildFeedbackMessage({
+        kind: 'question',
+        title: 'Pricing question',
+        body: 'Can TraceMind support a small beta team?',
+        contactConsent: true,
+        contactAddress: address,
+      });
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.message.kind, 'question');
+      assert.strictEqual(result.message.contact.email, address);
+    });
+
+    it('rejects empty or sensitive feedback before queueing', function () {
+      const empty = buildFeedbackMessage({ body: '   ' });
+      const sensitive = buildFeedbackMessage({
+        body: ['This includes https://app.example.com/settings', '?', 'token=secret.'].join(''),
+      });
+
+      assert.strictEqual(empty.ok, false);
+      assert.strictEqual(empty.error, FEEDBACK_ERRORS.emptyBody);
+      assert.strictEqual(sensitive.ok, false);
+      assert.strictEqual(sensitive.error, FEEDBACK_ERRORS.sensitiveContent);
+      assert.strictEqual(feedbackContainsForbiddenContent(['Bearer', 'secret_token'].join(' ')), true);
+      assert.strictEqual(feedbackContainsForbiddenContent(['raw', 'prompt'].join(' ')), true);
+    });
+
+    it('falls back to other for unknown feedback kinds', function () {
+      const result = buildFeedbackMessage({
+        kind: 'bug',
+        title: 'Unsupported type',
+        body: 'This should use the supported fallback kind.',
+      });
+
+      assert.strictEqual(normalizeFeedbackKind('bug'), 'other');
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.message.kind, 'other');
+      assert.strictEqual(result.message.title, 'Unsupported type');
+    });
+
+    it('rejects invalid contact email when consent is enabled', function () {
+      const result = buildFeedbackMessage({
+        body: 'Please contact me later.',
+        contactConsent: true,
+        contactAddress: 'not-an-email',
+      });
+
+      assert.strictEqual(result.ok, false);
+      assert.strictEqual(result.error, FEEDBACK_ERRORS.invalidContactAddress);
+    });
+  });
+
   describe('UI i18n', function () {
     const requiredKeys = [
       'Language',
@@ -2437,6 +2530,10 @@ describe('TraceMind', function () {
       'Recent devices',
       '{{count}} events',
       'Recent behavior evidence from the selected project. Showing the latest {{count}} rows.',
+      'Feedback',
+      'Send feedback',
+      'I agree to use my current account email for follow-up.',
+      'Feedback queued. TraceMind will send it shortly.',
     ];
 
     it('normalizes supported UI locales and falls back to English', function () {

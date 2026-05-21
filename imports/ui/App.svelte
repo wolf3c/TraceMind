@@ -16,6 +16,7 @@
   import ConsoleStatePanel from "./ConsoleStatePanel.svelte";
   import { resolveConsoleState } from "./console_state";
   import EventStreamPanel from "./EventStreamPanel.svelte";
+  import FeedbackWidget from "./FeedbackWidget.svelte";
   import IntroSections from "./IntroSections.svelte";
   import { locale, locales, t } from "./i18n/i18n";
   import ProjectHealthPanel from "./ProjectHealthPanel.svelte";
@@ -1300,4 +1301,5 @@
   <footer class="app-version" aria-label="TraceMind version">
     TraceMind v{appVersion}
   </footer>
+  <FeedbackWidget accountEmail={dashboard?.developer?.email || ""} />
 </main>
