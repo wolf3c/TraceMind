@@ -1,6 +1,6 @@
 name: SDK Publish
 
-on:
+"on":
   push:
     tags:
       - "tracemind-release-*"
@@ -77,7 +77,8 @@ jobs:
       - name: Check existing package
         id: exists
         continue-on-error: true
-        run: python - <<'PY'
+        run: |
+          python - <<'PY'
           import json, sys, urllib.error, urllib.request
           url = "https://pypi.org/pypi/${{ steps.package.outputs.name }}/${{ steps.package.outputs.version }}/json"
           try:
@@ -91,7 +92,8 @@ jobs:
         with:
           packages-dir: ".sdk-publish/${{ matrix.sdk }}/dist"
       - name: Verify package
-        run: python - <<'PY'
+        run: |
+          python - <<'PY'
           import urllib.request
           urllib.request.urlopen("https://pypi.org/pypi/${{ steps.package.outputs.name }}/${{ steps.package.outputs.version }}/json", timeout=20).read()
           PY

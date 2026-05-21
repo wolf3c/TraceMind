@@ -133,6 +133,26 @@ test('checkGithubWorkflow waits for the matching release tag run to succeed', as
   assert.equal(calls.length, 2);
 });
 
+test('checkGithubWorkflow can match GitHub tag runs by commit sha', async () => {
+  const result = await checkGithubWorkflow({
+    cwd: process.cwd(),
+    tag: 'tracemind-release-2026.5.20-1',
+    workflow: 'sdk-publish.yml',
+    resolveTagSha: () => 'abc123',
+    listRuns: async () => [{
+      event: 'push',
+      headBranch: 'main',
+      headSha: 'abc123',
+      status: 'completed',
+      conclusion: 'success',
+      url: 'https://github.com/wolf3c/TraceMind/actions/runs/1',
+    }],
+    sleepFn: async () => {},
+  });
+
+  assert.equal(result.conclusion, 'success');
+});
+
 test('checkGithubWorkflow rejects failed release tag workflow runs', async () => {
   await assert.rejects(
     () => checkGithubWorkflow({
@@ -201,6 +221,7 @@ test('sdk publish workflow cannot run the Meteor deploy command', () => {
   assert.ok(workflow.includes('SDK Publish'));
   assert.ok(!workflow.includes('npm run deploy'));
   assert.ok(!workflow.includes('meteor deploy'));
+  assert.ok(!workflow.includes("run: python - <<'PY'"));
 });
 
 test('deploy skill waits for registry publication before its only deploy step', () => {

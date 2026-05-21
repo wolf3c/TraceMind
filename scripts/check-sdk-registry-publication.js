@@ -51,6 +51,14 @@ function gh(cwd, args) {
   }).trim();
 }
 
+function git(cwd, args) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -66,9 +74,22 @@ function listGithubWorkflowRuns({ cwd, workflow }) {
     '--limit',
     '50',
     '--json',
-    'databaseId,headBranch,status,conclusion,name,url',
+    'databaseId,event,headBranch,headSha,status,conclusion,name,url',
   ]);
   return JSON.parse(output || '[]');
+}
+
+function tagHeadSha(cwd, tag) {
+  try {
+    return git(cwd, ['rev-parse', tag]);
+  } catch {
+    return '';
+  }
+}
+
+function matchesReleaseTagRun(run, tag, tagSha) {
+  if (run.headBranch === tag) return true;
+  return Boolean(tagSha && run.event === 'push' && run.headSha === tagSha);
 }
 
 async function checkGithubWorkflow({
@@ -78,14 +99,16 @@ async function checkGithubWorkflow({
   waitMs = 20 * 60 * 1000,
   pollMs = 30 * 1000,
   listRuns = listGithubWorkflowRuns,
+  resolveTagSha = tagHeadSha,
   sleepFn = sleep,
   now = Date.now,
 }) {
   const startedAt = now();
   let lastRun = null;
+  const tagSha = resolveTagSha(cwd, tag);
   while (true) {
     const runs = await listRuns({ cwd, workflow });
-    const run = runs.find((entry) => entry.headBranch === tag);
+    const run = runs.find((entry) => matchesReleaseTagRun(entry, tag, tagSha));
     lastRun = run || lastRun;
     if (run?.status === 'completed') {
       if (run.conclusion !== 'success') {
