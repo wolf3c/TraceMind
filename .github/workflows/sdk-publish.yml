@@ -141,6 +141,26 @@ jobs:
           test -n "${{ secrets.GPG_PUBLIC_KEY }}"
           test -n "${{ secrets.GPG_SIGNING_KEY }}"
           test -n "${{ secrets.GPG_SIGNING_PASSWORD }}"
+      - name: Publish GPG public key
+        if: steps.exists.outcome != 'success'
+        env:
+          GPG_PUBLIC_KEY: ${{ secrets.GPG_PUBLIC_KEY }}
+        run: |
+          public_key_file="$RUNNER_TEMP/tracemind-gpg-public-key.asc"
+          printf '%s\n' "$GPG_PUBLIC_KEY" > "$public_key_file"
+          gpg --batch --import "$public_key_file"
+          fingerprint="$(gpg --batch --with-colons --import-options show-only --import "$public_key_file" | awk -F: '/^fpr:/ { print $10; exit }')"
+          test -n "$fingerprint"
+          gpg --batch --keyserver hkps://keyserver.ubuntu.com --send-keys "$fingerprint" || true
+          verify_home="$(mktemp -d)"
+          chmod 700 "$verify_home"
+          for attempt in $(seq 1 12); do
+            if GNUPGHOME="$verify_home" gpg --batch --quiet --keyserver hkps://keyserver.ubuntu.com --recv-keys "$fingerprint" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+          GNUPGHOME="$verify_home" gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "$fingerprint"
       - name: Stage Maven publication
         if: steps.exists.outcome != 'success'
         working-directory: sdk/android
