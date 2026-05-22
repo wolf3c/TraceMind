@@ -78,6 +78,18 @@ I’m building TraceMind for this post-launch loop: auto-capture product behavio
 Happy to have you try it: https://tracemind.sandbox.galaxycloud.app/?utm_source=x
 ```
 
+## V2EX 风险边界
+
+V2EX 对连续的 link-bearing 产品推荐更敏感。即使单条回复很短，如果多次在相近产品帖下使用 `称赞 -> TraceMind 价值 -> 链接`，也可能被用户或版主判定为广告/spam。
+
+后续 V2EX 只在以下情况考虑回复：
+
+- 作者直接回复 TraceMind 或明确问接入、用户路径、埋点、验证、转化、留存问题。
+- 用户已对具体行重新审批，并且审批时明确知道当前账号/版务风险。
+- 回复优先不带链接；只有在作者直接问怎么使用或试用时，才放 `utm_source=v2ex` 链接。
+
+在账号状态未确认前，不发送任何 V2EX backlog 行。
+
 ## 使用场景
 
 - X / Twitter、即刻、V2EX 等公开帖。
@@ -110,6 +122,7 @@ Happy to have you try it: https://tracemind.sandbox.galaxycloud.app/?utm_source=
 | 2026-05-20 | v1.7 | 公开评价/推荐回复改为“称赞 -> 推荐 TraceMind 及具体价值 -> 链接”。 | 用户要求推荐自家产品时先正向评价对方，再清晰说明 TraceMind 能提供什么价值，最后给链接。 |
 | 2026-05-21 | v1.8 | 公开回复进一步压缩，避免做过多评论或产品诊断，控制为短称赞、一个具体价值点和推广链接。 | 用户指出 V2EX 回复过于冗长，应更像简洁推荐而不是长评。 |
 | 2026-05-21 | v1.9 | 将公开回复核心句优化为“TraceMind 可以让你的 coding AI 读懂用户行为”，再接一个具体 AI-native 价值和推广链接。 | 用户要求突出 AI-native 重点，让评论更简洁有力。 |
+| 2026-05-22 | v2.0 | 新增 V2EX 风险边界：账号状态确认前暂停 V2EX backlog，后续只在直接问题/明确审批下回复，并默认不带链接。 | 2026-05-22 检查发现 Poplingo/Papr 相关 TraceMind 回复被用户报告为 spam，并出现版主封禁信号。 |
 
 ## 后续优化依据
 

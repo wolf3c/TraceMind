@@ -373,3 +373,58 @@
 - Workflow change for tomorrow: recheck newly sent rows R-W before adding more cold outreach volume.
 - Messaging change for tomorrow: keep public comments short; avoid turning each reply into a product diagnosis.
 - Candidate selection change for tomorrow: prefer posts where the author already names a learning gap, such as validation, conversion, retention, usage, or positioning.
+
+## 2026-05-22
+
+### Daily Run
+
+- Workplan used: `docs/customer_acquisition_workplan_2026-05-22.md`.
+- Channels checked: V2EX, Appinn / 小众软件, X / Twitter, TraceMind MCP customer usage marker.
+- Public replies sent: 2.
+- Public replies proposed / awaiting approval: 0; X1/X2 were sent after user approval.
+- Private messages sent: 0; win-back emails sent after approval: 2.
+- Customer usage reviewed: `customer_project_capture_active` still returned 0 active projects and 0 active accounts for today, yesterday, and the last 7 days.
+- Private customer usage report: `.codex/private/customer_usage_reviews/2026-05-22.md`.
+- Win-back messages proposed / awaiting approval: 0; W1/W2 sent after approval.
+- New candidates found: 2 X candidates approved and sent; V2EX discovery stopped.
+- High-intent leads: no new direct trial intent; V2EX Poplingo/Papr produced negative moderation risk.
+- Blockers: V2EX outreach is blocked pending manual account/moderation review; self-instrumented customer usage marker remains empty; `tracemind.query_events` was not available in the current MCP toolset.
+- Retrospective: see below.
+- Next actions: do not send V2EX backlog rows; monitor X1/X2 and W1/W2 replies; verify product-usage env before using customer activity counts as authoritative.
+
+#### Feedback Checked
+
+| Channel | Source | Signal | Action Taken | Follow-Up |
+| --- | --- | --- | --- | --- |
+| V2EX | Main TraceMind post `https://www.v2ex.com/t/1213290` | `low`; 590 clicks, 0 replies. | No bump/repost. | Keep passive. |
+| V2EX | Rows R-W from 2026-05-21 | `mixed`; R/S/T/V had no direct author reply, U and W produced spam-report/moderation-risk signals. | Stopped V2EX expansion. | Manual account review before any more V2EX comments. |
+| V2EX | Prior rows K/L/M/O/P | `no_response` or `low_positive`; no direct trial follow-up. | No follow-up. | Pause because V2EX account/channel risk is now the dominant issue. |
+| Appinn / 小众软件 | TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; 61 views, 1 homepage link, 0 replies. | No bump/repost. | Continue low-frequency monitoring. |
+| X / Twitter | Community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium-low`; 140 views, 1 reply, 1 like. | No follow-up. | Follow only if a new reply appears. |
+| X / Twitter | Johnny follow-up `https://x.com/old_farmer_/status/2055939454217638329` | `low`; 11 views, 0 replies, 0 likes. | No follow-up. | Do not continue without a new signal. |
+| X / Twitter | Row Q reply `https://x.com/old_farmer_/status/2056928446413197561` | `low`; 24 views, 0 replies, 0 likes. | No follow-up. | Recheck only if engagement appears. |
+
+#### New Public Replies
+
+| Channel | Source | Reply URL | Fit | Notes |
+| --- | --- | --- | --- | --- |
+| X | Reyansh Juneja / Feedzap | `https://x.com/old_farmer_/status/2057653994621915201` | High; shipped vibe-coded product with real users, payments, PostHog, Reddit feedback, and an explicit continue-or-quit question. | Sent after approval; shortened to fit X while preserving the approved angle around behavior evidence and stuck-user diagnosis. |
+| X | Jan Keselak / vibe-coded experiment | `https://x.com/old_farmer_/status/2057654350076662010` | Medium-high; launched product with 800+ downloads and useful feedback, now thinking about distribution and post-launch learning. | Sent after approval; focused on separating installs from behavior, activation, repeat use, and drop-off. |
+
+#### New Candidates Found
+
+- Approved and sent from `docs/social_reply_targets_2026-05-22.md`: X1 Reyansh Juneja / Feedzap, X2 Jan Keselak / vibe-coded experiment.
+- Skipped / held: V2EX row N and 2026-05-18 rows A-F because the V2EX account/moderation state is now risky; X Lewis/路聊, Bitcoin Basics, biotech COGS estimator, and Warin were skipped for weaker context, lower ICP fit, or promotion risk.
+
+#### Retrospective
+
+- What worked: X search produced two current product-author posts and both approved rows were sent without adding more V2EX risk.
+- What did not work: V2EX short link-bearing replies crossed into spam perception on at least Poplingo/Papr; Appinn and owned X posts still produced visibility but no conversations.
+- Best channel today: X search for approved product-author replies; V2EX should be paused.
+- Best customer signal: none from outreach; customer usage marker is empty and therefore not reliable until env/config is verified.
+- Best wording: for X candidates, tie TraceMind to a specific post-launch question such as "continue or quit", "installs vs behavior", and "first value / return / payment drop".
+- Weakest assumption: "shorter + link" is not automatically safer on V2EX; frequency and account history matter more than message length alone.
+- Customer usage / retention change: `customer_project_capture_active` stayed at 0 for today/yesterday/7 days while TraceMind project presence still exists, so the immediate issue is instrumentation/config verification.
+- Workflow change for tomorrow: stop V2EX outreach until the user reviews the account status; monitor X1/X2 replies and W1/W2 email responses before adding more outreach.
+- Messaging change for tomorrow: on communities sensitive to promotion, do not use link-bearing replies unless there is a direct setup question or explicit user approval for that exact row after reviewing channel risk.
+- Candidate selection change for tomorrow: prefer X posts where the author explicitly asks about feedback, launch learning, retention, distribution, or whether to continue.
