@@ -1,6 +1,11 @@
 <script>
-  import { t } from "./i18n/i18n";
-  import { PRODUCT_UPDATES, sortProductUpdatesByDate } from "./product_updates";
+  import { locale, t } from "./i18n/i18n";
+  import {
+    PRODUCT_UPDATES,
+    localizedProductUpdateDetails,
+    localizedProductUpdateText,
+    sortProductUpdatesByDate,
+  } from "./product_updates";
 
   const updates = sortProductUpdatesByDate(PRODUCT_UPDATES);
 </script>
@@ -33,10 +38,10 @@
     {#each updates as update (update.id)}
       <article class="product-updates-card" id={update.id}>
         <time datetime={update.publishedAt}>{update.publishedAt}</time>
-        <h2>{$t(update.summary)}</h2>
+        <h2>{localizedProductUpdateText(update.summary, $locale)}</h2>
         <ul>
-          {#each update.details as detail (detail)}
-            <li>{$t(detail)}</li>
+          {#each localizedProductUpdateDetails(update.details, $locale) as detail (detail)}
+            <li>{detail}</li>
           {/each}
         </ul>
       </article>

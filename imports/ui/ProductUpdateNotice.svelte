@@ -1,6 +1,7 @@
 <script>
-  import { t } from "./i18n/i18n";
+  import { locale, t } from "./i18n/i18n";
   import {
+    localizedProductUpdateText,
     productUpdateDetailPath,
     productUpdateNotificationState,
     productUpdatesPath,
@@ -17,6 +18,9 @@
   let update = $derived(notification.update);
   let hasUnreadUpdate = $derived(notification.hasUnreadUpdate);
   let detailPath = $derived(productUpdateDetailPath(update));
+  let updateCategory = $derived(localizedProductUpdateText(update?.categoryLabel, $locale));
+  let updateTitle = $derived(localizedProductUpdateText(update?.moduleTitle, $locale));
+  let updateSummary = $derived(localizedProductUpdateText(update?.summary, $locale));
 
   function dismissNotice(event) {
     event.preventDefault();
@@ -45,7 +49,7 @@
       <a
         class="product-update-card-link"
         href={detailPath}
-        aria-label={$t("View update details for {{title}}", { title: $t(update.moduleTitle) })}
+        aria-label={$t("View update details for {{title}}", { title: updateTitle })}
       ></a>
 
       <button
@@ -58,9 +62,9 @@
       </button>
 
       <div class="product-update-copy">
-        <span class="product-update-category">{$t(update.categoryLabel)}</span>
-        <h2>{$t(update.moduleTitle)}</h2>
-        <p>{$t(update.summary)}</p>
+        <span class="product-update-category">{updateCategory}</span>
+        <h2>{updateTitle}</h2>
+        <p>{updateSummary}</p>
       </div>
 
       <time class="product-update-date" datetime={update.publishedAt}>{update.publishedAt}</time>

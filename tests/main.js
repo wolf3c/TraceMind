@@ -35,6 +35,9 @@ import * as TraceMindApi from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
 import { resolveConsoleState } from '../imports/ui/console_state';
 import {
+  PRODUCT_UPDATES,
+  localizedProductUpdateDetails,
+  localizedProductUpdateText,
   latestProductUpdate,
   productUpdateNotificationState,
   productUpdateStorageKey,
@@ -132,6 +135,23 @@ function assertSdkGovernance(setup, sdkName, vendorPath) {
 
 describe('TraceMind', function () {
   describe('Product update notices', function () {
+    it('keeps product update content localized inside the update record', function () {
+      const update = PRODUCT_UPDATES.find((item) => item.id === '2026-05-22-hourly-health');
+
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'en'), 'Hourly health trends');
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'zh-CN'), '小时级健康趋势');
+      assert.strictEqual(
+        localizedProductUpdateText(update.summary, 'zh'),
+        '推广或运营动作后，可以按小时观察活跃用户、事件量和趋势变化。',
+      );
+      assert.deepStrictEqual(localizedProductUpdateDetails(update.details, 'zh').slice(0, 2), [
+        '项目健康新增活跃用户和事件量的小时级趋势信号。',
+        '适合在上线、投放、社媒发布或社群运营后观察行为从哪个小时开始变化。',
+      ]);
+      assert.strictEqual(localizedProductUpdateText({ en: 'English fallback' }, 'zh'), 'English fallback');
+      assert.strictEqual(localizedProductUpdateText('Legacy string', 'zh'), 'Legacy string');
+    });
+
     it('shows the newest update unless that exact update was dismissed', function () {
       const updates = [
         { id: '2026-05-22-hourly-health', publishedAt: '2026-05-22' },
