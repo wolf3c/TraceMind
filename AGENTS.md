@@ -25,6 +25,13 @@ Keep reusable code under `imports/` so Meteor imports it explicitly instead of r
 - After any SDK runtime change under `sdk/`, run `npm run update:sdk-manifest` and `npm run test:sdk-release`. The manifest gate uses SDK content hashes, so do not rely on remembering to bump a version number by hand.
 - For deploys that expose SDK `latestSdk.sourceRef`, `$deploy` must publish immutable GitHub source before Galaxy: run `npm run prepare:sdk-release-ref -- <version>`, commit the release state, create/push `tracemind-release-<version>`, push `origin main`, and pass `npm run check:deploy-git-publication -- <version>` before `npm run deploy`.
 
+## Browser Workflow
+
+- Use `@Browser` first for browser-based inspection, local app verification, localhost or `file://` targets, screenshots, DOM checks, and unauthenticated web flows.
+- Use `@Chrome` only when the task needs the user's logged-in account state, cookies, browser extensions, existing Chrome tabs, or an account-gated page. State the reason before switching.
+- After frontend or visible UI changes, verify the relevant local route with `@Browser` when the URL is known or easy to start. Keep the browser in the background unless the user asks to watch or open it.
+- If `@Browser` is unavailable, say so before falling back to another browser or shell-based approach.
+
 ## Error Ledger
 
 Add entries here when an agent mistake reveals a reusable rule for future work. Use this format:
