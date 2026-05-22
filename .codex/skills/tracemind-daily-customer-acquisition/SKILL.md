@@ -1,6 +1,6 @@
 ---
 name: tracemind-daily-customer-acquisition
-description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, customer usage/retention review, win-back operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as customer-usage-review, morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs and private ignored ops reports, uses logged-in Chrome sessions for 即刻, V2EX, X/Twitter, 小红书, 少数派, Appinn/小众软件, or similar platforms when needed, drafts customer win-back and candidate/reply tables for user approval before outbound replies/messages/emails, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
+description: Use when the user asks to run TraceMind customer acquisition, seed-customer operations, customer usage/retention review, win-back operations, social outreach, reply/comment outreach, post publishing, retrospective review, or daily/multi-run acquisition work. Supports focused run modes such as customer-usage-review, morning-review, outreach-block, post-publish, end-of-day-retro, and full-day. Reads TraceMind docs and private ignored ops reports, uses logged-in Chrome sessions for 即刻, X/Twitter, 小红书, 少数派, Appinn/小众软件, or similar platforms when needed, drafts customer win-back and candidate/reply tables for user approval before outbound replies/messages/emails, records progress, compares operating results, optimizes the workflow, and creates the next workplan.
 ---
 
 # TraceMind Daily Customer Acquisition
@@ -73,6 +73,7 @@ For customer usage review, also read the latest `.codex/private/customer_usage_r
 - X search must include Chinese keywords as well as English keywords. Do not assume X product-author discovery is English-only; in each X outreach block, run at least one Chinese query set for AI coding / vibe coding builders before judging X candidate quality. Prefer intent-based Chinese query combinations over fixed phrases like `做了` / `做了一个`, because product authors may say `实现了`, `完成了`, `搞定了`, `上线`, `发布`, `内测`, `coding`, `vibe`, or simply describe the product.
 - 小红书 Web execution must use logged-in search-state access, not bare direct note URLs. Start from `https://www.xiaohongshu.com/search_result?keyword=<keyword>`, confirm the page shows `我` and visible search results, then open notes from the search results so the detail URL includes `xsec_token` and search context. If the page shows `登录后查看搜索结果`, a login dialog, or no `我` entry, pause and ask the user to scan/login, then retry the same search after the user confirms; do not abandon 小红书 solely because the current browser context is logged out. Treat bare `/explore/<noteId>` URLs without `xsec_token` as unreliable because they may return `300031 当前笔记暂时无法浏览` even when the note is accessible from search. For 小红书 candidates, record author, title, note id, search keyword, short content/comment-context summary, and the current tokenized detail URL. After an approved comment is sent, verify visibility in the current search/detail state and record `commented_verified_search_state`; if it cannot be seen there, use `commented_unverified`, not plain `commented`.
 - Appinn/小众软件 is a low-frequency Chinese tool self-recommendation channel, not a daily comment-spam channel. Use it for polished `开发者自荐` posts when TraceMind has a clear homepage, screenshots, trial ask, and concise setup explanation. Avoid repeated bumps or unrelated comments.
+- V2EX is not an outreach or promotion channel for TraceMind. Do not search V2EX for candidates, draft TraceMind promotional replies, send V2EX comments, publish V2EX promotion posts, or execute V2EX backlog rows. Existing historic V2EX links may be checked only for moderation/account-risk review or direct responses that require no promotion; otherwise record `skipped_platform_rules`.
 - Public outreach comments should default to one short recommendation, not a product diagnosis: `specific praise -> TraceMind makes your coding AI understand user behavior -> one AI-native value -> promotion link`. Emphasize that TraceMind is AI-native infrastructure for AI-coded products: it auto-captures product behavior, turns it into AI-readable evidence, lets builders ask AI where users get stuck, and verifies whether AI-coded changes worked.
 
 ## Run Modes
@@ -240,7 +241,7 @@ Use short, specific draft replies. For comment-based invitations, the default fo
 
 The goal is a concise recommendation, not a long diagnosis. Do not lead with a multi-sentence analysis of their product and then append TraceMind. Do not list several possible user paths. Pick one product-specific value point and tie it to TraceMind's AI-native loop: auto-capture behavior, make it AI-readable, ask AI where users get stuck, and verify whether changes worked.
 
-Default Chinese pattern for V2EX, X, 即刻, 小红书, 少数派, and similar public comments:
+Default Chinese pattern for X, 即刻, 小红书, 少数派, and similar public comments:
 
 ```text
 <具体称赞>。我做的 TraceMind 可以让你的 coding AI 读懂用户行为，帮你<一个 AI-native 价值：自动采集/AI 可读/直接问 AI/验证改版效果>。欢迎试用：<link>
@@ -289,7 +290,6 @@ If the plan calls for new outreach, search the planned channels and prepare cand
 Default search prompts:
 
 - 即刻: `vibe coding 做了`, `做了一个 产品`, `欢迎反馈`, `Codex 做了`, `Claude Code 做了`, `Cursor 做了一个`, `Trae 做了`, `Lovable 做了`, `上线了 求反馈`
-- V2EX: `https://www.v2ex.com/go/create`, `https://www.v2ex.com/go/ideas`
 - X English: `"built with Codex" app`, `"built with Claude Code" app`, `"built this with Cursor" feedback`, `"built with Trae" app`, `"AI coding agent" launch`, `"vibe coded" app launch`; add `"built with Lovable" feedback` and `"made with Lovable" app` only for no-code-focused searches.
 - X Chinese: use query combinations across these buckets instead of relying on `做了` / `做了一个`:
   - AI coding tools: `Codex`, `Claude Code`, `Cursor`, `Trae`, `AI 编程`, `AI coding`, `vibe coding`, `氛围编程`.
@@ -304,7 +304,7 @@ Default search prompts:
 Channel intent:
 
 - 即刻: primary Chinese A0 source; prioritize vibe coding builders and AI product experiments.
-- V2EX: product/tool launch source; prioritize people asking for feedback or validation.
+- V2EX: do not use for TraceMind outreach, comments, promotion, candidate discovery, or backlog execution because that violates the community's rules and norms.
 - X: prioritize Build in Public and Vibe Coding posts from the last 24 hours first, then other relevant X communities, then public X search. Search both English and Chinese keywords before judging the channel. Primarily target Codex, Claude Code, Cursor, and Trae builders with short comments matched to the specific product post. Add Lovable, Bolt, Replit, and Base44 only when the post/community is explicitly no-code or weak-technical.
 - 小红书: discovery-heavy A0 source; prioritize non-technical or weak-technical creators showing AI-built products, workflows, or launch screenshots. Default to candidate collection and reply drafts; ask before publishing original posts.
 - 少数派: tool and productivity audience; prioritize polished tools, plugins, workflows, and app authors. Use more substantive, less salesy comments; ask before submitting articles or original posts.
@@ -420,7 +420,7 @@ Write a `Retrospective` subsection in the day's progress entry:
 Use the retrospective to make concrete changes. Examples:
 
 - If comments with no link get better replies, keep links out of first-touch comments.
-- If V2EX replies are too technical and low-converting, shift tomorrow's first hour to 即刻.
+- If a channel's rules or norms make TraceMind promotion unsuitable, remove that channel from outreach instead of trying to tune the wording.
 - If 小红书 shows more non-technical AI builders than developer forums, allocate tomorrow's search time there and keep comments casual and specific.
 - If 少数派 candidates are higher quality but lower volume, use it for weekly deeper outreach rather than daily volume.
 - If Appinn/小众软件 brings higher-trust but lower-volume feedback, keep it as a milestone/update channel rather than a daily outreach target.

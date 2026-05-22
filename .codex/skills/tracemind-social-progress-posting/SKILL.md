@@ -20,11 +20,11 @@ Use this skill for original TraceMind product-progress posts on social platforms
 
 Update this section after successful publishing so the next run has a reliable cutoff.
 
-- Last published at: `not set`
-- Last cutoff commit: `not set`
-- Last platforms: `not set`
-- Last source window: `not set`
-- Last notes: `initial skill state`
+- Last published at: `2026-05-22 10:55:40 +0800`
+- Last cutoff commit: `0aaebf575939d93b58ecf0eaa5eede9bf7789425`
+- Last platforms: `X/Twitter, 即刻`
+- Last source window: `fallback 3-day committed history (c1a8196^..0aaebf5)`
+- Last notes: `Day 1 hourly health posts published to X/Twitter and 即刻; V2EX excluded because TraceMind promotion conflicts with community rules; 小红书/Appinn skipped.`
 
 ## Source Inputs
 
@@ -102,7 +102,7 @@ If the update set is weak, recommend not posting or propose a low-key build-in-p
 
 ### 4. Draft Platform-Specific Posts
 
-Default platforms are the social channels already used in acquisition docs: X/Twitter, 即刻, 小红书, V2EX, 少数派, and Appinn/小众软件. Use only the platforms requested by the user or already covered by the current plan.
+Default platforms are the social channels already used in acquisition docs: X/Twitter, 即刻, 小红书, 少数派, and Appinn/小众软件. Use only the platforms requested by the user or already covered by the current plan.
 
 Drafts should be concise, concrete, and easy to approve:
 
@@ -117,7 +117,7 @@ Tone guidance:
 - X/Twitter: short build-in-public style; one strong angle; English, Chinese, or bilingual based on the intended audience.
 - 即刻: conversational Chinese; emphasize the builder pain and what TraceMind now helps answer.
 - 小红书: beginner-friendly Chinese; avoid developer jargon; focus on "不用搭复杂 analytics，也能看懂用户卡在哪".
-- V2EX: practical and transparent; explain what changed and who it is for; avoid marketing exaggeration.
+- V2EX: do not draft, publish, or retry TraceMind promotional posts because this conflicts with the community's rules and norms.
 - 少数派: polished tool/productivity framing; explain workflow value and setup effort.
 - Appinn/小众软件: use only for meaningful milestone updates; concise `开发者自荐` style with problem, audience, setup, and feedback ask.
 
@@ -163,6 +163,8 @@ Publish one approved row at a time:
 5. Capture the post URL, visible timestamp, and any blocker.
 
 If a platform blocks posting because of login, rate limits, community rules, upload permissions, or unclear target location, record the blocker and continue only with other approved platforms.
+
+Do not publish TraceMind promotional posts on V2EX, even if explicitly present in an older plan or backlog. Record it as `skipped_platform_rules`.
 
 ### 7. Record Results
 
