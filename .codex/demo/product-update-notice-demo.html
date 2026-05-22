@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TraceMind 产品更新提醒 Demo</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23fffdf8'/%3E%3Cpath d='M8 22V10h4l4 8 4-8h4v12' fill='none' stroke='%230f2f2a' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M9 24c4-3 10-3 14 0' fill='none' stroke='%2318a77a' stroke-width='2.8' stroke-linecap='round'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17231f;
+      --deep: #0f2f2a;
+      --deep-2: #071b18;
+      --signal: #18a77a;
+      --amber: #f2b84b;
+      --clay: #b95c3b;
+      --paper: #f4f0e8;
+      --panel: #fffdf8;
+      --mist: #e6eee9;
+      --muted: #63756d;
+      --line: #bacbc4;
+      --shadow: 0 24px 72px rgba(15, 47, 42, 0.16);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+    }
+
+    button,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    .page {
+      min-height: 100vh;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 72vh;
+      padding: 26px clamp(18px, 4vw, 64px) 54px;
+      color: #fffdf8;
+      background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.024) 0 1px, transparent 1px 7px),
+        radial-gradient(circle at 76% 18%, rgba(24, 167, 122, 0.22), transparent 31%),
+        radial-gradient(circle at 42% 102%, rgba(242, 184, 75, 0.09), transparent 34%),
+        linear-gradient(112deg, rgba(7, 27, 24, 0.99) 0%, rgba(10, 44, 37, 0.98) 58%, rgba(32, 69, 58, 0.92) 100%);
+    }
+
+    .nav,
+    .notice-host,
+    .hero-grid,
+    .content {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+    }
+
+    .nav {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 44px;
+    }
+
+    .brand {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      font-weight: 760;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      box-shadow: 0 10px 22px rgba(7, 27, 24, 0.2);
+    }
+
+    .nav-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .nav-actions select,
+    .nav-actions button {
+      min-height: 42px;
+      border: 1px solid rgba(255, 253, 248, 0.32);
+      border-radius: 6px;
+      padding: 0 14px;
+      color: #fffdf8;
+      background: rgba(255, 255, 255, 0.09);
+    }
+
+    .nav-actions select {
+      color: var(--deep);
+      background: rgba(255, 253, 248, 0.92);
+    }
+
+    .update-notice {
+      position: relative;
+      display: block;
+      min-height: 148px;
+      padding: 20px 56px 48px 20px;
+      border: 1px solid rgba(255, 253, 248, 0.2);
+      border-radius: 8px;
+      color: #fffdf8;
+      background: rgba(255, 253, 248, 0.1);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(18px);
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .update-notice:hover {
+      border-color: rgba(255, 253, 248, 0.36);
+      background: rgba(255, 253, 248, 0.14);
+      transform: translateY(-1px);
+    }
+
+    .notice-card-link {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .notice-card-link:focus-visible {
+      outline: 3px solid rgba(24, 167, 122, 0.42);
+      outline-offset: 3px;
+    }
+
+    .notice-host {
+      position: relative;
+      z-index: 2;
+      padding-top: 34px;
+    }
+
+    .notice-field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      position: relative;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .notice-module {
+      margin: 0;
+      color: #fffdf8;
+      font-weight: 780;
+      font-size: 1.02rem;
+    }
+
+    .notice-summary {
+      max-width: 760px;
+      margin: 0;
+      color: rgba(255, 253, 248, 0.78);
+      line-height: 1.52;
+    }
+
+    .notice-time {
+      position: absolute;
+      left: 20px;
+      bottom: 18px;
+      z-index: 2;
+      color: rgba(255, 253, 248, 0.56);
+      font-size: 0.8rem;
+      font-weight: 680;
+    }
+
+    .notice-actions {
+      display: contents;
+    }
+
+    .notice-link,
+    .notice-close,
+    .primary,
+    .secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      border-radius: 6px;
+      padding: 0 16px;
+      font-weight: 720;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .notice-link,
+    .primary {
+      color: #061d18;
+      background: var(--signal);
+      box-shadow: 0 10px 22px rgba(24, 167, 122, 0.2);
+    }
+
+    .notice-link {
+      position: absolute;
+      right: 20px;
+      bottom: 14px;
+      z-index: 3;
+      min-height: 32px;
+      border: 1px solid rgba(255, 253, 248, 0.28);
+      padding: 0 10px;
+      color: #fffdf8;
+      background: rgba(255, 253, 248, 0.1);
+      box-shadow: none;
+      font-size: 0.86rem;
+    }
+
+    .notice-link::after {
+      margin-left: 5px;
+      content: "›";
+    }
+
+    .notice-close,
+    .secondary {
+      border: 1px solid rgba(255, 253, 248, 0.3);
+      color: #fffdf8;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .notice-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 4;
+      width: 42px;
+      padding: 0;
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    .hero-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(320px, 0.82fr) minmax(420px, 1.18fr);
+      gap: clamp(30px, 5vw, 72px);
+      align-items: center;
+      min-height: 54vh;
+      padding-top: 42px;
+    }
+
+    .signed-in .hero-grid {
+      display: none;
+    }
+
+    .signed-in .hero {
+      min-height: 0;
+    }
+
+    .hero-copy h1 {
+      max-width: 760px;
+      margin: 0 0 18px;
+      color: #fffdf8;
+      font-size: clamp(36px, 4.4vw, 58px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .hero-copy p {
+      max-width: 620px;
+      margin: 0;
+      color: #d8e4dd;
+      font-size: clamp(1rem, 1.45vw, 1.18rem);
+      line-height: 1.65;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .product-board {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid rgba(207, 239, 228, 0.2);
+      border-radius: 12px;
+      background: rgba(7, 29, 24, 0.78);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .board-card {
+      padding: 16px;
+      border: 1px solid rgba(255, 253, 248, 0.14);
+      border-radius: 8px;
+      background: rgba(255, 253, 248, 0.08);
+    }
+
+    .board-card h2 {
+      margin: 0 0 8px;
+      color: #fffdf8;
+      font-size: 1.08rem;
+    }
+
+    .board-card p {
+      margin: 0;
+      color: rgba(255, 253, 248, 0.68);
+      line-height: 1.6;
+    }
+
+    .signal-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .signal-row {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 12px;
+      padding: 10px 0;
+      border-top: 1px solid rgba(255, 253, 248, 0.11);
+    }
+
+    .signal-row span {
+      color: rgba(255, 253, 248, 0.55);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .signal-row strong {
+      color: #fffdf8;
+      font-weight: 690;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(320px, 0.7fr);
+      gap: 22px;
+      width: min(1180px, calc(100% - 36px));
+      padding: 36px 0 52px;
+    }
+
+    .panel {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 18px 52px rgba(15, 47, 42, 0.08);
+    }
+
+    .panel-header {
+      padding: 18px 20px 12px;
+      border-bottom: 1px solid var(--mist);
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 1.2rem;
+      line-height: 1.3;
+    }
+
+    .panel-header p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      line-height: 1.58;
+    }
+
+    .plan-list,
+    .runtime-list {
+      display: grid;
+      gap: 0;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .plan-list li,
+    .runtime-list li {
+      display: grid;
+      grid-template-columns: 128px minmax(0, 1fr);
+      gap: 14px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--mist);
+    }
+
+    .plan-list li:last-child,
+    .runtime-list li:last-child {
+      border-bottom: 0;
+    }
+
+    .plan-list strong,
+    .runtime-list strong {
+      color: var(--deep);
+      font-size: 0.88rem;
+    }
+
+    .plan-list span,
+    .runtime-list span {
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .controls {
+      display: grid;
+      gap: 12px;
+      padding: 20px;
+    }
+
+    .control-row {
+      display: grid;
+      gap: 7px;
+    }
+
+    .control-row label {
+      color: var(--deep);
+      font-size: 0.84rem;
+      font-weight: 760;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .segmented button,
+    .reset-button {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--deep);
+      background: #fffdf8;
+      font-weight: 700;
+    }
+
+    .segmented button[aria-pressed="true"] {
+      border-color: var(--signal);
+      background: #dff7ed;
+      box-shadow: inset 0 0 0 1px rgba(24, 167, 122, 0.24);
+    }
+
+    .state-readout {
+      margin: 2px 0 0;
+      padding: 12px;
+      border-radius: 8px;
+      color: var(--muted);
+      background: var(--mist);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .runtime-list {
+      padding: 2px 0;
+    }
+
+    .runtime-list li {
+      grid-template-columns: 140px minmax(0, 1fr);
+      padding-block: 12px;
+    }
+
+    .runtime-list .tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 0 9px;
+      color: #061d18;
+      background: #dff7ed;
+      font-size: 0.76rem;
+      font-weight: 760;
+    }
+
+    .runtime-list .tag-muted {
+      color: var(--deep);
+      background: var(--mist);
+    }
+
+    @media (max-width: 920px) {
+      .hero {
+        min-height: auto;
+      }
+
+      .hero-grid,
+      .content {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-grid {
+        padding-top: 34px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .hero {
+        padding-inline: 16px;
+      }
+
+      .nav {
+        align-items: flex-start;
+        gap: 14px;
+      }
+
+      .nav-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .plan-list li,
+      .runtime-list li,
+      .signal-row {
+        grid-template-columns: 1fr;
+      }
+
+      .update-notice {
+        min-height: 178px;
+        padding: 18px 52px 50px 18px;
+      }
+
+      .notice-time {
+        left: 18px;
+      }
+
+      .notice-link {
+        right: 18px;
+      }
+
+      .content {
+        width: calc(100% - 32px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <nav class="nav" aria-label="Demo navigation">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+            <rect width="64" height="64" rx="15" fill="#fffdf8"></rect>
+            <path d="M17 43V21h7.5L32 35l7.5-14H47v22" fill="none" stroke="#0f2f2a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path d="M19 47c8-6 18-6 27 0" fill="none" stroke="#18a77a" stroke-width="4.5" stroke-linecap="round"></path>
+            <circle cx="47" cy="47" r="3.6" fill="#f2b84b"></circle>
+          </svg>
+          <span>TraceMind</span>
+        </div>
+        <div class="nav-actions">
+          <select aria-label="语言">
+            <option>中文</option>
+            <option>English</option>
+          </select>
+          <button id="navAuthButton" type="button">登录</button>
+        </div>
+      </nav>
+
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <h1>让 Coding Agent 看懂每日产品行为</h1>
+          <p>TraceMind 把真实用户行为整理成每日健康、AI 可读证据和 MCP 工具。产品更新提醒应服务于这个主路径，而不是变成独立营销弹窗。</p>
+          <div class="hero-actions">
+            <a class="primary" href="#console">让 Agent 接入</a>
+            <a class="secondary" href="#plan">讨论方案</a>
+          </div>
+        </div>
+        <div class="product-board" id="console">
+          <div class="board-card">
+            <h2>当前首页结构中的推荐位置</h2>
+            <p>放在介绍内容的最底部。登录用户收起介绍后，产品更新仍然作为独立提醒保留，不跟着介绍一起隐藏。</p>
+            <div class="signal-list">
+              <div class="signal-row">
+                <span>位置</span>
+                <strong>介绍结束处，控制台之前</strong>
+              </div>
+              <div class="signal-row">
+                <span>登录态</span>
+                <strong>不随介绍折叠一起隐藏</strong>
+              </div>
+              <div class="signal-row">
+                <span>详情</span>
+                <strong>独立更新页，按时间倒序排列</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notice-host" aria-live="polite">
+        <article id="updateNotice" class="update-notice">
+          <a class="notice-card-link" id="noticeCardLink" href="./product-update-details-demo.html#2026-05-22-hourly-health" aria-label="查看小时级健康趋势更新详情"></a>
+          <div class="notice-field">
+            <strong class="notice-module" id="noticeModuleTitle">小时级健康趋势</strong>
+          </div>
+          <div class="notice-field">
+            <p class="notice-summary" id="noticeSummary">推广或运营动作后，可以按小时观察活跃用户、事件量和趋势变化。</p>
+          </div>
+          <time class="notice-time" id="noticeTime" datetime="2026-05-22">2026-05-22</time>
+          <div class="notice-actions">
+            <a class="notice-link" id="noticeDetailLink" href="./product-update-details-demo.html#2026-05-22-hourly-health">详情</a>
+            <button class="notice-close" id="closeNotice" type="button" aria-label="关闭产品更新提醒">×</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="plan" class="content">
+      <article class="panel">
+        <div class="panel-header">
+          <h2>功能方案</h2>
+          <p>目标是在首页提供轻量产品更新介绍，任何访问者都能看到；用户关闭后不重复打扰，直到存在更新内容。</p>
+        </div>
+        <ul class="plan-list">
+          <li>
+            <strong>当前行为</strong>
+            <span>首页只有介绍内容和登录/控制台入口，没有独立的产品更新提醒；已登录用户可折叠介绍，但没有按更新内容版本记忆的提醒机制。</span>
+          </li>
+          <li>
+            <strong>目标行为</strong>
+            <span>首页读取一个“当前可见更新”，在介绍内容的最底部展示。点击关闭后记录该版本；后续同版本不再展示，新版本再次出现。</span>
+          </li>
+          <li>
+            <strong>内容模型</strong>
+            <span>提醒只展示模块标题内容、摘要、时间和操作按钮，不额外显示字段名。内部仍保留 id 用于关闭判断；详情页按时间倒序展示摘要标题、详情和时间。</span>
+          </li>
+          <li>
+            <strong>存储策略</strong>
+            <span>未登录：localStorage key 为 tracemind.dismissedProductUpdateId。已登录：优先沿用本地关闭记录；后续如果要跨设备同步，再增加用户偏好字段 dismissedProductUpdateId。</span>
+          </li>
+          <li>
+            <strong>交互边界</strong>
+            <span>关闭只隐藏提醒，不改变介绍折叠、登录态或控制台状态。已登录用户收起介绍时，提醒不跟随介绍隐藏。</span>
+          </li>
+          <li>
+            <strong>风险</strong>
+            <span>过频更新会造成首页噪音；更新 id 必须只在真实新增内容时变化；关闭状态不能依赖登录，否则未登录访问者会被重复打扰。</span>
+          </li>
+          <li>
+            <strong>验证计划</strong>
+            <span>覆盖未登录、已登录、首次展示、关闭后刷新不展示、新内容版本再次展示、详情页跳转、倒序排列、移动端布局和中英文文案长度。</span>
+          </li>
+        </ul>
+      </article>
+
+      <aside class="panel">
+        <div class="panel-header">
+          <h2>Demo 控制</h2>
+          <p>切换状态可模拟关闭记忆和新内容再次出现。</p>
+        </div>
+        <div class="controls">
+          <div class="control-row">
+            <label>登录态</label>
+            <div class="segmented">
+              <button id="signedOutButton" type="button" aria-pressed="true">未登录</button>
+              <button id="signedInButton" type="button" aria-pressed="false">已登录</button>
+            </div>
+          </div>
+          <div class="control-row">
+            <label>更新内容</label>
+            <div class="segmented">
+              <button id="updateAButton" type="button" aria-pressed="true">当前更新</button>
+              <button id="updateBButton" type="button" aria-pressed="false">模拟新内容</button>
+            </div>
+          </div>
+          <button class="reset-button" id="resetDismissal" type="button">清除关闭记录</button>
+          <pre class="state-readout" id="stateReadout"></pre>
+        </div>
+      </aside>
+
+      <article class="panel">
+        <div class="panel-header">
+          <h2>跨运行时影响矩阵</h2>
+          <p>这个 demo 只设计首页/控制台 Web 表面；SDK 采集和 MCP 协议不应被该提醒影响。</p>
+        </div>
+        <ul class="runtime-list">
+          <li><strong>Web 首页/控制台</strong><span><b class="tag">change</b> 增加展示、关闭、版本判定和本地记忆。</span></li>
+          <li><strong>Dashboard/API</strong><span><b class="tag">change</b> 如果后续做服务端发布，需要只读 API 或 publication 暴露当前更新；demo 阶段无生产 API 变化。</span></li>
+          <li><strong>iOS/macOS/Android</strong><span><b class="tag tag-muted">no change</b> 原生 SDK 行为不变；不新增 capture 语义。</span></li>
+          <li><strong>React Native/Hybrid</strong><span><b class="tag tag-muted">no change</b> SDK 初始化和事件上报不变。</span></li>
+          <li><strong>Mini Program/Extension</strong><span><b class="tag tag-muted">no change</b> 不改变这些运行时的 Auto Capture 或手动事件。</span></li>
+          <li><strong>Server SDKs/MCP/Agent Skill</strong><span><b class="tag tag-muted">no change</b> 协议、工具、安装指引不变；只可能在更新文案中链接到相关说明。</span></li>
+        </ul>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const storageKey = "tracemind.demo.dismissedProductUpdateId";
+    const updates = {
+      current: {
+        id: "2026-05-22-hourly-health",
+        moduleTitle: "小时级健康趋势",
+        summary: "推广或运营动作后，可以按小时观察活跃用户、事件量和趋势变化。",
+        publishedAt: "2026-05-22",
+        detailUrl: "./product-update-details-demo.html#2026-05-22-hourly-health",
+      },
+      next: {
+        id: "2026-05-29-agent-report",
+        moduleTitle: "Agent 健康摘要",
+        summary: "Agent 先读日报，再按语义事件和原始证据下钻定位变化原因。",
+        publishedAt: "2026-05-29",
+        detailUrl: "./product-update-details-demo.html#2026-05-29-agent-report",
+      },
+    };
+
+    let signedIn = false;
+    let selectedUpdate = "current";
+
+    const updateNotice = document.querySelector("#updateNotice");
+    const noticeModuleTitle = document.querySelector("#noticeModuleTitle");
+    const noticeSummary = document.querySelector("#noticeSummary");
+    const noticeTime = document.querySelector("#noticeTime");
+    const noticeCardLink = document.querySelector("#noticeCardLink");
+    const noticeDetailLink = document.querySelector("#noticeDetailLink");
+    const closeNotice = document.querySelector("#closeNotice");
+    const navAuthButton = document.querySelector("#navAuthButton");
+    const signedOutButton = document.querySelector("#signedOutButton");
+    const signedInButton = document.querySelector("#signedInButton");
+    const updateAButton = document.querySelector("#updateAButton");
+    const updateBButton = document.querySelector("#updateBButton");
+    const resetDismissal = document.querySelector("#resetDismissal");
+    const stateReadout = document.querySelector("#stateReadout");
+
+    function readDismissedId() {
+      try {
+        return window.localStorage.getItem(storageKey) || "";
+      } catch (error) {
+        return "";
+      }
+    }
+
+    function writeDismissedId(updateId) {
+      try {
+        window.localStorage.setItem(storageKey, updateId);
+      } catch (error) {
+        return false;
+      }
+      return true;
+    }
+
+    function clearDismissedId() {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch (error) {
+        return false;
+      }
+      return true;
+    }
+
+    function render() {
+      const update = updates[selectedUpdate];
+      const dismissedId = readDismissedId();
+      const visible = update.id !== dismissedId;
+
+      noticeModuleTitle.textContent = update.moduleTitle;
+      noticeSummary.textContent = update.summary;
+      noticeTime.textContent = update.publishedAt;
+      noticeTime.dateTime = update.publishedAt;
+      noticeCardLink.href = update.detailUrl;
+      noticeCardLink.setAttribute("aria-label", `查看${update.moduleTitle}更新详情`);
+      noticeDetailLink.href = update.detailUrl;
+
+      updateNotice.style.display = visible ? "grid" : "none";
+      navAuthButton.textContent = signedIn ? "退出登录" : "登录";
+      document.body.classList.toggle("signed-in", signedIn);
+
+      signedOutButton.setAttribute("aria-pressed", String(!signedIn));
+      signedInButton.setAttribute("aria-pressed", String(signedIn));
+      updateAButton.setAttribute("aria-pressed", String(selectedUpdate === "current"));
+      updateBButton.setAttribute("aria-pressed", String(selectedUpdate === "next"));
+
+      stateReadout.textContent = [
+        `signedIn: ${signedIn}`,
+        `latestUpdate.id: ${update.id}`,
+        `moduleTitle: ${update.moduleTitle}`,
+        `dismissedUpdateId: ${dismissedId || "(empty)"}`,
+        `shouldShowNotice: ${visible}`,
+      ].join("\n");
+    }
+
+    closeNotice.addEventListener("click", () => {
+      writeDismissedId(updates[selectedUpdate].id);
+      render();
+    });
+
+    navAuthButton.addEventListener("click", () => {
+      signedIn = !signedIn;
+      render();
+    });
+
+    signedOutButton.addEventListener("click", () => {
+      signedIn = false;
+      render();
+    });
+
+    signedInButton.addEventListener("click", () => {
+      signedIn = true;
+      render();
+    });
+
+    updateAButton.addEventListener("click", () => {
+      selectedUpdate = "current";
+      render();
+    });
+
+    updateBButton.addEventListener("click", () => {
+      selectedUpdate = "next";
+      render();
+    });
+
+    resetDismissal.addEventListener("click", () => {
+      clearDismissedId();
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

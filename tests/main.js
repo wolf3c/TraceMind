@@ -35,6 +35,14 @@ import * as TraceMindApi from '../imports/api/tracemind';
 import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
 import { resolveConsoleState } from '../imports/ui/console_state';
 import {
+  latestProductUpdate,
+  productUpdateNotificationState,
+  productUpdateStorageKey,
+  readDismissedProductUpdateId,
+  shouldShowProductUpdate,
+  writeDismissedProductUpdateId,
+} from '../imports/ui/product_updates';
+import {
   mergeProjectIntoDashboard,
   resolveInitialProjectSummaryState,
   resolveSelectedProjectId,
@@ -123,6 +131,79 @@ function assertSdkGovernance(setup, sdkName, vendorPath) {
 }
 
 describe('TraceMind', function () {
+  describe('Product update notices', function () {
+    it('shows the newest update unless that exact update was dismissed', function () {
+      const updates = [
+        { id: '2026-05-22-hourly-health', publishedAt: '2026-05-22' },
+        { id: '2026-05-29-agent-health', publishedAt: '2026-05-29' },
+      ];
+      const latestUpdate = latestProductUpdate(updates);
+
+      assert.strictEqual(latestUpdate.id, '2026-05-29-agent-health');
+      assert.strictEqual(shouldShowProductUpdate(latestUpdate, ''), true);
+      assert.strictEqual(shouldShowProductUpdate(latestUpdate, '2026-05-22-hourly-health'), true);
+      assert.strictEqual(shouldShowProductUpdate(latestUpdate, '2026-05-29-agent-health'), false);
+    });
+
+    it('exposes a compact unread state for the homepage version row', function () {
+      const updates = [
+        {
+          id: '2026-05-22-hourly-health',
+          categoryLabel: 'New feature notice',
+          publishedAt: '2026-05-22',
+        },
+      ];
+
+      const unreadState = productUpdateNotificationState(updates, '');
+      const signedOutState = productUpdateNotificationState(updates, '', false);
+      const dismissedState = productUpdateNotificationState(updates, '2026-05-22-hourly-health');
+      const nextUpdateState = productUpdateNotificationState([
+        ...updates,
+        {
+          id: '2026-05-29-agent-health',
+          categoryLabel: 'New feature notice',
+          publishedAt: '2026-05-29',
+        },
+      ], '2026-05-22-hourly-health');
+
+      assert.strictEqual(unreadState.update.categoryLabel, 'New feature notice');
+      assert.strictEqual(unreadState.hasUnreadUpdate, true);
+      assert.strictEqual(signedOutState.update.id, '2026-05-22-hourly-health');
+      assert.strictEqual(signedOutState.hasUnreadUpdate, false);
+      assert.strictEqual(dismissedState.hasUnreadUpdate, false);
+      assert.strictEqual(dismissedState.update.id, '2026-05-22-hourly-health');
+      assert.strictEqual(nextUpdateState.hasUnreadUpdate, true);
+      assert.strictEqual(nextUpdateState.update.id, '2026-05-29-agent-health');
+    });
+
+    it('persists the dismissed update id without throwing when storage is unavailable', function () {
+      const values = new Map();
+      const storage = {
+        getItem(key) {
+          return values.get(key) || null;
+        },
+        setItem(key, value) {
+          values.set(key, value);
+        },
+      };
+      const blockedStorage = {
+        getItem() {
+          throw new Error('storage blocked');
+        },
+        setItem() {
+          throw new Error('storage blocked');
+        },
+      };
+
+      assert.strictEqual(readDismissedProductUpdateId(storage), '');
+      assert.strictEqual(writeDismissedProductUpdateId(storage, '2026-05-29-agent-health'), true);
+      assert.strictEqual(values.get(productUpdateStorageKey), '2026-05-29-agent-health');
+      assert.strictEqual(readDismissedProductUpdateId(storage), '2026-05-29-agent-health');
+      assert.strictEqual(readDismissedProductUpdateId(blockedStorage), '');
+      assert.strictEqual(writeDismissedProductUpdateId(blockedStorage, '2026-05-29-agent-health'), false);
+    });
+  });
+
   describe('Coding agent guidance', function () {
     it('builds Chinese install prompts with the current project MCP URL and public guidance links', function () {
       const prompt = buildAgentInstallPrompt({

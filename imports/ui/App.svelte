@@ -19,6 +19,8 @@
   import FeedbackWidget from "./FeedbackWidget.svelte";
   import IntroSections from "./IntroSections.svelte";
   import { locale, locales, t } from "./i18n/i18n";
+  import ProductUpdateNotice from "./ProductUpdateNotice.svelte";
+  import ProductUpdatesPage from "./ProductUpdatesPage.svelte";
   import ProjectHealthPanel from "./ProjectHealthPanel.svelte";
   import ProjectSetupPanel from "./ProjectSetupPanel.svelte";
   import {
@@ -29,6 +31,10 @@
   } from "./project_console_state";
 
   const currentOrigin = () => (typeof location === "undefined" ? "" : location.origin);
+  const normalizeAppPath = (path = "/") => {
+    const normalizedPath = String(path || "/").replace(/\/+$/, "");
+    return normalizedPath || "/";
+  };
   const translateNow = (key, vars) => get(t)(key, vars);
   const localeLabels = {
     en: "English",
@@ -83,6 +89,7 @@
   let publishedProjectHealth = $state(null);
   let refreshAgeTick = $state(Date.now());
   let showIntro = $state(false);
+  let currentPath = $state(normalizeAppPath(typeof location === "undefined" ? "/" : location.pathname));
   let dashboardLoadPromise = null;
   let copiedTargetTimer = null;
 
@@ -115,6 +122,7 @@
     dashboardLoadError,
   }));
   let shouldShowIntro = $derived(consoleState === "signed-out" || showIntro);
+  let isProductUpdatesPage = $derived(currentPath === "/product-updates");
   let primaryProject = $derived(
     dashboard?.projects?.find((project) => project._id === selectedProjectId) || dashboard?.projects?.[0],
   );
@@ -1157,6 +1165,17 @@
   });
 
   $effect(() => {
+    const syncRoute = () => {
+      currentPath = normalizeAppPath(window.location.pathname);
+    };
+
+    syncRoute();
+    window.addEventListener("popstate", syncRoute);
+
+    return () => window.removeEventListener("popstate", syncRoute);
+  });
+
+  $effect(() => {
     const timer = window.setInterval(() => {
       refreshAgeTick = Date.now();
     }, 30000);
@@ -1166,19 +1185,24 @@
 </script>
 
 <main class="shell">
-  <IntroSections
-    {shouldShowIntro}
-    {userId}
-    {showIntro}
-    bind:selectedLocale
-    {locales}
-    {localeLabels}
-    {setupDocsUrl}
-    {toggleIntro}
-    {changeLocale}
-    {logout}
-  />
-  <section id="console" class="console">
+  {#if isProductUpdatesPage}
+    <ProductUpdatesPage />
+  {:else}
+    <IntroSections
+      {shouldShowIntro}
+      {userId}
+      {showIntro}
+      bind:selectedLocale
+      {locales}
+      {localeLabels}
+      {setupDocsUrl}
+      {toggleIntro}
+      {changeLocale}
+      {logout}
+    />
+    <ProductUpdateNotice {appVersion} canShowReminder={Boolean(userId)} />
+
+    <section id="console" class="console">
     {#if consoleState === "signed-out"}
       <div class="console-header">
         <span class="tm-badge tm-badge-muted">{$t("Developer console")}</span>
@@ -1304,10 +1328,10 @@
     {#if status}
       <p class="status-alert" role="status" aria-live="polite">{status}</p>
     {/if}
-  </section>
+    </section>
+  {/if}
 
-  <footer class="app-version" aria-label="TraceMind version">
-    TraceMind v{appVersion}
-  </footer>
-  <FeedbackWidget accountEmail={dashboard?.developer?.email || ""} />
+  {#if !isProductUpdatesPage}
+    <FeedbackWidget accountEmail={dashboard?.developer?.email || ""} />
+  {/if}
 </main>
