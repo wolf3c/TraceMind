@@ -54,12 +54,12 @@ Customer usage health and win-back work is part of TraceMind's own internal oper
 
 Read these first, if present:
 
-- `docs/customer_acquisition_progress.md`
-- Latest `docs/customer_acquisition_workplan_YYYY-MM-DD.md`
-- `docs/social_reply_targets_YYYY-MM-DD.md`
-- `docs/customer_messaging.md`
-- `docs/vibe_coding_seed_customer_pipeline_YYYY-MM-DD.md`
-- `docs/social_promotion_posts_YYYY-MM-DD.md`
+- `.codex/private/customer_acquisition/progress/customer_acquisition_progress.md`
+- Latest `.codex/private/customer_acquisition/workplans/customer_acquisition_workplan_YYYY-MM-DD.md`
+- `.codex/private/customer_acquisition/targets/social_reply_targets_YYYY-MM-DD.md`
+- `.codex/private/customer_acquisition/messaging/customer_messaging.md`
+- `.codex/private/customer_acquisition/pipelines/vibe_coding_seed_customer_pipeline_YYYY-MM-DD.md`
+- `.codex/private/customer_acquisition/posts/social_promotion_posts_YYYY-MM-DD.md`
 
 Use the latest dated files when multiple exist. If no current workplan exists, create one before doing outbound work.
 
@@ -104,7 +104,7 @@ Use for the first check of the day.
 - Check replies, likes, follows, comments, and visible engagement on already-posted content.
 - Classify signals as `high`, `medium`, `low`, `not_fit`, or `no_response`.
 - Draft replies only for `high` or clearly promising `medium` interactions, then present them for approval.
-- Update `docs/customer_acquisition_progress.md` and target statuses with only PII-free usage aggregates and private report path.
+- Update `.codex/private/customer_acquisition/progress/customer_acquisition_progress.md` and target statuses with only PII-free usage aggregates and private report path.
 - Do not create a new tomorrow plan unless the user asks.
 
 ### `outreach-block`
@@ -137,7 +137,7 @@ Use near the end of the day.
 - Read today's private customer usage report if present; if it is missing, run `customer-usage-review` before the retro.
 - Compare planned work against actual output and visible engagement.
 - Identify what worked, what did not, best channel, best wording, best ICP signal, customer activation/drop-off signal, and weakest assumption.
-- Update `docs/customer_acquisition_progress.md`, `docs/social_reply_targets_YYYY-MM-DD.md`, and `docs/customer_messaging.md` only if wording changed.
+- Update `.codex/private/customer_acquisition/progress/customer_acquisition_progress.md`, `.codex/private/customer_acquisition/targets/social_reply_targets_YYYY-MM-DD.md`, and `.codex/private/customer_acquisition/messaging/customer_messaging.md` only if wording changed.
 - Create or update tomorrow's workplan.
 - Do not send new outreach unless the user explicitly asks.
 
@@ -337,13 +337,13 @@ If the user approves rows, send only those rows and then record the result. If t
 
 If the plan includes adding screenshots:
 
-- Use existing assets under `docs/assets/social/` when available.
+- Use existing assets under `.codex/private/customer_acquisition/assets/social/` when available.
 - If Chrome upload fails due file permissions, do not work around it. Record the blocker and tell the user to enable Chrome extension file URL access.
 - Never upload screenshots containing accounts, emails, tokens, or private dashboard data.
 
 ### 9. Update Progress
 
-Append a dated section to `docs/customer_acquisition_progress.md`.
+Append a dated section to `.codex/private/customer_acquisition/progress/customer_acquisition_progress.md`.
 
 Use this structure:
 
@@ -425,17 +425,17 @@ Use the retrospective to make concrete changes. Examples:
 - If 少数派 candidates are higher quality but lower volume, use it for weekly deeper outreach rather than daily volume.
 - If Appinn/小众软件 brings higher-trust but lower-volume feedback, keep it as a milestone/update channel rather than a daily outreach target.
 - If "AI 自动埋点" is unclear, lead with "不用搭 analytics，看用户卡在哪".
-- If a lead asks about setup effort, update `docs/customer_messaging.md` with a shorter setup answer.
+- If a lead asks about setup effort, update `.codex/private/customer_acquisition/messaging/customer_messaging.md` with a shorter setup answer.
 - If screenshot upload is still blocked, keep it as a blocker instead of spending more time on it.
 
 ### 11. Update Operating Docs
 
 Based on the retrospective, update the relevant docs:
 
-- `docs/customer_messaging.md`: only when wording actually needs to change.
-- `docs/customer_acquisition_progress.md`: always update with the daily run and retrospective.
-- `docs/social_reply_targets_YYYY-MM-DD.md`: update target statuses and add newly found candidates.
-- `docs/customer_acquisition_workplan_YYYY-MM-DD.md`: make tomorrow's plan reflect the retrospective.
+- `.codex/private/customer_acquisition/messaging/customer_messaging.md`: only when wording actually needs to change.
+- `.codex/private/customer_acquisition/progress/customer_acquisition_progress.md`: always update with the daily run and retrospective.
+- `.codex/private/customer_acquisition/targets/social_reply_targets_YYYY-MM-DD.md`: update target statuses and add newly found candidates.
+- `.codex/private/customer_acquisition/workplans/customer_acquisition_workplan_YYYY-MM-DD.md`: make tomorrow's plan reflect the retrospective.
 
 Keep changes evidence-based. Do not rewrite the strategy just because one post had no response.
 
@@ -451,7 +451,7 @@ Update the relevant target/pipeline docs:
 
 ### 13. Create Tomorrow's Workplan
 
-Create `docs/customer_acquisition_workplan_YYYY-MM-DD.md` for tomorrow.
+Create `.codex/private/customer_acquisition/workplans/customer_acquisition_workplan_YYYY-MM-DD.md` for tomorrow.
 
 Include:
 

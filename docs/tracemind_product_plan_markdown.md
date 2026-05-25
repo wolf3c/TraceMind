@@ -578,7 +578,7 @@ analytics 能力弱
 是否功能更强
 ```
 
-早期获客策略见：[Early Customer Acquisition Strategy](./early_customer_acquisition.md)。
+早期获客执行策略和每日运营记录维护在本地私有运营目录中。
 
 ---
 

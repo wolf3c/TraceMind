@@ -31,11 +31,11 @@ Update this section after successful publishing so the next run has a reliable c
 Read only what is needed:
 
 - Git history: `git rev-parse HEAD`, `git log`, `git diff --stat`, `git show --stat`, and focused file reads for relevant commits.
-- Product messaging: `README.md`, `docs/customer_messaging.md`, latest `docs/social_promotion_posts_YYYY-MM-DD.md`, latest `docs/customer_acquisition_progress.md`, and latest `docs/customer_acquisition_workplan_YYYY-MM-DD.md` if present.
+- Product messaging: `README.md`, `.codex/private/customer_acquisition/messaging/customer_messaging.md`, latest `.codex/private/customer_acquisition/posts/social_promotion_posts_YYYY-MM-DD.md`, latest `.codex/private/customer_acquisition/progress/customer_acquisition_progress.md`, and latest `.codex/private/customer_acquisition/workplans/customer_acquisition_workplan_YYYY-MM-DD.md` if present.
 - Release or product docs touched by the update window.
 - Existing social post docs if present, to avoid repeated wording.
 
-Do not read `.codex/private/` customer reports for public post copy unless the user explicitly asks for a private operational review. Never copy private operational details into public drafts.
+Do not read `.codex/private/customer_usage_reviews/` customer reports for public post copy unless the user explicitly asks for a private operational review. Never copy private operational details into public drafts.
 
 ## Workflow
 
