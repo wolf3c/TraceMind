@@ -56,3 +56,15 @@
 | --- | --- | --- | --- | --- | --- |
 | X1 | X | Reyansh Juneja / Feedzap | `https://x.com/old_farmer_/status/2057653994621915201` | Feedzap has the right inputs: users, Reddit feedback, payments, PostHog. Next signal: behavior: who reaches value, returns, and where payment drops. TraceMind captures this so AI can show where users get stuck. Try it: https://tracemind.sandbox.galaxycloud.app/?utm_source=x | commented_verified_visible |
 | X2 | X | Jan Keselak / vibe-coded experiment | `https://x.com/old_farmer_/status/2057654350076662010` | 800+ downloads in week one is strong. Next: separate installs from behavior: onboarding, first action, repeat use, drop-off. TraceMind captures behavior so AI can show where users get stuck and if changes helped. Try it: https://tracemind.sandbox.galaxycloud.app/?utm_source=x | commented_verified_visible |
+
+## 2026-05-25 Recheck From 2026-05-23 Plan
+
+| Source | Current Signal | Action Taken | Follow-Up |
+| --- | --- | --- | --- |
+| X1 reply `https://x.com/old_farmer_/status/2057653994621915201` | `low`; visible, 16 views, no visible reply on the reply page. | No follow-up. | Wait for author reply before continuing. |
+| X2 reply `https://x.com/old_farmer_/status/2057654350076662010` | `low`; visible, 19 views, no visible reply on the reply page. | No follow-up. | Wait for author reply before continuing. |
+| X community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium-low`; 144 views and the same 1-reply / 1-like pattern. | No follow-up. | Follow only if a new reply appears. |
+| Johnny follow-up `https://x.com/old_farmer_/status/2055939454217638329` | `low`; 12 views, no visible reply. | No follow-up. | Do not continue without a new signal. |
+| Row Q reply `https://x.com/old_farmer_/status/2056928446413197561` | `low`; 30 views, no visible reply. | No follow-up. | Recheck only if engagement appears. |
+| Appinn TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; 66 views, 0 replies, 0 likes. | No bump/repost. | Continue low-frequency monitoring. |
+| V2EX backlog | `blocked`; account/moderation risk still unresolved. | No V2EX reply or post sent. | Manual account review required before any V2EX action. |

@@ -428,3 +428,46 @@
 - Workflow change for tomorrow: stop V2EX outreach until the user reviews the account status; monitor X1/X2 replies and W1/W2 email responses before adding more outreach.
 - Messaging change for tomorrow: on communities sensitive to promotion, do not use link-bearing replies unless there is a direct setup question or explicit user approval for that exact row after reviewing channel risk.
 - Candidate selection change for tomorrow: prefer X posts where the author explicitly asks about feedback, launch learning, retention, distribution, or whether to continue.
+
+## 2026-05-25
+
+### 2026-05-23 Plan Catch-Up Run
+
+- Workplan used: `docs/customer_acquisition_workplan_2026-05-23.md` as a stale baseline.
+- Channels checked: Appinn / 小众软件, X / Twitter, V2EX account-risk surface, TraceMind MCP customer usage marker, W1/W2 reply inbox search.
+- Public replies sent: 0.
+- Public replies proposed / awaiting approval: 0.
+- Private messages sent: 0.
+- Customer usage reviewed: `customer_project_capture_active` returned 0 active projects and 0 active accounts for 2026-05-22, 2026-05-23, and 2026-05-18..2026-05-25; `tracemind.query_events` returned no matching events.
+- Private customer usage report: `.codex/private/customer_usage_reviews/2026-05-25.md`.
+- Win-back messages proposed / awaiting approval: 0; no matching replies found for the 2026-05-22 win-back subject.
+- New candidates found: 0; no new outreach was started because the 2026-05-23 plan prioritized risk/config checks before expansion.
+- High-intent leads: none.
+- Blockers: V2EX remains paused; public V2EX profile returned HTTP 200 but no usable body through the non-posting check, so actual account/posting status still needs manual review. Product usage marker remains empty, and the repo-controlled `.deploy/settings.json` does not set the required product-usage project id/key.
+- Retrospective: see below.
+- Next actions: add/verify `TRACEMIND_PRODUCT_USAGE_PROJECT_ID` and `TRACEMIND_PRODUCT_USAGE_PROJECT_KEY` in the deployed environment, keep V2EX out of outreach, and monitor X/Appinn only for direct replies.
+
+#### Feedback Checked
+
+| Channel | Source | Signal | Action Taken | Follow-Up |
+| --- | --- | --- | --- | --- |
+| Appinn / 小众软件 | TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; 66 views, 0 replies, 0 likes. | No bump/repost. | Continue low-frequency monitoring. |
+| X / Twitter | X1 source `https://x.com/r3yanshJuneja/status/2057522425869582684` and reply `https://x.com/old_farmer_/status/2057653994621915201` | `low`; reply visible with 16 views, no visible follow-up on the reply page. | No follow-up. | Follow only if the author replies. |
+| X / Twitter | X2 source `https://x.com/JKeselak/status/2057419058375500093` and reply `https://x.com/old_farmer_/status/2057654350076662010` | `low`; source shows 57 views and reply visible with 19 views, no visible follow-up on the reply page. | No follow-up. | Follow only if the author replies. |
+| X / Twitter | Community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium-low`; 144 views and the same low visible engagement pattern. | No follow-up. | Follow only if a new reply appears. |
+| X / Twitter | Johnny follow-up `https://x.com/old_farmer_/status/2055939454217638329` | `low`; 12 views, no visible reply. | No follow-up. | Do not continue without a new signal. |
+| X / Twitter | Row Q reply `https://x.com/old_farmer_/status/2056928446413197561` | `low`; 30 views, no visible reply. | No follow-up. | Recheck only if engagement appears. |
+| V2EX | Public `wolf3c` profile page | `blocked`; HTTP status was 200, but the non-posting body check returned no usable account detail. | No reply, no post, no backlog execution. | Manual account/moderation review remains required. |
+
+#### Retrospective
+
+- What worked: the 2026-05-23 plan correctly prevented more V2EX outreach and forced the product-usage marker check before customer-health conclusions.
+- What did not work: X and Appinn still produced visibility but no direct replies or trial intent.
+- Best channel today: none; X stayed monitor-only and Appinn stayed passive.
+- Best customer signal: none from outreach; usage marker is still not authoritative.
+- Best wording: no new wording tested.
+- Weakest assumption: a public X view increase does not justify another follow-up without an author reply.
+- Customer usage / retention change: the marker stayed at 0 while TraceMind presence exists; config is the likely blocker because the deploy settings file lacks the product-usage id/key.
+- Workflow change for tomorrow: do not spend acquisition time expanding candidates until product-usage configuration and V2EX account risk are resolved.
+- Messaging change for tomorrow: keep any future X follow-up reply-gated and author-response-driven.
+- Candidate selection change for tomorrow: prefer explicit inbound replies or setup questions over more cold product-author search.
