@@ -44,7 +44,14 @@ jobs:
         if: steps.exists.outcome != 'success'
         run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" publish ".sdk-publish/${{ matrix.sdk }}" --access public --tag latest
       - name: Verify package
-        run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version
+        run: |
+          for attempt in $(seq 1 18); do
+            if node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version; then
+              exit 0
+            fi
+            sleep 10
+          done
+          node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version
 
   pypi:
     name: Publish PyPI SDKs

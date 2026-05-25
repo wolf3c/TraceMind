@@ -224,6 +224,7 @@ test('sdk publish workflow cannot run the Meteor deploy command', () => {
   assert.ok(!workflow.includes('meteor deploy'));
   assert.ok(!workflow.includes('npm install -g npm@latest'));
   assert.ok(workflow.includes('npm-cli.js" publish ".sdk-publish/${{ matrix.sdk }}" --access public --tag latest'));
+  assert.ok(workflow.includes('for attempt in $(seq 1 18); do'));
   assert.ok(!workflow.includes("run: python - <<'PY'"));
   assert.ok(workflow.includes('arguments: deploy --config-file sdk/android/jreleaser.yml'));
   assert.ok(workflow.includes('Publish GPG public key'));
