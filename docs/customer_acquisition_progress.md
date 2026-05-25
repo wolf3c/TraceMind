@@ -438,20 +438,20 @@
 - Public replies sent: 0.
 - Public replies proposed / awaiting approval: 0.
 - Private messages sent: 0.
-- Customer usage reviewed: `customer_project_capture_active` returned 0 active projects and 0 active accounts for 2026-05-22, 2026-05-23, and 2026-05-18..2026-05-25; `tracemind.query_events` returned no matching events.
+- Customer usage reviewed: `customer_project_capture_active` returned 0 active projects and 0 active accounts for 2026-05-25, 2026-05-24, and the 2026-05-19..2026-05-25 rolling window; `tracemind.query_events` and raw custom-event drilldown returned no matching events.
 - Private customer usage report: `.codex/private/customer_usage_reviews/2026-05-25.md`.
 - Win-back messages proposed / awaiting approval: 0; no matching replies found for the 2026-05-22 win-back subject.
 - New candidates found: 0; no new outreach was started because the 2026-05-23 plan prioritized risk/config checks before expansion.
 - High-intent leads: none.
-- Blockers: V2EX remains paused; public V2EX profile returned HTTP 200 but no usable body through the non-posting check, so actual account/posting status still needs manual review. Product usage marker remains empty, and the repo-controlled `.deploy/settings.json` does not set the required product-usage project id/key.
+- Blockers: V2EX remains paused; public V2EX profile returned HTTP 200 but no usable body through the non-posting check, so actual account/posting status still needs manual review. Product usage marker remains empty, and the repo-controlled `.deploy/settings.json` does not set the required product-usage project id/key. X direct status reload also returned "Something went wrong", so no new X discovery was attempted.
 - Retrospective: see below.
-- Next actions: add/verify `TRACEMIND_PRODUCT_USAGE_PROJECT_ID` and `TRACEMIND_PRODUCT_USAGE_PROJECT_KEY` in the deployed environment, keep V2EX out of outreach, and monitor X/Appinn only for direct replies.
+- Next actions: add/verify `TRACEMIND_PRODUCT_USAGE_PROJECT_ID` and `TRACEMIND_PRODUCT_USAGE_PROJECT_KEY` in the deployed environment, keep V2EX out of outreach, monitor X/Appinn only for direct replies, and use `docs/customer_acquisition_workplan_2026-05-26.md` for the next run.
 
 #### Feedback Checked
 
 | Channel | Source | Signal | Action Taken | Follow-Up |
 | --- | --- | --- | --- | --- |
-| Appinn / 小众软件 | TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; 66 views, 0 replies, 0 likes. | No bump/repost. | Continue low-frequency monitoring. |
+| Appinn / 小众软件 | TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; 65-66 views, 12 homepage-link clicks, 0 replies, 0 likes. | No bump/repost. | Continue low-frequency monitoring. |
 | X / Twitter | X1 source `https://x.com/r3yanshJuneja/status/2057522425869582684` and reply `https://x.com/old_farmer_/status/2057653994621915201` | `low`; reply visible with 16 views, no visible follow-up on the reply page. | No follow-up. | Follow only if the author replies. |
 | X / Twitter | X2 source `https://x.com/JKeselak/status/2057419058375500093` and reply `https://x.com/old_farmer_/status/2057654350076662010` | `low`; source shows 57 views and reply visible with 19 views, no visible follow-up on the reply page. | No follow-up. | Follow only if the author replies. |
 | X / Twitter | Community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium-low`; 144 views and the same low visible engagement pattern. | No follow-up. | Follow only if a new reply appears. |

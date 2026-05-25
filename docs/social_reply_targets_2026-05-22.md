@@ -66,5 +66,6 @@
 | X community post `https://x.com/old_farmer_/status/2055896097890193663` | `medium-low`; 144 views and the same 1-reply / 1-like pattern. | No follow-up. | Follow only if a new reply appears. |
 | Johnny follow-up `https://x.com/old_farmer_/status/2055939454217638329` | `low`; 12 views, no visible reply. | No follow-up. | Do not continue without a new signal. |
 | Row Q reply `https://x.com/old_farmer_/status/2056928446413197561` | `low`; 30 views, no visible reply. | No follow-up. | Recheck only if engagement appears. |
-| Appinn TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; 66 views, 0 replies, 0 likes. | No bump/repost. | Continue low-frequency monitoring. |
+| Appinn TraceMind topic `https://meta.appinn.net/t/topic/85521` | `low`; 65-66 views, 12 homepage-link clicks, 0 replies, 0 likes. | No bump/repost. | Continue low-frequency monitoring. |
+| X direct status pages | `blocked`; a later logged-in retry returned "Something went wrong" on the X status route. | No new X discovery or follow-up. | Retry only for direct reply monitoring; do not infer engagement while the page is blocked. |
 | V2EX backlog | `blocked`; account/moderation risk still unresolved. | No V2EX reply or post sent. | Manual account review required before any V2EX action. |
