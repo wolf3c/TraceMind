@@ -207,7 +207,7 @@ class TraceMindPayloadBuilderTest {
 
     client.captureError(
       error = IllegalStateException("Payment failed for user@example.com"),
-      path = "CheckoutActivity?token=secret",
+      path = "https://app.example.com/CheckoutActivity?token=secret#pay",
       handled = true,
       fatal = false,
       properties = mapOf(
@@ -229,7 +229,7 @@ class TraceMindPayloadBuilderTest {
 
     assertEquals("app_error", event.type)
     assertEquals("app_error", event.eventName)
-    assertEquals("CheckoutActivity", event.path)
+    assertEquals("/CheckoutActivity#pay", event.path)
     assertEquals("IllegalStateException", event.properties["errorType"])
     assertEquals("runtime", event.properties["errorKind"])
     assertEquals("CheckoutActivity", event.properties["component"])

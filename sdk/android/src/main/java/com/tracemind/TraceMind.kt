@@ -36,6 +36,13 @@ private fun derivedEndpoint(endpoint: String, replacement: String, fallback: Str
 
 private fun stripQueryPath(value: String?, fallback: String = "Application"): String {
   val text = value.orEmpty().ifBlank { fallback }
+  if (Regex("^[a-z][a-z0-9+.-]*://", RegexOption.IGNORE_CASE).containsMatchIn(text)) {
+    return runCatching {
+      val url = URL(text)
+      val fragment = url.ref?.let { "#$it" } ?: ""
+      "${url.path.ifBlank { "/" }}$fragment".take(500)
+    }.getOrDefault(fallback)
+  }
   return text.split("?", limit = 2).first().ifBlank { fallback }.take(500)
 }
 

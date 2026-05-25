@@ -259,7 +259,7 @@ final class TraceMindTests: XCTestCase {
         code: 402,
         userInfo: [NSLocalizedDescriptionKey: "Payment failed for user@example.com"]
       ),
-      path: "CheckoutViewController?token=secret",
+      path: "https://app.example.com/CheckoutViewController?token=secret#pay",
       component: "CheckoutViewController",
       release: "2026.05.25",
       handled: true,
@@ -279,7 +279,7 @@ final class TraceMindTests: XCTestCase {
     let event = try XCTUnwrap(transport.lastBatch?.events.first)
     XCTAssertEqual(event.type, "app_error")
     XCTAssertEqual(event.eventName, "app_error")
-    XCTAssertEqual(event.path, "CheckoutViewController")
+    XCTAssertEqual(event.path, "/CheckoutViewController#pay")
     XCTAssertEqual(event.properties["errorType"], .string("PaymentError"))
     XCTAssertEqual(event.properties["errorKind"], .string("runtime"))
     XCTAssertEqual(event.properties["component"], .string("CheckoutViewController"))

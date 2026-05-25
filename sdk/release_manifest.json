@@ -1,13 +1,13 @@
 {
   "manifestVersion": 1,
-  "generatedAt": "2026-05-25T11:39:09.706Z",
+  "generatedAt": "2026-05-25T12:05:34.093Z",
   "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
   "sourceRef": "tracemind-release-2026.5.21-11",
   "sdks": [
     {
       "sdkName": "swift",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:75218ea423472b2abc13903f5d00d7d953faa3d4b77b9d50d464d5c4f3b38be1",
+      "contentHash": "sha256:1a0c7b852cf11e56591f227561d3299d023cca43d60e9200fd867efcd6c0acd1",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.5.21-11",
       "sdkSourcePath": "sdk/ios",
@@ -30,7 +30,7 @@
     {
       "sdkName": "android",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:1dc3607ada251dae7263f1e211ce8f1674159b17615e4b1ee484c010cb3a74b7",
+      "contentHash": "sha256:ecf7664858b22db5b2f6d74131672ba19a5982e77f907e60bde066dd229eef3b",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.5.21-11",
       "sdkSourcePath": "sdk/android",
@@ -54,7 +54,7 @@
         "groupId": "io.github.wolf3c.tracemind",
         "artifactId": "tracemind-android",
         "packageVersion": "2026.5.21-11",
-        "contentHash": "sha256:1dc3607ada251dae7263f1e211ce8f1674159b17615e4b1ee484c010cb3a74b7",
+        "contentHash": "sha256:ecf7664858b22db5b2f6d74131672ba19a5982e77f907e60bde066dd229eef3b",
         "installCommands": [
           "Ensure mavenCentral() is present in dependencyResolutionManagement or repositories.",
           "Add implementation(\"io.github.wolf3c.tracemind:tracemind-android:2026.5.21-11\") to the Android app module dependencies."

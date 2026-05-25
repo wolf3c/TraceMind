@@ -703,6 +703,12 @@ describe('TraceMind', function () {
         errorType: 'PaymentError',
         message: 'Checkout failed with sk-secret',
         path: '/checkout/manual?token=secret',
+        context: {
+          source: 'checkout',
+          release: '2026.05.25',
+          authorization: 'Bearer secret',
+          traceId: 'trace_123',
+        },
         stack: 'raw stack',
         requestBody: 'raw request',
         headers: { authorization: 'Bearer secret' },
@@ -725,6 +731,7 @@ describe('TraceMind', function () {
       assert.strictEqual(errors[2].payload.properties.fatal, true);
       assert.strictEqual(errors[2].payload.properties.handled, true);
       assert.strictEqual(errors[2].payload.path, '/checkout/manual');
+      assert.deepStrictEqual(errors[2].payload.context, { source: 'checkout', release: '2026.05.25' });
       const serialized = JSON.stringify(errors);
       assert.ok(!serialized.includes('Card token expired'));
       assert.ok(!serialized.includes('user@example.com'));
@@ -733,6 +740,7 @@ describe('TraceMind', function () {
       assert.ok(!serialized.includes('Bearer secret'));
       assert.ok(!serialized.includes('4111111111111111'));
       assert.ok(!serialized.includes('token=secret'));
+      assert.ok(!serialized.includes('trace_123'));
     });
 
     it('attaches privacy-safe first-touch web attribution to capture and presence records', async function () {
@@ -2735,6 +2743,7 @@ projectKey: tm_proj_sensitive`,
         eventType: 'app_error',
         properties: {
           messageFingerprint: 'tm_error_abc123',
+          errorType: 'user@example.com',
           stack: 'raw stack',
           headers: { authorization: 'Bearer secret' },
           requestBody: 'raw request body',
@@ -2744,6 +2753,7 @@ projectKey: tm_proj_sensitive`,
       });
       assert.strictEqual(invalid.structuredContent.ok, false);
       assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.stack'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.errorType'));
       assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.headers'));
       assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.requestBody'));
       assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.inputValue'));
@@ -3274,6 +3284,8 @@ projectKey: tm_proj_sensitive`,
         handled: false,
         source: 'web',
         component: 'CheckoutForm',
+        release: 'user@example.com',
+        occurredAt: 'https://example.com/error?token=secret',
         status: 'error',
         stack: 'raw stack',
         headers: { authorization: 'Bearer secret' },
@@ -3291,16 +3303,16 @@ projectKey: tm_proj_sensitive`,
 
     assert.strictEqual(result.ok, true);
     const raw = await RawBehaviors.findOneAsync({ projectId, type: 'app_error' });
-    assert.deepStrictEqual(raw.properties, {
-      errorKind: 'runtime',
-      errorType: 'TypeError',
-      messageFingerprint: 'tm_error_checkout',
-      fatal: true,
-      handled: false,
-      source: 'web',
-      component: 'CheckoutForm',
-      status: 'error',
-    });
+      assert.deepStrictEqual(raw.properties, {
+        errorKind: 'runtime',
+        errorType: 'TypeError',
+        messageFingerprint: 'tm_error_checkout',
+        fatal: true,
+        handled: false,
+        source: 'web',
+        component: 'CheckoutForm',
+        status: 'error',
+      });
     assert.deepStrictEqual(raw.context, { release: '2026.05.25' });
     assert.strictEqual(raw.path, '/checkout');
     const serialized = JSON.stringify(raw);

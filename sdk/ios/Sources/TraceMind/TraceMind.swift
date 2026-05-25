@@ -2,7 +2,7 @@ import Foundation
 
 public enum TraceMindSDK {
   public static let version = "0.1.0"
-  public static let contentHash = "sha256:75218ea423472b2abc13903f5d00d7d953faa3d4b77b9d50d464d5c4f3b38be1"
+  public static let contentHash = "sha256:1a0c7b852cf11e56591f227561d3299d023cca43d60e9200fd867efcd6c0acd1"
 }
 
 public struct TraceMindConfiguration {
@@ -998,6 +998,10 @@ public final class TraceMindClient {
 
   static func stripQueryPath(_ value: String, fallback: String) -> String {
     let text = String(value.prefix(500))
+    if let url = URL(string: text), url.scheme != nil, url.host != nil {
+      let path = url.path.isEmpty ? "/" : url.path
+      return path + (url.fragment.map { "#\($0)" } ?? "")
+    }
     let path = text.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? fallback
     return path.isEmpty ? fallback : path
   }

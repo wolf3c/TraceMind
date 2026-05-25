@@ -3513,7 +3513,10 @@ function safePathWithoutQuery(value, fallback = '/') {
 function sanitizePrimitiveFieldValue(value) {
   if (!isSafeServerPrimitive(value)) return undefined;
   if (typeof value === 'string') {
+    if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(value)) return undefined;
+    if (/(sk-|pk_|bearer\s+|api[_-]?key|access[_-]?token|secret|password)/i.test(value)) return undefined;
     if (/^https?:\/\/\S+\?\S+/.test(value)) return undefined;
+    if (/\b(raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:)/i.test(value)) return undefined;
     return safeString(value, 500);
   }
   return value;
@@ -3631,6 +3634,16 @@ function validateAppErrorFieldSet(fields, root, allowedKeys, findings) {
         'error',
         'unsupported_app_error_field',
         'app_error fields must be primitive string, number, or boolean values.',
+        path,
+      );
+      return;
+    }
+    if (sanitizePrimitiveFieldValue(value) === undefined) {
+      addFinding(
+        findings,
+        'error',
+        'forbidden_app_error_field_value',
+        'app_error summary field values must not contain PII, secrets, raw content, or full query URLs.',
         path,
       );
     }
@@ -4684,6 +4697,25 @@ export function clientScript(host) {
     return text;
   }
 
+  function sanitizeAppErrorContext(context) {
+    var input = context && typeof context === 'object' && !Array.isArray(context) ? context : {};
+    var output = {};
+    var allowed = { source: true, screen: true, release: true, component: true, status: true, occurredAt: true };
+    Object.keys(input).forEach(function (key) {
+      if (!allowed[key]) return;
+      var value = input[key];
+      if (typeof value === 'string') {
+        var clean = cleanErrorString(value, 160);
+        if (clean) output[key] = clean;
+      } else if (typeof value === 'number' && isFinite(value)) {
+        output[key] = value;
+      } else if (typeof value === 'boolean') {
+        output[key] = value;
+      }
+    });
+    return output;
+  }
+
   function sanitizeMessageForFingerprint(value) {
     return String(value || '')
       .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/ig, '[email]')
@@ -4717,7 +4749,7 @@ export function clientScript(host) {
       path: safeCapturePath(merged.path || merged.screen),
       eventName: 'app_error',
       properties: properties,
-      context: {}
+      context: sanitizeAppErrorContext(merged.context)
     };
   }
 
