@@ -110,6 +110,55 @@ test('filters sensitive server fields and non-finite numbers', async () => {
   assert.equal(JSON.stringify(event).includes('user@example.com'), false);
 });
 
+test('captures sanitized app_error summaries without stacks or raw fields', async () => {
+  const batches = [];
+  const client = createTraceMindServerClient({
+    projectKey: 'tm_proj_server_node',
+    sourceKey: 'billing-api',
+    transport: async (body) => batches.push(body),
+  });
+  const error = new Error('Database timeout for user@example.com');
+  error.stack = 'raw stack must not be sent';
+
+  client.captureError(error, {
+    path: '/jobs?token=secret',
+    component: 'InvoiceWorker',
+    release: '2026.05.25',
+    handled: true,
+    fatal: false,
+    properties: {
+      headers: 'do not send',
+      requestBody: 'do not send',
+      inputValue: 'do not send',
+    },
+    context: {
+      source: 'job_runner',
+      authorization: 'Bearer secret',
+    },
+  });
+  await client.flush();
+
+  const event = batches[0].events[0];
+  assert.equal(event.type, 'app_error');
+  assert.equal(event.eventName, 'app_error');
+  assert.equal(event.path, '/jobs');
+  assert.equal(event.properties.errorType, 'Error');
+  assert.equal(event.properties.errorKind, 'runtime');
+  assert.equal(event.properties.component, 'InvoiceWorker');
+  assert.equal(event.properties.release, '2026.05.25');
+  assert.equal(event.properties.handled, true);
+  assert.equal(event.properties.fatal, false);
+  assert.equal(event.properties.status, 'error');
+  assert.match(event.properties.messageFingerprint, /^tm_error_[a-f0-9]{24}$/);
+  assert.deepEqual(event.context, { source: 'job_runner' });
+  const serialized = JSON.stringify(event);
+  assert.equal(serialized.includes('Database timeout'), false);
+  assert.equal(serialized.includes('user@example.com'), false);
+  assert.equal(serialized.includes('raw stack'), false);
+  assert.equal(serialized.includes('Bearer secret'), false);
+  assert.equal(serialized.includes('token=secret'), false);
+});
+
 test('requeues failed flushes without affecting capture callers', async () => {
   let attempts = 0;
   const client = createTraceMindServerClient({
@@ -141,6 +190,21 @@ test('singleton TraceMindServer starts and flushes', async () => {
   await TraceMindServer.flush();
 
   assert.equal(batches[0].events[0].source.type, 'server_app');
+});
+
+test('singleton TraceMindServer exposes captureError', async () => {
+  const batches = [];
+  TraceMindServer.start({
+    projectKey: 'tm_proj_server_node',
+    sourceKey: 'billing-api',
+    transport: async (body) => batches.push(body),
+  });
+
+  TraceMindServer.captureError({ errorType: 'JobError', message: 'failed' });
+  await TraceMindServer.flush();
+
+  assert.equal(batches[0].events[0].type, 'app_error');
+  assert.equal(batches[0].events[0].properties.errorType, 'JobError');
 });
 
 test('submits structured user feedback through the dedicated endpoint', async () => {

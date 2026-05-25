@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 
 const SDK_VERSION = '0.1.0';
-const SDK_CONTENT_HASH = 'sha256:a6e6694913e98c9bb1c920cda26680403e52bab342a506c6656ef214e24069b5';
+const SDK_CONTENT_HASH = 'sha256:3589d33c9722a7460d4b4638b10d810c1700d7b4cb9fb6ba50570ff1c62f8e25';
 const DEFAULT_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/capture';
 const DEFAULT_FEEDBACK_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback';
 const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|email|phone|input|enteredtext)/i;
@@ -10,6 +10,7 @@ const FULL_QUERY_URL_PATTERN = /https?:\/\/[^\s?#]+[^\s]*\?[^\s"'<>)]*/i;
 const ATTRIBUTION_VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,119}$/;
 const ATTRIBUTION_DOMAIN_PATTERN = /^[a-z0-9.-]+$/;
 const ATTRIBUTION_REFERRER_TYPES = new Set(['direct', 'internal', 'external', 'search', 'social']);
+const APP_ERROR_CONTEXT_KEYS = new Set(['source', 'screen', 'release', 'component', 'status', 'occurredAt']);
 
 function normalizeFieldKey(key) {
   return String(key || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -33,6 +34,13 @@ function sanitizeFields(fields) {
   );
 }
 
+function sanitizeAppErrorContext(fields) {
+  const sanitized = sanitizeFields(fields);
+  return Object.fromEntries(
+    Object.entries(sanitized).filter(([key]) => APP_ERROR_CONTEXT_KEYS.has(key)),
+  );
+}
+
 function sanitizeFeedbackFields(fields) {
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return {};
   return Object.fromEntries(
@@ -47,6 +55,77 @@ function sanitizeFeedbackFields(fields) {
 
 function safeString(value, max = 200, fallback = '') {
   return String(value || fallback).trim().slice(0, max);
+}
+
+function stripQueryPath(value, fallback = '/') {
+  const text = safeString(value, 500, fallback);
+  if (!text) return fallback;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) {
+    try {
+      const url = new URL(text);
+      return safeString(`${url.pathname || '/'}${url.hash || ''}`, 500, fallback);
+    } catch (error) {
+      return fallback;
+    }
+  }
+  const withoutQuery = text.split('?')[0];
+  return safeString(withoutQuery || fallback, 500, fallback);
+}
+
+function cleanErrorField(value, max = 160) {
+  const text = safeString(value, max);
+  if (!text) return '';
+  if (/@|https?:|[?&=]|%40|bearer\s+|api[_-]?key|access[_-]?token|secret|password/i.test(text)) return '';
+  return text;
+}
+
+function sanitizeErrorMessageForHash(value) {
+  return safeString(value, 500)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig, '[email]')
+    .replace(/https?:\/\/\S+\?\S+/ig, '[url]')
+    .replace(/\b(bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|secret\S*)\b/ig, '[secret]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
+function messageFingerprint(errorType, message) {
+  return `tm_error_${crypto.createHash('sha256').update(`${errorType}:${sanitizeErrorMessageForHash(message)}`).digest('hex').slice(0, 24)}`;
+}
+
+function appErrorPayload(errorOrInfo, options = {}, defaultSource = 'server') {
+  const info = errorOrInfo && typeof errorOrInfo === 'object' && !(errorOrInfo instanceof Error) ? errorOrInfo : {};
+  const error = errorOrInfo instanceof Error ? errorOrInfo : info.error;
+  const merged = { ...info, ...options };
+  const errorType = cleanErrorField(merged.errorType || error?.name || (typeof errorOrInfo === 'string' ? 'Error' : ''), 80) || 'Error';
+  const message = merged.message || error?.message || (typeof errorOrInfo === 'string' ? errorOrInfo : errorType);
+  const properties = {
+    errorKind: cleanErrorField(merged.errorKind, 40) || 'runtime',
+    errorType,
+    messageFingerprint: cleanErrorField(merged.messageFingerprint, 120) || messageFingerprint(errorType, message),
+    fatal: merged.fatal === true,
+    handled: merged.handled === false ? false : true,
+    source: cleanErrorField(merged.source, 40) || defaultSource,
+    status: 'error',
+  };
+  const release = cleanErrorField(merged.release || merged.properties?.release, 80);
+  const component = cleanErrorField(merged.component || merged.properties?.component, 120);
+  if (release) properties.release = release;
+  if (component) properties.component = component;
+  const rawPath = merged.path || merged.screen;
+  const path = rawPath ? stripQueryPath(rawPath) : '';
+  return {
+    eventName: 'app_error',
+    ...(path ? { path } : {}),
+    properties,
+    context: sanitizeAppErrorContext(merged.context),
+    sourceDetails: merged.sourceDetails,
+    userId: merged.userId,
+    anonymousId: merged.anonymousId,
+    sessionId: merged.sessionId,
+    deviceId: merged.deviceId,
+    attribution: merged.attribution,
+  };
 }
 
 function cleanAttributionValue(value) {
@@ -218,6 +297,10 @@ function createTraceMindServerClient(options = {}) {
       });
     },
 
+    captureError(errorOrInfo, options = {}) {
+      this.capture('app_error', appErrorPayload(errorOrInfo, options, 'server'));
+    },
+
     async flush() {
       if (!state.queue.length) return { ok: true, accepted: 0 };
       const events = state.queue.splice(0, state.queue.length);
@@ -268,6 +351,11 @@ const TraceMindServer = {
   capture(type, payload) {
     if (!defaultClient) throw new Error('TraceMindServer.start must be called before capture.');
     return defaultClient.capture(type, payload);
+  },
+
+  captureError(errorOrInfo, options) {
+    if (!defaultClient) throw new Error('TraceMindServer.start must be called before captureError.');
+    return defaultClient.captureError(errorOrInfo, options);
   },
 
   async flush() {

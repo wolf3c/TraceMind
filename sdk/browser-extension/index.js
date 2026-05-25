@@ -1,5 +1,5 @@
 const SDK_VERSION = '0.1.0';
-const SDK_CONTENT_HASH = 'sha256:761e51dfbeb898f8df5d0d2a3187cac027eda2b271a047ff77dca5b96e8b9a33';
+const SDK_CONTENT_HASH = 'sha256:08dddeaedb8fa4d6e1e1645f7954f5dc28ec9a1a39a23f2deb86e4a0b2d5daa0';
 const DEFAULT_CAPTURE_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/capture';
 const DEFAULT_PRESENCE_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/presence';
 const DEFAULT_FEEDBACK_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback';
@@ -12,6 +12,7 @@ const FULL_QUERY_URL_PATTERN = /https?:\/\/[^\s?#]+[^\s]*\?[^\s"'<>)]*/i;
 const ATTRIBUTION_VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,119}$/;
 const ATTRIBUTION_DOMAIN_PATTERN = /^[a-z0-9.-]+$/;
 const ATTRIBUTION_REFERRER_TYPES = new Set(['direct', 'internal', 'external', 'search', 'social']);
+const APP_ERROR_CONTEXT_KEYS = new Set(['source', 'screen', 'release', 'component', 'status', 'occurredAt']);
 
 function safeString(value, max = 200, fallback = '') {
   return String(value || fallback).trim().slice(0, max);
@@ -45,6 +46,13 @@ function sanitizeFields(fields, pattern = FORBIDDEN_FIELD_PATTERN) {
       if (typeof value === 'string' && FULL_QUERY_URL_PATTERN.test(value)) return false;
       return true;
     }),
+  );
+}
+
+function sanitizeAppErrorContext(fields) {
+  const sanitized = sanitizeFields(fields);
+  return Object.fromEntries(
+    Object.entries(sanitized).filter(([key]) => APP_ERROR_CONTEXT_KEYS.has(key)),
   );
 }
 
@@ -157,6 +165,63 @@ function stableHash(value) {
     hash = ((hash << 5) + hash) ^ text.charCodeAt(index);
   }
   return `tm_target_${(hash >>> 0).toString(36)}`;
+}
+
+function cleanErrorField(value, max = 160) {
+  const text = safeString(value, max);
+  if (!text) return '';
+  if (/@|https?:|[?&=]|%40|bearer\s+|api[_-]?key|access[_-]?token|secret|password/i.test(text)) return '';
+  return text;
+}
+
+function sanitizeErrorMessageForHash(value) {
+  return safeString(value, 500)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig, '[email]')
+    .replace(/https?:\/\/\S+\?\S+/ig, '[url]')
+    .replace(/\b(bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|secret\S*)\b/ig, '[secret]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
+function stableErrorFingerprint(errorType, message) {
+  let hash = 2166136261;
+  const text = `${errorType}:${sanitizeErrorMessageForHash(message)}`;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const hex = (hash >>> 0).toString(16).padStart(8, '0');
+  return `tm_error_${(hex + hex + hex).slice(0, 24)}`;
+}
+
+function appErrorPayload(errorOrInfo, options = {}, defaultSource = 'browser_extension') {
+  const info = errorOrInfo && typeof errorOrInfo === 'object' && !(errorOrInfo instanceof Error) ? errorOrInfo : {};
+  const error = errorOrInfo instanceof Error ? errorOrInfo : info.error;
+  const merged = { ...info, ...options };
+  const errorType = cleanErrorField(merged.errorType || error?.name || (typeof errorOrInfo === 'string' ? 'Error' : ''), 80) || 'Error';
+  const message = merged.message || error?.message || (typeof errorOrInfo === 'string' ? errorOrInfo : errorType);
+  const properties = {
+    errorKind: cleanErrorField(merged.errorKind, 40) || 'runtime',
+    errorType,
+    messageFingerprint: cleanErrorField(merged.messageFingerprint, 120) || stableErrorFingerprint(errorType, message),
+    fatal: merged.fatal === true,
+    handled: merged.handled === false ? false : true,
+    source: cleanErrorField(merged.source, 40) || defaultSource,
+    status: 'error',
+  };
+  const release = cleanErrorField(merged.release || merged.properties?.release, 80);
+  const component = cleanErrorField(merged.component || merged.properties?.component, 120);
+  if (release) properties.release = release;
+  if (component) properties.component = component;
+  const rawPath = merged.path || merged.screen;
+  const path = rawPath ? stripQueryPath(rawPath) : '';
+  return {
+    eventName: 'app_error',
+    ...(path ? { path } : {}),
+    properties,
+    context: sanitizeAppErrorContext(merged.context),
+  };
 }
 
 function detectBrowserName(navigatorObject) {
@@ -486,8 +551,8 @@ function createTraceMindClient({
   }
 
   function removeListeners() {
-    state.listeners.forEach(({ type, handler }) => {
-      state.document?.removeEventListener?.(type, handler, true);
+    state.listeners.forEach(({ target, type, handler }) => {
+      target?.removeEventListener?.(type, handler, true);
     });
     state.listeners = [];
   }
@@ -504,9 +569,13 @@ function createTraceMindClient({
     }, state.config.heartbeatIntervalMs);
   }
 
-  function addListener(type, handler) {
-    state.document?.addEventListener?.(type, handler, true);
-    state.listeners.push({ type, handler });
+  function addListener(type, handler, target = state.document) {
+    target?.addEventListener?.(type, handler, true);
+    if (target?.addEventListener) state.listeners.push({ target, type, handler });
+  }
+
+  function errorEventTarget() {
+    return state.document?.defaultView || globalHost('window') || globalHost('globalThis');
   }
 
   function installDomAutoCapture() {
@@ -526,6 +595,22 @@ function createTraceMindClient({
       markActivity();
       enqueue('submit', { targetName: targetNameFor(event.target, 'submit') });
     });
+    const errorTarget = errorEventTarget();
+    addListener('error', (event) => {
+      enqueue('app_error', appErrorPayload(event?.error || event?.message, {
+        handled: false,
+        fatal: false,
+        source: 'browser_extension',
+      }));
+    }, errorTarget);
+    addListener('unhandledrejection', (event) => {
+      enqueue('app_error', appErrorPayload(event?.reason, {
+        handled: false,
+        fatal: false,
+        source: 'browser_extension',
+        errorKind: 'unhandledrejection',
+      }));
+    }, errorTarget);
   }
 
   async function flush() {
@@ -584,6 +669,10 @@ function createTraceMindClient({
 
     capture(type, payload = {}) {
       enqueue(safeString(type, 40, 'custom'), payload);
+    },
+
+    captureError(errorOrInfo, options = {}) {
+      enqueue('app_error', appErrorPayload(errorOrInfo, options));
     },
 
     setAttribution(attribution = {}) {
@@ -646,4 +735,5 @@ module.exports = {
   sanitizeFields,
   sanitizeAttribution,
   sanitizeFeedbackFields,
+  appErrorPayload,
 };

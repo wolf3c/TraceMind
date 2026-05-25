@@ -34,6 +34,51 @@ private fun derivedEndpoint(endpoint: String, replacement: String, fallback: Str
   }
 }
 
+private fun stripQueryPath(value: String?, fallback: String = "Application"): String {
+  val text = value.orEmpty().ifBlank { fallback }
+  return text.split("?", limit = 2).first().ifBlank { fallback }.take(500)
+}
+
+private fun cleanErrorField(value: String?, maxLength: Int): String {
+  val text = value.orEmpty().trim().replace(Regex("\\s+"), " ").take(maxLength)
+  if (text.isBlank()) return ""
+  if (Regex("@|https?:|[?&=]|%40|bearer\\s+|api[_-]?key|access[_-]?token|secret|password", RegexOption.IGNORE_CASE).containsMatchIn(text)) {
+    return ""
+  }
+  return text
+}
+
+private fun sanitizeErrorMessageForHash(value: String?): String {
+  return value.orEmpty()
+    .replace(Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE), "[email]")
+    .replace(Regex("https?://\\S+\\?\\S+", RegexOption.IGNORE_CASE), "[url]")
+    .replace(Regex("\\b(bearer\\s+\\S+|api[_-]?key\\s*[:=]\\s*\\S+|access[_-]?token\\s*[:=]\\s*\\S+|secret\\S*)\\b", RegexOption.IGNORE_CASE), "[secret]")
+    .replace(Regex("\\s+"), " ")
+    .trim()
+    .take(240)
+}
+
+private fun messageFingerprint(errorType: String, message: String?): String {
+  var hash = 5381UL
+  "$errorType:${sanitizeErrorMessageForHash(message)}".forEach { char ->
+    hash = ((hash shl 5) + hash) + char.code.toUInt()
+  }
+  return "tm_error_${hash.toString(36)}"
+}
+
+private fun sanitizeAppErrorContext(context: Map<String, Any?>): Map<String, Any?> {
+  return context.mapNotNull { (key, value) ->
+    if (key !in setOf("source", "screen", "release", "component", "status", "occurredAt")) return@mapNotNull null
+    val nextValue = when (value) {
+      is String -> cleanErrorField(value, 160).takeIf { it.isNotEmpty() }
+      is Number -> value
+      is Boolean -> value
+      else -> null
+    } ?: return@mapNotNull null
+    key to nextValue
+  }.toMap()
+}
+
 object TraceMind {
   private var client: TraceMindClient? = null
 
@@ -98,6 +143,33 @@ object TraceMind {
     context: Map<String, Any?> = emptyMap()
   ) {
     client?.capture(type = type, eventName = eventName, path = path, properties = properties, context = context)
+  }
+
+  @JvmStatic
+  fun captureError(
+    error: Throwable? = null,
+    errorType: String? = null,
+    message: String? = null,
+    path: String = "Application",
+    component: String? = null,
+    release: String? = null,
+    handled: Boolean = true,
+    fatal: Boolean = false,
+    properties: Map<String, Any?> = emptyMap(),
+    context: Map<String, Any?> = emptyMap()
+  ) {
+    client?.captureError(
+      error = error,
+      errorType = errorType,
+      message = message,
+      path = path,
+      component = component,
+      release = release,
+      handled = handled,
+      fatal = fatal,
+      properties = properties,
+      context = context
+    )
   }
 
   @JvmStatic
@@ -170,6 +242,40 @@ class TraceMindClient(
     recordActivity()
     queue.addLast(builder.payload(type, eventName, path, title, target, properties, context))
     while (queue.size > maxQueueSize) queue.removeFirst()
+  }
+
+  fun captureError(
+    error: Throwable? = null,
+    errorType: String? = null,
+    message: String? = null,
+    path: String = currentScreen,
+    component: String? = null,
+    release: String? = null,
+    handled: Boolean = true,
+    fatal: Boolean = false,
+    properties: Map<String, Any?> = emptyMap(),
+    context: Map<String, Any?> = emptyMap()
+  ) {
+    val type = cleanErrorField(errorType ?: error?.javaClass?.simpleName ?: "Error", 80).ifEmpty { "Error" }
+    val fingerprint = messageFingerprint(type, message ?: error?.message ?: type)
+    val appErrorProperties = mutableMapOf<String, Any?>(
+      "errorKind" to "runtime",
+      "errorType" to type,
+      "messageFingerprint" to fingerprint,
+      "fatal" to fatal,
+      "handled" to handled,
+      "source" to "android",
+      "status" to "error"
+    )
+    cleanErrorField(release ?: properties["release"] as? String, 80).takeIf { it.isNotEmpty() }?.let { appErrorProperties["release"] = it }
+    cleanErrorField(component ?: properties["component"] as? String, 120).takeIf { it.isNotEmpty() }?.let { appErrorProperties["component"] = it }
+    capture(
+      type = "app_error",
+      eventName = "app_error",
+      path = stripQueryPath(path, currentScreen),
+      properties = appErrorProperties,
+      context = sanitizeAppErrorContext(context)
+    )
   }
 
   fun identify(userId: String, traits: Map<String, Any?> = emptyMap()) {

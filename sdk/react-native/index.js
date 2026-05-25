@@ -1,11 +1,12 @@
 const SDK_VERSION = '0.1.0';
-const SDK_CONTENT_HASH = 'sha256:cf2e50fba498f1624d2478fef2c81e13a0fd1224ec51d178bd985325e67812da';
-const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|token|secret|password|email|phone|input|enteredtext)/i;
+const SDK_CONTENT_HASH = 'sha256:5c69e6c053570abf24b2eba6eebd44b7e149795d63f094b4d024b10554f297e6';
+const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|email|phone|input|enteredtext)/i;
 const FEEDBACK_FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|sourcecode|sourcediff|codediff|toolarguments|toolresult|resourcecontent)/i;
 const FULL_QUERY_URL_PATTERN = /https?:\/\/[^\s?#]+[^\s]*\?[^\s"'<>)]*/i;
 const ATTRIBUTION_VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,119}$/;
 const ATTRIBUTION_DOMAIN_PATTERN = /^[a-z0-9.-]+$/;
 const ATTRIBUTION_REFERRER_TYPES = new Set(['direct', 'internal', 'external', 'search', 'social']);
+const APP_ERROR_CONTEXT_KEYS = new Set(['source', 'screen', 'release', 'component', 'status', 'occurredAt']);
 
 function isPrimitiveValue(value) {
   return typeof value === 'string'
@@ -30,6 +31,13 @@ function sanitizeFields(fields) {
   );
 }
 
+function sanitizeAppErrorContext(fields) {
+  const sanitized = sanitizeFields(fields);
+  return Object.fromEntries(
+    Object.entries(sanitized).filter(([key]) => APP_ERROR_CONTEXT_KEYS.has(key)),
+  );
+}
+
 function sanitizeFeedbackFields(fields) {
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return {};
   return Object.fromEntries(
@@ -45,6 +53,77 @@ function sanitizeFeedbackFields(fields) {
 
 function safeString(value, max = 200, fallback = '') {
   return String(value || fallback).trim().slice(0, max);
+}
+
+function stripQueryPath(value, fallback = '/') {
+  const text = safeString(value, 500, fallback);
+  if (!text) return fallback;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) {
+    try {
+      const url = new URL(text);
+      return safeString(`${url.pathname || '/'}${url.hash || ''}`, 500, fallback);
+    } catch (error) {
+      return fallback;
+    }
+  }
+  return safeString(text.split('?')[0] || fallback, 500, fallback);
+}
+
+function cleanErrorField(value, max = 160) {
+  const text = safeString(value, max);
+  if (!text) return '';
+  if (/@|https?:|[?&=]|%40|bearer\s+|api[_-]?key|access[_-]?token|secret|password/i.test(text)) return '';
+  return text;
+}
+
+function sanitizeErrorMessageForHash(value) {
+  return safeString(value, 500)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig, '[email]')
+    .replace(/https?:\/\/\S+\?\S+/ig, '[url]')
+    .replace(/\b(bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|secret\S*)\b/ig, '[secret]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
+function stableErrorFingerprint(errorType, message) {
+  let hash = 2166136261;
+  const text = `${errorType}:${sanitizeErrorMessageForHash(message)}`;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const hex = (hash >>> 0).toString(16).padStart(8, '0');
+  return `tm_error_${(hex + hex + hex).slice(0, 24)}`;
+}
+
+function appErrorPayload(errorOrInfo, options = {}, defaultSource = 'react_native') {
+  const info = errorOrInfo && typeof errorOrInfo === 'object' && !(errorOrInfo instanceof Error) ? errorOrInfo : {};
+  const error = errorOrInfo instanceof Error ? errorOrInfo : info.error;
+  const merged = { ...info, ...options };
+  const errorType = cleanErrorField(merged.errorType || error?.name || (typeof errorOrInfo === 'string' ? 'Error' : ''), 80) || 'Error';
+  const message = merged.message || error?.message || (typeof errorOrInfo === 'string' ? errorOrInfo : errorType);
+  const properties = {
+    errorKind: cleanErrorField(merged.errorKind, 40) || 'runtime',
+    errorType,
+    messageFingerprint: cleanErrorField(merged.messageFingerprint, 120) || stableErrorFingerprint(errorType, message),
+    fatal: merged.fatal === true,
+    handled: merged.handled === false ? false : true,
+    source: cleanErrorField(merged.source, 40) || defaultSource,
+    status: 'error',
+  };
+  const release = cleanErrorField(merged.release || merged.properties?.release, 80);
+  const component = cleanErrorField(merged.component || merged.properties?.component, 120);
+  if (release) properties.release = release;
+  if (component) properties.component = component;
+  const rawPath = merged.path || merged.screen;
+  const path = rawPath ? stripQueryPath(rawPath) : '';
+  return {
+    eventName: 'app_error',
+    ...(path ? { path } : {}),
+    properties,
+    context: sanitizeAppErrorContext(merged.context),
+  };
 }
 
 function cleanAttributionValue(value) {
@@ -181,6 +260,11 @@ function createTraceMindClient({ nativeModule, platform } = {}) {
       });
     },
 
+    captureError(errorOrInfo, options = {}) {
+      assertNativeModule();
+      this.capture('app_error', appErrorPayload(errorOrInfo, options));
+    },
+
     setScreen(screen) {
       assertNativeModule();
       if (resolvedNativeModule.setScreen) {
@@ -228,4 +312,5 @@ module.exports = {
   sanitizeFields,
   sanitizeAttribution,
   sanitizeFeedbackFields,
+  appErrorPayload,
 };

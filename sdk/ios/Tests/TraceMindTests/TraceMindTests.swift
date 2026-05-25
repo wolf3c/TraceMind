@@ -239,6 +239,67 @@ final class TraceMindTests: XCTestCase {
     XCTAssertEqual(event.context["retry"], .bool(false))
   }
 
+  func testManualCaptureErrorBuildsSanitizedAppErrorPayload() async throws {
+    let transport = RecordingTransport()
+    let client = TraceMindClient(
+      configuration: TraceMindConfiguration(
+        projectKey: "tm_proj_ios",
+        endpoint: URL(string: "https://tracemind.example.com/api/capture")!,
+        sourceKey: "com.example.ios",
+        sourceLabel: "Example iOS",
+        framework: "swift"
+      ),
+      identityStore: InMemoryIdentityStore(userId: "user_123"),
+      transport: transport
+    )
+
+    try client.captureError(
+      NSError(
+        domain: "PaymentError",
+        code: 402,
+        userInfo: [NSLocalizedDescriptionKey: "Payment failed for user@example.com"]
+      ),
+      path: "CheckoutViewController?token=secret",
+      component: "CheckoutViewController",
+      release: "2026.05.25",
+      handled: true,
+      fatal: false,
+      properties: [
+        "requestBody": "do not send",
+        "headers": "do not send",
+        "inputValue": "do not send",
+      ],
+      context: [
+        "source": "checkout",
+        "authorization": "Bearer secret",
+      ]
+    )
+    try await client.flush()
+
+    let event = try XCTUnwrap(transport.lastBatch?.events.first)
+    XCTAssertEqual(event.type, "app_error")
+    XCTAssertEqual(event.eventName, "app_error")
+    XCTAssertEqual(event.path, "CheckoutViewController")
+    XCTAssertEqual(event.properties["errorType"], .string("PaymentError"))
+    XCTAssertEqual(event.properties["errorKind"], .string("runtime"))
+    XCTAssertEqual(event.properties["component"], .string("CheckoutViewController"))
+    XCTAssertEqual(event.properties["release"], .string("2026.05.25"))
+    XCTAssertEqual(event.properties["handled"], .bool(true))
+    XCTAssertEqual(event.properties["fatal"], .bool(false))
+    XCTAssertEqual(event.properties["status"], .string("error"))
+    guard case .string(let fingerprint)? = event.properties["messageFingerprint"] else {
+      XCTFail("Expected messageFingerprint string")
+      return
+    }
+    XCTAssertTrue(fingerprint.hasPrefix("tm_error_"))
+    XCTAssertEqual(event.context["source"], .string("checkout"))
+    let json = String(data: try JSONEncoder().encode(event), encoding: .utf8) ?? ""
+    XCTAssertFalse(json.contains("Payment failed"))
+    XCTAssertFalse(json.contains("user@example.com"))
+    XCTAssertFalse(json.contains("Bearer secret"))
+    XCTAssertFalse(json.contains("token=secret"))
+  }
+
   func testAttributionFromOpenURLIsAttachedToEventsAndPresence() async throws {
     let transport = RecordingTransport()
     let client = TraceMindClient(

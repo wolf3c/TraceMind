@@ -31,7 +31,7 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.21.1';
+const AGENT_GUIDANCE_VERSION = '2026.05.25.1';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
@@ -118,11 +118,38 @@ const FORBIDDEN_ANALYTICS_KEYS = [
   'requestBody',
   'rawResponseBody',
   'responseBody',
+  'stack',
+  'stackTrace',
+  'rawLog',
+  'fullUrl',
+  'inputValue',
   'headers',
   'cookies',
   'authorization',
 ];
+const APP_ERROR_PROPERTY_KEYS = new Set([
+  'errorKind',
+  'errorType',
+  'messageFingerprint',
+  'fatal',
+  'handled',
+  'source',
+  'screen',
+  'release',
+  'component',
+  'status',
+  'occurredAt',
+]);
+const APP_ERROR_CONTEXT_KEYS = new Set([
+  'source',
+  'screen',
+  'release',
+  'component',
+  'status',
+  'occurredAt',
+]);
 const APPROVED_AUTO_EVENT_NAMES = new Set([
+  'app_error',
   'identify',
   'mcp_tool_call',
   'mcp_resource_read',
@@ -1141,6 +1168,7 @@ const PRIVACY_CONSTRAINTS = [
   'Do not capture input values.',
   'Do not capture screenshots, DOM snapshots, native snapshots, or session replay.',
   'Do not capture secrets, tokens, raw prompts, raw user content, or full query URLs.',
+  'For app_error, capture only sanitized summary fields such as errorKind, errorType, messageFingerprint, fatal, handled, source, path/screen, release, component, status, and occurredAt; do not capture stacks, logs, source code, request/response bodies, headers, cookies, auth values, screenshots, recordings, or raw messages.',
   'Use the returned public projectKey only for capture writes; never use an MCP token in app code.',
 ];
 
@@ -1152,6 +1180,7 @@ const MCP_PRIVACY_CONSTRAINTS = [
 
 const SERVER_PRIVACY_CONSTRAINTS = [
   'Do not capture request body, response body, headers, cookies, authorization values, secrets, tokens, raw prompts, raw user content, or full query URLs.',
+  'For app_error, capture only sanitized summary fields and messageFingerprint; do not capture stack traces, raw logs, request/response bodies, headers, cookies, auth values, or raw messages.',
   'Capture only stable business outcomes with sanitized primitive properties and context.',
   'Use the returned public projectKey only for capture writes; never use an MCP token in server application code.',
 ];
@@ -1250,6 +1279,7 @@ const BROWSER_EXTENSION_AUTO_CAPTURE_SIGNALS = [
   'click on extension-owned UI elements',
   'input changed without input values',
   'submit from extension-owned forms',
+  'extension-owned JavaScript error and unhandled rejection summaries as app_error without stack traces',
   'extension UI route/path without query strings',
   'presence heartbeat for foreground extension-owned UI pages',
   'background/service worker manual capture only',
@@ -1460,6 +1490,13 @@ function commonSetup(project, platform) {
     'Contact fields are allowed only when the end user explicitly submits them in the feedback payload.',
     'Keep attachments empty in v1; screenshots, recordings, public boards, voting, roadmap, and changelog are out of scope.',
   ];
+  const errorCaptureWorkflow = [
+    'Use app_error for safe product/runtime error context, not as a Sentry or Crashlytics replacement.',
+    'Web Auto Capture records window error and unhandledrejection summaries automatically; call captureError manually for handled errors that affect product flow.',
+    'Native, React Native, Mini Program, Browser Extension background/service worker, and server SDKs use manual captureError only in v1.',
+    'Do not add native crash reporters, global request/log/database hooks, sourcemap upload, stack symbolication, crash dumps, screenshots, recordings, or session replay.',
+    'Only send sanitized summary fields: errorKind, errorType, messageFingerprint, fatal, handled, source, path/screen, release, component, status, and occurredAt.',
+  ];
   return {
     platform,
     captureApiUrl,
@@ -1471,6 +1508,20 @@ function commonSetup(project, platform) {
     manualCaptureWorkflow: MANUAL_CAPTURE_WORKFLOW,
     manualCaptureWarnings: MANUAL_CAPTURE_WARNINGS,
     trafficAttribution: trafficAttributionGuidance(platform),
+    errorCaptureWorkflow,
+    errorCaptureMethods: {
+      web: 'window.TraceMind.captureError(errorOrInfo)',
+      ios: 'try? TraceMind.captureError(error, path: "CheckoutViewController", component: "CheckoutViewController")',
+      macos: 'try? TraceMind.captureError(error, path: "CheckoutWindow", component: "CheckoutWindow")',
+      android: 'TraceMind.captureError(error, path = "CheckoutActivity", component = "CheckoutActivity")',
+      react_native: 'TraceMind.captureError(error, { path: "Checkout", component: "CheckoutScreen" })',
+      hybrid: 'Use window.TraceMind.captureError(...) inside the WebView and the matching native TraceMind.captureError(...) API in the shell.',
+      mini_program: 'TraceMind.captureError(error, { path: "/pages/checkout/index", component: "CheckoutPage" })',
+      browser_extension: 'TraceMind.captureError(error, { path: "/popup.html", component: "Popup" })',
+      server_node: 'TraceMindServer.captureError(error, { path: "/jobs", component: "InvoiceWorker" })',
+      server_python: 'TraceMindServer.capture_error(error, path="/jobs", component="InvoiceWorker")',
+      server_http: `POST ${captureApiUrl} with type "app_error" and only sanitized summary fields`,
+    },
     userFeedbackWorkflow,
     userFeedbackMethods: {
       web: 'window.TraceMind.submitFeedback({ message })',
@@ -1890,6 +1941,7 @@ function miniProgramSetup(project, provider) {
       'TraceMind.trackInput("phone_input", { path: "/pages/pricing/index", properties: { field: "phone" } })',
       'TraceMind.trackSubmit("checkout_form", { path: "/pages/pricing/index", properties: { success: true } })',
       'TraceMind.capture("custom", { eventName: approvedEventName, properties: { amount: 29, success: true } })',
+      'TraceMind.captureError(error, { path: "/pages/checkout/index", component: "CheckoutPage", handled: true })',
     ],
     manualCaptureExample: 'TraceMind.capture("custom", { eventName: approvedEventName, properties: { amount: 29, success: true } })',
     manualCaptureWarnings: [
@@ -1962,6 +2014,7 @@ function browserExtensionSetup(project) {
       'TraceMind.trackInput("search_box", { path: "/popup.html", properties: { field: "query" } })',
       'TraceMind.trackSubmit("settings_form", { path: "/options.html", properties: { success: true } })',
       'TraceMind.capture("custom", { eventName: approvedEventName, properties: { success: true } })',
+      'TraceMind.captureError(error, { path: "/popup.html", component: "Popup", handled: true })',
     ],
     manualCaptureExample: 'TraceMind.capture("custom", { eventName: approvedEventName, properties: { success: true } })',
     manualCaptureWarnings: [
@@ -2055,7 +2108,7 @@ function platformSetup(project, platform, options = {}) {
       },
       sourceModel: 'Do not create a hybrid event platform. WebView events remain platform web/sourceType web and can mark sourceDetails.framework through data-tracemind-framework; native shell events remain ios, macos, or android and can mark deviceInfo.framework/sourceDetails.framework as hybrid, capacitor, cordova, electron, tauri, or the specific shell framework when available.',
       autoCapturedSignals: [
-        'WebView page view, route change, click, input changed without input values, submit, and active time from Web Auto Capture',
+        'WebView page view, route change, click, input changed without input values, submit, JavaScript error summaries, and active time from Web Auto Capture',
         'Native shell app/session start, screen/view changes, tap/click, input changed without input values, submit, and active time from the matching native SDK',
         'Deeplink/source attribution from native URL helpers plus Web first-touch attribution inside the WebView',
       ],
@@ -2069,8 +2122,11 @@ function platformSetup(project, platform, options = {}) {
       identifySnippet: 'After login, call window.TraceMind.identify("user_123", { plan: "pro" }) in the WebView and TraceMind.identify(...) in the native shell with the same stable internal userId.',
       manualCaptureExamples: [
         'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro", amount: 29, trial: true }, context: { source: "webview_checkout" } })',
+        'window.TraceMind.captureError(error, { component: "CheckoutWebView", handled: true })',
         'try? TraceMind.capture("custom", eventName: approvedEventName, path: "HybridShell", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "native_shell"])',
+        'try? TraceMind.captureError(error, path: "HybridShell", component: "HybridShell", handled: true)',
         'TraceMind.capture(type = "custom", eventName = approvedEventName, path = "HybridShell", properties = mapOf("plan" to "pro", "amount" to 29, "trial" to true), context = mapOf("source" to "native_shell"))',
+        'TraceMind.captureError(error, path = "HybridShell", component = "HybridShell", handled = true)',
       ],
       manualCaptureExample: 'Use Web manual capture for WebView-owned business outcomes and native manual capture for shell-owned business outcomes; never duplicate the same outcome in both layers.',
     };
@@ -2124,6 +2180,7 @@ function platformSetup(project, platform, options = {}) {
       manualCaptureWarnings: SERVER_MANUAL_CAPTURE_WARNINGS,
       manualCaptureExamples: [
         'TraceMindServer.capture("custom", { eventName: approvedEventName, userId: "user_123", properties: { amount: 2900, success: true }, context: { source: "stripe_webhook" } })',
+        'TraceMindServer.captureError(error, { path: "/jobs", component: "InvoiceWorker", handled: true })',
       ],
       manualCaptureExample: 'TraceMindServer.capture("custom", { eventName: approvedEventName, userId: "user_123", properties: { amount: 2900, success: true }, context: { source: "stripe_webhook" } })',
     };
@@ -2178,6 +2235,7 @@ function platformSetup(project, platform, options = {}) {
       manualCaptureWarnings: SERVER_MANUAL_CAPTURE_WARNINGS,
       manualCaptureExamples: [
         'TraceMindServer.capture("custom", event_name=approved_event_name, user_id="user_123", properties={"amount": 2900, "success": True}, context={"source": "stripe_webhook"})',
+        'TraceMindServer.capture_error(error, path="/jobs", component="InvoiceWorker", handled=True)',
       ],
       manualCaptureExample: 'TraceMindServer.capture("custom", event_name=approved_event_name, user_id="user_123", properties={"amount": 2900, "success": True}, context={"source": "stripe_webhook"})',
     };
@@ -2243,6 +2301,7 @@ function platformSetup(project, platform, options = {}) {
       manualCaptureWarnings: SERVER_MANUAL_CAPTURE_WARNINGS,
       manualCaptureExamples: [
         `POST ${common.captureApiUrl} with the returned payloadTemplate after replacing eventName with an approved event name.`,
+        `POST ${common.captureApiUrl} with type "app_error" and properties containing messageFingerprint, errorType, handled/fatal, source, component, release, and status only.`,
       ],
       manualCaptureExample: `POST ${common.captureApiUrl} with the returned payloadTemplate after replacing eventName with an approved event name.`,
     };
@@ -2438,6 +2497,7 @@ function platformSetup(project, platform, options = {}) {
       identifySnippet: 'try? TraceMind.identify("user_123", traits: ["plan": "pro"])',
       manualCaptureExamples: [
         'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutViewController", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "pricing"])',
+        'try? TraceMind.captureError(error, path: "CheckoutViewController", component: "CheckoutViewController", handled: true)',
       ],
       manualCaptureExample: 'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutViewController", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "pricing"])',
     };
@@ -2486,6 +2546,7 @@ function platformSetup(project, platform, options = {}) {
       identifySnippet: 'try? TraceMind.identify("user_123", traits: ["plan": "pro"])',
       manualCaptureExamples: [
         'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutWindow", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "pricing"])',
+        'try? TraceMind.captureError(error, path: "CheckoutWindow", component: "CheckoutWindow", handled: true)',
         'TraceMind.setScreen("CheckoutWindow")',
       ],
       manualCaptureExample: 'try? TraceMind.capture("custom", eventName: approvedEventName, path: "CheckoutWindow", properties: ["plan": "pro", "amount": 29, "trial": true], context: ["source": "pricing"])',
@@ -2533,6 +2594,7 @@ function platformSetup(project, platform, options = {}) {
       identifySnippet: 'TraceMind.identify(userId = "user_123", traits = mapOf("plan" to "pro"))',
       manualCaptureExamples: [
         'TraceMind.capture(type = "custom", eventName = approvedEventName, path = "CheckoutActivity", properties = mapOf("plan" to "pro", "amount" to 29, "trial" to true), context = mapOf("source" to "pricing"))',
+        'TraceMind.captureError(error, path = "CheckoutActivity", component = "CheckoutActivity", handled = true)',
       ],
       manualCaptureExample: 'TraceMind.capture(type = "custom", eventName = approvedEventName, path = "CheckoutActivity", properties = mapOf("plan" to "pro", "amount" to 29, "trial" to true), context = mapOf("source" to "pricing"))',
     };
@@ -2586,6 +2648,7 @@ function platformSetup(project, platform, options = {}) {
       identifySnippet: 'TraceMind.identify("user_123", { plan: "pro" })',
       manualCaptureExamples: [
         'TraceMind.capture("custom", { eventName: approvedEventName, path: "Checkout", properties: { plan: "pro", amount: 29, trial: true }, context: { source: "pricing" } })',
+        'TraceMind.captureError(error, { path: "Checkout", component: "CheckoutScreen", handled: true })',
       ],
       manualCaptureExample: 'TraceMind.capture("custom", { eventName: approvedEventName, path: "Checkout", properties: { plan: "pro", amount: 29, trial: true }, context: { source: "pricing" } })',
     };
@@ -2616,6 +2679,10 @@ function platformSetup(project, platform, options = {}) {
       key: 'Request Origin or Referer hostname.',
     },
     sourceModel: 'platform is web; sourceKey is normalized from request Origin or Referer hostname.',
+    autoCapturedSignals: [
+      ...AUTO_CAPTURE_SIGNALS,
+      'window error and unhandledrejection summaries as app_error without stack traces',
+    ],
     networkRestrictionChecks: WEB_NETWORK_RESTRICTION_CHECKS,
     verificationCommands: [
       'Run the web app, trigger a page load/click/input/submit, then query TraceMind raw behaviors or semantic events.',
@@ -2623,6 +2690,7 @@ function platformSetup(project, platform, options = {}) {
     identifySnippet: 'window.TraceMind.identify("user_123", { plan: "pro" })',
     manualCaptureExamples: [
       'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro", amount: 29, trial: true }, context: { source: "pricing" } })',
+      'window.TraceMind.captureError(error, { component: "CheckoutForm", handled: true })',
     ],
     manualCaptureExample: 'window.TraceMind.capture("custom", { eventName: approvedEventName, properties: { plan: "pro", amount: 29, trial: true }, context: { source: "pricing" } })',
   };
@@ -3427,6 +3495,51 @@ function sanitizeServerCaptureFields(fields = {}) {
   );
 }
 
+function safePathWithoutQuery(value, fallback = '/') {
+  const text = safeString(value, 500, fallback);
+  if (!text) return fallback;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) {
+    try {
+      const url = new URL(text);
+      return safeString(`${url.pathname || '/'}${url.hash || ''}`, 500, fallback);
+    } catch (error) {
+      return fallback;
+    }
+  }
+  const withoutQuery = text.split('?')[0];
+  return safeString(withoutQuery || fallback, 500, fallback);
+}
+
+function sanitizePrimitiveFieldValue(value) {
+  if (!isSafeServerPrimitive(value)) return undefined;
+  if (typeof value === 'string') {
+    if (/^https?:\/\/\S+\?\S+/.test(value)) return undefined;
+    return safeString(value, 500);
+  }
+  return value;
+}
+
+function sanitizeAppErrorFields(fields = {}, allowedKeys = APP_ERROR_PROPERTY_KEYS) {
+  const input = safeObject(fields, 4096);
+  return Object.fromEntries(
+    Object.entries(input).flatMap(([key, value]) => {
+      if (!allowedKeys.has(key) || isForbiddenAnalyticsKey(key)) return [];
+      const nextValue = sanitizePrimitiveFieldValue(value);
+      return nextValue === undefined ? [] : [[key, nextValue]];
+    }),
+  );
+}
+
+function sanitizeAppErrorProperties(fields = {}) {
+  const properties = sanitizeAppErrorFields(fields, APP_ERROR_PROPERTY_KEYS);
+  if (!properties.status) properties.status = 'error';
+  return properties;
+}
+
+function sanitizeAppErrorContext(fields = {}) {
+  return sanitizeAppErrorFields(fields, APP_ERROR_CONTEXT_KEYS);
+}
+
 function deliverySourcePayload(payload = {}) {
   const firstEvent = Array.isArray(payload.events) && payload.events.length > 0
     ? safeObject(payload.events[0])
@@ -3497,6 +3610,36 @@ function validateEventIdentity(eventType, eventName) {
   }
   validateEventName(eventName).forEach((finding) => findings.push(finding));
   return findings;
+}
+
+function validateAppErrorFieldSet(fields, root, allowedKeys, findings) {
+  Object.entries(safeObject(fields, 4096)).forEach(([key, value]) => {
+    const path = `${root}.${key}`;
+    if (!allowedKeys.has(key)) {
+      addFinding(
+        findings,
+        'error',
+        'unsupported_app_error_field',
+        'app_error only accepts sanitized summary fields; omit stacks, logs, bodies, headers, cookies, auth values, input values, screenshots, recordings, and full query URLs.',
+        path,
+      );
+      return;
+    }
+    if (!isSafeServerPrimitive(value)) {
+      addFinding(
+        findings,
+        'error',
+        'unsupported_app_error_field',
+        'app_error fields must be primitive string, number, or boolean values.',
+        path,
+      );
+    }
+  });
+}
+
+function validateAppErrorPayload(args, findings) {
+  validateAppErrorFieldSet(args.properties || {}, 'properties', APP_ERROR_PROPERTY_KEYS, findings);
+  validateAppErrorFieldSet(args.context || {}, 'context', APP_ERROR_CONTEXT_KEYS, findings);
 }
 
 function validationResult(findings, recommendations = []) {
@@ -3690,6 +3833,9 @@ export async function callMcpTool(project, name, args = {}, options = {}) {
       ...validateEventIdentity(args.eventType, args.eventName),
       ...privacyFindings({ properties: args.properties || {}, context: args.context || {} }),
     ];
+    if (args.eventType === 'app_error') {
+      validateAppErrorPayload(args, findings);
+    }
     if (args.eventType && !EVENT_DEFINITIONS.some((definition) => definition.eventType === args.eventType)) {
       addFinding(findings, 'warning', 'unknown_event_type', `Unknown eventType: ${args.eventType}`, 'eventType');
     }
@@ -3879,6 +4025,18 @@ export function clientScript(host) {
 
   function currentPath() {
     return (location.pathname || '/') + (location.hash || '');
+  }
+
+  function safeCapturePath(value) {
+    if (!value) return currentPath();
+    try {
+      var url = new URL(String(value), location.origin);
+      return (url.pathname || '/') + (url.hash || '');
+    } catch (error) {
+      var text = String(value || '');
+      var withoutQuery = text.split('?')[0];
+      return withoutQuery || currentPath();
+    }
   }
 
   function currentSource() {
@@ -4516,6 +4674,69 @@ export function clientScript(host) {
     enqueue('capture', buildCapturePayload(type, data));
   }
 
+  var recentErrorFingerprints = {};
+  var ERROR_DEDUPE_WINDOW_MS = 5000;
+
+  function cleanErrorString(value, max) {
+    var text = String(value || '').replace(/\\s+/g, ' ').trim().slice(0, max || 160);
+    if (!text) return '';
+    if (/@|https?:|[?&=]|%40|bearer\\s+|api[_-]?key|access[_-]?token|secret|password/i.test(text)) return '';
+    return text;
+  }
+
+  function sanitizeMessageForFingerprint(value) {
+    return String(value || '')
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/ig, '[email]')
+      .replace(/https?:\\/\\/\\S+\\?\\S+/ig, '[url]')
+      .replace(/\\b(bearer\\s+\\S+|api[_-]?key\\s*[:=]\\s*\\S+|access[_-]?token\\s*[:=]\\s*\\S+|secret\\S*)\\b/ig, '[secret]')
+      .replace(/\\s+/g, ' ')
+      .trim()
+      .slice(0, 240);
+  }
+
+  function errorInfo(errorOrInfo, options) {
+    var info = (errorOrInfo && typeof errorOrInfo === 'object' && !(errorOrInfo instanceof Error)) ? errorOrInfo : {};
+    var error = errorOrInfo instanceof Error ? errorOrInfo : info.error;
+    var merged = Object.assign({}, info, options || {});
+    var errorType = cleanErrorString(merged.errorType || (error && error.name) || (typeof errorOrInfo === 'string' ? 'Error' : ''), 80) || 'Error';
+    var message = merged.message || (error && error.message) || (typeof errorOrInfo === 'string' ? errorOrInfo : errorType);
+    var properties = {
+      errorKind: cleanErrorString(merged.errorKind, 40) || 'runtime',
+      errorType: errorType,
+      messageFingerprint: cleanErrorString(merged.messageFingerprint, 120) || hash(errorType + ':' + sanitizeMessageForFingerprint(message), 'tm_error_'),
+      fatal: merged.fatal === true,
+      handled: merged.handled === false ? false : true,
+      source: cleanErrorString(merged.source, 40) || 'web',
+      status: 'error'
+    };
+    var release = cleanErrorString(merged.release || (merged.properties && merged.properties.release), 80);
+    var component = cleanErrorString(merged.component || (merged.properties && merged.properties.component), 120);
+    if (release) properties.release = release;
+    if (component) properties.component = component;
+    return {
+      path: safeCapturePath(merged.path || merged.screen),
+      eventName: 'app_error',
+      properties: properties,
+      context: {}
+    };
+  }
+
+  function shouldQueueError(fingerprint) {
+    var now = Date.now();
+    var last = recentErrorFingerprints[fingerprint] || 0;
+    if (last && now - last < ERROR_DEDUPE_WINDOW_MS) return false;
+    recentErrorFingerprints[fingerprint] = now;
+    return true;
+  }
+
+  function captureError(errorOrInfo, options) {
+    if (!projectKey) return { queued: false };
+    var payload = errorInfo(errorOrInfo, options);
+    if (!shouldQueueError(payload.properties.messageFingerprint)) return { queued: false };
+    send('app_error', payload);
+    return { queued: true, messageFingerprint: payload.properties.messageFingerprint };
+  }
+
   function submitFeedback(input) {
     if (!projectKey) return { queued: false };
     enqueue('feedback', buildFeedbackPayload(input));
@@ -4715,6 +4936,12 @@ export function clientScript(host) {
   document.addEventListener('scroll', recordActiveInteraction, true);
   document.addEventListener('touchstart', recordActiveInteraction, true);
   document.addEventListener('pointerdown', recordActiveInteraction, true);
+  window.addEventListener('error', function (event) {
+    captureError(event && (event.error || event.message), { handled: false, fatal: false, source: 'web' });
+  });
+  window.addEventListener('unhandledrejection', function (event) {
+    captureError(event && event.reason, { handled: false, fatal: false, source: 'web', errorKind: 'unhandledrejection' });
+  });
 
   function captureRouteChange(callback) {
     stopPresence('end');
@@ -4780,6 +5007,7 @@ export function clientScript(host) {
 
   window.TraceMind = {
     capture: send,
+    captureError: captureError,
     presence: sendPresence,
     openFeedback: openFeedback,
     submitFeedback: submitFeedback,
@@ -4801,11 +5029,22 @@ export function clientScript(host) {
 async function insertCaptureEvent(project, payload = {}, req = {}) {
   const source = normalizeCaptureSource(payload, req.headers || {});
   const isServerAppSource = source.sourceType === 'server_app';
+  const eventType = safeString(payload.type, 40, 'custom');
+  const isAppError = eventType === 'app_error';
   const sourceDetails = isServerAppSource
     ? sanitizeServerCaptureFields(source.sourceDetails)
-    : source.sourceDetails;
-  const properties = safeObject(payload.properties || payload.custom || payload.data);
-  const context = safeObject(payload.context);
+    : (isAppError ? sanitizeServerCaptureFields(source.sourceDetails) : source.sourceDetails);
+  const rawProperties = safeObject(payload.properties || payload.custom || payload.data);
+  const rawContext = safeObject(payload.context);
+  const properties = isAppError
+    ? sanitizeAppErrorProperties(rawProperties)
+    : (isServerAppSource ? sanitizeServerCaptureFields(rawProperties) : rawProperties);
+  const context = isAppError
+    ? sanitizeAppErrorContext(rawContext)
+    : (isServerAppSource ? sanitizeServerCaptureFields(rawContext) : rawContext);
+  const path = isAppError
+    ? safePathWithoutQuery(payload.path || rawProperties.path || rawProperties.screen, '/')
+    : safeString(payload.path, 500, '/');
 
   if (isSourceBlocked(project, source)) {
     return { ok: true, ignored: true };
@@ -4827,9 +5066,9 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     sourceKey: source.sourceKey,
     sourceLabel: source.sourceLabel,
     sourceDetails,
-    type: safeString(payload.type, 40, 'custom'),
+    type: eventType,
     eventName: safeString(payload.eventName || payload.name || payload.type, 120),
-    path: safeString(payload.path, 500, '/'),
+    path,
     title: safeString(payload.title, 160),
     targetText: safeString(payload.targetText, 200),
     targetTag: safeString(payload.targetTag, 40),
@@ -4845,8 +5084,8 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     attribution: normalizeAttribution(payload.attribution),
     method: safeString(payload.method, 20),
     status: safeString(payload.status, 20),
-    properties: isServerAppSource ? sanitizeServerCaptureFields(properties) : properties,
-    context: isServerAppSource ? sanitizeServerCaptureFields(context) : context,
+    properties,
+    context,
     occurredAt: payload.occurredAt ? new Date(payload.occurredAt) : new Date(),
     semanticStatus: 'pending',
     createdAt: new Date(),

@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.21.1
+version: 2026.05.25.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -17,7 +17,7 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 5. If local TraceMind Skill or AGENTS rules may be stale, call `tracemind.check_agent_setup` with the local Skill, AGENTS/rules, and manifest text before editing instrumentation or SDK setup.
 6. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
 7. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
-8. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
+8. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `errorCaptureWorkflow`, `errorCaptureMethods`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
 9. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
 10. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
 11. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
@@ -57,18 +57,18 @@ Never store `utm_term`, arbitrary `ref` params, full URLs with query strings, se
 
 For product apps, first check whether TraceMind Auto Capture is already initialized. Do not add duplicate scripts, package dependencies, native modules, or `TraceMind.start(...)` calls.
 
-- Web: call `tracemind.capture_setup` with no platform or `{ "platform": "web" }`; install the returned `captureSnippet` in the global document head or root layout.
+- Web: call `tracemind.capture_setup` with no platform or `{ "platform": "web" }`; install the returned `captureSnippet` in the global document head or root layout. Web Auto Capture records safe JavaScript error and unhandled-rejection summaries as `app_error`.
 - iOS: call `tracemind.capture_setup` with `{ "platform": "ios" }`; follow the returned local-source GitHub clone, `vendor/TraceMind` copy, and SwiftPM local path instructions, then initialize once from `App.swift`, `AppDelegate.swift`, or the startup file named by the app.
 - macOS: call `tracemind.capture_setup` with `{ "platform": "macos" }`; use the same local-source Swift package instructions and initialize once from the macOS app bootstrap. Auto Capture records app/session start and window or screen changes; use `TraceMind.setScreen(...)` when the app has better semantic screen names.
 - Android: call `tracemind.capture_setup` with `{ "platform": "android" }`; use the returned Maven Central dependency unless `localSourceFallback` is explicitly needed, then initialize once from `Application.onCreate()`.
 - React Native: call `tracemind.capture_setup` with `{ "platform": "react_native" }`; install the returned `@tracemind/react-native` package and native bridge, then initialize once in `index.js`, `App.js`, `App.tsx`, or the app bootstrap module.
 - Hybrid: call `tracemind.capture_setup` with `{ "platform": "hybrid" }`; install Web Auto Capture in the WebView document and use the returned native SDK instructions for the shell. Do not create a new event platform: WebView events remain `web` and can carry `sourceDetails.framework` from `data-tracemind-framework`; native shell events remain `ios`, `macos`, or `android`.
 - Mini Program: call `tracemind.capture_setup` with `{ "platform": "mini_program", "provider": "wechat" }` and set provider to `wechat`, `alipay`, `douyin`, or `dingtalk`. Install the returned `@tracemind/mini-program` package. Aliases such as `wechat_mini_program` are normalized to the same SDK. Events use `platform: "mini_program"` and `sourceType: "mini_program"` with `sourceDetails.provider`.
-- Browser Extension: call `tracemind.capture_setup` with `{ "platform": "browser_extension" }`. Aliases such as `chrome_extension`, `edge_extension`, `firefox_extension`, and `web_extension` normalize to the same SDK. Use the returned `@tracemind/browser-extension` package in extension-owned popup, options, sidebar, and devtools pages; background or service worker contexts support manual capture only. Events use `platform: "browser_extension"` and `sourceType: "browser_extension"` with whitelisted `sourceDetails.browser`, `manifestVersion`, `runtimeContext`, `sdkVersion`, and `sdkContentHash`.
+- Browser Extension: call `tracemind.capture_setup` with `{ "platform": "browser_extension" }`. Aliases such as `chrome_extension`, `edge_extension`, `firefox_extension`, and `web_extension` normalize to the same SDK. Use the returned `@tracemind/browser-extension` package in extension-owned popup, options, sidebar, and devtools pages; those pages can record safe JavaScript error summaries as `app_error` where the runtime allows it. Background or service worker contexts support manual `capture`, `captureError`, `identify`, `submitFeedback`, and `flush` only. Events use `platform: "browser_extension"` and `sourceType: "browser_extension"` with whitelisted `sourceDetails.browser`, `manifestVersion`, `runtimeContext`, `sdkVersion`, and `sdkContentHash`.
 - MCP Node: call `tracemind.capture_setup` with `{ "platform": "mcp_node" }`; install the returned `@tracemind/mcp-node` package and initialize it around the MCP server object before serving tools.
 - MCP Python: call `tracemind.capture_setup` with `{ "platform": "mcp_python" }`; install the returned `tracemind-mcp` package and initialize it around the MCP server object before serving tools.
 - Agent Skill: call `tracemind.capture_setup` with `{ "platform": "agent_skill" }`; only instrument executable host agent runtime hooks. A static Skill file cannot auto-capture by itself.
-- Server Node/Python/HTTP: call `tracemind.capture_setup` with `{ "platform": "server_node" }`, `{ "platform": "server_python" }`, or `{ "platform": "server_http" }`; Node uses npm, Python uses PyPI, and HTTP uses no SDK package. Ordinary server applications use manual capture first and do not enable request Auto Capture in v1.
+- Server Node/Python/HTTP: call `tracemind.capture_setup` with `{ "platform": "server_node" }`, `{ "platform": "server_python" }`, or `{ "platform": "server_http" }`; Node uses npm, Python uses PyPI, and HTTP uses no SDK package. Ordinary server applications use manual `capture` and `captureError` only in v1; do not enable request Auto Capture, log hooks, DB hooks, or crash reporters.
 - The returned public project key is only for capture writes. Never use an MCP token in frontend or app code.
 - Manual `custom` events are only for business outcomes that Auto Capture cannot infer reliably.
 
@@ -83,7 +83,7 @@ Use `capture_setup` as the source of truth for current setup details instead of 
 - For React Native, do not create a new platform value. Events remain `ios` or `android`; React Native is marked through `deviceInfo.framework` or `sourceDetails.framework`.
 - For hybrid apps, use the returned WebView snippet with `data-tracemind-framework`, and use a narrow native-WebView bridge only for safe identity, route/source metadata, and deeplink handoff. After login, call `identify` in both layers with the same stable internal `userId`; never pass raw input values, cookies, tokens, page content, or full query URLs across the bridge.
 - For Mini Programs, use the generic `@tracemind/mini-program` SDK rather than provider-specific duplicate SDKs. V1 automatically records app/session start, app show/hide, page view, page show/hide, route/page path, and presence heartbeat. Tap/input/submit signals require `TraceMind.trackTap`, `TraceMind.trackInput`, or `TraceMind.trackSubmit` from existing handlers; do not promise no-code capture or collect input values.
-- For Browser Extensions, use the generic `@tracemind/browser-extension` SDK for Chrome, Edge, and Firefox WebExtensions. V1 automatically records extension-owned DOM pages such as popup, options, sidebar, and devtools page; background/service worker code only uses `capture`, `identify`, `submitFeedback`, and `flush`. Do not promise content script no-code capture of host pages.
+- For Browser Extensions, use the generic `@tracemind/browser-extension` SDK for Chrome, Edge, and Firefox WebExtensions. V1 automatically records extension-owned DOM pages such as popup, options, sidebar, devtools page, and safe JavaScript error summaries where available; background/service worker code only uses `capture`, `captureError`, `identify`, `submitFeedback`, and `flush`. Do not promise content script no-code capture of host pages.
 - Native Auto Capture should follow the platform-specific `autoCapturedSignals` returned by `capture_setup`: iOS/Android/React Native include app/session start, screen/page view, tap/click, input changed without values, and submit signals; macOS v1 includes app/session start plus window or screen changes.
 - Run the returned `verificationCommands` when they apply to the repository, then verify captured data with TraceMind MCP queries if the app can be launched.
 
@@ -136,13 +136,13 @@ A static Skill file is guidance, not executable runtime, so a static Skill file 
 
 ## Instrumenting Server Applications
 
-For v1, ordinary server applications use manual capture first and do not enable request Auto Capture. Do not add generic request Auto Capture, global HTTP hooks, database hooks, crash reporting, or log capture unless TraceMind MCP guidance explicitly returns that setup in a future version.
+For v1, ordinary server applications use manual capture first and do not enable request Auto Capture. Use `captureError` for safe handled product/runtime error summaries. Do not add generic request Auto Capture, global HTTP hooks, database hooks, crash reporting, or log capture unless TraceMind MCP guidance explicitly returns that setup in a future version.
 
 - Use `{ "platform": "server_node" }` for Node backends and initialize `TraceMindServer.start({ projectKey, sourceKey })` once at server startup.
 - Use `{ "platform": "server_python" }` for Python backends and initialize `TraceMindServer.start(project_key=..., source_key=...)` once at server startup.
 - Use `{ "platform": "server_http" }` when no first-party SDK exists; call `/api/capture` directly with the returned safe payload template.
 - Keep `platform` as `server`; server app source identity is represented as `sourceType: "server_app"` and a stable `sourceKey` such as `billing-api` or `worker-service`.
-- Add manual `custom` events only for stable business outcomes such as payment succeeded, invoice paid, workspace created, job completed, sync completed, or webhook handled.
+- Add manual `custom` events only for stable business outcomes such as payment succeeded, invoice paid, workspace created, job completed, sync completed, or webhook handled. Use `captureError` for approved `app_error` summaries instead of creating a custom error event.
 - Before coding, call `tracemind.search_event_names`, then `tracemind.validate_event_payload`; after changes, call `tracemind.validate_instrumentation_diff`.
 - Pass a stable internal `userId` on each event when available. Do not use email, phone number, or other PII as identity.
 - Never capture request bodies, response bodies, headers, cookies, authorization values, raw logs, raw prompts/content, secrets, tokens, SQL, source code, diffs, or full query URLs.
@@ -156,7 +156,7 @@ Manual capture follows the same mental model on Web, iOS, macOS, Android, React 
 - Put stable business facts in `properties`; put route, source, experiment, or UI context in `context`.
 - Put traffic acquisition context in the SDK attribution helper or `attribution` object, not only in `context.source`, when the event should be queryable by source/campaign/landing-page MCP filters.
 - Native, React Native, Mini Program, and Browser Extension SDKs omit nulls, nested objects, arrays, PII-like keys, credential values, raw prompts/content, input values, and full query URLs.
-- Manual events are for outcomes such as purchase completed, subscription changed, invite sent, or onboarding completed. Do not use manual capture for raw input values or screen contents.
+- Manual events are for outcomes such as purchase completed, subscription changed, invite sent, or onboarding completed. Use `captureError` for handled errors that affect product flow. Do not use manual capture for raw input values, screen contents, stack traces, raw logs, or raw error messages.
 
 ## Developer Feedback Submission
 
@@ -188,10 +188,13 @@ TraceMind also supports terminal user feedback from the customer app. This is se
 - If no event matches, create a draft custom event proposal and ask the user for review.
 - Prefer stable business identifiers such as internal `userId`, `projectId`, `plan`, or `feature`.
 - Use `eventType: "custom"` for manual business events that automatic capture cannot infer reliably.
+- Use `eventType: "app_error"` only through approved SDK `captureError` helpers or the Web/Browser Extension automatic error summary path. It is for privacy-safe error context, not full crash reporting.
 
 ## Privacy Rules
 
 Never send PII, secrets, raw user content, raw prompts, access tokens, API keys, passwords, phone numbers, emails, or full URLs with query strings.
+
+For `app_error`, only send summary fields such as `errorKind`, `errorType`, `messageFingerprint`, `fatal`, `handled`, `source`, `path/screen`, `release`, `component`, `status`, and `occurredAt`. Do not send stack traces, source code, request/response bodies, headers, cookies, authorization values, raw logs, raw input values, screenshots, recordings, crash dumps, session replay, or raw error messages.
 
 Use `tracemind.privacy_check` when a field name or sample value might be sensitive.
 

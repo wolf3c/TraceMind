@@ -104,13 +104,15 @@ iOS/macOS 使用 `TraceMind.recordOpenURL(url, sourceApplication:)` 从 universa
 
 ## Web 可靠发送队列
 
-Web Auto Capture 不再把每个事件直接交给 `sendBeacon` 或 `fetch` 后立即丢弃。脚本会先把 `page_view`、`click`、`input`、`submit`、`route_change`、`custom` 和 presence 写入内存队列，并尽量同步保存到 `localStorage`。队列按项目 key 隔离，默认最多保留 300 条；超过上限或浏览器存储 quota 不足时才丢弃最旧记录，并把丢弃数量记录到 delivery diagnostics。
+Web Auto Capture 不再把每个事件直接交给 `sendBeacon` 或 `fetch` 后立即丢弃。脚本会先把 `page_view`、`click`、`input`、`submit`、`route_change`、`custom`、`app_error` 和 presence 写入内存队列，并尽量同步保存到 `localStorage`。队列按项目 key 隔离，默认最多保留 300 条；超过上限或浏览器存储 quota 不足时才丢弃最旧记录，并把丢弃数量记录到 delivery diagnostics。
 
 普通前台发送会按批次写入 `/api/capture` 或 `/api/presence`，每批默认最多 20 条。发送失败时事件保留在队列中，使用 1 秒起步、60 秒封顶的指数退避重试。`online`、`visibilitychange`、`pagehide`、`beforeunload`、presence heartbeat 和 `window.TraceMind.flush()` 都会触发 flush。页面隐藏或卸载时，脚本会把单批控制在约 60KB 内并优先使用 `sendBeacon`。
 
 Presence 也进入同一可靠队列。为了避免离线 heartbeat 挤占关键行为事件，同一 `presenceId` 的 pending heartbeat 会合并为最新一次心跳；`start`、`foreground`、`background` 和 `end` 不合并，保持在线区间边界。
 
 用户反馈使用独立的 `feedback` 队列记录和 `/api/user-feedback` endpoint。Web SDK 暴露 `window.TraceMind.openFeedback()` 和 `window.TraceMind.submitFeedback({ message })`，但反馈不会写入 `/api/capture`、raw behavior 或 semantic event。反馈 payload 允许用户主动提交的 `contact` 和客户自定义 primitive `fields`，同时继续拒绝 token、secret、authorization、raw prompt、源码 diff、请求/响应 body、headers、cookies、tool arguments/results、resource content 和带 query 的完整 URL。截图、录屏和附件上传不在 v1 范围内，`attachments` 固定为空数组作为未来兼容字段。
+
+错误上下文使用 `app_error` 进入普通行为队列，Web 自动监听 `window.error` 和 `unhandledrejection`，手动场景使用 `window.TraceMind.captureError(...)`。该事件只保存错误类型、消息指纹、handled/fatal、component/release 和 path/screen 等摘要字段；stack trace、raw log、raw message、源码、请求/响应 body、headers、cookies、authorization、输入值、prompt、secret、截图、录屏、crash dump 和 session replay 都不进入 v1。
 
 开发者可在浏览器控制台查看非敏感发送状态：
 

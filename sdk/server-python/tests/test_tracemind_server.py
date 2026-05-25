@@ -109,6 +109,53 @@ class TraceMindServerTest(unittest.TestCase):
         self.assertNotIn("do not store", str(event))
         self.assertNotIn("user@example.com", str(event))
 
+    def test_captures_sanitized_app_error_summaries(self):
+        batches = []
+        client = create_tracemind_server_client(
+            project_key="tm_proj_server_python",
+            source_key="billing-api",
+            transport=lambda body: batches.append(body),
+        )
+        error = RuntimeError("Database timeout for user@example.com")
+
+        client.capture_error(
+            error,
+            path="/jobs?token=secret",
+            component="InvoiceWorker",
+            release="2026.05.25",
+            handled=True,
+            fatal=False,
+            properties={
+                "headers": "do not send",
+                "requestBody": "do not send",
+                "inputValue": "do not send",
+            },
+            context={
+                "source": "job_runner",
+                "authorization": "Bearer secret",
+            },
+        )
+        client.flush()
+
+        event = batches[0]["events"][0]
+        self.assertEqual(event["type"], "app_error")
+        self.assertEqual(event["eventName"], "app_error")
+        self.assertEqual(event["path"], "/jobs")
+        self.assertEqual(event["properties"]["errorType"], "RuntimeError")
+        self.assertEqual(event["properties"]["errorKind"], "runtime")
+        self.assertEqual(event["properties"]["component"], "InvoiceWorker")
+        self.assertEqual(event["properties"]["release"], "2026.05.25")
+        self.assertEqual(event["properties"]["handled"], True)
+        self.assertEqual(event["properties"]["fatal"], False)
+        self.assertEqual(event["properties"]["status"], "error")
+        self.assertRegex(event["properties"]["messageFingerprint"], r"^tm_error_[a-f0-9]{24}$")
+        self.assertEqual(event["context"], {"source": "job_runner"})
+        serialized = str(event)
+        self.assertNotIn("Database timeout", serialized)
+        self.assertNotIn("user@example.com", serialized)
+        self.assertNotIn("Bearer secret", serialized)
+        self.assertNotIn("token=secret", serialized)
+
     def test_requeues_failed_flushes(self):
         attempts = {"count": 0}
 
@@ -143,6 +190,20 @@ class TraceMindServerTest(unittest.TestCase):
         TraceMindServer.flush()
 
         self.assertEqual(batches[0]["events"][0]["source"]["type"], "server_app")
+
+    def test_singleton_exposes_capture_error(self):
+        batches = []
+        TraceMindServer.start(
+            project_key="tm_proj_server_python",
+            source_key="billing-api",
+            transport=lambda body: batches.append(body),
+        )
+
+        TraceMindServer.capture_error({"errorType": "JobError", "message": "failed"})
+        TraceMindServer.flush()
+
+        self.assertEqual(batches[0]["events"][0]["type"], "app_error")
+        self.assertEqual(batches[0]["events"][0]["properties"]["errorType"], "JobError")
 
     def test_submits_structured_user_feedback_through_dedicated_endpoint(self):
         feedback_bodies = []

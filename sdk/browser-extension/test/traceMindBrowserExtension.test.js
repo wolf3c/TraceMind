@@ -51,9 +51,19 @@ function createEnvironment({ withDocument = true, userAgent = 'Mozilla/5.0 Chrom
   const calls = [];
   const intervals = [];
   const listeners = {};
+  const defaultView = {
+    addEventListener(type, handler) {
+      listeners[type] = listeners[type] || [];
+      listeners[type].push(handler);
+    },
+    removeEventListener(type, handler) {
+      listeners[type] = (listeners[type] || []).filter((item) => item !== handler);
+    },
+  };
   const document = withDocument ? {
     title: 'Extension Popup',
     visibilityState: 'visible',
+    defaultView,
     addEventListener(type, handler) {
       listeners[type] = listeners[type] || [];
       listeners[type].push(handler);
@@ -159,6 +169,49 @@ test('captures extension-owned UI events and sends presence separately', async (
   assert.equal(JSON.stringify(env.calls).includes('do-not-send'), false);
 });
 
+test('captures extension-owned JavaScript error summaries automatically', async () => {
+  const env = createEnvironment();
+  const adapter = createBrowserExtensionAdapter({
+    chrome: createChromeHost(),
+    fetch: env.fetch,
+    navigator: env.navigator,
+    setInterval: env.setInterval,
+    clearInterval: env.clearInterval,
+  });
+  const client = createTraceMindClient({
+    adapter,
+    document: env.document,
+    location: env.location,
+    now: () => 1770000000000,
+  });
+
+  client.start({ projectKey: 'tm_proj_extension', extensionName: 'Example Extension' });
+  const error = new Error('Checkout failed for token=secret at /callback?code=abc');
+  error.stack = 'raw stack with /private/file.js';
+  env.listeners.error[0]({ error, message: error.message });
+  env.listeners.unhandledrejection[0]({
+    reason: new TypeError('Promise rejected with password=secret'),
+  });
+  await client.flush();
+
+  const captureCall = env.calls.find((call) => call.url.endsWith('/api/capture'));
+  const errors = captureCall.data.events.filter((event) => event.type === 'app_error');
+  assert.equal(errors.length, 2);
+  assert.equal(errors[0].eventName, 'app_error');
+  assert.equal(errors[0].path, '/popup.html');
+  assert.equal(errors[0].properties.errorType, 'Error');
+  assert.equal(errors[0].properties.handled, false);
+  assert.equal(errors[0].properties.source, 'browser_extension');
+  assert.match(errors[0].properties.messageFingerprint, /^tm_error_/);
+  assert.equal(errors[1].properties.errorKind, 'unhandledrejection');
+
+  const serialized = JSON.stringify(errors);
+  assert.equal(serialized.includes('raw stack'), false);
+  assert.equal(serialized.includes('token=secret'), false);
+  assert.equal(serialized.includes('password=secret'), false);
+  assert.equal(serialized.includes('?code=abc'), false);
+});
+
 test('background runtime supports manual capture without DOM auto capture', async () => {
   const env = createEnvironment({ withDocument: false, userAgent: 'Mozilla/5.0 Edg/124.0' });
   const adapter = createBrowserExtensionAdapter({
@@ -232,6 +285,63 @@ test('content script host pages do not enable DOM auto capture by default', asyn
   assert.equal(JSON.stringify(env.calls).includes('token=secret'), false);
 });
 
+test('captures sanitized extension app_error summaries manually', async () => {
+  const env = createEnvironment();
+  const adapter = createBrowserExtensionAdapter({
+    chrome: createChromeHost(),
+    fetch: env.fetch,
+    navigator: env.navigator,
+    setInterval: env.setInterval,
+    clearInterval: env.clearInterval,
+  });
+  const client = createTraceMindClient({
+    adapter,
+    document: env.document,
+    location: env.location,
+    now: () => 1770000000000,
+  });
+  const error = new Error('Popup failed for user@example.com');
+  error.stack = 'raw stack';
+
+  client.start({ projectKey: 'tm_proj_extension', extensionName: 'Error Extension' });
+  client.captureError(error, {
+    path: '/popup.html?token=secret',
+    component: 'Popup',
+    release: '2026.05.25',
+    handled: true,
+    fatal: false,
+    properties: {
+      requestBody: 'do not send',
+      headers: 'do not send',
+      inputValue: 'do not send',
+    },
+    context: {
+      source: 'popup',
+      authorization: 'Bearer secret',
+    },
+  });
+  await client.flush();
+
+  const captureCall = env.calls.find((call) => call.url.endsWith('/api/capture'));
+  const event = captureCall.data.events.find((item) => item.type === 'app_error');
+  assert.equal(event.eventName, 'app_error');
+  assert.equal(event.path, '/popup.html');
+  assert.equal(event.properties.errorType, 'Error');
+  assert.equal(event.properties.errorKind, 'runtime');
+  assert.equal(event.properties.component, 'Popup');
+  assert.equal(event.properties.release, '2026.05.25');
+  assert.equal(event.properties.handled, true);
+  assert.equal(event.properties.status, 'error');
+  assert.match(event.properties.messageFingerprint, /^tm_error_[a-f0-9]{24}$/);
+  assert.deepEqual(event.context, { source: 'popup' });
+  const serialized = JSON.stringify(event);
+  assert.equal(serialized.includes('Popup failed'), false);
+  assert.equal(serialized.includes('user@example.com'), false);
+  assert.equal(serialized.includes('raw stack'), false);
+  assert.equal(serialized.includes('Bearer secret'), false);
+  assert.equal(serialized.includes('token=secret'), false);
+});
+
 test('restart replaces extension-owned DOM listeners instead of duplicating them', () => {
   const env = createEnvironment();
   const adapter = createBrowserExtensionAdapter({
@@ -303,6 +413,7 @@ test('singleton TraceMind supports the public browser extension interface', () =
   assert.equal(typeof TraceMind.start, 'function');
   assert.equal(typeof TraceMind.identify, 'function');
   assert.equal(typeof TraceMind.capture, 'function');
+  assert.equal(typeof TraceMind.captureError, 'function');
   assert.equal(typeof TraceMind.submitFeedback, 'function');
   assert.equal(typeof TraceMind.trackTap, 'function');
   assert.equal(typeof TraceMind.trackInput, 'function');

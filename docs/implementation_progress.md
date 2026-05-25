@@ -1,5 +1,15 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-05-25
+
+### Completed
+
+- Added privacy-safe Error Context Capture through the new `app_error` semantic event type. It records sanitized error summaries for behavior-context analysis and counts as a health failure signal without becoming a crash-reporting or session-replay system.
+- Added Web automatic `window.error` / `unhandledrejection` summary capture plus `window.TraceMind.captureError(...)`; browser-extension owned pages get equivalent safe JS error summaries where the runtime exposes event listeners.
+- Added manual `captureError` helpers across Swift iOS/macOS, Android, React Native, Mini Program, Browser Extension, Node server, and Python server SDKs. Server SDKs remain manual only and do not install request hooks, log hooks, DB hooks, or crash reporters.
+- Added ingestion and MCP validation guards so `app_error` only accepts primitive summary fields and omits stack traces, raw logs, source code, request/response bodies, headers, cookies, authorization values, input values, raw prompts, secrets, screenshots, recordings, and full query URLs.
+- Updated setup responses, README, semantic docs, and coding-agent guidance so agents treat `app_error` as an approved but privacy-limited product error context signal.
+
 ## 2026-05-06
 
 ### Completed

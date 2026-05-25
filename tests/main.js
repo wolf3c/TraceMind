@@ -342,7 +342,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.21.1'));
+      assert.ok(skill.includes('version: 2026.05.25.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -393,7 +393,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.check_agent_setup'));
       assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.ok(snippet.includes('Guidance version: `2026.05.21.1`'));
+      assert.ok(snippet.includes('Guidance version: `2026.05.25.1`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -426,7 +426,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.ok(snippet.includes('tracemind.check_agent_setup'));
       assert.ok(snippet.includes('agentSetupNotice'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.21.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.25.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -622,6 +622,117 @@ describe('TraceMind', function () {
       assert.strictEqual(presenceBody.events.length, 1);
       assert.strictEqual(captureBody.deliveryStats.sent, 1);
       assert.strictEqual(presenceBody.deliveryStats.sent, 1);
+    });
+
+    it('queues sanitized app_error records from web errors and manual captureError', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const windowListeners = {};
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind checkout',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              if (name === 'data-tracemind-framework') return 'svelte';
+              return null;
+            },
+          },
+          addEventListener() {},
+          hasFocus() { return true; },
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: {
+          origin: 'https://app.example.com',
+          href: 'https://app.example.com/checkout?token=secret',
+          pathname: '/checkout',
+          hash: '',
+          hostname: 'app.example.com',
+        },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        Error,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch() {
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener(type, handler) {
+          windowListeners[type] = windowListeners[type] || [];
+          windowListeners[type].push(handler);
+        },
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      const thrown = new Error('Card token expired for user@example.com');
+      thrown.stack = 'stack must not be captured';
+      windowListeners.error[0]({ error: thrown, message: thrown.message });
+      windowListeners.unhandledrejection[0]({ reason: new Error('Promise rejected with secret') });
+      sandbox.window.TraceMind.captureError({
+        errorType: 'PaymentError',
+        message: 'Checkout failed with sk-secret',
+        path: '/checkout/manual?token=secret',
+        stack: 'raw stack',
+        requestBody: 'raw request',
+        headers: { authorization: 'Bearer secret' },
+        inputValue: '4111111111111111',
+        component: 'CheckoutForm',
+        fatal: true,
+        handled: true,
+      });
+
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      const queued = JSON.parse(storage.get(queueKey));
+      const errors = queued.filter((record) => record.kind === 'capture' && record.payload.type === 'app_error');
+
+      assert.strictEqual(errors.length, 3);
+      assert.ok(errors.every((record) => record.payload.properties.messageFingerprint.startsWith('tm_error_')));
+      assert.ok(errors.every((record) => record.payload.properties.status === 'error'));
+      assert.strictEqual(errors[0].payload.properties.source, 'web');
+      assert.strictEqual(errors[0].payload.properties.handled, false);
+      assert.strictEqual(errors[2].payload.properties.component, 'CheckoutForm');
+      assert.strictEqual(errors[2].payload.properties.fatal, true);
+      assert.strictEqual(errors[2].payload.properties.handled, true);
+      assert.strictEqual(errors[2].payload.path, '/checkout/manual');
+      const serialized = JSON.stringify(errors);
+      assert.ok(!serialized.includes('Card token expired'));
+      assert.ok(!serialized.includes('user@example.com'));
+      assert.ok(!serialized.includes('stack must not be captured'));
+      assert.ok(!serialized.includes('sk-secret'));
+      assert.ok(!serialized.includes('Bearer secret'));
+      assert.ok(!serialized.includes('4111111111111111'));
+      assert.ok(!serialized.includes('token=secret'));
     });
 
     it('attaches privacy-safe first-touch web attribution to capture and presence records', async function () {
@@ -1324,10 +1435,10 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.21.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.25.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
-      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.21.1');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.25.1');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
@@ -1404,7 +1515,7 @@ describe('TraceMind', function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
       const currentRules = `---
-version: 2026.05.21.1
+version: 2026.05.25.1
 ---
 TraceMind Project Binding
 Project ID: project-agent-setup-check
@@ -1425,14 +1536,14 @@ Treat latestSdk.sourceRef and contentHash as SDK source of truth.`;
       const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules,
         agentInstructionContent: currentRules,
-        manifestContent: JSON.stringify({ guidanceVersion: '2026.05.21.1' }),
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.05.25.1' }),
       });
       assert.strictEqual(current.structuredContent.status, 'current');
       assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
 
       const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('version: 2026.05.21.1', 'version: 2026.05.17.7'),
+        skillContent: currentRules.replace('version: 2026.05.25.1', 'version: 2026.05.17.7'),
         agentInstructionContent: currentRules,
       });
       assert.strictEqual(outdated.structuredContent.status, 'outdated');
@@ -1587,7 +1698,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
       assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.05.21.1');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.05.25.1');
       assert.strictEqual(structured.health.current.eventCount, 6);
       assert.strictEqual(structured.health.previous.eventCount, 20);
       assert.strictEqual(structured.health.trends.events, -0.7);
@@ -2153,7 +2264,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
       assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.21.1');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.25.1');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
       assert.ok(setup.structuredContent.captureSnippet.includes('/capture.js'));
       assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
@@ -2588,10 +2699,55 @@ projectKey: tm_proj_sensitive`,
       const definitions = await callMcpTool({ _id: 'project-definitions' }, 'tracemind.event_definitions', {});
       const byType = new Map(definitions.structuredContent.eventDefinitions.map((definition) => [definition.eventType, definition]));
 
+      assert.ok(byType.get('app_error').platforms.includes('web'));
+      assert.ok(byType.get('app_error').platforms.includes('server'));
+      assert.ok(byType.get('app_error').typicalProperties.includes('messageFingerprint'));
       assert.ok(byType.get('tool_call').platforms.includes('server'));
       assert.ok(byType.get('resource_read').typicalProperties.includes('uriScheme'));
       assert.ok(byType.get('prompt_request').typicalProperties.includes('promptName'));
       assert.ok(byType.get('skill_lifecycle').meaning.includes('Skill'));
+    });
+
+    it('validates app_error payloads and blocks sensitive error fields', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const project = { _id: `project-app-error-validation-${Date.now()}`, name: 'App Error Validation Project' };
+
+      const valid = await callMcpTool(project, 'tracemind.validate_event_payload', {
+        eventType: 'app_error',
+        properties: {
+          errorKind: 'runtime',
+          errorType: 'TypeError',
+          messageFingerprint: 'tm_error_abc123',
+          fatal: false,
+          handled: false,
+          source: 'web',
+          component: 'CheckoutForm',
+          status: 'error',
+        },
+        context: {
+          release: '2026.05.25',
+        },
+      });
+      assert.strictEqual(valid.structuredContent.ok, true);
+      assert.ok(!valid.structuredContent.findings.some((finding) => finding.code === 'unknown_event_type'));
+
+      const invalid = await callMcpTool(project, 'tracemind.validate_event_payload', {
+        eventType: 'app_error',
+        properties: {
+          messageFingerprint: 'tm_error_abc123',
+          stack: 'raw stack',
+          headers: { authorization: 'Bearer secret' },
+          requestBody: 'raw request body',
+          inputValue: 'private input',
+          fullUrl: 'https://example.com/checkout?token=secret',
+        },
+      });
+      assert.strictEqual(invalid.structuredContent.ok, false);
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.stack'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.headers'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.requestBody'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.inputValue'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.fullUrl'));
     });
 
     it('exposes project identity through MCP initialize and tools/list metadata', async function () {
@@ -3049,6 +3205,110 @@ projectKey: tm_proj_sensitive`,
     assert.deepStrictEqual(health.current.userRegions[0], { label: 'US', count: 1 });
     assert.ok(health.attentionItems.some((item) => item.code === 'failure_events_increased'));
     assert.ok(health.attentionSummary.includes('近 24h'));
+  });
+
+  it('counts app_error events as project health failures', function () {
+    const now = new Date('2026-05-09T12:00:00.000Z');
+    const health = summarizeProjectHealth({
+      events: [
+        {
+          eventType: 'app_error',
+          eventName: 'app_error',
+          userId: 'current-user',
+          path: '/checkout',
+          properties: { messageFingerprint: 'tm_error_checkout', handled: false },
+          occurredAt: new Date('2026-05-09T11:00:00.000Z'),
+        },
+      ],
+      presenceSessions: [],
+      now,
+    });
+
+    assert.strictEqual(health.current.failureEventCount, 1);
+    assert.ok(health.attentionItems.some((item) => item.code === 'failure_events_increased'));
+  });
+
+  it('builds semantic app_error events with safe error context', function () {
+    const event = buildSemanticEvent({
+      _id: 'raw-app-error',
+      projectId: 'project-1',
+      type: 'app_error',
+      eventName: 'app_error',
+      path: '/checkout',
+      properties: {
+        errorKind: 'runtime',
+        errorType: 'TypeError',
+        messageFingerprint: 'tm_error_checkout',
+        status: 'error',
+      },
+      occurredAt: new Date('2026-05-09T11:00:00.000Z'),
+    });
+
+    assert.strictEqual(event.eventType, 'app_error');
+    assert.strictEqual(event.title, '产品错误 TypeError');
+    assert.ok(event.meaning.includes('/checkout'));
+    assert.ok(event.meaning.includes('tm_error_checkout'));
+  });
+
+  it('sanitizes app_error properties before ingestion', async function () {
+    const { ingestCapturePayload } = await import('../server/capture_routes');
+    const projectKey = `tm_proj_app_error_${Date.now()}`;
+    const projectId = `project-app-error-ingest-${Date.now()}`;
+    await Projects.insertAsync({
+      _id: projectId,
+      name: 'App Error Ingest Project',
+      projectKey,
+      createdAt: new Date(),
+    });
+
+    const result = await ingestCapturePayload({
+      projectKey,
+      type: 'app_error',
+      eventName: 'app_error',
+      path: '/checkout?token=secret',
+      properties: {
+        errorKind: 'runtime',
+        errorType: 'TypeError',
+        messageFingerprint: 'tm_error_checkout',
+        fatal: true,
+        handled: false,
+        source: 'web',
+        component: 'CheckoutForm',
+        status: 'error',
+        stack: 'raw stack',
+        headers: { authorization: 'Bearer secret' },
+        requestBody: 'raw request body',
+        inputValue: 'private input',
+        fullUrl: 'https://example.com/checkout?token=secret',
+        nested: { value: true },
+      },
+      context: {
+        release: '2026.05.25',
+        rawLog: 'raw log',
+        authorization: 'Bearer secret',
+      },
+    }, { headers: {} });
+
+    assert.strictEqual(result.ok, true);
+    const raw = await RawBehaviors.findOneAsync({ projectId, type: 'app_error' });
+    assert.deepStrictEqual(raw.properties, {
+      errorKind: 'runtime',
+      errorType: 'TypeError',
+      messageFingerprint: 'tm_error_checkout',
+      fatal: true,
+      handled: false,
+      source: 'web',
+      component: 'CheckoutForm',
+      status: 'error',
+    });
+    assert.deepStrictEqual(raw.context, { release: '2026.05.25' });
+    assert.strictEqual(raw.path, '/checkout');
+    const serialized = JSON.stringify(raw);
+    assert.ok(!serialized.includes('raw stack'));
+    assert.ok(!serialized.includes('Bearer secret'));
+    assert.ok(!serialized.includes('raw request body'));
+    assert.ok(!serialized.includes('private input'));
+    assert.ok(!serialized.includes('token=secret'));
   });
 
   it('surfaces SDK upgrade findings from reported SDK content hashes', function () {

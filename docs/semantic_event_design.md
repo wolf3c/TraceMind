@@ -113,10 +113,11 @@
 - Coding agent 添加或修改手动埋点前，应通过 MCP 搜索当前项目已有事件，优先复用业务含义匹配的 `eventName`。
 - 自动采集已经能稳定覆盖的页面浏览、点击、输入、表单提交和路由跳转，不需要重复添加手动埋点。
 - 手动 `custom` 事件适合表达自动采集无法稳定推断的业务结果，例如 `checkout_started`、`subscription_created`、`invite_sent`、`invoice_paid` 或 `job_completed`。普通服务端应用第一版只做这类手动业务事件，不做 request Auto Capture。
-- 对 Native、React Native、小程序和浏览器插件，agent 应优先使用 `capture_setup` 返回的 `identifySnippet` 和 `manualCaptureExamples`，并确认 `supportedPropertyTypes` 后再写代码。
+- `app_error` 是产品/运行时错误摘要事件，用于把错误放回用户行为上下文分析。它不是 crash reporter；只允许 `errorKind`、`errorType`、`messageFingerprint`、`fatal`、`handled`、`source`、`path/screen`、`release`、`component`、`status`、`occurredAt` 等摘要字段。
+- 对 Native、React Native、小程序和浏览器插件，agent 应优先使用 `capture_setup` 返回的 `identifySnippet`、`manualCaptureExamples`、`errorCaptureWorkflow` 和 `errorCaptureMethods`，并确认 `supportedPropertyTypes` 后再写代码。
 - 如果没有匹配事件，agent 只能生成 draft custom event proposal，并让用户确认后再当作正式事件使用。
 - `eventName` 使用 lower snake_case，例如 `checkout_started`。
-- 禁止在 `properties` 或 `context` 中上报 email、phone、secret、access token、API key、raw prompt、raw user content、request/response body、headers、cookies、authorization 或带 query string 的完整 URL。
+- 禁止在 `properties` 或 `context` 中上报 email、phone、secret、access token、API key、raw prompt、raw user content、request/response body、headers、cookies、authorization、stack trace、raw log、源码、输入值或带 query string 的完整 URL。`app_error` 也禁止截图、录屏、session replay、crash dump 和 raw message。
 
 ## 元素定位
 
@@ -138,6 +139,7 @@
 | `submit` | 表单提交 | 用户提交表单、点击确认或触发 Native keyboard done/search/send、小程序 submit helper 或浏览器插件自有页面提交，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, macOS, Android, Mini Program, Browser Extension |
 | `route_change` | 页面跳转 | 用户在 Web SPA、Native app、小程序或浏览器插件自有页面内发生页面切换，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, macOS, Android, Mini Program, Browser Extension |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` | Web, iOS, macOS, Android, Mini Program, Browser Extension, Server |
+| `app_error` | 产品错误 | 产品或运行时记录隐私安全的错误摘要，用于分析用户在哪里遇到错误、之前做了什么、影响哪些路径/转化和是否集中爆发。 | `errorKind`, `errorType`, `messageFingerprint`, `fatal`, `handled`, `source`, `path`, `screen`, `release`, `component`, `status`, `occurredAt` | Web, iOS, macOS, Android, Mini Program, Browser Extension, Server |
 | `tool_call` | MCP 工具调用 | MCP server 记录工具调用完成情况，用于分析工具使用量、失败率和耗时。 | `toolName`, `status`, `durationMs`, `errorType`, `resultSizeBucket` | Server |
 | `resource_read` | MCP 资源读取 | MCP server 记录资源读取完成情况，用于分析资源访问、失败率和耗时。 | `resourceName`, `uriScheme`, `uriTemplateHash`, `status`, `durationMs` | Server |
 | `prompt_request` | MCP Prompt 请求 | MCP server 记录 prompt 请求完成情况，用于分析 prompt 使用、失败率和耗时。 | `promptName`, `status`, `durationMs` | Server |
@@ -154,7 +156,8 @@
 - 移动端可复用 `sessionId`、`anonymousId`、`userId`、`deviceId`、`deviceFingerprint`、`sourceType`、`sourceKey`、`eventType`、`eventName`、`properties`、`context`。
 - 移动端 `target` 统一保存 class/type、accessibility id、resource id、test id、label 摘要、screen 和短层级 path；`targetIdentity` 优先复用 test id、accessibility id、resource id，再回退到 label/path/class；`targetHash` 仍使用 `tm_target_` 前缀。
 - 小程序 V1 不做编译期模板改写；tap/input/submit 由开发者在 handler 中调用 `trackTap`、`trackInput`、`trackSubmit` helper，且 helper 不接收或保存输入值。
-- 浏览器插件 V1 不做 content script 宿主页无侵入采集；popup/options/sidebar/devtools 等插件自有 DOM 页面可以自动记录 page/click/input/submit/route 和 presence，background/service worker 只支持手动 `capture`、`identify`、`submitFeedback` 和 `flush`。
+- 浏览器插件 V1 不做 content script 宿主页无侵入采集；popup/options/sidebar/devtools 等插件自有 DOM 页面可以自动记录 page/click/input/submit/route、presence 和安全错误摘要，background/service worker 只支持手动 `capture`、`captureError`、`identify`、`submitFeedback` 和 `flush`。
+- Web 会自动把 `window.error` 和 `unhandledrejection` 记录为 `app_error` 摘要；浏览器插件自有 DOM 页面在运行时允许时也记录同类摘要。iOS/macOS/Android/React Native/小程序/浏览器插件 background/server SDK v1 只提供手动 `captureError`，不接入 native crash reporter、全局 JS handler、request/log/database hook、sourcemap 上传或符号化。
 - MCP server 自动事件使用 `platform: "server"`、`sourceType: "mcp_server"`，自动记录 tool/resource/prompt 名称、状态、耗时、错误类型和结果大小分桶，不记录 raw prompt、tool arguments/result 或 resource content。
 - Agent Skill hook 使用 `platform: "server"`、`sourceType: "agent_skill"`，只在宿主 agent runtime 提供可执行 lifecycle hook 时记录 Skill started/completed/failed；静态 Skill 文件不能独立 auto-capture。
 - 普通服务端手动埋点使用 `platform: "server"`、`sourceType: "server_app"`，通常上报 `userId`、`eventName`、`properties`、`context.traceId` 和 `occurredAt`；不自动采集每个 HTTP request。

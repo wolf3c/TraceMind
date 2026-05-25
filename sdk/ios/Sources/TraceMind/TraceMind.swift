@@ -2,7 +2,7 @@ import Foundation
 
 public enum TraceMindSDK {
   public static let version = "0.1.0"
-  public static let contentHash = "sha256:d0a917437df6b2525574bf4913151eb21bacf6abd99f56d25ba00fb155017185"
+  public static let contentHash = "sha256:75218ea423472b2abc13903f5d00d7d953faa3d4b77b9d50d464d5c4f3b38be1"
 }
 
 public struct TraceMindConfiguration {
@@ -92,6 +92,15 @@ public enum TraceMindValue: Codable, Equatable,
 }
 
 public typealias TraceMindFields = [String: TraceMindValue]
+
+private extension TraceMindValue {
+  var safeStringValue: String? {
+    if case .string(let value) = self {
+      return value
+    }
+    return nil
+  }
+}
 
 public struct TraceMindTarget: Codable {
   public let className: String?
@@ -740,6 +749,51 @@ public final class TraceMindClient {
     }
   }
 
+  public func captureError(
+    _ error: Error? = nil,
+    errorType: String? = nil,
+    message: String? = nil,
+    path: String? = nil,
+    component: String? = nil,
+    release: String? = nil,
+    handled: Bool = true,
+    fatal: Bool = false,
+    properties: TraceMindFields = [:],
+    context: TraceMindFields = [:]
+  ) throws {
+    let nsError = error as NSError?
+    let reflectedErrorType = error.map { String(describing: Mirror(reflecting: $0).subjectType) }
+    let rawErrorType = errorType ?? (nsError?.domain.isEmpty == false ? nsError?.domain : reflectedErrorType) ?? "Error"
+    let type = Self.cleanErrorField(rawErrorType, max: 80).isEmpty ? "Error" : Self.cleanErrorField(rawErrorType, max: 80)
+    let fingerprint = Self.messageFingerprint(errorType: type, message: message ?? nsError?.localizedDescription ?? type)
+    var appErrorProperties: TraceMindFields = [
+      "errorKind": "runtime",
+      "errorType": .string(type),
+      "messageFingerprint": .string(fingerprint),
+      "fatal": .bool(fatal),
+      "handled": .bool(handled),
+      "source": .string(Self.platformKey),
+      "status": "error",
+    ]
+    if let release = Self.nonEmpty(Self.cleanErrorField(release, max: 80)) {
+      appErrorProperties["release"] = .string(release)
+    } else if let release = properties["release"]?.safeStringValue.flatMap({ Self.nonEmpty(Self.cleanErrorField($0, max: 80)) }) {
+      appErrorProperties["release"] = .string(release)
+    }
+    if let component = Self.nonEmpty(Self.cleanErrorField(component, max: 120)) {
+      appErrorProperties["component"] = .string(component)
+    } else if let component = properties["component"]?.safeStringValue.flatMap({ Self.nonEmpty(Self.cleanErrorField($0, max: 120)) }) {
+      appErrorProperties["component"] = .string(component)
+    }
+    try capture(
+      type: "app_error",
+      eventName: "app_error",
+      path: Self.stripQueryPath(path ?? currentScreen, fallback: currentScreen),
+      properties: appErrorProperties,
+      context: Self.sanitizeAppErrorContext(context)
+    )
+  }
+
   func recordActivity() {
     let now = clock()
     settleActiveWindow(now)
@@ -927,6 +981,53 @@ public final class TraceMindClient {
     }
   }
 
+  static func sanitizeAppErrorContext(_ fields: TraceMindFields) -> TraceMindFields {
+    fields.filter { key, value in
+      guard ["source", "screen", "release", "component", "status", "occurredAt"].contains(key) else {
+        return false
+      }
+      if case .string(let stringValue) = value {
+        return !cleanErrorField(stringValue, max: 160).isEmpty
+      }
+      if case .number(let numberValue) = value {
+        return numberValue.isFinite
+      }
+      return true
+    }
+  }
+
+  static func stripQueryPath(_ value: String, fallback: String) -> String {
+    let text = String(value.prefix(500))
+    let path = text.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? fallback
+    return path.isEmpty ? fallback : path
+  }
+
+  static func cleanErrorField(_ value: String?, max: Int) -> String {
+    let text = String((value ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+      .prefix(max))
+    if text.isEmpty { return "" }
+    if text.range(of: #"@|https?:|[?&=]|%40|bearer\s+|api[_-]?key|access[_-]?token|secret|password"#, options: [.regularExpression, .caseInsensitive]) != nil {
+      return ""
+    }
+    return text
+  }
+
+  static func sanitizeErrorMessageForHash(_ value: String?) -> String {
+    String((value ?? "")
+      .replacingOccurrences(of: #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#, with: "[email]", options: [.regularExpression, .caseInsensitive])
+      .replacingOccurrences(of: #"https?://\S+\?\S+"#, with: "[url]", options: [.regularExpression, .caseInsensitive])
+      .replacingOccurrences(of: #"\b(bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|secret\S*)\b"#, with: "[secret]", options: [.regularExpression, .caseInsensitive])
+      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .prefix(240))
+  }
+
+  static func messageFingerprint(errorType: String, message: String?) -> String {
+    hash("\(errorType):\(sanitizeErrorMessageForHash(message))", prefix: "tm_error_")
+  }
+
   private static func normalizeFieldKey(_ key: String) -> String {
     key.lowercased().replacingOccurrences(of: #"[_\-\s]+"#, with: "", options: .regularExpression)
   }
@@ -981,6 +1082,32 @@ public enum TraceMind {
     context: TraceMindFields = [:]
   ) throws {
     try client?.capture(type: type, eventName: eventName, path: path, properties: properties, context: context)
+  }
+
+  public static func captureError(
+    _ error: Error? = nil,
+    errorType: String? = nil,
+    message: String? = nil,
+    path: String? = nil,
+    component: String? = nil,
+    release: String? = nil,
+    handled: Bool = true,
+    fatal: Bool = false,
+    properties: TraceMindFields = [:],
+    context: TraceMindFields = [:]
+  ) throws {
+    try client?.captureError(
+      error,
+      errorType: errorType,
+      message: message,
+      path: path,
+      component: component,
+      release: release,
+      handled: handled,
+      fatal: fatal,
+      properties: properties,
+      context: context
+    )
   }
 
   public static func setScreen(_ screen: String) {

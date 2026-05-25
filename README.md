@@ -103,6 +103,7 @@ TraceMind 会在页面上暴露：
 
 ```js
 window.TraceMind.capture(type, data);
+window.TraceMind.captureError(errorOrInfo);
 window.TraceMind.identify(userId, traits);
 window.TraceMind.openFeedback();
 window.TraceMind.submitFeedback({ message });
@@ -111,6 +112,22 @@ window.TraceMind.status();
 ```
 
 Web 自动采集会先写入内存队列，并尽量同步持久化到 `localStorage`。队列会批量发送行为事件和在线区间，网络失败时保留事件并指数退避重试；页面隐藏、关闭、恢复联网或调用 `TraceMind.flush()` 时都会尝试 flush。`TraceMind.status()` 返回队列长度、丢弃计数、重试次数和最近错误等非敏感诊断摘要，可用于排查跨境网络或 CSP/connect-src 导致的上报稀疏问题。
+
+## 错误上下文
+
+TraceMind 支持 `app_error` 事件，用于把产品错误放回用户行为、路径、来源、session、用户和健康趋势里分析。它不是 Sentry/Crashlytics 替代品；v1 只回答“用户在哪里遇到错误、之前做了什么、影响哪些路径/转化、是否集中爆发”。
+
+Web Auto Capture 会自动监听 `window.error` 和 `unhandledrejection`，只上报错误摘要：`errorKind`、`errorType`、`messageFingerprint`、`fatal`、`handled`、`source`、`path/screen`、`release`、`component`、`status` 和 `occurredAt`。不会上报 stack trace、源码、request/response body、headers、cookies、authorization、raw log、输入值、raw prompt、secret、带 query 的完整 URL、截图、录屏或 session replay。
+
+```js
+window.TraceMind.captureError(error, {
+  component: "CheckoutForm",
+  release: "2026.05.25",
+  handled: true
+});
+```
+
+Native、小程序、浏览器插件和 server SDK 也提供手动 helper：iOS/macOS `TraceMind.captureError(...)`、Android `TraceMind.captureError(...)`、React Native `TraceMind.captureError(...)`、Mini Program `TraceMind.captureError(...)`、Browser Extension `TraceMind.captureError(...)`、Node/Python server SDK `TraceMindServer.captureError(...)` / `capture_error(...)`。Server SDK v1 仍然只做手动错误摘要，不做全局 request hook、log hook、DB hook 或 crash reporter。
 
 ## 终端用户反馈
 
@@ -302,7 +319,7 @@ TraceMind.capture("custom", {
 
 `tracemind.capture_setup({ platform: "browser_extension" })` 会返回安装步骤、manifest 权限提示、初始化片段、来源模型和验证命令。别名 `chrome_extension`、`edge_extension`、`firefox_extension`、`web_extension` 会归一为 `browser_extension`。
 
-插件自有 DOM 页面默认自动采集 extension UI start、page view、click、input changed without value、submit、route/path 和 foreground presence heartbeat。background/service worker 没有 DOM，自动跳过 DOM listener，只支持 `capture`、`identify`、`submitFeedback` 和 `flush`。
+插件自有 DOM 页面默认自动采集 extension UI start、page view、click、input changed without value、submit、route/path、前台 presence heartbeat 和安全 JS 错误摘要。background/service worker 没有 DOM，自动跳过 DOM listener，只支持 `capture`、`captureError`、`identify`、`submitFeedback` 和 `flush`。
 
 浏览器插件事件使用 `platform: "browser_extension"`、`sourceType: "browser_extension"`。`sourceKey` 优先使用 extension id；`sourceDetails` 只保留安全白名单：`browser`、`manifestVersion`、`runtimeContext` 和 `sdkVersion`。V1 不支持 content script 对宿主页的无侵入全自动采集，不采集宿主页 DOM、页面内容、截图、浏览器历史、书签、cookies、tab 完整 URL、query、token 或输入值。
 
@@ -475,6 +492,8 @@ window.TraceMind.capture("custom", {
 
 Native 手动埋点保持同样字段，iOS 和 macOS 都使用 Swift API，macOS 事件会携带 `platform: "macos"`。`properties` 和 `context` 只保留 string、number、boolean；SDK 会丢弃 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value 和带 query 的完整 URL。
 
+错误摘要使用 `captureError`，只保留错误类型、消息指纹、handled/fatal、component/release 和 path/screen 等上下文字段，不采集 stack 或 raw message。
+
 ```swift
 try? TraceMind.capture(
   "custom",
@@ -617,6 +636,7 @@ TraceMind 会先保存原始行为日志，再抽取为语义事件，方便 LLM
 | `submit` | 表单提交 | 用户提交表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` |
 | `route_change` | 页面跳转 | 用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer`, `attribution` |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` |
+| `app_error` | 产品错误 | 产品或运行时记录隐私安全的错误摘要，用于分析错误发生路径、前序行为、影响范围和集中爆发。 | `errorKind`, `errorType`, `messageFingerprint`, `fatal`, `handled`, `source`, `path`, `screen`, `release`, `component`, `status`, `occurredAt` |
 | `tool_call` | MCP 工具调用 | MCP server 记录工具调用完成情况，用于分析工具使用量、失败率和耗时。 | `toolName`, `status`, `durationMs`, `errorType`, `resultSizeBucket` |
 | `resource_read` | MCP 资源读取 | MCP server 记录资源读取完成情况，用于分析资源访问、失败率和耗时。 | `resourceName`, `uriScheme`, `uriTemplateHash`, `status`, `durationMs` |
 | `prompt_request` | MCP Prompt 请求 | MCP server 记录 prompt 请求完成情况，用于分析 prompt 使用、失败率和耗时。 | `promptName`, `status`, `durationMs` |

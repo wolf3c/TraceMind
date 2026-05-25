@@ -107,6 +107,17 @@ export function buildSemanticEvent(behavior) {
     };
   }
 
+  if (eventType === 'app_error') {
+    const errorType = cleanText(behavior.properties?.errorType || behavior.properties?.errorKind, '错误');
+    const fingerprint = cleanText(behavior.properties?.messageFingerprint);
+    const component = cleanText(behavior.properties?.component || behavior.context?.component);
+    return {
+      ...base,
+      title: `产品错误 ${errorType}`,
+      meaning: `产品在 ${path}${component ? ` 的 ${component}` : ''} 记录了 ${errorType} 错误摘要${fingerprint ? `，指纹 ${fingerprint}` : ''}。`,
+    };
+  }
+
   if (eventType === 'tool_call') {
     const toolName = cleanText(behavior.properties?.toolName || behavior.target?.name || eventName, 'MCP tool');
     const status = cleanText(behavior.properties?.status);

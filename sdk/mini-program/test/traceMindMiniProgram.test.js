@@ -258,10 +258,59 @@ test('sanitizes manual capture, identify, feedback, and helper interaction paylo
   assert.equal(JSON.stringify(calls).includes('should not be captured'), false);
 });
 
+test('captures sanitized mini program app_error summaries manually', async () => {
+  const { calls, host } = createHost();
+  const client = createTraceMindClient({
+    adapter: createMiniProgramAdapter('wechat', host),
+    now: () => 1770000000000,
+  });
+  const error = new Error('Payment failed for user@example.com');
+  error.stack = 'raw stack';
+
+  client.start({ projectKey: 'tm_proj_mini', provider: 'wechat', appId: 'wx123' });
+  client.captureError(error, {
+    path: '/pages/checkout/index?token=secret',
+    component: 'CheckoutPage',
+    release: '2026.05.25',
+    handled: true,
+    fatal: false,
+    properties: {
+      requestBody: 'do not send',
+      headers: 'do not send',
+      inputValue: 'do not send',
+    },
+    context: {
+      source: 'checkout',
+      authorization: 'Bearer secret',
+    },
+  });
+  await client.flush();
+
+  const captureCall = calls.find((call) => call.url.endsWith('/api/capture'));
+  const event = captureCall.data.events.find((item) => item.type === 'app_error');
+  assert.equal(event.eventName, 'app_error');
+  assert.equal(event.path, '/pages/checkout/index');
+  assert.equal(event.properties.errorType, 'Error');
+  assert.equal(event.properties.errorKind, 'runtime');
+  assert.equal(event.properties.component, 'CheckoutPage');
+  assert.equal(event.properties.release, '2026.05.25');
+  assert.equal(event.properties.handled, true);
+  assert.equal(event.properties.status, 'error');
+  assert.match(event.properties.messageFingerprint, /^tm_error_[a-f0-9]{24}$/);
+  assert.deepEqual(event.context, { source: 'checkout' });
+  const serialized = JSON.stringify(event);
+  assert.equal(serialized.includes('Payment failed'), false);
+  assert.equal(serialized.includes('user@example.com'), false);
+  assert.equal(serialized.includes('raw stack'), false);
+  assert.equal(serialized.includes('Bearer secret'), false);
+  assert.equal(serialized.includes('token=secret'), false);
+});
+
 test('singleton TraceMind supports the public interface', () => {
   assert.equal(typeof TraceMind.start, 'function');
   assert.equal(typeof TraceMind.identify, 'function');
   assert.equal(typeof TraceMind.capture, 'function');
+  assert.equal(typeof TraceMind.captureError, 'function');
   assert.equal(typeof TraceMind.submitFeedback, 'function');
   assert.equal(typeof TraceMind.trackTap, 'function');
   assert.equal(typeof TraceMind.trackInput, 'function');

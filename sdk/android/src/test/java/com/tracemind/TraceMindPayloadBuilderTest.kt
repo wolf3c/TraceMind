@@ -195,6 +195,57 @@ class TraceMindPayloadBuilderTest {
   }
 
   @Test
+  fun manualCaptureErrorBuildsSanitizedAppErrorPayload() {
+    val identityStore = InMemoryIdentityStore(userId = "user_123")
+    val client = TraceMindClient(
+      projectKey = "tm_proj_android",
+      endpoint = "https://tracemind.example.com/api/capture",
+      packageName = "com.example.android",
+      appLabel = "Example Android",
+      identityStore = identityStore
+    )
+
+    client.captureError(
+      error = IllegalStateException("Payment failed for user@example.com"),
+      path = "CheckoutActivity?token=secret",
+      handled = true,
+      fatal = false,
+      properties = mapOf(
+        "component" to "CheckoutActivity",
+        "release" to "2026.05.25",
+        "requestBody" to "do not send",
+        "headers" to "do not send",
+        "inputValue" to "do not send"
+      ),
+      context = mapOf(
+        "source" to "checkout",
+        "authorization" to "Bearer secret"
+      )
+    )
+
+    val batch = client.flushPayload()
+    val event = batch.events.first()
+    val json = batch.toJson()
+
+    assertEquals("app_error", event.type)
+    assertEquals("app_error", event.eventName)
+    assertEquals("CheckoutActivity", event.path)
+    assertEquals("IllegalStateException", event.properties["errorType"])
+    assertEquals("runtime", event.properties["errorKind"])
+    assertEquals("CheckoutActivity", event.properties["component"])
+    assertEquals("2026.05.25", event.properties["release"])
+    assertEquals(true, event.properties["handled"])
+    assertEquals(false, event.properties["fatal"])
+    assertEquals("error", event.properties["status"])
+    assertTrue((event.properties["messageFingerprint"] as String).startsWith("tm_error_"))
+    assertEquals("checkout", event.context["source"])
+    assertFalse(json.contains("Payment failed"))
+    assertFalse(json.contains("user@example.com"))
+    assertFalse(json.contains("Bearer secret"))
+    assertFalse(json.contains("token=secret"))
+  }
+
+  @Test
   fun deepLinkAttributionIsAttachedToEventsAndPresenceWithoutQueryValues() {
     val presences = mutableListOf<TraceMindPresencePayload>()
     val client = TraceMindClient(

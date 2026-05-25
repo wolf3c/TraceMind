@@ -69,6 +69,56 @@ test('sends custom events through the native SDK without raw user content', () =
   assertReactNativeDeviceInfo(calls[0][2].deviceInfo);
 });
 
+test('sends sanitized app_error summaries through the native SDK', () => {
+  const calls = [];
+  const client = createTraceMindClient({
+    nativeModule: {
+      capture(type, payload) {
+        calls.push(['capture', type, payload]);
+      },
+    },
+    platform: 'android',
+  });
+  const error = new Error('Token expired for user@example.com');
+  error.stack = 'raw stack';
+
+  client.captureError(error, {
+    path: '/checkout?token=secret',
+    component: 'CheckoutScreen',
+    release: '2026.05.25',
+    handled: true,
+    fatal: false,
+    properties: {
+      requestBody: 'do not send',
+      inputValue: 'do not send',
+      headers: 'do not send',
+    },
+    context: {
+      source: 'checkout',
+      authorization: 'Bearer secret',
+    },
+  });
+
+  assert.equal(calls[0][1], 'app_error');
+  assert.equal(calls[0][2].eventName, 'app_error');
+  assert.equal(calls[0][2].path, '/checkout');
+  assert.equal(calls[0][2].properties.errorType, 'Error');
+  assert.equal(calls[0][2].properties.errorKind, 'runtime');
+  assert.equal(calls[0][2].properties.component, 'CheckoutScreen');
+  assert.equal(calls[0][2].properties.release, '2026.05.25');
+  assert.equal(calls[0][2].properties.handled, true);
+  assert.equal(calls[0][2].properties.status, 'error');
+  assert.match(calls[0][2].properties.messageFingerprint, /^tm_error_[a-f0-9]{24}$/);
+  assert.deepEqual(calls[0][2].context, { source: 'checkout' });
+  assertReactNativeDeviceInfo(calls[0][2].deviceInfo);
+  const serialized = JSON.stringify(calls[0][2]);
+  assert.equal(serialized.includes('Token expired'), false);
+  assert.equal(serialized.includes('user@example.com'), false);
+  assert.equal(serialized.includes('raw stack'), false);
+  assert.equal(serialized.includes('Bearer secret'), false);
+  assert.equal(serialized.includes('token=secret'), false);
+});
+
 test('passes action correlation fields through to the native SDK', () => {
   const calls = [];
   const client = createTraceMindClient({

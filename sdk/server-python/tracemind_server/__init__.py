@@ -8,7 +8,7 @@ import uuid
 
 
 SDK_VERSION = "0.1.0"
-SDK_CONTENT_HASH = "sha256:25af77eb59bf420a8e6ac6a721aea03002c5d9b2ae673a4f33d351f8dad31969"
+SDK_CONTENT_HASH = "sha256:0a685a9dc9a80889cce6616c7b40a982e98fcc5c13f2a698d987afcfe39e36ba"
 DEFAULT_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/capture"
 DEFAULT_FEEDBACK_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/user-feedback"
 FORBIDDEN_FIELD_PATTERN = re.compile(
@@ -23,10 +23,113 @@ FULL_QUERY_URL_PATTERN = re.compile(r"https?://[^\s?#]+[^\s]*\?[^\s\"'<>)]*", re
 ATTRIBUTION_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._~:-]{0,119}$")
 ATTRIBUTION_DOMAIN_PATTERN = re.compile(r"^[a-z0-9.-]+$")
 ATTRIBUTION_REFERRER_TYPES = {"direct", "internal", "external", "search", "social"}
+APP_ERROR_CONTEXT_KEYS = {"source", "screen", "release", "component", "status", "occurredAt"}
 
 
 def _safe_string(value, max_length=200, fallback=""):
     return str(value or fallback).strip()[:max_length]
+
+
+def _strip_query_path(value, fallback="/"):
+    text = _safe_string(value, 500, fallback)
+    if not text:
+        return fallback
+    if re.match(r"^[a-z][a-z0-9+.-]*://", text, re.IGNORECASE):
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(text)
+            return _safe_string((parsed.path or "/") + (("#" + parsed.fragment) if parsed.fragment else ""), 500, fallback)
+        except Exception:
+            return fallback
+    return _safe_string(text.split("?", 1)[0] or fallback, 500, fallback)
+
+
+def _clean_error_field(value, max_length=160):
+    text = _safe_string(value, max_length)
+    if not text:
+        return ""
+    if re.search(r"@|https?:|[?&=]|%40|bearer\s+|api[_-]?key|access[_-]?token|secret|password", text, re.IGNORECASE):
+        return ""
+    return text
+
+
+def _sanitize_error_message_for_hash(value):
+    text = _safe_string(value, 500)
+    text = re.sub(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", "[email]", text, flags=re.IGNORECASE)
+    text = re.sub(r"https?://\S+\?\S+", "[url]", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\b(bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|secret\S*)\b",
+        "[secret]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\s+", " ", text).strip()[:240]
+
+
+def _message_fingerprint(error_type, message):
+    digest = hashlib.sha256(f"{error_type}:{_sanitize_error_message_for_hash(message)}".encode("utf-8")).hexdigest()
+    return "tm_error_" + digest[:24]
+
+
+def _sanitize_app_error_context(fields):
+    return {key: value for key, value in sanitize_fields(fields).items() if key in APP_ERROR_CONTEXT_KEYS}
+
+
+def _error_attr(value, name):
+    if isinstance(value, dict):
+        return value.get(name)
+    return getattr(value, name, None)
+
+
+def _app_error_payload(error_or_info=None, options=None, default_source="server"):
+    options = options or {}
+    info = error_or_info if isinstance(error_or_info, dict) else {}
+    error = error_or_info if isinstance(error_or_info, BaseException) else info.get("error")
+    merged = {**info, **options}
+    explicit_type = merged.get("errorType") or merged.get("error_type")
+    if explicit_type:
+        raw_error_type = explicit_type
+    elif error:
+        raw_error_type = error.__class__.__name__
+    elif isinstance(error_or_info, str):
+        raw_error_type = "Error"
+    else:
+        raw_error_type = ""
+    error_type = _clean_error_field(raw_error_type, 80) or "Error"
+    message = merged.get("message") or _error_attr(error, "message") or str(error_or_info or error_type)
+    properties = {
+        "errorKind": _clean_error_field(merged.get("errorKind") or merged.get("error_kind"), 40) or "runtime",
+        "errorType": error_type,
+        "messageFingerprint": _clean_error_field(merged.get("messageFingerprint") or merged.get("message_fingerprint"), 120)
+        or _message_fingerprint(error_type, message),
+        "fatal": merged.get("fatal") is True,
+        "handled": False if merged.get("handled") is False else True,
+        "source": _clean_error_field(merged.get("source"), 40) or default_source,
+        "status": "error",
+    }
+    nested_properties = merged.get("properties") if isinstance(merged.get("properties"), dict) else {}
+    release = _clean_error_field(merged.get("release") or nested_properties.get("release"), 80)
+    component = _clean_error_field(merged.get("component") or nested_properties.get("component"), 120)
+    if release:
+        properties["release"] = release
+    if component:
+        properties["component"] = component
+    raw_path = merged.get("path") or merged.get("screen")
+    path = _strip_query_path(raw_path) if raw_path else ""
+    payload = {
+        "event_name": "app_error",
+        "properties": properties,
+        "context": _sanitize_app_error_context(merged.get("context")),
+        "source_details": merged.get("source_details"),
+        "user_id": merged.get("user_id"),
+        "anonymous_id": merged.get("anonymous_id"),
+        "session_id": merged.get("session_id"),
+        "attribution": merged.get("attribution"),
+    }
+    if path:
+        payload["path"] = path
+    return payload
 
 
 def _clean_attribution_value(value):
@@ -259,6 +362,10 @@ class TraceMindServerClient:
             event["attribution"] = safe_attribution
         self._enqueue(event)
 
+    def capture_error(self, error_or_info=None, **kwargs):
+        payload = _app_error_payload(error_or_info, kwargs, "server")
+        return self.capture("app_error", **payload)
+
     def flush(self):
         if not self.queue:
             return {"ok": True, "accepted": 0}
@@ -311,6 +418,12 @@ class TraceMindServer:
         if cls._client is None:
             raise RuntimeError("TraceMindServer.start must be called before capture.")
         return cls._client.capture(event_type, **kwargs)
+
+    @classmethod
+    def capture_error(cls, error_or_info=None, **kwargs):
+        if cls._client is None:
+            raise RuntimeError("TraceMindServer.start must be called before capture_error.")
+        return cls._client.capture_error(error_or_info, **kwargs)
 
     @classmethod
     def flush(cls):

@@ -38,6 +38,7 @@ export const EVENT_TYPES = {
   submit: '提交表单',
   route_change: '页面跳转',
   api_call: '调用接口',
+  app_error: '产品错误',
   tool_call: '调用 MCP 工具',
   resource_read: '读取 MCP 资源',
   prompt_request: '请求 MCP Prompt',
@@ -86,6 +87,13 @@ export const EVENT_DEFINITIONS = [
     name: '接口调用',
     meaning: '客户端或服务端记录了一次接口调用，用于分析接口失败、关键后端流程和服务端埋点。',
     typicalProperties: ['method', 'status', 'path'],
+    platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension', 'server'],
+  },
+  {
+    eventType: 'app_error',
+    name: '产品错误',
+    meaning: '产品或运行时记录了一次隐私安全的错误摘要，用于分析用户在哪里遇到错误、之前做了什么、影响哪些路径和是否集中爆发。',
+    typicalProperties: ['errorKind', 'errorType', 'messageFingerprint', 'fatal', 'handled', 'source', 'path', 'screen', 'release', 'component', 'status', 'occurredAt'],
     platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension', 'server'],
   },
   {
@@ -1087,6 +1095,7 @@ function deviceLabel(event = {}) {
 }
 
 function isFailureEvent(event = {}) {
+  if (event.eventType === 'app_error' || event.eventName === 'app_error') return true;
   const status = String(valueInObject(event.properties, ['status', 'state', 'result']) || event.status || '').toLowerCase();
   const phase = String(valueInObject(event.properties, ['phase']) || '').toLowerCase();
   const success = event.properties?.success;
