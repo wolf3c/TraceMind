@@ -42,7 +42,7 @@ jobs:
         run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version
       - name: Publish package
         if: steps.exists.outcome != 'success'
-        run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" publish ".sdk-publish/${{ matrix.sdk }}" --access public
+        run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" publish ".sdk-publish/${{ matrix.sdk }}" --access public --tag latest
       - name: Verify package
         run: node "$RUNNER_TEMP/tracemind-npm/node_modules/npm/bin/npm-cli.js" view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version
 
