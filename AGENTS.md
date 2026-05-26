@@ -32,6 +32,13 @@ Keep reusable code under `imports/` so Meteor imports it explicitly instead of r
 - After frontend or visible UI changes, verify the relevant local route with `@Browser` when the URL is known or easy to start. Keep the browser in the background unless the user asks to watch or open it.
 - If `@Browser` is unavailable, say so before falling back to another browser or shell-based approach.
 
+## Product Update Copywriting
+
+- Product Update summaries must be concise and customer-value-led: in one short sentence, say what changed and what customer benefit it creates.
+- Do not make the summary implementation-first, privacy-first, or caveat-first unless that is the actual customer-facing feature. Put privacy boundaries, platform nuances, and technical details in the detail bullets.
+- For cross-runtime capabilities, avoid examples that make one runtime look like the only supported surface. Say `各终端` / `across runtimes`, or name the full relevant runtime set when precision is necessary.
+- When privacy is relevant, start the detail bullet with `隐私安全` / `Privacy-safe`, then state what is retained and what is not collected. Keep that boundary out of the summary unless privacy is the main value proposition.
+
 ## Error Ledger
 
 Add entries here when an agent mistake reveals a reusable rule for future work. Use this format:
@@ -56,6 +63,7 @@ Add entries here when an agent mistake reveals a reusable rule for future work. 
 - `2026-05-22`: Hourly health social copy framed the value as seeing whether a product code change got better or worse, missing the stronger customer value of observing promotion and operations effects by hour. Root cause: all behavior-analysis value was forced into the product-iteration loop instead of matching the feature's natural use case. Future rule: for hourly health and trend messaging, emphasize operations or promotion timing, when a change starts improving or declining, and user active-hour discovery; mention product changes only when the specific campaign is about feature iteration.
 - `2026-05-22`: V2EX was kept in the customer-acquisition skill as a promotion/comment outreach channel after moderation risk appeared. Root cause: the workflow treated approval-gated outreach as sufficient and did not first respect the community's rule/norm boundary against promotional comments. Future rule: remove channels from acquisition workflows when their rules or norms make product promotion unsuitable; do not try to fix a rule violation by shortening copy or adding approval gates.
 - `2026-05-25`: A `tracemind-social-progress-posting` request to send the 23rd plan was handled as a customer-acquisition checklist and committed monitoring notes, without producing or publishing the intended original social progress post flow. Root cause: the dated "plan" file was treated as the task authority even though the invoked skill's purpose is product-progress post drafting/publishing with an approval gate. Future rule: when a user invokes a specific skill, first restate that skill's intended deliverable and stop to clarify if the referenced dated plan belongs to a different workflow; do not substitute another skill's operational checklist unless the user confirms the switch.
+- `2026-05-26`: Product Update summary drafts were too implementation/privacy-led, and detail examples overfocused on Web in a way that made other supported runtimes look excluded. Root cause: the summary was treated as a feature description instead of customer-value copy with a clear summary/detail split. Future rule: Product Update summaries must be short, customer-value-first, and include both capability and benefit; put privacy boundaries, examples, and runtime specifics in detail bullets without implying unsupported surfaces.
 
 ## Optimization Workflow Requirements
 

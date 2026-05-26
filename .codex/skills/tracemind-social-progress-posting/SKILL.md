@@ -20,11 +20,11 @@ Use this skill for original TraceMind product-progress posts on social platforms
 
 Update this section after successful publishing so the next run has a reliable cutoff.
 
-- Last published at: `2026-05-22 10:55:40 +0800`
-- Last cutoff commit: `0aaebf575939d93b58ecf0eaa5eede9bf7789425`
-- Last platforms: `X/Twitter, 即刻`
-- Last source window: `fallback 3-day committed history (c1a8196^..0aaebf5)`
-- Last notes: `Day 1 hourly health posts published to X/Twitter and 即刻; V2EX excluded because TraceMind promotion conflicts with community rules; 小红书/Appinn skipped.`
+- Last published at: `2026-05-26 10:15:46 +0800`
+- Last cutoff commit: `5afebcbdfb6f2eb3377e9a9a29ea58f99d35fa31`
+- Last platforms: `即刻`
+- Last source window: `plan-defined carry-over evidence (94a433d, 24270e0), verified at 5afebcb; publish-state range 0aaebf5..5afebcb`
+- Last notes: `Day 3 agent setup freshness post published to 即刻 by user; X/Twitter blocked by blank/network-error load; V2EX skipped by platform rules; 小红书/Appinn skipped by plan.`
 
 ## Source Inputs
 
