@@ -13,6 +13,9 @@
     showProjectCreate,
     showProjectActions,
     showProjectRename,
+    showSetupDetails = $bindable(false),
+    projectSummaryLoading,
+    projectSummaryError,
     copiedTarget,
     agentInstallPrompt,
     sourceSummary,
@@ -20,6 +23,7 @@
     copiedLabel,
     changeSelectedProject,
     toggleProjectActions,
+    handleSetupDetailsOpened = () => {},
     startProjectRename,
     removeProject,
     createProject,
@@ -38,10 +42,11 @@
     unblockSource,
   } = $props();
 
-  let showSetupDetails = $state(false);
-
   function toggleSetupDetails() {
     showSetupDetails = !showSetupDetails;
+    if (showSetupDetails) {
+      handleSetupDetailsOpened();
+    }
   }
 
   function changeProject(event) {
@@ -198,7 +203,14 @@
         </summary>
         <div class="source-panel">
           <p class="disclosure-description">{$t("See recent apps and SDKs writing to this project key")}</p>
-          {#if sourceSummary.length}
+          {#if projectSummaryError}
+            <div class="inline-error" role="alert">
+              <strong>{$t("Could not load capture sources.")}</strong>
+              <span>{projectSummaryError}</span>
+            </div>
+          {:else if projectSummaryLoading && !sourceSummary.length}
+            <p class="empty">{$t("Loading capture sources...")}</p>
+          {:else if sourceSummary.length}
             <div class="source-list">
               {#each sourceSummary as source (`${source.sourceType}:${source.sourceKey}`)}
                 <div class:blocked={source.blocked} class="source-row">

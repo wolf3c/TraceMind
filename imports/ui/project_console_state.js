@@ -29,6 +29,24 @@ export function resolveInitialProjectSummaryState() {
   };
 }
 
+export function shouldLoadProjectSummaryForSetup({
+  projectId,
+  reportDate,
+  selectedProjectSummary,
+  projectSummaryLoading,
+} = {}) {
+  if (!projectId || !reportDate || projectSummaryLoading) return false;
+  return selectedProjectSummary?.project?._id !== projectId
+    || selectedProjectSummary?.summaryWindow?.reportDate !== reportDate;
+}
+
+export function shouldShowProjectHealthRefresh({
+  selectedReportDate,
+  todayReportDate,
+} = {}) {
+  return Boolean(selectedReportDate && todayReportDate && selectedReportDate === todayReportDate);
+}
+
 export function shouldApplyProjectSummaryResponse({
   requestId,
   activeRequestId,

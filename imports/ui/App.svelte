@@ -27,6 +27,8 @@
     mergeProjectIntoDashboard,
     resolveInitialProjectSummaryState,
     resolveSelectedProjectId,
+    shouldLoadProjectSummaryForSetup,
+    shouldShowProjectHealthRefresh,
     shouldApplyProjectSummaryResponse,
   } from "./project_console_state";
 
@@ -65,6 +67,7 @@
   let showProjectCreate = $state(false);
   let showProjectActions = $state(false);
   let showProjectRename = $state(false);
+  let showSetupDetails = $state(false);
   let showActiveTimeTip = $state(false);
   let recentOnline = $state(null);
   let recentOnlineLoading = $state(false);
@@ -141,6 +144,7 @@
   let yesterdayReportDate = $derived(addReportDays(todayReportDate, -1));
   let dayBeforeReportDate = $derived(addReportDays(todayReportDate, -2));
   let isSelectedReportToday = $derived(selectedReportDate === todayReportDate);
+  let canRefreshProjectHealth = $derived(shouldShowProjectHealthRefresh({ selectedReportDate, todayReportDate }));
   let recentOnlineRefreshAge = $derived(formatRefreshAge(recentOnlineLastLoadedAt, refreshAgeTick, selectedLocale, true));
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
   let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
@@ -171,6 +175,7 @@
   }
 
   function requestDailyReportRefresh(projectId = selectedProjectId, reportDate = selectedReportDate) {
+    if (!shouldShowProjectHealthRefresh({ selectedReportDate: reportDate, todayReportDate })) return;
     if (!Meteor.userId() || !projectId || !reportDate) return;
     callMethod("tracemind.project.dailyReports.refresh", projectId, reportDate).catch(() => {});
   }
@@ -271,8 +276,10 @@
       projectSummaryLastLoadedAt = null;
       resetEventStream();
       resetRecentOnline();
+      showSetupDetails = false;
     } else if (nextSelectedProjectId !== selectedProjectId) {
       selectedProjectId = nextSelectedProjectId;
+      selectedProjectSummary = null;
       projectSummaryLastLoadedAt = null;
       resetEventStream();
       resetRecentOnline();
@@ -334,6 +341,19 @@
         projectSummaryLoading = false;
       }
     }
+  }
+
+  function loadProjectSummaryIfNeeded(projectId = selectedProjectId, reportDate = selectedReportDate) {
+    if (!shouldLoadProjectSummaryForSetup({
+      projectId,
+      reportDate,
+      selectedProjectSummary,
+      projectSummaryLoading,
+    })) {
+      return Promise.resolve(selectedProjectSummary);
+    }
+
+    return loadProjectSummary(projectId, reportDate);
   }
 
   async function loadProjectEvents({ reset = false } = {}) {
@@ -505,7 +525,7 @@
     }
   }
 
-  async function loadDashboard({ loadProjectSummary: shouldLoadProjectSummary = true } = {}) {
+  async function loadDashboard() {
     const requestUserId = Meteor.userId();
     if (!requestUserId) return null;
     if (dashboardLoadPromise) return dashboardLoadPromise;
@@ -518,9 +538,6 @@
     const loadPromise = callMethod("tracemind.dashboard.bootstrap")
       .then((result) => {
         if (requestId !== dashboardRequestId || requestUserId !== Meteor.userId()) return null;
-        if (shouldLoadProjectSummary && selectedProjectId) {
-          loadProjectSummary(selectedProjectId).catch(() => {});
-        }
         return result;
       })
       .catch((error) => {
@@ -555,13 +572,15 @@
 
   async function retryProjectSummary() {
     status = "";
-    resetEventStream();
-    resetRecentOnline();
+    if (!canRefreshProjectHealth) return;
     try {
       requestDailyReportRefresh();
-      await loadProjectSummary();
       if (isSelectedReportToday) {
+        resetRecentOnline();
         loadRecentOnline().catch(() => {});
+      }
+      if (showSetupDetails) {
+        loadProjectSummaryIfNeeded().catch(() => {});
       }
     } catch (error) {
       status = errorMessage(error);
@@ -574,6 +593,9 @@
     resetEventStream();
     resetRecentOnline();
     requestDailyReportRefresh(selectedProjectId, reportDate);
+    if (showSetupDetails) {
+      loadProjectSummaryIfNeeded(selectedProjectId, reportDate).catch(() => {});
+    }
   }
 
   function changeReportDate(event) {
@@ -598,12 +620,18 @@
     showProjectCreate = false;
     showProjectActions = false;
     showProjectRename = false;
-    loadProjectSummary().catch(() => {});
+    if (showSetupDetails) {
+      loadProjectSummaryIfNeeded(nextProjectId).catch(() => {});
+    }
   }
 
   function toggleProjectActions() {
     showProjectActions = !showProjectActions;
     if (!showProjectActions) showProjectRename = false;
+  }
+
+  function handleSetupDetailsOpened() {
+    loadProjectSummaryIfNeeded().catch(() => {});
   }
 
   function startProjectRename() {
@@ -637,6 +665,7 @@
     status = "";
     try {
       const createdProject = await callMethod("tracemind.project.create", name);
+      replaceProject(createdProject);
       selectedProjectId = createdProject._id;
       resetEventStream();
       resetRecentOnline();
@@ -644,7 +673,10 @@
       showProjectCreate = false;
       showProjectActions = false;
       showProjectRename = false;
-      await loadProjectSummary(createdProject._id);
+      requestDailyReportRefresh(createdProject._id, selectedReportDate);
+      if (showSetupDetails) {
+        loadProjectSummaryIfNeeded(createdProject._id).catch(() => {});
+      }
       status = translateNow("Project created and selected.");
     } catch (error) {
       status = errorMessage(error);
@@ -692,6 +724,7 @@
       showProjectActions = false;
       showProjectRename = false;
       showProjectCreate = false;
+      showSetupDetails = false;
       status = translateNow("Project deleted.");
     } catch (error) {
       status = errorMessage(error);
@@ -875,6 +908,7 @@
     showProjectCreate = false;
     showProjectActions = false;
     showProjectRename = false;
+    showSetupDetails = false;
     userId = null;
     loggingIn = false;
     showIntro = false;
@@ -1044,8 +1078,8 @@
           dashboard = nextDashboard;
           dashboardLoadError = "";
           if (ready) dashboardLoading = false;
-          if (selectedProjectId && selectedProjectId !== previousSelectedProjectId) {
-            loadProjectSummary(selectedProjectId).catch(() => {});
+          if (selectedProjectId && selectedProjectId !== previousSelectedProjectId && showSetupDetails) {
+            loadProjectSummaryIfNeeded(selectedProjectId).catch(() => {});
           }
         } else if (ready) {
           dashboard = null;
@@ -1150,6 +1184,7 @@
             showProjectCreate = false;
             showProjectActions = false;
             showProjectRename = false;
+            showSetupDetails = false;
             dashboard = null;
           }
           return;
@@ -1243,6 +1278,9 @@
           {showProjectCreate}
           {showProjectActions}
           {showProjectRename}
+          bind:showSetupDetails
+          {projectSummaryLoading}
+          {projectSummaryError}
           {copiedTarget}
           {agentInstallPrompt}
           {sourceSummary}
@@ -1250,6 +1288,7 @@
           {copiedLabel}
           {changeSelectedProject}
           {toggleProjectActions}
+          {handleSetupDetailsOpened}
           {startProjectRename}
           {removeProject}
           {createProject}
@@ -1281,7 +1320,7 @@
           {yesterdayReportDate}
           {dayBeforeReportDate}
           {projectSummaryRefreshAge}
-          {projectSummaryLoading}
+          {canRefreshProjectHealth}
           {showActiveTimeTip}
           {recentOnline}
           {recentOnlineLoading}
@@ -1307,9 +1346,6 @@
         <EventStreamPanel
           {primaryProject}
           {healthCurrent}
-          {projectSummaryError}
-          {projectSummaryLoading}
-          {selectedProjectSummary}
           {showEventStream}
           {eventStreamError}
           {eventStreamLoading}

@@ -267,6 +267,8 @@ export default {
   "Create an MCP token before generating the coding agent setup prompt.": "请先创建 MCP Token，再生成 coding agent 接入提示词。",
   "Capture sources": "采集来源",
   "See recent apps and SDKs writing to this project key": "查看最近写入这个项目 key 的 App 和 SDK",
+  "Could not load capture sources.": "无法加载采集来源。",
+  "Loading capture sources...": "正在加载采集来源...",
   "Events": "事件数",
   "Last seen": "最近出现",
   "Unknown": "未知",

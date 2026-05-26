@@ -146,18 +146,26 @@ async function buildProjectSummary(project, selectedDateInput) {
   const now = new Date();
   const today = reportDateForDate(now);
   const selectedDate = String(selectedDateInput || today) > today ? today : selectedDateInput || today;
-  const rawCount = await RawBehaviors.find({ projectId: project._id }).countAsync();
-  const semanticCount = await SemanticEvents.find({ projectId: project._id }).countAsync();
-  const rawBehaviors = await RawBehaviors.find(
-    { projectId: project._id },
-    { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT },
-  ).fetchAsync();
-  const presenceSessions = await PresenceSessions.find(
-    { projectId: project._id },
-    { sort: { lastSeenAt: -1 }, limit: PROJECT_SUMMARY_PRESENCE_LIMIT },
-  ).fetchAsync();
   queueProjectDailyHealthRefresh(project._id, selectedDate, { now });
-  const { report, health } = await resolveProjectDailyHealth(project._id, selectedDate, { now });
+  const [
+    rawCount,
+    semanticCount,
+    rawBehaviors,
+    presenceSessions,
+    { report, health },
+  ] = await Promise.all([
+    RawBehaviors.find({ projectId: project._id }).countAsync(),
+    SemanticEvents.find({ projectId: project._id }).countAsync(),
+    RawBehaviors.find(
+      { projectId: project._id },
+      { sort: { occurredAt: -1 }, limit: PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT },
+    ).fetchAsync(),
+    PresenceSessions.find(
+      { projectId: project._id },
+      { sort: { lastSeenAt: -1 }, limit: PROJECT_SUMMARY_PRESENCE_LIMIT },
+    ).fetchAsync(),
+    resolveProjectDailyHealth(project._id, selectedDate, { now }),
+  ]);
 
   return {
     project: publicProject(await ensureProjectMcpTokens(project)),

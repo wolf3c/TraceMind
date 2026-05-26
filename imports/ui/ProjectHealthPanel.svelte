@@ -13,7 +13,7 @@
     yesterdayReportDate,
     dayBeforeReportDate,
     projectSummaryRefreshAge,
-    projectSummaryLoading,
+    canRefreshProjectHealth,
     showActiveTimeTip,
     recentOnline,
     recentOnlineLoading,
@@ -90,9 +90,11 @@
   </div>
   <div class="refresh-control">
     <span class="refresh-age">{projectSummaryRefreshAge}</span>
-    <button class="ghost" type="button" onclick={retryProjectSummary} disabled={projectSummaryLoading || !primaryProject}>
-      {projectSummaryLoading ? $t("Loading project events...") : $t("Refresh")}
-    </button>
+    {#if canRefreshProjectHealth}
+      <button class="ghost" type="button" onclick={retryProjectSummary} disabled={!primaryProject}>
+        {$t("Refresh")}
+      </button>
+    {/if}
   </div>
 </div>
 <div class="event-metrics health-metrics" aria-label="Current project health summary">

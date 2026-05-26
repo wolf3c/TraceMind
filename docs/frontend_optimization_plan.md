@@ -218,6 +218,33 @@
 - Run `npm test` if the local Meteor environment is available.
 - Start the app and visually verify desktop and mobile hierarchy, event rows, copy states, and disclosure panels.
 
+## 2026-05-26 Project Health Loading Pass
+
+### Current Behavior
+
+- The project health cards can render from the `ProjectDailyReports` publication, but the console still starts `tracemind.project.summary` on project selection.
+- That summary method also gathers source samples and legacy project-detail metadata, so the health refresh button and event stream area can show "Loading project events..." even after the health cards are already visible.
+- The detailed event stream is paginated and user-triggered, but its collapsed entry is still gated by the unrelated summary loading state.
+
+### Target Behavior
+
+- Let project health render and refresh from daily report publication state without waiting for project summary samples.
+- Show the manual health refresh only for today's report; historical reports are read-only in the console and should not issue refresh requests.
+- Keep the detailed event stream lazy: load page data only when the user opens it.
+- Load capture source summaries when setup details are expanded, with a specific source loading/error state and parallelized summary reads.
+
+### Runtime Matrix
+
+- Web/dashboard: change.
+- iOS, macOS, Android, React Native, Hybrid, Mini Program, Browser Extension, server SDKs, MCP, Agent Skill, and capture/API surfaces: no change, because this only changes console loading orchestration.
+
+### Verification Plan
+
+- Add project-console state coverage for summary-on-setup loading.
+- Run `meteor test --once --driver-package meteortesting:mocha --port <free-port>`.
+- Run `npx svelte-check --compiler-warnings error`.
+- Start the app and verify the health panel shows refresh and event-stream controls without waiting for `tracemind.project.summary`.
+
 ## 2026-05-14 Collapsed Project Setup Pass
 
 ### Current Behavior

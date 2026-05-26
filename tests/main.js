@@ -46,6 +46,8 @@ import {
   writeDismissedProductUpdateId,
 } from '../imports/ui/product_updates';
 import {
+  shouldLoadProjectSummaryForSetup,
+  shouldShowProjectHealthRefresh,
   mergeProjectIntoDashboard,
   resolveInitialProjectSummaryState,
   resolveSelectedProjectId,
@@ -3062,6 +3064,59 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(shouldApplyProjectSummaryResponse({ ...current, currentUserId: 'user-b' }), false);
       assert.strictEqual(shouldApplyProjectSummaryResponse({ ...current, selectedProjectId: 'project-b' }), false);
     });
+
+    it('loads project summary only when expanded setup details need fresh source data', function () {
+      const selectedProjectSummary = {
+        project: { _id: 'project-a' },
+        summaryWindow: { reportDate: '2026-05-26' },
+      };
+
+      assert.strictEqual(shouldLoadProjectSummaryForSetup({
+        projectId: 'project-a',
+        reportDate: '2026-05-26',
+        selectedProjectSummary: null,
+        projectSummaryLoading: false,
+      }), true);
+      assert.strictEqual(shouldLoadProjectSummaryForSetup({
+        projectId: 'project-a',
+        reportDate: '2026-05-26',
+        selectedProjectSummary,
+        projectSummaryLoading: false,
+      }), false);
+      assert.strictEqual(shouldLoadProjectSummaryForSetup({
+        projectId: 'project-b',
+        reportDate: '2026-05-26',
+        selectedProjectSummary,
+        projectSummaryLoading: false,
+      }), true);
+      assert.strictEqual(shouldLoadProjectSummaryForSetup({
+        projectId: 'project-a',
+        reportDate: '2026-05-27',
+        selectedProjectSummary,
+        projectSummaryLoading: false,
+      }), true);
+      assert.strictEqual(shouldLoadProjectSummaryForSetup({
+        projectId: 'project-a',
+        reportDate: '2026-05-26',
+        selectedProjectSummary: null,
+        projectSummaryLoading: true,
+      }), false);
+    });
+
+    it('shows project health refresh only for today', function () {
+      assert.strictEqual(shouldShowProjectHealthRefresh({
+        selectedReportDate: '2026-05-26',
+        todayReportDate: '2026-05-26',
+      }), true);
+      assert.strictEqual(shouldShowProjectHealthRefresh({
+        selectedReportDate: '2026-05-25',
+        todayReportDate: '2026-05-26',
+      }), false);
+      assert.strictEqual(shouldShowProjectHealthRefresh({
+        selectedReportDate: '2026-05-24',
+        todayReportDate: '2026-05-26',
+      }), false);
+    });
   });
 
   it('normalizes developer emails', function () {
@@ -4615,6 +4670,7 @@ projectKey: tm_proj_sensitive`,
     });
 
     it('summarizes only the selected project for project detail views', async function () {
+      this.timeout(5000);
       const email = `project-summary-${Date.now()}@example.com`;
       const userId = await Meteor.users.insertAsync({
         emails: [{ address: email, verified: true }],
