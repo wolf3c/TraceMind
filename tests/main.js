@@ -152,6 +152,24 @@ describe('TraceMind', function () {
       assert.strictEqual(localizedProductUpdateText('Legacy string', 'zh'), 'Legacy string');
     });
 
+    it('includes the production error capture product update', function () {
+      const update = PRODUCT_UPDATES.find((item) => item.id === '2026-05-25-production-error-capture');
+
+      assert.strictEqual(update.publishedAt, '2026-05-25');
+      assert.strictEqual(latestProductUpdate(PRODUCT_UPDATES).id, update.id);
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'en'), 'Production error capture');
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'zh-CN'), '线上报错采集');
+      assert.strictEqual(
+        localizedProductUpdateText(update.summary, 'zh'),
+        'TraceMind 现在可以自动/手动收集各终端线上报错，并关联行为路径，帮助团队更快定位问题、优化体验。',
+      );
+      assert.deepStrictEqual(localizedProductUpdateDetails(update.details, 'zh'), [
+        '各终端报错会作为统一的 app_error 摘要进入行为路径、来源、session、用户和健康趋势分析。',
+        '支持自动捕获或手动上报两种接入方式，让线上错误能和发生前后的用户行为一起排查。',
+        '隐私安全：只保留错误类型、消息指纹、handled/fatal、path/screen、component、release 等错误信息，不采集请求体、响应体、raw prompt、secret、截图或录屏。',
+      ]);
+    });
+
     it('shows the newest update unless that exact update was dismissed', function () {
       const updates = [
         { id: '2026-05-22-hourly-health', publishedAt: '2026-05-22' },

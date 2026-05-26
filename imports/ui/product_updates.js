@@ -5,6 +5,36 @@ const supportedProductUpdateLocales = ["en", "zh"];
 
 export const PRODUCT_UPDATES = [
   {
+    id: "2026-05-25-production-error-capture",
+    categoryLabel: {
+      en: "New feature notice",
+      zh: "新功能提醒",
+    },
+    moduleTitle: {
+      en: "Production error capture",
+      zh: "线上报错采集",
+    },
+    summary: {
+      en: "TraceMind can now capture production errors across runtimes and connect them with behavior paths, helping teams find issues faster and improve the experience.",
+      zh: "TraceMind 现在可以自动/手动收集各终端线上报错，并关联行为路径，帮助团队更快定位问题、优化体验。",
+    },
+    publishedAt: "2026-05-25",
+    details: [
+      {
+        en: "Errors from each runtime are recorded as unified app_error summaries for behavior paths, sources, sessions, users, and health trend analysis.",
+        zh: "各终端报错会作为统一的 app_error 摘要进入行为路径、来源、session、用户和健康趋势分析。",
+      },
+      {
+        en: "Automatic capture and manual reporting are both supported, so teams can inspect online errors together with the behavior that happened before and after them.",
+        zh: "支持自动捕获或手动上报两种接入方式，让线上错误能和发生前后的用户行为一起排查。",
+      },
+      {
+        en: "Privacy-safe: TraceMind keeps error type, message fingerprint, handled/fatal, path/screen, component, release, and related error metadata, without collecting request bodies, response bodies, raw prompts, secrets, screenshots, or recordings.",
+        zh: "隐私安全：只保留错误类型、消息指纹、handled/fatal、path/screen、component、release 等错误信息，不采集请求体、响应体、raw prompt、secret、截图或录屏。",
+      },
+    ],
+  },
+  {
     id: "2026-05-22-hourly-health",
     categoryLabel: {
       en: "New feature notice",
