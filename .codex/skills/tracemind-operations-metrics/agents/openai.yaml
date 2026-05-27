@@ -1,0 +1,4 @@
+interface:
+  display_name: "TraceMind Operations Metrics"
+  short_description: "Report TraceMind active, new-customer, and retention metrics."
+  default_prompt: "Use $tracemind-operations-metrics to report yesterday's active projects/customers, yesterday's new customers, and past-week new-customer retention."
