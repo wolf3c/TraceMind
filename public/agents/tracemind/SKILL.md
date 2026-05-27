@@ -160,7 +160,7 @@ Manual capture follows the same mental model on Web, iOS, macOS, Android, React 
 
 ## Developer Feedback Submission
 
-TraceMind MCP can submit developer feedback separately from analytics events. Use this when the developer has found a product issue or idea and wants TraceMind to store the report for later handling.
+TraceMind MCP can submit developer feedback separately from analytics events. Use this when the developer has found a product issue or idea and wants TraceMind to store the report for later handling. If the developer asks whether you can directly feedback to TraceMind, search for and use `tracemind.submit_feedback` instead of concluding from a partial active tool list that no feedback tool exists.
 
 - Use `tracemind.submit_feedback`; do not send feedback through `/api/capture` or manual `custom` events.
 - Ask the developer before submitting unless they explicitly asked you to submit the feedback.

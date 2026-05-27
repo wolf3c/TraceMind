@@ -248,8 +248,8 @@ function projectInfoResult(project = {}) {
 
 export function mcpInitializeInstructions(project) {
   return project
-    ? `使用 TraceMind 工具查看项目 "${projectDisplayName(project)}" 的语义行为事件。当前 MCP server 建议命名为 ${mcpServerNameForProject(project)}。`
-    : '使用 TraceMind 工具查看当前 Web 项目的语义行为事件。后续 tools/list 会在有效 MCP token 下返回项目身份。';
+    ? `使用 TraceMind 工具查看项目 "${projectDisplayName(project)}" 的语义行为事件；开发者明确要求直接反馈给 TraceMind、submit feedback 或上报问题/想法时，使用 tracemind.submit_feedback。当前 MCP server 建议命名为 ${mcpServerNameForProject(project)}。`
+    : '使用 TraceMind 工具查看当前 Web 项目的语义行为事件；开发者明确要求直接反馈给 TraceMind、submit feedback 或上报问题/想法时，使用 tracemind.submit_feedback。后续 tools/list 会在有效 MCP token 下返回项目身份。';
 }
 
 export function mcpTools(project) {
@@ -275,7 +275,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.agent_guidance',
       title: projectScopedTitle('TraceMind Agent Guidance', project),
-      description: projectScopedDescription('返回当前 TraceMind coding agent 权威指导版本、公开 skill/rules 资源和推荐工作流；老用户应对比本地 Skill/AGENTS，必要时调用 tracemind.check_agent_setup。', project),
+      description: projectScopedDescription('返回当前 TraceMind coding agent 权威指导版本、公开 skill/rules 资源和推荐工作流；也说明开发者要求直接反馈给 TraceMind / submit feedback / 上报问题或想法时应调用 tracemind.submit_feedback。老用户应对比本地 Skill/AGENTS，必要时调用 tracemind.check_agent_setup。', project),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -415,7 +415,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.submit_feedback',
       title: projectScopedTitle('TraceMind Submit Feedback', project),
-      description: projectScopedDescription('将开发者明确要求上报的问题或想法写入 TraceMind 反馈库。提交前应先收集可复核证据，并避免发送 PII、token、raw prompt、源码 diff 或原始用户内容。', project),
+      description: projectScopedDescription('将开发者明确要求直接反馈给 TraceMind、submit feedback、上报问题或上报想法的脱敏报告写入 TraceMind 反馈库。提交前应先收集可复核证据，并避免发送 PII、token、raw prompt、源码 diff 或原始用户内容。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -902,6 +902,7 @@ function guidanceResult(extra = {}) {
       'Validate payloads and diffs before finishing.',
       'If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.',
       'When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.',
+      'If the developer asks whether you can directly feedback to TraceMind, look for and use tracemind.submit_feedback instead of concluding from a partial active tool list that no feedback tool exists.',
       'Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.',
       'Prefer evidence references over raw copied content, screenshots, source diffs, raw prompts, tool arguments, tool results, request bodies, response bodies, headers, cookies, authorization values, or full query URLs.',
       'When implementing an end-user feedback entry in a customer app, use the SDK user feedback API: TraceMind.submitFeedback / window.TraceMind.submitFeedback / TraceMindServer.submitFeedback. Do not use /api/capture, capture("custom"), or tracemind.submit_feedback for terminal user feedback.',

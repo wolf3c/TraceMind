@@ -662,6 +662,8 @@ Input:
 
 在开发者明确要求或确认后，将问题或想法反馈写入独立的 `tracemind_feedback_reports` 集合。这个工具不写入 `/api/capture`，也不会创建 raw behavior 或 semantic event。
 
+对使用 lazy tool discovery 的 Agent（例如 Codex），`tracemind.submit_feedback` 的工具描述必须包含 `直接反馈给 TraceMind`、`submit feedback`、`上报问题`、`上报想法` 等自然语言触发词。Agent 如果只看到部分 active tools，不能据此判断反馈不可用；应先重新发现或搜索 `tracemind.submit_feedback`。
+
 Input:
 
 ```json

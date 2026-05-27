@@ -1475,6 +1475,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
+      assert.ok(guidance.structuredContent.workflow.includes('If the developer asks whether you can directly feedback to TraceMind, look for and use tracemind.submit_feedback instead of concluding from a partial active tool list that no feedback tool exists.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Daily health check'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Recent online status'));
@@ -2341,6 +2342,9 @@ projectKey: tm_proj_sensitive`,
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('mini_program'));
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.platform.enum.includes('browser_extension'));
       assert.ok(feedbackTool.inputSchema.properties.environment.properties.sourceType.enum.includes('browser_extension'));
+      assert.ok(feedbackTool.description.includes('直接反馈给 TraceMind'));
+      assert.ok(feedbackTool.description.includes('submit feedback'));
+      assert.ok(feedbackTool.description.includes('上报问题'));
 
       const ios = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'ios' });
       const macos = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'macos' });
@@ -2790,6 +2794,8 @@ projectKey: tm_proj_sensitive`,
 
       assert.ok(initializeInstructions.includes(projectName));
       assert.ok(initializeInstructions.includes(mcpServerNameForProject(project)));
+      assert.ok(initializeInstructions.includes('直接反馈给 TraceMind'));
+      assert.ok(initializeInstructions.includes('tracemind.submit_feedback'));
       assert.deepStrictEqual(
         tools.map((tool) => tool.name).sort(),
         mcpTools().map((tool) => tool.name).sort(),
