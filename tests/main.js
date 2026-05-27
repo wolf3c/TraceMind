@@ -1386,7 +1386,12 @@ describe('TraceMind', function () {
       assert.ok(script.includes('actionKey'));
       assert.ok(script.includes("targetHash: hash(targetDetails.identityKey || JSON.stringify(targetDetails.target), 'tm_target_')"));
       assert.ok(script.includes("document.addEventListener('input'"));
+      assert.ok(script.includes('INPUT_IDLE_DEBOUNCE_MS = 5000'));
+      assert.ok(script.includes('function isTrustedUserInputEvent(event)'));
+      assert.ok(script.includes('function shouldSendChangeWithoutPending(event)'));
       assert.ok(script.includes('inputDebounceTimers'));
+      assert.ok(script.includes('pendingInputEvents'));
+      assert.ok(script.includes("document.addEventListener('blur'"));
       assert.ok(script.includes('history.replaceState = function ()'));
       assert.ok(script.includes("window.addEventListener('hashchange'"));
       assert.ok(script.includes("document.addEventListener('keydown'"));

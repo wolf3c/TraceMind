@@ -135,7 +135,7 @@
 | --- | --- | --- | --- | --- |
 | `page_view` | 页面浏览 | 用户打开或刷新页面，或进入 Native screen/activity/controller/window/小程序页面/浏览器插件自有页面，用于分析访问量、落地页、路径入口和页面级留存。 | `title`, `path`, `referrer` | Web, iOS, macOS, Android, Mini Program, Browser Extension, Server |
 | `click` | 元素点击 | 用户点击 Web 元素、Native 控件、小程序 helper 标记的 tap 或浏览器插件自有页面元素，用于分析功能入口、按钮转化和交互兴趣。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, macOS, Android, Mini Program, Browser Extension |
-| `input` | 输入变化 | 用户修改输入控件，用于分析表单填写、设置修改和关键流程参与度；不保存输入值。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, macOS, Android, Mini Program, Browser Extension |
+| `input` | 输入变化 | 用户完成一次输入控件修改，用于分析表单填写、设置修改和关键流程参与度；不保存输入值。Web 会过滤程序派发的 DOM input/change，并优先在 change/blur 后提交一次聚合事件。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, macOS, Android, Mini Program, Browser Extension |
 | `submit` | 表单提交 | 用户提交表单、点击确认或触发 Native keyboard done/search/send、小程序 submit helper 或浏览器插件自有页面提交，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetIdentity`, `targetHash`, `actionKey`, `targetText`, `targetTag`, `path` | Web, iOS, macOS, Android, Mini Program, Browser Extension |
 | `route_change` | 页面跳转 | 用户在 Web SPA、Native app、小程序或浏览器插件自有页面内发生页面切换，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer` | Web, iOS, macOS, Android, Mini Program, Browser Extension |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` | Web, iOS, macOS, Android, Mini Program, Browser Extension, Server |

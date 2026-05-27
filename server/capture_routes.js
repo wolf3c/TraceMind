@@ -4902,7 +4902,81 @@ export function clientScript(host) {
     }, heartbeatIntervalMs);
   }
 
+  var INPUT_IDLE_DEBOUNCE_MS = 5000;
   var inputDebounceTimers = {};
+  var pendingInputEvents = {};
+
+  function isTrustedUserInputEvent(event) {
+    return !event || event.isTrusted !== false;
+  }
+
+  function inputEventKey(targetDetails) {
+    return targetDetails.pagePath + ':' + targetDetails.identity.key;
+  }
+
+  function sendInputTargetDetails(targetDetails) {
+    send('input', {
+      targetText: textOf(targetDetails.element),
+      targetTag: targetDetails.element && targetDetails.element.tagName,
+      target: targetDetails.target,
+      targetIdentity: targetDetails.identity,
+      identitySource: targetDetails.identity.source,
+      identityConfidence: targetDetails.identity.confidence,
+      actionKey: actionKeyFor('input', targetDetails.identity, targetDetails.pagePath),
+      path: targetDetails.pagePath,
+      targetHash: hash(targetDetails.identityKey || JSON.stringify(targetDetails.target), 'tm_target_')
+    });
+  }
+
+  function clearPendingInputEvent(key) {
+    clearTimeout(inputDebounceTimers[key]);
+    delete inputDebounceTimers[key];
+    delete pendingInputEvents[key];
+  }
+
+  function queueInputEvent(event) {
+    var targetDetails = eventTargetDetails(event, 'input');
+    var key = inputEventKey(targetDetails);
+    pendingInputEvents[key] = targetDetails;
+    clearTimeout(inputDebounceTimers[key]);
+    inputDebounceTimers[key] = setTimeout(function () {
+      var latestTargetDetails = pendingInputEvents[key];
+      if (!latestTargetDetails) return;
+      sendInputTargetDetails(latestTargetDetails);
+      clearPendingInputEvent(key);
+    }, INPUT_IDLE_DEBOUNCE_MS);
+  }
+
+  function flushInputEvent(event, sendWhenMissing) {
+    var targetDetails = eventTargetDetails(event, 'input');
+    var key = inputEventKey(targetDetails);
+    var pendingTargetDetails = pendingInputEvents[key];
+    if (pendingTargetDetails) {
+      sendInputTargetDetails(pendingTargetDetails);
+      clearPendingInputEvent(key);
+    } else if (sendWhenMissing) {
+      sendInputTargetDetails(targetDetails);
+    }
+  }
+
+  function shouldSendChangeWithoutPending(event) {
+    var target = interactiveTarget(event);
+    if (!target || !target.tagName) return true;
+    var tag = target.tagName.toLowerCase();
+    if (tag === 'textarea' || target.isContentEditable) return false;
+    if (tag !== 'input') return true;
+    var inputType = String(target.type || 'text').toLowerCase();
+    return inputType === 'checkbox'
+      || inputType === 'radio'
+      || inputType === 'file'
+      || inputType === 'range'
+      || inputType === 'color'
+      || inputType === 'date'
+      || inputType === 'datetime-local'
+      || inputType === 'month'
+      || inputType === 'time'
+      || inputType === 'week';
+  }
 
   function sendTargetEvent(eventType, event) {
     recordActiveInteraction();
@@ -4928,27 +5002,20 @@ export function clientScript(host) {
   }, true);
 
   document.addEventListener('input', function (event) {
+    if (!isTrustedUserInputEvent(event)) return;
     recordActiveInteraction();
-    var targetDetails = eventTargetDetails(event, 'input');
-    var key = targetDetails.identity.key;
-    clearTimeout(inputDebounceTimers[key]);
-    inputDebounceTimers[key] = setTimeout(function () {
-      send('input', {
-        targetText: textOf(targetDetails.element),
-        targetTag: targetDetails.element && targetDetails.element.tagName,
-        target: targetDetails.target,
-        targetIdentity: targetDetails.identity,
-        identitySource: targetDetails.identity.source,
-        identityConfidence: targetDetails.identity.confidence,
-        actionKey: actionKeyFor('input', targetDetails.identity, targetDetails.pagePath),
-        path: targetDetails.pagePath,
-        targetHash: hash(targetDetails.identityKey || JSON.stringify(targetDetails.target), 'tm_target_')
-      });
-    }, 600);
+    queueInputEvent(event);
   }, true);
 
   document.addEventListener('change', function (event) {
-    sendTargetEvent('input', event);
+    if (!isTrustedUserInputEvent(event)) return;
+    recordActiveInteraction();
+    flushInputEvent(event, shouldSendChangeWithoutPending(event));
+  }, true);
+
+  document.addEventListener('blur', function (event) {
+    if (!isTrustedUserInputEvent(event)) return;
+    flushInputEvent(event, false);
   }, true);
 
   document.addEventListener('submit', function (event) {
