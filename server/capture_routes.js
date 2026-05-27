@@ -311,7 +311,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.project_health',
       title: projectScopedTitle('TraceMind Project Health', project),
-      description: projectScopedDescription('读取由小时报告聚合的项目健康报告、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
+      description: projectScopedDescription('读取 Dashboard 同源的日报/小时项目健康结构、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -325,7 +325,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.recent_online',
       title: projectScopedTitle('TraceMind Recent Online', project),
-      description: projectScopedDescription('读取近 30 分钟实时在线态势，帮助 agent 判断现在是否有人在线、用户集中在哪些页面或地区，以及最近高频事件。', project),
+      description: projectScopedDescription('读取 Dashboard 同源的近 30 分钟实时在线结构，帮助 agent 判断现在是否有人在线、用户集中在哪些页面或地区，以及最近高频事件。', project),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -504,7 +504,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.summary',
       title: projectScopedTitle('TraceMind Behavior Summary', project),
-      description: projectScopedDescription('汇总当前产品最近的语义行为事件，支持按流量来源归因过滤。', project),
+      description: projectScopedDescription('汇总当前产品语义行为事件，支持非自然日时间窗、功能/路径/来源过滤和证据聚合；用于下钻分析，不替代 Dashboard 日报口径。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -531,7 +531,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.query_events',
       title: projectScopedTitle('TraceMind Query Semantic Events', project),
-      description: projectScopedDescription('按时间、事件类型、事件名、用户、Session、设备等维度查询语义事件。', project),
+      description: projectScopedDescription('按时间、事件类型、事件名、用户、Session、设备、路径和来源过滤查询语义事件；用于 Dashboard 同源运营结论后的证据事件下钻，不替代 project_health/recent_online。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -861,24 +861,29 @@ function guidanceResult(extra = {}) {
     agentSetupNotice: agentSetupNotice(),
     analysisWorkflows: [
       {
-        name: 'Daily health check',
-        prompt: 'Check whether the product is healthy today, what changed in the reported comparison window, and which attention item should be handled first.',
-        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary', 'tracemind.query_events if drilldown is needed'],
+        name: 'Daily operations review',
+        prompt: 'Review the Dashboard-aligned daily health report, trend changes, attention items, traffic, active users, sessions, active time, events, and delivery health.',
+        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.recent_online if the user asks about current online users or the last 30 minutes', 'tracemind.summary/query_events only for non-natural-day windows or evidence drilldown'],
       },
       {
-        name: 'Recent online status',
+        name: 'Last 24 hours operations review',
+        prompt: 'Summarize product performance for a rolling 24 hour window when the user asks for the past day rather than a natural daily report.',
+        steps: ['tracemind.project_info', 'tracemind.summary with startAt/endAt', 'tracemind.query_events if evidence or path/action/source drilldown is needed'],
+      },
+      {
+        name: 'Recent online review',
         prompt: 'Check whether users are online right now, where they are active, and which events are happening in the last 30 minutes.',
         steps: ['tracemind.project_info', 'tracemind.recent_online', 'tracemind.query_events if drilldown is needed'],
+      },
+      {
+        name: 'Traffic source review',
+        prompt: 'Explain which traffic sources, campaigns, referrers, or landing paths are driving growth, conversion, or drops.',
+        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary with attributionSource/attributionMedium/attributionCampaign/landingPath filters', 'tracemind.query_events for source-specific evidence', 'tracemind.query_raw_behaviors only when semantic evidence is insufficient'],
       },
       {
         name: 'Feature usage analysis',
         prompt: 'Analyze whether a feature is actually being used, who uses it, and which paths or actions lead to it.',
         steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary with event/path/traffic attribution filters', 'tracemind.query_events by path, actionKey, targetHash, eventName, attributionSource, attributionMedium, attributionCampaign, or landingPath'],
-      },
-      {
-        name: 'Traffic source analysis',
-        prompt: 'Explain which traffic sources, campaigns, referrers, or landing paths are driving growth, conversion, or drops.',
-        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.summary with attributionSource/attributionMedium/attributionCampaign/landingPath filters', 'tracemind.query_events for source-specific evidence', 'tracemind.query_raw_behaviors only when semantic evidence is insufficient'],
       },
       {
         name: 'Anomaly or drop investigation',
@@ -889,6 +894,8 @@ function guidanceResult(extra = {}) {
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
+      'For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.',
+      'Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',

@@ -1,18 +1,43 @@
 ---
 name: tracemind-instrumentation
 version: 2026.05.25.1
-description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
+description: Use when reviewing TraceMind product operations, online health, or analytics instrumentation with the TraceMind MCP.
 ---
 
-# TraceMind Instrumentation
+# TraceMind Customer Agent Guide
 
-Use this skill whenever you add, change, review, or validate TraceMind analytics instrumentation in a project.
+Use this skill whenever you review product operations, online performance, feature usage, traffic sources, or TraceMind analytics instrumentation in a project.
+
+## Daily Operations First
+
+When a customer asks about product operations, such as "how was today", "yesterday's data", "last 24 hours performance", "is anyone online", "how did promotion perform", or "where did usage drop", do not start with instrumentation setup. First use the bound TraceMind MCP server and call `tracemind.project_info`, then use Dashboard-aligned operations data:
+
+- `tracemind.project_health` is the project health dashboard source for natural-day and completed-hour reporting. Prefer `project_health.health.current`, `project_health.health.trends`, `project_health.health.hourlyComparison`, `project_health.delivery`, `attentionSummary`, and `attentionItems` when answering daily operations questions.
+- `tracemind.recent_online` is the same source as the dashboard's last-30-minutes online card. Use it for current online users, 5-minute buckets, active pages, regions, and high-frequency events.
+- `tracemind.summary` and `tracemind.query_events` are drilldown tools for non-natural-day windows, paths, events, users, sessions, devices, actions, target hashes, and traffic attribution. They support evidence review but do not replace the dashboard daily report.
+- A project-bound MCP server answers only the currently bound TraceMind project. Do not infer account-wide or multi-project active project counts from a single project's UI selector text or unrelated events.
+
+Only call `tracemind.capture_setup`, `tracemind.search_event_names`, `tracemind.suggest_instrumentation`, or validation tools when the user wants to install, upgrade, fix, add, review, or validate TraceMind capture code.
+
+## Operational Data Menu
+
+Agents can answer these Dashboard-aligned operations questions directly from existing MCP data:
+
+- Real-time online: last 30 minutes online users, 5-minute online buckets, top regions, top active pages, and top events.
+- Active users: active users, new users, D2/D3/D7/D30 retention, user regions, and device distribution.
+- Active sessions: session count, events per session, source runtime, and session page distribution.
+- Traffic sources: first-touch source, medium, campaign, and landing path.
+- Active time: average active time per user, top duration users, top duration pages, and top bounce pages.
+- Behavior events: total event count, top events, top action keys, and evidence events for anomalies or drops.
+- Delivery health: accepted/ignored uploads, retry count, coalesced presence, max queue depth, failed flushes, dropped queue records, and last successful flush.
+- Trend comparison: today uses completed hours compared with yesterday's same hours; historical reports compare full natural days with the previous day. Hourly charts use `hourlyComparison.metrics`.
+- Attention items: `attentionSummary` and `attentionItems` are the first source for "what needs attention".
 
 ## Required Workflow
 
 1. If the project instruction file contains a TraceMind Project Binding, use the expected MCP server and call `tracemind.project_info`; continue only if the returned `projectId` matches the bound Project ID.
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
-3. For product behavior analysis, use `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
+3. For operations review or product behavior analysis, use Dashboard-aligned `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
 4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
 5. If local TraceMind Skill or AGENTS rules may be stale, call `tracemind.check_agent_setup` with the local Skill, AGENTS/rules, and manifest text before editing instrumentation or SDK setup.
 6. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.

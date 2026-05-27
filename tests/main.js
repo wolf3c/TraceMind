@@ -278,6 +278,8 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('优先读取 MCP tools/list 的描述或调用 `tracemind.project_info`'));
       assert.ok(prompt.includes('必须使用 MCP server `tracemind-abc123`'));
       assert.ok(prompt.includes('返回的 `projectId` 等于 `project-中文-ABC123`'));
+      assert.ok(prompt.includes('安装完成后，可直接让 agent 查看产品健康、实时在线、过去 24 小时表现和流量来源'));
+      assert.ok(prompt.includes('运营查询优先使用 Dashboard 同源口径'));
       assert.ok(prompt.includes('安装完成后，优先调用 `tracemind.project_health` 做今日健康检查'));
       assert.ok(prompt.includes('`tracemind.recent_online` 查看实时在线态势'));
       assert.ok(prompt.includes('功能使用分析'));
@@ -328,6 +330,8 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('Prefer MCP tools/list descriptions or call `tracemind.project_info`'));
       assert.ok(prompt.includes('use MCP server `tracemind-xyz789`'));
       assert.ok(prompt.includes('returned `projectId` is `project-XYZ789`'));
+      assert.ok(prompt.includes('After installation, you can ask the agent to review product health, real-time online status, last 24 hours performance, and traffic sources'));
+      assert.ok(prompt.includes('Operations questions should use Dashboard-aligned metrics first'));
       assert.ok(prompt.includes('After installation, call `tracemind.project_health` first for a daily health check'));
       assert.ok(prompt.includes('`tracemind.recent_online` for real-time online status'));
       assert.ok(prompt.includes('feature usage analysis'));
@@ -376,6 +380,12 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('## Instrumenting Server Applications'));
       assert.ok(skill.includes('## Developer Feedback Submission'));
       assert.ok(skill.includes('## End-User Feedback Capture'));
+      assert.ok(skill.includes('## Daily Operations First'));
+      assert.ok(skill.includes('## Operational Data Menu'));
+      assert.ok(skill.includes('Dashboard-aligned'));
+      assert.ok(skill.includes('project_health.health.current'));
+      assert.ok(skill.includes('hourlyComparison.metrics'));
+      assert.ok(skill.includes('accepted/ignored uploads'));
       assert.ok(skill.includes('## Product Behavior Analysis Workflows'));
       assert.ok(skill.includes('tracemind.project_health'));
       assert.ok(skill.includes('tracemind.recent_online'));
@@ -417,6 +427,9 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
+      assert.ok(snippet.includes('Dashboard-aligned operations review'));
+      assert.ok(snippet.includes('project_health.health.current'));
+      assert.ok(snippet.includes('recent_online'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
       assert.ok(snippet.includes('installCommands'));
       assert.ok(snippet.includes('distributionMode: "registry"'));
@@ -470,6 +483,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.platforms.includes('server_http'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_info'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
+      assert.ok(manifest.updatePolicy.includes('operations review uses dashboard-aligned project_health/recent_online before instrumentation setup'));
       assert.ok(manifest.updatePolicy.includes('tracemind.check_agent_setup'));
       assert.ok(manifest.sdkUpgradePolicy.includes('distributionMode is registry'));
       assert.ok(manifest.sdkUpgradePolicy.includes('sdkContentHash'));
@@ -1433,11 +1447,23 @@ describe('TraceMind', function () {
         tool.name === 'tracemind.project_health'
         && tool.title.includes('Agent Guidance Project')
         && tool.description.includes('Agent Guidance Project')
+        && tool.description.includes('Dashboard')
       )));
       assert.ok(projectTools.some((tool) => (
         tool.name === 'tracemind.recent_online'
         && tool.title.includes('Agent Guidance Project')
         && tool.description.includes('Agent Guidance Project')
+        && tool.description.includes('Dashboard')
+      )));
+      assert.ok(projectTools.some((tool) => (
+        tool.name === 'tracemind.summary'
+        && tool.description.includes('非自然日时间窗')
+        && tool.description.includes('不替代 Dashboard 日报口径')
+      )));
+      assert.ok(projectTools.some((tool) => (
+        tool.name === 'tracemind.query_events'
+        && tool.description.includes('证据事件下钻')
+        && tool.description.includes('不替代 project_health/recent_online')
       )));
       const checkSetupTool = projectTools.find((tool) => tool.name === 'tracemind.check_agent_setup');
       const captureSetupTool = projectTools.find((tool) => tool.name === 'tracemind.capture_setup');
@@ -1445,6 +1471,7 @@ describe('TraceMind', function () {
       assert.ok(checkSetupTool.description.includes('Skill / AGENTS rules'));
       assert.ok(checkSetupTool.description.includes('registry SDK'));
       assert.ok(captureSetupTool.description.includes('tracemind.check_agent_setup'));
+      assert.ok(healthTool.description.includes('Dashboard 同源'));
       assert.ok(healthTool.description.includes('agent setup'));
 
       const projectInfo = await callMcpTool({
@@ -1475,6 +1502,8 @@ describe('TraceMind', function () {
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
+      assert.ok(guidance.structuredContent.workflow.includes('For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.'));
       assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.'));
@@ -1482,10 +1511,15 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('If the developer asks whether you can directly feedback to TraceMind, look for and use tracemind.submit_feedback instead of concluding from a partial active tool list that no feedback tool exists.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
-      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Daily health check'));
-      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Recent online status'));
+      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Daily operations review'));
+      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Last 24 hours operations review'));
+      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Recent online review'));
+      assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Traffic source review'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Feature usage analysis'));
       assert.ok(guidance.structuredContent.analysisWorkflows.some((workflow) => workflow.name === 'Anomaly or drop investigation'));
+      const dailyOperationsWorkflow = guidance.structuredContent.analysisWorkflows.find((workflow) => workflow.name === 'Daily operations review');
+      assert.ok(dailyOperationsWorkflow.steps.includes('tracemind.project_health'));
+      assert.ok(dailyOperationsWorkflow.steps.includes('tracemind.summary/query_events only for non-natural-day windows or evidence drilldown'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_proj_'));
 

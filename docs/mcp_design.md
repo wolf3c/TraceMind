@@ -124,7 +124,7 @@ Input:
 
 ### `tracemind.agent_guidance`
 
-返回当前 coding agent guidance 版本、公开 skill/rules/manifest 路径和推荐埋点工作流。Agent 在添加或修改 TraceMind 埋点前应先调用它，发现本地 skill 过期时先请求用户确认再更新。
+返回当前 coding agent guidance 版本、公开 skill/rules/manifest 路径、Dashboard 同源运营查看流程和推荐埋点工作流。Agent 在日常运营查询时应优先使用 `project_health` / `recent_online`；只有添加或修改 TraceMind 埋点时才进入 `capture_setup` 等接入流程。发现本地 skill 过期时先请求用户确认再更新。
 
 Input:
 
@@ -290,6 +290,15 @@ Output:
 ```
 
 返回值不包含 actor id、session id、presence id、device fingerprint 或原始用户识别字段。
+
+## Dashboard / MCP 口径映射
+
+Dashboard 是视觉入口，MCP 是同口径的 agent 查询入口，不维护第二套运营解释。客户问“今天怎么样、昨天数据、过去一天表现、线上是否有人、推广效果、哪里下降”时：
+
+- `tracemind.project_health` 对应项目健康看板，返回 `health.current`、`health.trends`、`health.hourlyComparison`、`delivery`、`attentionSummary` 和 `attentionItems`。它覆盖活跃用户、新用户、留存、活跃会话、事件/会话、流量来源、活跃时长、跳出页、总事件、上报健康和日报/小时趋势。
+- `tracemind.recent_online` 对应近 30 分钟在线卡片，返回在线用户、5 分钟桶、Top 地区、Top 活跃页面和 Top 高频事件。
+- `tracemind.summary` / `tracemind.query_events` 用于非自然日时间窗、功能路径、事件名、actionKey、targetHash、用户、session、设备和流量来源归因下钻。它们提供证据聚合，不替代 Dashboard 日报口径。
+- 项目绑定 MCP 只回答当前绑定项目。账号级“几个客户项目活跃”不是单项目 Dashboard 口径，不能从一个项目的选择器文案或普通事件里推断；需要单独的账号级工具或 TraceMind 自采集产品使用事件。
 
 ### `tracemind.capture_setup`
 
