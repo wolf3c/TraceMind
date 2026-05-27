@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.25.1
+version: 2026.05.27.1
 description: Use when reviewing TraceMind product operations, online health, or analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -32,6 +32,15 @@ Agents can answer these Dashboard-aligned operations questions directly from exi
 - Delivery health: accepted/ignored uploads, retry count, coalesced presence, max queue depth, failed flushes, dropped queue records, and last successful flush.
 - Trend comparison: today uses completed hours compared with yesterday's same hours; historical reports compare full natural days with the previous day. Hourly charts use `hourlyComparison.metrics`.
 - Attention items: `attentionSummary` and `attentionItems` are the first source for "what needs attention".
+
+## Data Retention Windows
+
+TraceMind separates recent drilldown detail from long-term analysis summaries:
+
+- Capture delivery diagnostics are retained for 7 days. For older upload health, use `project_health.delivery`, hourly reports, and daily reports.
+- Presence sessions are retained for 30 days. For older online users, active-time, and page-duration trends, use hourly reports and daily reports.
+- Raw behavior logs are retained for 30 days. If `tracemind.query_raw_behaviors` returns no raw detail outside that window, do not assume data loss; use `tracemind.query_events`, `tracemind.summary`, and `tracemind.project_health` first.
+- Semantic events, hourly health reports, and daily health reports currently have no TTL and are the primary source for older product behavior analysis.
 
 ## Required Workflow
 

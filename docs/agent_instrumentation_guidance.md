@@ -60,6 +60,13 @@ Agent 分析产品行为时应先按只读路径使用 MCP：
 - 流量来源分析：从日报的 traffic source/medium/campaign/landing path 汇总开始，再用 `attributionSource`、`attributionMedium`、`attributionCampaign` 和 `landingPath` 过滤语义事件，解释增长、下降或转化变化来自哪个渠道。
 - 异常或下降原因分析：先确认下降指标和 `project_health.health.window` 里的实际比较窗口，再用语义事件和流量来源维度解释变化；必要时复核原始行为。
 
+数据保留窗口：
+
+- 上报投递诊断明细保留 7 天。
+- Presence 在线会话明细和 raw behavior 原始行为明细保留 30 天。
+- Semantic events、hourly reports 和 daily reports 当前长期保留，不设置 TTL。
+- 如果超过明细窗口后查不到 raw/presence/delivery 记录，应优先使用 `tracemind.query_events`、`tracemind.summary` 和 `tracemind.project_health`，不要先判断为数据丢失或埋点异常。
+
 Agent 后续修改 TraceMind 埋点时应按顺序使用 MCP：
 
 1. `tracemind.project_info`：先确认当前 MCP 对应的 TraceMind 项目，并与项目级 instruction 中的 expected `projectId` 比对；不匹配时停止。

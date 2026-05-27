@@ -47,27 +47,39 @@ This skill covers the TraceMind Meteor app deployment, the immutable SDK GitHub 
    - `node -e "const p=require('./package.json'); console.log(p.version)"`
    - `npm test` when release timing allows.
    - If `npm test` cannot run, state the blocker and the exact command left for the user.
-8. Commit and publish the release source before deploying:
+8. Confirm production TTL indexes match the code retention policy before publishing:
+   - Read the expected data retention policy from `DATA_RETENTION_POLICY` in `imports/api/tracemind.js`. Do not copy a second hard-coded retention policy into this skill.
+   - Prefer using the MongoDB MCP, when available, to build a database-wide TTL index inventory in one pass: list all non-system collections, inspect each collection's indexes, and keep only indexes with `expireAfterSeconds`.
+   - If MongoDB MCP is unavailable, use an equivalent read-only `mongosh` inventory command that lists collections and filters `getIndexes()` results by `expireAfterSeconds`.
+   - Compare the complete TTL inventory with the code policy. Do not check only the expected collections one by one, because that can miss extra TTL indexes on long-retained collections.
+   - Use read-only index inspection only. Do not create, modify, or delete TTL indexes from this deploy workflow.
+   - Do not print or commit `MONGO_URL`, database credentials, Atlas connection strings, or any secret-bearing command output.
+   - Confirm that every `DATA_RETENTION_POLICY.detailWindows` entry with a finite `retentionDays` has a matching TTL index on its `collectionName`, `dateField`, and `expireAfterSeconds = retentionDays * 24 * 60 * 60`.
+   - Confirm that every `DATA_RETENTION_POLICY.retainedSummaries` entry with `retentionDays: null` does not have a product-retention TTL index on its `collectionName`.
+   - Confirm that the TTL inventory has no extra product-retention TTL indexes outside `DATA_RETENTION_POLICY.detailWindows`.
+   - If the database TTL indexes match the code policy, report the TTL inventory summary by collection, index key, and TTL seconds.
+   - If any TTL index is missing, extra, or mismatched, stop before commit/tag/deploy and ask the user whether to update the database manually or adjust the code policy. Do not continue with a release that would make Dashboard/MCP retention guidance disagree with production storage behavior.
+9. Commit and publish the release source before deploying:
    - Commit the version, manifest, and any release workflow changes before creating the tag.
    - Create the release tag on the release commit: `git tag tracemind-release-${version}`. If the tag already exists and does not point to `HEAD`, stop instead of reusing it.
    - Push `main` first: `git push origin main`.
    - Push the release tag: `git push origin tracemind-release-${version}`.
    - Run `npm run check:deploy-git-publication -- ${version}`. It must confirm `package.json.version` equals `${version}`, the current branch is `main`, the worktree is clean, `sdk/release_manifest.json` uses `tracemind-release-${version}`, `origin/main` equals `HEAD`, and the remote tag points to `HEAD`.
    - If push or remote verification fails, stop and do not deploy. A deployed Galaxy app must not advertise a `latestSdk.sourceRef` that is missing or mismatched on GitHub.
-9. Wait for SDK registry publication before deploying:
+10. Wait for SDK registry publication before deploying:
    - The release tag push triggers the `SDK Publish` GitHub Actions workflow.
    - Wait for that workflow to finish. It publishes registry-backed SDKs to npm, PyPI, and Maven Central, verifies package installation/probes, and does not run `npm run deploy` or any Meteor deploy command.
    - Run `npm run check:sdk-registry-publication -- ${version}`. It must confirm the `SDK Publish` workflow succeeded and that every registry-backed SDK in `sdk/release_manifest.json` is visible in its package registry.
    - Swift remains `local_source` in this release flow and is intentionally skipped by the registry gate.
    - If the registry publication check fails, stop and do not deploy. A deployed Galaxy app must not advertise registry install commands for packages that are missing or failed to publish.
-10. Deploy when the user asks for deployment or the request clearly says this is a deployment release:
+11. Deploy when the user asks for deployment or the request clearly says this is a deployment release:
    - Prefer the repository script: `npm run deploy`.
    - In this repo the deploy script is the canonical command and currently expands to `meteor deploy tracemind.sandbox.galaxycloud.app --settings .deploy/settings.json`.
    - If the user explicitly specifies another Meteor app target, run that exact command form, for example `meteor deploy TraceMind --settings .deploy/settings.json`.
    - Do not print or commit `.deploy/settings.json`; it is intentionally private.
    - If deploy fails because of missing Galaxy/runtime environment, inspect or request logs and report the exact missing variable. `MONGO_URL` must be available in the Galaxy runtime environment before the app can start.
    - Do not deploy from GitHub Actions. `$deploy` is the only release path that may run the Meteor deploy command, so a tag push cannot cause a duplicate deploy.
-11. Verify the deployed app after a successful deploy:
+12. Verify the deployed app after a successful deploy:
    - `npm run deploy:logs` when logs are needed to confirm startup health.
    - `curl -I https://tracemind.sandbox.galaxycloud.app/`
    - `curl -I https://tracemind.sandbox.galaxycloud.app/capture.js`
@@ -88,6 +100,7 @@ Report:
 - old version -> new version
 - branch state checked, any merges performed, and whether deployment ran from `main`
 - SDK source release tag, push status, and `check:deploy-git-publication` result
+- production TTL index check result compared against `DATA_RETENTION_POLICY`, including checked collections and TTL seconds
 - SDK registry publication workflow status and `check:sdk-registry-publication` result
 - files changed
 - verification commands run and their result

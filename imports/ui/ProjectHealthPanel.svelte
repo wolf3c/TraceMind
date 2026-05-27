@@ -1,5 +1,6 @@
 <script>
   import HourlyTrendSparkline from "./HourlyTrendSparkline.svelte";
+  import { DATA_RETENTION_POLICY } from "../api/tracemind";
   import { t } from "./i18n/i18n";
 
   let {
@@ -60,6 +61,9 @@
   function metricTrendClass(value) {
     return healthSamplesPending ? "trend-flat" : trendClass(value);
   }
+
+  const deliveryRetention = DATA_RETENTION_POLICY.detailWindows.find((item) => item.dataSet === "capture_delivery_reports")?.retentionDays || 7;
+  const detailRetention = DATA_RETENTION_POLICY.detailWindows.find((item) => item.dataSet === "raw_behaviors")?.retentionDays || 30;
 </script>
 
 <div class="events-header">
@@ -480,6 +484,20 @@
       <div><dt>{$t("Coalesced presence")}</dt><dd>{formatNumber(delivery.coalescedPresence)}</dd></div>
       <div><dt>{$t("Max queue depth")}</dt><dd>{formatNumber(delivery.maxQueueDepth)}</dd></div>
       <div><dt>{$t("Last successful flush")}</dt><dd>{delivery.lastSuccessfulFlushAt ? compactDate(delivery.lastSuccessfulFlushAt) : $t("No data")}</dd></div>
+    </dl>
+  </details>
+  <details class="health-card">
+    <summary>
+      <span>{$t("Data retention")}</span>
+      <strong>{detailRetention} {$t("days")}</strong>
+      <small>{$t("raw behavior and presence detail")}</small>
+      <em>{$t("delivery diagnostics keep {{days}} days", { days: deliveryRetention })}</em>
+    </summary>
+    <dl class="health-detail-list">
+      <div><dt>{$t("Delivery diagnostics")}</dt><dd>{$t("Detailed upload diagnostics are retained for {{days}} days.", { days: deliveryRetention })}</dd></div>
+      <div><dt>{$t("Presence sessions")}</dt><dd>{$t("Session-level online detail is retained for {{days}} days.", { days: detailRetention })}</dd></div>
+      <div><dt>{$t("Raw behaviors")}</dt><dd>{$t("Raw behavior logs are retained for {{days}} days.", { days: detailRetention })}</dd></div>
+      <div><dt>{$t("Long-term reports")}</dt><dd>{$t("Semantic events and daily/hourly health reports remain the source for older analysis.")}</dd></div>
     </dl>
   </details>
 </div>

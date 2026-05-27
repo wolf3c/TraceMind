@@ -3,6 +3,7 @@ import { Random } from 'meteor/random';
 import { Accounts } from 'meteor/accounts-base';
 import {
   CaptureDeliveryReports,
+  DATA_RETENTION_POLICY,
   Developers,
   FeedbackReports,
   PresenceSessions,
@@ -189,6 +190,11 @@ async function buildProjectSummary(project, selectedDateInput) {
     summary: summaryFromHealth(health),
     presence: summarizePresenceSessions(presenceSessions),
     delivery: report?.delivery || {},
+    dataRetention: {
+      detailWindows: DATA_RETENTION_POLICY.detailWindows.map((item) => ({ ...item })),
+      retainedSummaries: DATA_RETENTION_POLICY.retainedSummaries.map((item) => ({ ...item })),
+      note: DATA_RETENTION_POLICY.note,
+    },
     sources: summarizeBehaviorSources(rawBehaviors, project.blockedSources || []),
     recentEvents: [],
   };

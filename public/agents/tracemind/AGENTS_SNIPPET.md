@@ -1,6 +1,6 @@
 ## TraceMind Instrumentation Rules
 
-Guidance version: `2026.05.25.1`
+Guidance version: `2026.05.27.1`
 
 ## TraceMind Project Binding
 
@@ -13,6 +13,8 @@ When this snippet is installed from the TraceMind console, add the repository-sp
 Before using any TraceMind MCP tool in this repository, use the expected MCP server, call `tracemind.project_info`, and continue only if the returned `projectId` matches the Project ID above. If it does not match, stop and ask the user to configure the correct TraceMind MCP server. Do not use another `tracemind-*` MCP server for this repository unless the user explicitly confirms the project switch.
 
 For Dashboard-aligned operations review, use `tracemind.project_health` to read the selected day's project health report and `tracemind.recent_online` to inspect real-time online status for the last 30 minutes before considering instrumentation setup. Prefer `project_health.health.current`, `project_health.health.trends`, `project_health.health.hourlyComparison`, `project_health.delivery`, `attentionSummary`, `attentionItems`, and `recent_online` for daily operations answers such as product health, yesterday's data, last 24 hours performance, online users, traffic sources, drops, and attention items. Then use `tracemind.summary` and `tracemind.query_events` for feature usage analysis, traffic source analysis, non-natural-day windows, or anomaly/drop evidence. Use filters such as `attributionSource`, `attributionMedium`, `attributionCampaign`, and `landingPath` when explaining growth or drops by acquisition channel. Use `tracemind.query_raw_behaviors` only when semantic evidence is insufficient. A project-bound MCP server only answers the currently bound TraceMind project; do not infer account-wide active project counts from one project's events or UI selector text.
+
+TraceMind retains recent drilldown detail separately from long-term summaries: capture delivery diagnostics keep 7 days; presence sessions and raw behavior logs keep 30 days; semantic events plus hourly/daily health reports currently have no TTL. If raw detail is unavailable outside those windows, use `tracemind.query_events`, `tracemind.summary`, and `tracemind.project_health` before assuming data loss or changing instrumentation.
 
 When adding or modifying TraceMind analytics instrumentation in this project:
 

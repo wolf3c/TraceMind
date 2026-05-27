@@ -6,6 +6,7 @@ import { TraceMindServer } from '@tracemind/server-node';
 import {
   CaptureDeliveryReports,
   ACTIVE_IDLE_TIMEOUT_MS,
+  DATA_RETENTION_POLICY,
   EVENT_DEFINITIONS,
   FeedbackReports,
   PRESENCE_HEARTBEAT_INTERVAL_MS,
@@ -31,7 +32,7 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.25.1';
+const AGENT_GUIDANCE_VERSION = '2026.05.27.1';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
@@ -275,7 +276,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.agent_guidance',
       title: projectScopedTitle('TraceMind Agent Guidance', project),
-      description: projectScopedDescription('返回当前 TraceMind coding agent 权威指导版本、公开 skill/rules 资源和推荐工作流；也说明开发者要求直接反馈给 TraceMind / submit feedback / 上报问题或想法时应调用 tracemind.submit_feedback。老用户应对比本地 Skill/AGENTS，必要时调用 tracemind.check_agent_setup。', project),
+      description: projectScopedDescription('返回当前 TraceMind coding agent 权威指导版本、公开 skill/rules 资源、数据保留规则和推荐工作流；也说明开发者要求直接反馈给 TraceMind / submit feedback / 上报问题或想法时应调用 tracemind.submit_feedback。老用户应对比本地 Skill/AGENTS，必要时调用 tracemind.check_agent_setup。', project),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -311,7 +312,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.project_health',
       title: projectScopedTitle('TraceMind Project Health', project),
-      description: projectScopedDescription('读取 Dashboard 同源的日报/小时项目健康结构、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
+      description: projectScopedDescription('读取 Dashboard 同源的日报/小时项目健康结构、数据保留规则、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -560,7 +561,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.query_raw_behaviors',
       title: projectScopedTitle('TraceMind Query Raw Behaviors', project),
-      description: projectScopedDescription('必要时查询原始行为日志，用于复核语义事件背后的原始采集数据。', project),
+      description: projectScopedDescription('必要时查询原始行为日志，用于复核语义事件背后的原始采集数据；raw behavior 明细保留 30 天，超出窗口应优先查看语义事件和日报/小时健康报告。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -792,6 +793,7 @@ function projectHealthResult(project, reportDate, report, health = {}) {
       hourlyComparison: health.hourlyComparison || {},
     },
     delivery: report?.delivery || {},
+    dataRetention: dataRetentionPolicyResult(),
     agentSetupNotice: agentSetupNotice(),
   };
 }
@@ -853,12 +855,21 @@ function agentSetupNotice(extra = {}) {
   };
 }
 
+function dataRetentionPolicyResult() {
+  return {
+    detailWindows: DATA_RETENTION_POLICY.detailWindows.map((item) => ({ ...item })),
+    retainedSummaries: DATA_RETENTION_POLICY.retainedSummaries.map((item) => ({ ...item })),
+    note: DATA_RETENTION_POLICY.note,
+  };
+}
+
 function guidanceResult(extra = {}) {
   return {
     ok: true,
     guidanceVersion: AGENT_GUIDANCE_VERSION,
     resources: AGENT_GUIDANCE_RESOURCES,
     agentSetupNotice: agentSetupNotice(),
+    dataRetention: dataRetentionPolicyResult(),
     analysisWorkflows: [
       {
         name: 'Daily operations review',
@@ -898,6 +909,7 @@ function guidanceResult(extra = {}) {
       'Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
+      'Respect data retention windows: capture delivery diagnostics are retained for 7 days; presence sessions and raw behaviors are retained for 30 days. If raw detail is unavailable outside those windows, use semantic events, summary, and daily/hourly project_health reports before assuming data loss.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'For SDK platforms, use capture_setup latestSdk, installedVersionDetection, installedSdkManifest, upgradeCommands, and verificationCommands; write .tracemind-sdk.json for local_source vendored installs and compare contentHash instead of relying only on displayVersion.',
