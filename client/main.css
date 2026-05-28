@@ -3235,9 +3235,9 @@ code {
   }
 
   .health-metric-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    align-items: start;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: end;
   }
 
   .trend-inline,
@@ -3392,5 +3392,13 @@ code {
   .event-stream,
   .agent-query {
     display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .health-metric-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    align-items: start;
   }
 }
