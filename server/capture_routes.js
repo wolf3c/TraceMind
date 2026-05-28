@@ -32,7 +32,7 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.27.1';
+const AGENT_GUIDANCE_VERSION = '2026.05.28.1';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
@@ -99,6 +99,8 @@ const AGENT_SETUP_SAFE_UPDATE_INSTRUCTIONS = [
   'Keep MCP URLs, Bearer tokens, mcpToken values, projectKey values, and secrets out of committed instruction files.',
   'After updating, call tracemind.check_agent_setup again and report the new status.',
 ];
+const SERVER_PROJECT_KEY_ENV_VAR = 'TRACEMIND_PROJECT_KEY';
+const SERVER_DEFAULT_SOURCE_KEY = 'billing-api';
 const FORBIDDEN_ANALYTICS_KEYS = [
   'email',
   'phone',
@@ -1125,6 +1127,7 @@ function guidanceResult(extra = {}) {
       'Respect data retention windows: capture delivery diagnostics are retained for 7 days; presence sessions and raw behaviors are retained for 30 days. If raw detail is unavailable outside those windows, use semantic events, summary, and daily/hourly project_health reports before assuming data loss.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
+      'For server_node, server_python, and server_http setup, use capture_setup projectKeyUsage, configurationModes, preDeployChecks, postDeployVerification, and expectedCaptureQuery before judging deployment success or inactivity.',
       'For SDK platforms, use capture_setup latestSdk, installedVersionDetection, installedSdkManifest, upgradeCommands, and verificationCommands; write .tracemind-sdk.json for local_source vendored installs and compare contentHash instead of relying only on displayVersion.',
       'When project_health returns sdkUpgradeFindings, update the vendored SDK through the coding agent workflow rather than silently editing customer code.',
       'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
@@ -1306,6 +1309,22 @@ function checkAgentSetupResult(args = {}) {
       patterns: [/distributionMode[^.\n]{0,80}registry/i, /registry install/i, /npm[\s\S]{0,80}PyPI[\s\S]{0,80}Maven Central/i],
     },
     {
+      code: 'missing_server_deploy_verification',
+      message: 'Local rules should run capture_setup preDeployChecks and postDeployVerification for server_node, server_python, and server_http setup.',
+      patterns: [
+        /server_node[\s\S]{0,160}server_python[\s\S]{0,160}server_http[\s\S]{0,240}preDeployChecks[\s\S]{0,120}postDeployVerification/i,
+        /preDeployChecks[\s\S]{0,120}postDeployVerification[\s\S]{0,160}server/i,
+      ],
+    },
+    {
+      code: 'missing_project_key_usage_guidance',
+      message: 'Local rules should separate the returned public projectKey from MCP tokens, Bearer tokens, and TraceMind internal dogfood configuration.',
+      patterns: [
+        /public\s+projectKey[\s\S]{0,120}capture writes[\s\S]{0,160}(MCP token|Bearer token)[\s\S]{0,180}(dogfood|internal product usage)/i,
+        /projectKey[\s\S]{0,160}(MCP token|Bearer token)[\s\S]{0,180}(dogfood|internal product usage)/i,
+      ],
+    },
+    {
       code: 'missing_source_ref_guidance',
       message: 'Local rules should treat latestSdk.sourceRef as the immutable SDK source reference for local-source fallback installs.',
       patterns: [/latestSdk\.sourceRef/],
@@ -1360,6 +1379,12 @@ function checkAgentSetupResult(args = {}) {
   }
   if (findingCodes.has('old_mcp_server_name')) {
     recommendedActions.push('Prefer a project-scoped MCP server name such as tracemind-<project-code> and verify the binding with tracemind.project_info.');
+  }
+  if (findingCodes.has('missing_server_deploy_verification')) {
+    recommendedActions.push('Add server setup guidance that runs capture_setup preDeployChecks before deploy and postDeployVerification after a real business event.');
+  }
+  if (findingCodes.has('missing_project_key_usage_guidance')) {
+    recommendedActions.push('Clarify that customer server capture uses the returned public projectKey, not MCP tokens, Bearer tokens, or TraceMind internal dogfood configuration.');
   }
   recommendedActions.push('Call tracemind.agent_guidance to confirm the current authority version before instrumentation work.');
   recommendedActions.push('Call tracemind.capture_setup for the target platform and use registry install commands when distributionMode is registry.');
@@ -1704,6 +1729,80 @@ function trafficAttributionGuidance(platform = 'web') {
   return {
     ...base,
     ...(byPlatform[platform] || byPlatform.web),
+  };
+}
+
+function serverProjectKeyUsage() {
+  return {
+    tokenType: 'public_auto_capture_project_key',
+    recommendedStorage: 'inline_project_key',
+    forbiddenSubstitutes: [
+      'MCP token',
+      'Bearer token',
+      'TraceMind internal product usage dogfood variables',
+    ],
+    notes: [
+      'projectKey is a public write key returned by tracemind.capture_setup for the current customer project.',
+      `Use ${SERVER_PROJECT_KEY_ENV_VAR} only when the customer server already manages public runtime config through deployment env vars.`,
+    ],
+  };
+}
+
+function serverDeployVerificationFields({
+  platform,
+  inlineInitSnippet,
+  envInitSnippet,
+  captureApiUrl,
+}) {
+  const expectedCaptureQuery = {
+    platform,
+    eventType: 'custom',
+    eventNamePlaceholder: 'approved_event_name',
+    sourceType: 'server_app',
+    sourceKey: SERVER_DEFAULT_SOURCE_KEY,
+  };
+  return {
+    projectKeyUsage: serverProjectKeyUsage(),
+    configurationModes: [
+      {
+        mode: 'inline_project_key',
+        recommended: true,
+        initSnippet: inlineInitSnippet,
+        deploymentNotes: [
+          'Recommended default: use the public projectKey returned by tracemind.capture_setup directly in the server initialization snippet.',
+          'The public projectKey is allowed in customer server source code because it only writes capture data for this project.',
+        ],
+      },
+      {
+        mode: 'env_project_key',
+        recommended: false,
+        variableName: SERVER_PROJECT_KEY_ENV_VAR,
+        initSnippet: envInitSnippet,
+        deploymentNotes: [
+          `Use only when the customer project already prefers deployment environment config; set ${SERVER_PROJECT_KEY_ENV_VAR} to the public projectKey returned by tracemind.capture_setup.`,
+          `Before deploy, verify ${SERVER_PROJECT_KEY_ENV_VAR} exists in the deployment environment. Do not use MCP tokens, Bearer tokens, or TraceMind internal dogfood configuration values here.`,
+        ],
+      },
+    ],
+    preDeployChecks: [
+      'Confirm the returned initSnippet runs once during server startup before any business handler calls capture.',
+      'Confirm capture setup uses the returned public projectKey only; do not use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.',
+      `If using env_project_key mode, confirm the deployment environment defines ${SERVER_PROJECT_KEY_ENV_VAR}.`,
+      `Confirm the server can egress to ${captureApiUrl} over its production DNS/TLS/proxy path and send Content-Type: application/json.`,
+    ],
+    postDeployVerification: {
+      trigger: 'Trigger the real business path that owns the newly added approved server custom event.',
+      query: expectedCaptureQuery,
+      failureTriage: [
+        'SDK initialization did not run before the business handler.',
+        'projectKey/env is missing or not the public projectKey returned by tracemind.capture_setup.',
+        'egress/TLS/proxy cannot reach the TraceMind capture endpoint.',
+        '/api/capture delivery is rejected, blocked, or not flushed by the server runtime.',
+        'approved event name was not used or the query window/sourceKey does not match the emitted event.',
+      ],
+      zeroResultWarning: 'A zero result after deploy is not proof that users were inactive until the init, projectKey/env, network, delivery, and approved event name checks have passed.',
+    },
+    expectedCaptureQuery,
   };
 }
 
@@ -2372,9 +2471,17 @@ function platformSetup(project, platform, options = {}) {
       sdkSourcePath: 'sdk/server-node',
       customerVendorPath: 'vendor/tracemind/server-node',
     });
+    const initSnippet = `import { TraceMindServer } from "@tracemind/server-node";\n\nTraceMindServer.start({\n  projectKey: "${project.projectKey}",\n  sourceKey: "${SERVER_DEFAULT_SOURCE_KEY}"\n});`;
+    const envInitSnippet = `import { TraceMindServer } from "@tracemind/server-node";\n\nTraceMindServer.start({\n  projectKey: process.env.${SERVER_PROJECT_KEY_ENV_VAR},\n  sourceKey: "${SERVER_DEFAULT_SOURCE_KEY}"\n});`;
     return {
       ...common,
       ...sdkSetup,
+      ...serverDeployVerificationFields({
+        platform: 'server_node',
+        inlineInitSnippet: initSnippet,
+        envInitSnippet,
+        captureApiUrl: common.captureApiUrl,
+      }),
       platform: 'server_node',
       eventPlatform: 'server',
       install: sdkSetup.distributionMode === 'registry'
@@ -2396,10 +2503,10 @@ function platformSetup(project, platform, options = {}) {
         'Check package.json for an existing @tracemind/server-node dependency.',
         'Search server-side business handlers for existing TraceMindServer.capture calls.',
       ],
-      initSnippet: `import { TraceMindServer } from "@tracemind/server-node";\n\nTraceMindServer.start({\n  projectKey: "${project.projectKey}",\n  sourceKey: "billing-api"\n});`,
+      initSnippet,
       source: {
         type: 'server_app',
-        key: 'Developer configured server/service name, for example billing-api',
+        key: `Developer configured server/service name, for example ${SERVER_DEFAULT_SOURCE_KEY}`,
       },
       sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment.',
       autoCapturedSignals: [],
@@ -2427,9 +2534,17 @@ function platformSetup(project, platform, options = {}) {
       sdkSourcePath: 'sdk/server-python',
       customerVendorPath: 'vendor/tracemind_server',
     });
+    const initSnippet = `from tracemind_server import TraceMindServer\n\nTraceMindServer.start(project_key="${project.projectKey}", source_key="${SERVER_DEFAULT_SOURCE_KEY}")`;
+    const envInitSnippet = `import os\nfrom tracemind_server import TraceMindServer\n\nTraceMindServer.start(project_key=os.environ.get("${SERVER_PROJECT_KEY_ENV_VAR}"), source_key="${SERVER_DEFAULT_SOURCE_KEY}")`;
     return {
       ...common,
       ...sdkSetup,
+      ...serverDeployVerificationFields({
+        platform: 'server_python',
+        inlineInitSnippet: initSnippet,
+        envInitSnippet,
+        captureApiUrl: common.captureApiUrl,
+      }),
       platform: 'server_python',
       eventPlatform: 'server',
       install: sdkSetup.distributionMode === 'registry'
@@ -2451,10 +2566,10 @@ function platformSetup(project, platform, options = {}) {
         'Check Python dependency files for an existing tracemind-server dependency.',
         'Search server-side business handlers for existing TraceMindServer.capture calls.',
       ],
-      initSnippet: `from tracemind_server import TraceMindServer\n\nTraceMindServer.start(project_key="${project.projectKey}", source_key="billing-api")`,
+      initSnippet,
       source: {
         type: 'server_app',
-        key: 'Developer configured server/service name, for example billing-api',
+        key: `Developer configured server/service name, for example ${SERVER_DEFAULT_SOURCE_KEY}`,
       },
       sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment.',
       autoCapturedSignals: [],
@@ -2483,7 +2598,7 @@ function platformSetup(project, platform, options = {}) {
       userId: 'user_123',
       source: {
         type: 'server_app',
-        key: 'billing-api',
+        key: SERVER_DEFAULT_SOURCE_KEY,
         label: 'Billing API',
         details: {
           language: 'your_server_language',
@@ -2499,8 +2614,20 @@ function platformSetup(project, platform, options = {}) {
         source: 'stripe_webhook',
       },
     };
+    const initSnippet = `POST ${common.captureApiUrl}\nContent-Type: application/json\n\n${JSON.stringify(payloadTemplate, null, 2)}`;
+    const envPayloadTemplate = {
+      ...payloadTemplate,
+      projectKey: `<${SERVER_PROJECT_KEY_ENV_VAR} from deployment environment>`,
+    };
+    const envInitSnippet = `POST ${common.captureApiUrl}\nContent-Type: application/json\n\n${JSON.stringify(envPayloadTemplate, null, 2)}`;
     return {
       ...common,
+      ...serverDeployVerificationFields({
+        platform: 'server_http',
+        inlineInitSnippet: initSnippet,
+        envInitSnippet,
+        captureApiUrl: common.captureApiUrl,
+      }),
       platform: 'server_http',
       eventPlatform: 'server',
       install: 'Use the HTTPS /api/capture endpoint directly when a first-party SDK is not available for the backend language.',
@@ -2517,11 +2644,11 @@ function platformSetup(project, platform, options = {}) {
         'Search the backend for /api/capture and projectKey usage.',
         'Search server-side business handlers for existing TraceMind capture helper calls.',
       ],
-      initSnippet: `POST ${common.captureApiUrl}\nContent-Type: application/json\n\n${JSON.stringify(payloadTemplate, null, 2)}`,
+      initSnippet,
       payloadTemplate,
       source: {
         type: 'server_app',
-        key: 'Developer configured server/service name, for example billing-api',
+        key: `Developer configured server/service name, for example ${SERVER_DEFAULT_SOURCE_KEY}`,
       },
       sourceModel: 'platform is server; sourceType is server_app; sourceKey is the configured backend service name; sourceDetails records language, runtime, framework, sdkVersion, sdkContentHash, and environment when an SDK is used.',
       autoCapturedSignals: [],

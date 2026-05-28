@@ -135,6 +135,44 @@ function assertSdkGovernance(setup, sdkName, vendorPath) {
   }
 }
 
+function assertServerDeployVerificationSetup(setup, expectedPlatform) {
+  const structured = setup.structuredContent;
+  const json = JSON.stringify(structured);
+  assert.strictEqual(structured.projectKeyUsage.tokenType, 'public_auto_capture_project_key');
+  assert.strictEqual(structured.projectKeyUsage.recommendedStorage, 'inline_project_key');
+  assert.ok(structured.projectKeyUsage.forbiddenSubstitutes.some((item) => item.includes('MCP token')));
+  assert.ok(structured.projectKeyUsage.forbiddenSubstitutes.some((item) => item.includes('Bearer token')));
+  assert.ok(structured.projectKeyUsage.forbiddenSubstitutes.some((item) => item.includes('product usage dogfood')));
+  assert.deepStrictEqual(structured.configurationModes.map((mode) => mode.mode), ['inline_project_key', 'env_project_key']);
+  assert.strictEqual(structured.configurationModes[0].recommended, true);
+  assert.strictEqual(structured.configurationModes[0].variableName, undefined);
+  assert.ok(structured.configurationModes[0].initSnippet.includes(structured.projectKey));
+  assert.strictEqual(structured.configurationModes[1].recommended, false);
+  assert.strictEqual(structured.configurationModes[1].variableName, 'TRACEMIND_PROJECT_KEY');
+  assert.ok(structured.configurationModes[1].initSnippet.includes('TRACEMIND_PROJECT_KEY'));
+  assert.ok(structured.configurationModes[1].deploymentNotes.some((note) => note.includes('deployment environment')));
+  assert.ok(structured.preDeployChecks.some((check) => check.includes('initSnippet')));
+  assert.ok(structured.preDeployChecks.some((check) => check.includes('MCP token')));
+  assert.ok(structured.preDeployChecks.some((check) => check.includes('TRACEMIND_PROJECT_KEY')));
+  assert.ok(structured.preDeployChecks.some((check) => check.includes('egress')));
+  assert.strictEqual(structured.postDeployVerification.query.eventType, 'custom');
+  assert.strictEqual(structured.postDeployVerification.query.sourceType, 'server_app');
+  assert.strictEqual(structured.postDeployVerification.query.sourceKey, 'billing-api');
+  assert.strictEqual(structured.expectedCaptureQuery.eventType, 'custom');
+  assert.strictEqual(structured.expectedCaptureQuery.eventNamePlaceholder, 'approved_event_name');
+  assert.strictEqual(structured.expectedCaptureQuery.sourceType, 'server_app');
+  assert.strictEqual(structured.expectedCaptureQuery.sourceKey, 'billing-api');
+  assert.strictEqual(structured.expectedCaptureQuery.platform, expectedPlatform);
+  const triage = structured.postDeployVerification.failureTriage.join(' -> ');
+  assert.ok(triage.indexOf('SDK initialization') < triage.indexOf('projectKey/env'));
+  assert.ok(triage.indexOf('projectKey/env') < triage.indexOf('egress/TLS/proxy'));
+  assert.ok(triage.indexOf('egress/TLS/proxy') < triage.indexOf('/api/capture delivery'));
+  assert.ok(triage.indexOf('/api/capture delivery') < triage.indexOf('approved event name'));
+  assert.ok(!json.includes('TRACEMIND_PRODUCT_USAGE_PROJECT_ID'));
+  assert.ok(!json.includes('TRACEMIND_PRODUCT_USAGE_PROJECT_KEY'));
+  assert.ok(!json.includes('tm_mcp_'));
+}
+
 describe('TraceMind', function () {
   describe('Product update notices', function () {
     it('keeps product update content localized inside the update record', function () {
@@ -289,6 +327,9 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
       assert.ok(prompt.includes('通过 `tracemind.capture_setup` 获取 Web Auto Capture 接入脚本'));
       assert.ok(prompt.includes('如果返回 `distributionMode: "local_source"`'));
+      assert.ok(prompt.includes('server application 接入后执行返回的 `preDeployChecks` 和 `postDeployVerification`'));
+      assert.ok(prompt.includes('不要把 MCP token、Bearer token 或 TraceMind 内部 dogfood 配置当作服务端 capture key'));
+      assert.ok(!prompt.includes('tm_proj_'));
       assert.ok(!prompt.includes('如果只能使用全局配置，请先告诉我并等待确认'));
       assert.ok(!prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
@@ -341,6 +382,9 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
       assert.ok(prompt.includes('call `tracemind.capture_setup` to retrieve the Web Auto Capture script'));
       assert.ok(prompt.includes('Use registry install commands when `distributionMode: "registry"`'));
+      assert.ok(prompt.includes('For server application setup, run the returned `preDeployChecks` and `postDeployVerification`'));
+      assert.ok(prompt.includes('Do not use an MCP token, Bearer token, or TraceMind internal dogfood configuration as the server capture key'));
+      assert.ok(!prompt.includes('tm_proj_'));
       assert.ok(!prompt.includes('If only global configuration is available, tell me first and wait for confirmation'));
       assert.ok(!prompt.includes('pending-global-confirmation'));
       assert.ok(prompt.includes('fallback-installed'));
@@ -366,7 +410,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.27.1'));
+      assert.ok(skill.includes('version: 2026.05.28.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -401,6 +445,10 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.query_user_feedback'));
       assert.ok(skill.includes('tracemind.update_user_feedback'));
       assert.ok(skill.includes('ordinary server applications use manual capture first'));
+      assert.ok(skill.includes('preDeployChecks'));
+      assert.ok(skill.includes('postDeployVerification'));
+      assert.ok(skill.includes('TRACEMIND_PROJECT_KEY'));
+      assert.ok(skill.includes('TraceMind internal product usage dogfood variables'));
       assert.ok(skill.includes('static Skill file cannot auto-capture'));
       assert.ok(skill.includes('installCommands'));
       assert.ok(skill.includes('idempotencyChecks'));
@@ -426,7 +474,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.check_agent_setup'));
       assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.ok(snippet.includes('Guidance version: `2026.05.27.1`'));
+      assert.ok(snippet.includes('Guidance version: `2026.05.28.1`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -455,6 +503,10 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('browser_extension'));
       assert.ok(snippet.includes('agent_skill'));
       assert.ok(snippet.includes('server_node'));
+      assert.ok(snippet.includes('preDeployChecks'));
+      assert.ok(snippet.includes('postDeployVerification'));
+      assert.ok(snippet.includes('TRACEMIND_PROJECT_KEY'));
+      assert.ok(snippet.includes('TraceMind internal product usage dogfood variables'));
       assert.ok(snippet.includes('tracemind.project_health'));
       assert.ok(snippet.includes('tracemind.recent_online'));
       assert.ok(snippet.includes('tracemind.submit_feedback'));
@@ -464,7 +516,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.ok(snippet.includes('tracemind.check_agent_setup'));
       assert.ok(snippet.includes('agentSetupNotice'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.27.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.05.28.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -492,6 +544,9 @@ describe('TraceMind', function () {
       assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
       assert.ok(manifest.updatePolicy.includes('operations review uses dashboard-aligned project_health/recent_online before instrumentation setup'));
       assert.ok(manifest.updatePolicy.includes('tracemind.check_agent_setup'));
+      assert.ok(manifest.updatePolicy.includes('server deploy verification'));
+      assert.ok(manifest.updatePolicy.includes('preDeployChecks'));
+      assert.ok(manifest.updatePolicy.includes('postDeployVerification'));
       assert.ok(manifest.sdkUpgradePolicy.includes('distributionMode is registry'));
       assert.ok(manifest.sdkUpgradePolicy.includes('sdkContentHash'));
       assert.ok(manifest.sdkUpgradePolicy.includes('latestSdk.sourceRef'));
@@ -1502,10 +1557,10 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.27.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.28.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
-      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.27.1');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.28.1');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
@@ -1597,7 +1652,7 @@ describe('TraceMind', function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
       const currentRules = `---
-version: 2026.05.27.1
+version: 2026.05.28.1
 ---
 TraceMind Project Binding
 Project ID: project-agent-setup-check
@@ -1607,7 +1662,9 @@ Call tracemind.agent_guidance before instrumentation.
 Call tracemind.check_agent_setup when local rules may be stale.
 Call tracemind.capture_setup before setup.
 Use distributionMode: "registry" install commands from npm, PyPI, or Maven Central.
-Treat latestSdk.sourceRef and contentHash as SDK source of truth.`;
+Treat latestSdk.sourceRef and contentHash as SDK source of truth.
+For server_node, server_python, and server_http setup, run returned preDeployChecks and postDeployVerification after deployment.
+Use the returned public projectKey only for capture writes; never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.`;
 
       const empty = await callMcpTool(project, 'tracemind.check_agent_setup', {});
       assert.strictEqual(empty.structuredContent.ok, true);
@@ -1618,14 +1675,14 @@ Treat latestSdk.sourceRef and contentHash as SDK source of truth.`;
       const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules,
         agentInstructionContent: currentRules,
-        manifestContent: JSON.stringify({ guidanceVersion: '2026.05.27.1' }),
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.05.28.1' }),
       });
       assert.strictEqual(current.structuredContent.status, 'current');
       assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
 
       const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('version: 2026.05.27.1', 'version: 2026.05.17.7'),
+        skillContent: currentRules.replace('version: 2026.05.28.1', 'version: 2026.05.17.7'),
         agentInstructionContent: currentRules,
       });
       assert.strictEqual(outdated.structuredContent.status, 'outdated');
@@ -1642,6 +1699,18 @@ Treat latestSdk.sourceRef and contentHash as SDK source of truth.`;
       });
       assert.strictEqual(incompleteRegistry.structuredContent.status, 'incomplete');
       assert.ok(incompleteRegistry.structuredContent.findings.some((finding) => finding.code === 'missing_registry_guidance'));
+
+      const missingServerDeployVerification = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('For server_node, server_python, and server_http setup, run returned preDeployChecks and postDeployVerification after deployment.', 'For server setup, add manual capture.'),
+      });
+      assert.strictEqual(missingServerDeployVerification.structuredContent.status, 'incomplete');
+      assert.ok(missingServerDeployVerification.structuredContent.findings.some((finding) => finding.code === 'missing_server_deploy_verification'));
+
+      const missingProjectKeyUsage = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('Use the returned public projectKey only for capture writes; never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.', 'Use the returned key for setup.'),
+      });
+      assert.strictEqual(missingProjectKeyUsage.structuredContent.status, 'incomplete');
+      assert.ok(missingProjectKeyUsage.structuredContent.findings.some((finding) => finding.code === 'missing_project_key_usage_guidance'));
 
       const missingBinding = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules
@@ -1780,7 +1849,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
       assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.05.27.1');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.05.28.1');
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 30);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
@@ -2349,7 +2418,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
       assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.27.1');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.28.1');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
       assert.ok(setup.structuredContent.captureSnippet.includes('/capture.js'));
       assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
@@ -2358,6 +2427,11 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.latestSdk, undefined);
       assert.strictEqual(setup.structuredContent.installedSdkManifest, undefined);
       assert.strictEqual(setup.structuredContent.upgradeCommands, undefined);
+      assert.strictEqual(setup.structuredContent.projectKeyUsage, undefined);
+      assert.strictEqual(setup.structuredContent.configurationModes, undefined);
+      assert.strictEqual(setup.structuredContent.preDeployChecks, undefined);
+      assert.strictEqual(setup.structuredContent.postDeployVerification, undefined);
+      assert.ok(!JSON.stringify(setup.structuredContent).includes('TRACEMIND_PROJECT_KEY'));
       assert.ok(setup.structuredContent.filesToEdit.some((file) => file.includes('root layout')));
       assert.ok(setup.structuredContent.idempotencyChecks.some((check) => check.includes('data-tracemind-token')));
       assert.ok(setup.structuredContent.verificationCommands.some((command) => command.includes('query TraceMind')));
@@ -2747,6 +2821,7 @@ projectKey: tm_proj_sensitive`,
       assert.ok(node.structuredContent.sourceModel.includes('sourceType is server_app'));
       assert.deepStrictEqual(node.structuredContent.autoCapturedSignals, []);
       assert.ok(node.structuredContent.manualCaptureWarnings.some((warning) => warning.includes('manual capture only')));
+      assertServerDeployVerificationSetup(node, 'server_node');
 
       assert.strictEqual(python.structuredContent.platform, 'server_python');
       assert.strictEqual(python.structuredContent.eventPlatform, 'server');
@@ -2756,6 +2831,7 @@ projectKey: tm_proj_sensitive`,
       assert.ok(python.structuredContent.initSnippet.includes('TraceMindServer.start'));
       assert.ok(python.structuredContent.initSnippet.includes('project_key="tm_proj_server_sdk"'));
       assert.ok(python.structuredContent.manualCaptureExample.includes('TraceMindServer.capture'));
+      assertServerDeployVerificationSetup(python, 'server_python');
 
       assert.strictEqual(http.structuredContent.platform, 'server_http');
       assert.strictEqual(http.structuredContent.eventPlatform, 'server');
@@ -2769,6 +2845,7 @@ projectKey: tm_proj_sensitive`,
       assert.ok(http.structuredContent.manualCaptureExample.includes('/api/capture'));
       assert.ok(http.structuredContent.networkRestrictionChecks.some((check) => check.includes('egress firewall')));
       assert.ok(http.structuredContent.networkRestrictionChecks.some((check) => check.includes('Content-Type: application/json')));
+      assertServerDeployVerificationSetup(http, 'server_http');
 
       [node, python, http].forEach((result) => {
         assert.strictEqual(result.structuredContent.tokenType, 'public_auto_capture_project_key');

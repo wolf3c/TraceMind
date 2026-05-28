@@ -1,5 +1,13 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-05-28
+
+### Completed
+
+- Extended server `tracemind.capture_setup` output with `projectKeyUsage`, `configurationModes`, `preDeployChecks`, `postDeployVerification`, and `expectedCaptureQuery` so coding agents can verify service-side capture after deployment instead of treating a 0 query as customer inactivity.
+- Clarified server project key handling across MCP output, console install prompts, public Skill/AGENTS guidance, README, and design docs: inline public `projectKey` is the default, optional `TRACEMIND_PROJECT_KEY` is only an engineering preference, and MCP tokens, Bearer tokens, or TraceMind internal dogfood config are never customer capture keys.
+- Updated `tracemind.check_agent_setup` to warn when local Skill/AGENTS rules lack server deploy verification or projectKey/token separation guidance.
+
 ## 2026-05-25
 
 ### Completed

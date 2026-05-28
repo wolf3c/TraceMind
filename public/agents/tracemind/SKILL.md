@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.27.1
+version: 2026.05.28.1
 description: Use when reviewing TraceMind product operations, online health, or analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -51,7 +51,7 @@ TraceMind separates recent drilldown detail from long-term analysis summaries:
 5. If local TraceMind Skill or AGENTS rules may be stale, call `tracemind.check_agent_setup` with the local Skill, AGENTS/rules, and manifest text before editing instrumentation or SDK setup.
 6. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
 7. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
-8. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `errorCaptureWorkflow`, `errorCaptureMethods`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup.
+8. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `errorCaptureWorkflow`, `errorCaptureMethods`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup. For server application platforms, also use the returned `projectKeyUsage`, `configurationModes`, `preDeployChecks`, `postDeployVerification`, and `expectedCaptureQuery`.
 9. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
 10. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
 11. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
@@ -102,7 +102,7 @@ For product apps, first check whether TraceMind Auto Capture is already initiali
 - MCP Node: call `tracemind.capture_setup` with `{ "platform": "mcp_node" }`; install the returned `@tracemind/mcp-node` package and initialize it around the MCP server object before serving tools.
 - MCP Python: call `tracemind.capture_setup` with `{ "platform": "mcp_python" }`; install the returned `tracemind-mcp` package and initialize it around the MCP server object before serving tools.
 - Agent Skill: call `tracemind.capture_setup` with `{ "platform": "agent_skill" }`; only instrument executable host agent runtime hooks. A static Skill file cannot auto-capture by itself.
-- Server Node/Python/HTTP: call `tracemind.capture_setup` with `{ "platform": "server_node" }`, `{ "platform": "server_python" }`, or `{ "platform": "server_http" }`; Node uses npm, Python uses PyPI, and HTTP uses no SDK package. Ordinary server applications use manual `capture` and `captureError` only in v1; do not enable request Auto Capture, log hooks, DB hooks, or crash reporters.
+- Server Node/Python/HTTP: call `tracemind.capture_setup` with `{ "platform": "server_node" }`, `{ "platform": "server_python" }`, or `{ "platform": "server_http" }`; Node uses npm, Python uses PyPI, and HTTP uses no SDK package. Use the returned public `projectKey` inline by default. If the customer project already manages public runtime config through deployment env vars, the optional env mode uses `TRACEMIND_PROJECT_KEY`. Ordinary server applications use manual `capture` and `captureError` only in v1; do not enable request Auto Capture, log hooks, DB hooks, or crash reporters.
 - The returned public project key is only for capture writes. Never use an MCP token in frontend or app code.
 - Manual `custom` events are only for business outcomes that Auto Capture cannot infer reliably.
 
@@ -175,6 +175,10 @@ For v1, ordinary server applications use manual capture first and do not enable 
 - Use `{ "platform": "server_node" }` for Node backends and initialize `TraceMindServer.start({ projectKey, sourceKey })` once at server startup.
 - Use `{ "platform": "server_python" }` for Python backends and initialize `TraceMindServer.start(project_key=..., source_key=...)` once at server startup.
 - Use `{ "platform": "server_http" }` when no first-party SDK exists; call `/api/capture` directly with the returned safe payload template.
+- Prefer the `inline_project_key` configuration mode. Use `env_project_key` with `TRACEMIND_PROJECT_KEY` only when the customer server already keeps public config in deployment env vars.
+- Never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as a customer server capture key.
+- Before deploy, run every returned `preDeployChecks` item. After deploy, trigger the real business path that emits the approved event and run the returned `postDeployVerification` query.
+- If the verification query returns 0, triage in this order before concluding no users were active: SDK initialization, projectKey/env, egress/TLS/proxy, `/api/capture` delivery, then approved event name and query window/source key.
 - Keep `platform` as `server`; server app source identity is represented as `sourceType: "server_app"` and a stable `sourceKey` such as `billing-api` or `worker-service`.
 - Add manual `custom` events only for stable business outcomes such as payment succeeded, invoice paid, workspace created, job completed, sync completed, or webhook handled. Use `captureError` for approved `app_error` summaries instead of creating a custom error event.
 - Before coding, call `tracemind.search_event_names`, then `tracemind.validate_event_payload`; after changes, call `tracemind.validate_instrumentation_diff`.
