@@ -27,7 +27,9 @@ TraceMind can dogfood its own server-side manual capture to measure daily custom
 - `TRACEMIND_PRODUCT_USAGE_PROJECT_KEY`: TraceMind's own public project key, used only for writing the internal `customer_project_capture_active` event.
 - `TRACEMIND_PRODUCT_USAGE_ENDPOINT`: optional capture endpoint override; defaults to this app's `/api/capture`.
 
-Keep these values in private Meteor settings or Galaxy environment variables. Do not commit MCP tokens, auth tokens, or private deployment settings.
+Keep these values in private Meteor settings or Galaxy environment variables. Do not commit MCP tokens, auth tokens, project keys, or private deployment settings.
+
+When this marker is missing or unhealthy, `tracemind.summary` queries for `customer_project_capture_active` include a `productUsageInstrumentation` health object. Treat `authoritative: false` as a configuration or delivery problem, not as proof that no customer projects are active. Marker writes are claimed as `pending`, marked `sent` only after the internal capture flush succeeds, and retried after failures or stale pending attempts.
 
 ## Deploy Commands
 

@@ -38,6 +38,9 @@ const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
 const PRODUCT_USAGE_EVENT_NAME = 'customer_project_capture_active';
 const PRODUCT_USAGE_SOURCE_KEY = 'tracemind-server';
+const PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY = 'TRACEMIND_PRODUCT_USAGE_PROJECT_ID';
+const PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY = 'TRACEMIND_PRODUCT_USAGE_PROJECT_KEY';
+const PRODUCT_USAGE_PENDING_RETRY_MS = 10 * 60 * 1000;
 const SDK_NAME_BY_SOURCE_PATH = {
   'sdk/ios': 'swift',
   'sdk/android': 'android',
@@ -607,6 +610,21 @@ function safeLimit(value, fallback, max) {
 
 let productUsageConfig = null;
 const productUsageTasks = new Set();
+let productUsageMissingConfigWarningLogged = false;
+let productUsageInstrumentationState = initialProductUsageInstrumentationState();
+
+function initialProductUsageInstrumentationState() {
+  return {
+    enabled: false,
+    configured: false,
+    missingConfigKeys: [PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY, PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY],
+    lastStartedAt: null,
+    lastAttemptAt: null,
+    lastSuccessAt: null,
+    lastFailureAt: null,
+    lastFailureKind: '',
+  };
+}
 
 function privateSettings() {
   return Meteor.settings?.private || {};
@@ -619,11 +637,11 @@ function configuredValue(settingsKey, envKey, fallback = '') {
 function resolveProductUsageConfig(overrides = {}) {
   const productProjectId = String(
     overrides.productProjectId
-      || configuredValue('TRACEMIND_PRODUCT_USAGE_PROJECT_ID', 'TRACEMIND_PRODUCT_USAGE_PROJECT_ID'),
+      || configuredValue(PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY, PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY),
   ).trim();
   const productProjectKey = String(
     overrides.productProjectKey
-      || configuredValue('TRACEMIND_PRODUCT_USAGE_PROJECT_KEY', 'TRACEMIND_PRODUCT_USAGE_PROJECT_KEY'),
+      || configuredValue(PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY, PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY),
   ).trim();
   const endpoint = String(
     overrides.endpoint
@@ -641,14 +659,114 @@ function resolveProductUsageConfig(overrides = {}) {
   };
 }
 
+function productUsageNow(config = productUsageConfig) {
+  return config?.now?.() || new Date();
+}
+
+function productUsageMissingConfigKeys(config = {}) {
+  return [
+    ...(config.productProjectId ? [] : [PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY]),
+    ...(config.productProjectKey ? [] : [PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY]),
+  ];
+}
+
+function productUsageWarning(code, message) {
+  return { code, severity: 'warning', message };
+}
+
+function productUsageInstrumentationWarnings(state, context = {}) {
+  const warnings = [];
+  if (!state.configured) {
+    warnings.push(productUsageWarning(
+      'missing_config',
+      `Product usage instrumentation is disabled because ${state.missingConfigKeys.join(', ')} is missing.`,
+    ));
+  }
+  if (state.lastFailureAt && (!state.lastSuccessAt || new Date(state.lastFailureAt) > new Date(state.lastSuccessAt))) {
+    if (state.lastFailureKind !== 'missing_config') {
+      warnings.push(productUsageWarning(
+        'last_flush_failed',
+        'The latest product usage marker flush failed; customer active-project counts may be incomplete until a later activity retries successfully.',
+      ));
+    }
+  }
+  if (context.productUsageSummary && context.summary?.totalEvents === 0 && context.hasPresenceEvidence) {
+    warnings.push(productUsageWarning(
+      'zero_events_with_presence',
+      'This TraceMind project has presence activity, but customer_project_capture_active is empty; do not treat the zero marker count as proof that no customer project is active.',
+    ));
+  }
+  return warnings;
+}
+
+function publicProductUsageInstrumentationHealth(context = {}) {
+  const state = {
+    ...productUsageInstrumentationState,
+    missingConfigKeys: [...productUsageInstrumentationState.missingConfigKeys],
+  };
+  const warnings = productUsageInstrumentationWarnings(state, context);
+  return {
+    enabled: state.enabled,
+    configured: state.configured,
+    authoritative: state.enabled && state.configured && warnings.length === 0,
+    missingConfigKeys: state.missingConfigKeys,
+    lastStartedAt: state.lastStartedAt,
+    lastAttemptAt: state.lastAttemptAt,
+    lastSuccessAt: state.lastSuccessAt,
+    lastFailureAt: state.lastFailureAt,
+    lastFailureKind: state.lastFailureKind,
+    warnings,
+  };
+}
+
+function productUsageSummaryRequested(args = {}) {
+  return String(args.eventName || '').trim() === PRODUCT_USAGE_EVENT_NAME;
+}
+
+function updateProductUsageFailure(kind, now = productUsageNow()) {
+  productUsageInstrumentationState.lastFailureAt = now;
+  productUsageInstrumentationState.lastFailureKind = kind;
+}
+
+function updateProductUsageSuccess(now = productUsageNow()) {
+  productUsageInstrumentationState.lastSuccessAt = now;
+}
+
+function productUsageFailureKind(error) {
+  if (duplicateKey(error)) return 'marker_duplicate';
+  return 'flush_failed';
+}
+
 export function startProductUsageInstrumentation(overrides = {}) {
   const config = resolveProductUsageConfig(overrides);
-  if (!config.productProjectId || !config.productProjectKey) {
+  const missingConfigKeys = productUsageMissingConfigKeys(config);
+  const now = productUsageNow(config);
+
+  productUsageInstrumentationState = {
+    ...productUsageInstrumentationState,
+    enabled: missingConfigKeys.length === 0,
+    configured: missingConfigKeys.length === 0,
+    missingConfigKeys,
+    lastStartedAt: now,
+    ...(missingConfigKeys.length
+      ? { lastFailureAt: now, lastFailureKind: 'missing_config' }
+      : productUsageInstrumentationState.lastFailureKind === 'missing_config'
+        ? { lastFailureAt: null, lastFailureKind: '' }
+        : {}),
+  };
+
+  if (missingConfigKeys.length) {
     productUsageConfig = null;
+    if (!productUsageMissingConfigWarningLogged) {
+      const logger = config.logger || console.warn;
+      logger(`[TraceMind] product usage instrumentation disabled; missing ${missingConfigKeys.join(', ')}`);
+      productUsageMissingConfigWarningLogged = true;
+    }
     return false;
   }
 
   productUsageConfig = config;
+  productUsageMissingConfigWarningLogged = false;
   TraceMindServer.start({
     projectKey: config.productProjectKey,
     sourceKey: config.sourceKey,
@@ -662,7 +780,7 @@ export function startProductUsageInstrumentation(overrides = {}) {
 function productUsageActivityDate(payload = {}) {
   const occurredAt = payload.occurredAt ? new Date(payload.occurredAt) : null;
   if (occurredAt && !Number.isNaN(occurredAt.getTime())) return occurredAt;
-  return productUsageConfig?.now?.() || new Date();
+  return productUsageNow();
 }
 
 function duplicateKey(error) {
@@ -671,14 +789,59 @@ function duplicateKey(error) {
     || String(error?.message || '').includes('E11000');
 }
 
-async function insertProductUsageMarker(project, activitySource, reportDate, now) {
+function pendingMarkerIsStale(marker, now) {
+  const lastAttemptAt = marker.lastAttemptAt || marker.updatedAt || marker.createdAt || null;
+  if (!lastAttemptAt) return true;
+  return new Date(now).getTime() - new Date(lastAttemptAt).getTime() >= PRODUCT_USAGE_PENDING_RETRY_MS;
+}
+
+async function claimProductUsageMarker(project, activitySource, reportDate, now) {
+  const existing = await ProductUsageMarkers.findOneAsync({ projectId: project._id, reportDate });
+  if (existing) {
+    const status = existing.status || 'sent';
+    if (status === 'sent') return false;
+    if (status === 'pending' && !pendingMarkerIsStale(existing, now)) return false;
+    if (status !== 'pending' && status !== 'failed') return false;
+
+    const claimSelector = { _id: existing._id, status };
+    if (status === 'pending') {
+      if (existing.lastAttemptAt) {
+        claimSelector.lastAttemptAt = existing.lastAttemptAt;
+      } else {
+        claimSelector.$or = [
+          { lastAttemptAt: { $exists: false } },
+          { lastAttemptAt: null },
+        ];
+      }
+    }
+    const updated = await ProductUsageMarkers.updateAsync(claimSelector, {
+      $set: {
+        developerId: project.developerId,
+        activitySource,
+        status: 'pending',
+        lastAttemptAt: now,
+        updatedAt: now,
+      },
+      $unset: {
+        lastFailureAt: '',
+        lastFailureKind: '',
+      },
+      $inc: { attemptCount: 1 },
+    });
+    return updated > 0;
+  }
+
   try {
     await ProductUsageMarkers.insertAsync({
       projectId: project._id,
       developerId: project.developerId,
       reportDate,
       activitySource,
+      status: 'pending',
+      attemptCount: 1,
+      lastAttemptAt: now,
       createdAt: now,
+      updatedAt: now,
     });
     return true;
   } catch (error) {
@@ -687,32 +850,76 @@ async function insertProductUsageMarker(project, activitySource, reportDate, now
   }
 }
 
+async function markProductUsageMarkerSent(projectId, reportDate, now) {
+  await ProductUsageMarkers.updateAsync(
+    { projectId, reportDate },
+    {
+      $set: {
+        status: 'sent',
+        sentAt: now,
+        updatedAt: now,
+      },
+      $unset: {
+        lastFailureAt: '',
+        lastFailureKind: '',
+      },
+    },
+  );
+}
+
+async function markProductUsageMarkerFailed(projectId, reportDate, failureKind, now) {
+  await ProductUsageMarkers.updateAsync(
+    { projectId, reportDate },
+    {
+      $set: {
+        status: 'failed',
+        lastFailureAt: now,
+        lastFailureKind: failureKind,
+        updatedAt: now,
+      },
+    },
+  );
+}
+
 async function recordProductUsageActivity(project, activitySource, payload = {}) {
   if (!productUsageConfig?.productProjectId || !productUsageConfig?.productProjectKey) return;
   if (!project?._id || !project.developerId) return;
   if (project._id === productUsageConfig.productProjectId) return;
 
-  const now = productUsageConfig.now?.() || new Date();
+  const now = productUsageNow();
   const reportDate = reportDateForDate(productUsageActivityDate(payload));
-  const inserted = await insertProductUsageMarker(project, activitySource, reportDate, now);
-  if (!inserted) return;
+  let claimed = false;
+  try {
+    claimed = await claimProductUsageMarker(project, activitySource, reportDate, now);
+    if (!claimed) return;
 
-  TraceMindServer.capture('custom', {
-    eventName: PRODUCT_USAGE_EVENT_NAME,
-    userId: project.developerId,
-    path: '/internal/product-usage',
-    properties: {
-      reportDate,
-      customerAccountId: project.developerId,
-      customerProjectId: project._id,
-      activitySource,
-    },
-    context: {
-      source: 'capture_ingestion',
-      platform: 'server',
-    },
-  });
-  await TraceMindServer.flush();
+    productUsageInstrumentationState.lastAttemptAt = now;
+    TraceMindServer.capture('custom', {
+      eventName: PRODUCT_USAGE_EVENT_NAME,
+      userId: project.developerId,
+      path: '/internal/product-usage',
+      properties: {
+        reportDate,
+        customerAccountId: project.developerId,
+        customerProjectId: project._id,
+        activitySource,
+      },
+      context: {
+        source: 'capture_ingestion',
+        platform: 'server',
+      },
+    });
+    await TraceMindServer.flush();
+    await markProductUsageMarkerSent(project._id, reportDate, now);
+    updateProductUsageSuccess(now);
+  } catch (error) {
+    const failureKind = productUsageFailureKind(error);
+    updateProductUsageFailure(failureKind, now);
+    if (claimed) {
+      await markProductUsageMarkerFailed(project._id, reportDate, failureKind, now);
+    }
+    throw error;
+  }
 }
 
 function queueProductUsageActivity(project, activitySource, payload = {}) {
@@ -736,6 +943,12 @@ export function configureProductUsageInstrumentationForTest(overrides = {}) {
 export function resetProductUsageInstrumentationForTest() {
   productUsageConfig = null;
   productUsageTasks.clear();
+  productUsageMissingConfigWarningLogged = false;
+  productUsageInstrumentationState = initialProductUsageInstrumentationState();
+}
+
+export function productUsageInstrumentationHealthForTest() {
+  return publicProductUsageInstrumentationHealth();
 }
 
 async function loadProjectEvents(project, limit) {
@@ -3928,14 +4141,22 @@ export async function callMcpTool(project, name, args = {}, options = {}) {
     const events = await queryProjectEvents(project, { ...args, limit: safeLimit(args.limit, 200, 500) });
     const presenceSessions = await loadProjectPresenceSessions(project);
     const summary = summarizeSemanticEvents(events);
+    const structuredContent = {
+      project: { _id: project._id, name: project.name },
+      summary,
+      presence: summarizePresenceSessions(presenceSessions),
+      eventDefinitions: EVENT_DEFINITIONS,
+    };
+    if (productUsageSummaryRequested(args)) {
+      structuredContent.productUsageInstrumentation = publicProductUsageInstrumentationHealth({
+        productUsageSummary: true,
+        summary,
+        hasPresenceEvidence: presenceSessions.length > 0,
+      });
+    }
     return textResult(
       `TraceMind 找到 ${summary.totalEvents} 条语义事件。主要事件类型：${summary.topEvents.map((item) => `${item.eventType}（${item.count}）`).join('，') || '暂无'}。`,
-      {
-        project: { _id: project._id, name: project.name },
-        summary,
-        presence: summarizePresenceSessions(presenceSessions),
-        eventDefinitions: EVENT_DEFINITIONS,
-      },
+      structuredContent,
     );
   }
 
