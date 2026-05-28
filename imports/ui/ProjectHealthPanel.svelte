@@ -1,6 +1,6 @@
 <script>
   import HourlyTrendSparkline from "./HourlyTrendSparkline.svelte";
-  import { DATA_RETENTION_POLICY } from "../api/tracemind";
+  import { DATA_RETENTION_POLICY } from "../api/data_retention";
   import { t } from "./i18n/i18n";
 
   let {

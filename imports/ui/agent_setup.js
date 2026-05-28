@@ -1,4 +1,4 @@
-import { mcpServerNameForProject } from '../api/tracemind';
+import { mcpServerNameForProject } from '../api/project_identity';
 
 function promptLine(value, fallback) {
   return String(value || fallback).replace(/\s+/g, ' ').trim() || fallback;

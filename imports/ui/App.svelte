@@ -9,8 +9,8 @@
     Developers,
     ProjectDailyReports,
     Projects,
-    summarizeProjectHealthFromDailyReports,
-  } from "../api/tracemind";
+  } from "../api/collections";
+  import { summarizeProjectHealthFromDailyReports } from "../api/project_health_summary";
   import AuthPanel from "./AuthPanel.svelte";
   import { buildAgentInstallPrompt } from "./agent_setup";
   import ConsoleStatePanel from "./ConsoleStatePanel.svelte";

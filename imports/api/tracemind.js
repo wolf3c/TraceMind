@@ -1,17 +1,33 @@
-import { Mongo } from 'meteor/mongo';
 import { cleanSdkContentHash, sdkUpgradeFindingsForRecords } from './sdk_release';
+import {
+  DAILY_REPORT_TIMEZONE,
+  HEALTH_RETENTION_DAYS,
+  attentionItemsForHealth,
+  emptyHealthWindow,
+  emptyHourlyComparison,
+  percentChange,
+} from './project_health_summary';
 
-export const Developers = new Mongo.Collection('tracemind_developers');
-export const Projects = new Mongo.Collection('tracemind_projects');
-export const RawBehaviors = new Mongo.Collection('tracemind_raw_behaviors');
-export const SemanticEvents = new Mongo.Collection('tracemind_semantic_events');
-export const PresenceSessions = new Mongo.Collection('tracemind_presence_sessions');
-export const CaptureDeliveryReports = new Mongo.Collection('tracemind_capture_delivery_reports');
-export const FeedbackReports = new Mongo.Collection('tracemind_feedback_reports');
-export const UserFeedbackReports = new Mongo.Collection('tracemind_user_feedback_reports');
-export const ProjectDailyReports = new Mongo.Collection('tracemind_project_daily_reports');
-export const ProjectHourlyReports = new Mongo.Collection('tracemind_project_hourly_reports');
-export const ProductUsageMarkers = new Mongo.Collection('tracemind_product_usage_markers');
+export {
+  Developers,
+  Projects,
+  RawBehaviors,
+  SemanticEvents,
+  PresenceSessions,
+  CaptureDeliveryReports,
+  FeedbackReports,
+  UserFeedbackReports,
+  ProjectDailyReports,
+  ProjectHourlyReports,
+  ProductUsageMarkers,
+} from './collections';
+export { DATA_RETENTION_POLICY } from './data_retention';
+export { mcpServerNameForProject } from './project_identity';
+export {
+  DAILY_REPORT_TIMEZONE,
+  HEALTH_RETENTION_DAYS,
+  summarizeProjectHealthFromDailyReports,
+} from './project_health_summary';
 
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 5 * 1000;
 export const PRESENCE_ONLINE_WINDOW_MS = 15 * 1000;
@@ -20,61 +36,7 @@ export const HEALTH_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const HEALTH_ROLLUP_HOUR_MS = 60 * 60 * 1000;
 export const RECENT_ONLINE_WINDOW_MS = 30 * 60 * 1000;
 export const RECENT_ONLINE_BUCKET_MS = 5 * 60 * 1000;
-export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
-export const DAILY_REPORT_TIMEZONE = 'Asia/Shanghai';
 export const DAILY_REPORT_DRAFT_MIN_REFRESH_MS = 60 * 1000;
-export const DATA_RETENTION_POLICY = Object.freeze({
-  detailWindows: [
-    {
-      dataSet: 'capture_delivery_reports',
-      collectionName: 'tracemind_capture_delivery_reports',
-      label: 'Capture delivery diagnostics',
-      retentionDays: 7,
-      dateField: 'createdAt',
-      usage: 'Recent upload health diagnostics including accepted, ignored, retry, drop, queue-depth, and flush status.',
-    },
-    {
-      dataSet: 'presence_sessions',
-      collectionName: 'tracemind_presence_sessions',
-      label: 'Presence sessions',
-      retentionDays: 30,
-      dateField: 'lastSeenAt',
-      usage: 'Recent session-level online, active-time, and page-duration detail.',
-    },
-    {
-      dataSet: 'raw_behaviors',
-      collectionName: 'tracemind_raw_behaviors',
-      label: 'Raw behavior logs',
-      retentionDays: 30,
-      dateField: 'occurredAt',
-      usage: 'Recent raw capture facts for verifying semantic event evidence.',
-    },
-  ],
-  retainedSummaries: [
-    {
-      dataSet: 'semantic_events',
-      collectionName: 'tracemind_semantic_events',
-      label: 'Semantic events',
-      retentionDays: null,
-      usage: 'Primary MCP evidence for older product behavior analysis.',
-    },
-    {
-      dataSet: 'project_hourly_reports',
-      collectionName: 'tracemind_project_hourly_reports',
-      label: 'Hourly health reports',
-      retentionDays: null,
-      usage: 'Aggregated hourly health trends for older online and delivery analysis.',
-    },
-    {
-      dataSet: 'project_daily_reports',
-      collectionName: 'tracemind_project_daily_reports',
-      label: 'Daily health reports',
-      retentionDays: null,
-      usage: 'Long-term daily health trends.',
-    },
-  ],
-  note: 'If detail outside these windows is unavailable, use semantic events, summary, project_health, and hourly/daily reports before assuming data loss.',
-});
 
 const DAILY_REPORT_TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAILY_REPORT_DAY_MS = 24 * 60 * 60 * 1000;
@@ -195,12 +157,6 @@ export function isValidEmail(email) {
 
 export function normalizeToken(token) {
   return String(token || '').trim();
-}
-
-export function mcpServerNameForProject(project = {}) {
-  const rawId = typeof project === 'string' ? project : project?._id;
-  const code = String(rawId || '').replace(/[^a-z0-9]/gi, '').slice(-6).toLowerCase() || 'project';
-  return `tracemind-${code}`;
 }
 
 function cleanString(value, max = 200, fallback = '') {
@@ -1156,15 +1112,6 @@ function isFailureEvent(event = {}) {
     || success === false;
 }
 
-function percentChange(current, previous) {
-  if (!previous) return current ? 1 : 0;
-  return (current - previous) / previous;
-}
-
-function formatPercentForMessage(value) {
-  return `${Math.round(Math.abs(value) * 100)}%`;
-}
-
 function summarizeWindow({
   events,
   sessions,
@@ -1321,55 +1268,6 @@ function retentionSummary(firstSeenByActor, activeCurrentActors, now, day) {
     sampleSize,
     retainedUsers,
     rate: sampleSize ? retainedUsers / sampleSize : null,
-  };
-}
-
-function emptyHealthWindow() {
-  return {
-    activeUsers: 0,
-    eventCount: 0,
-    sessionCount: 0,
-    failureEventCount: 0,
-    lastEventAt: null,
-    totalDurationMs: 0,
-    averageActiveDurationMs: 0,
-    averageSessionEvents: 0,
-    topEvents: [],
-    userRegions: [],
-    deviceDistribution: [],
-    sessionSources: [],
-    sessionPaths: [],
-    trafficSources: [],
-    trafficMediums: [],
-    trafficCampaigns: [],
-    trafficLandingPaths: [],
-    topDurationUsers: [],
-    topDurationPaths: [],
-    topBouncePages: [],
-    sdkUpgradeFindings: [],
-    newUsers: 0,
-    retention: Object.fromEntries(
-      HEALTH_RETENTION_DAYS.map((day) => [`d${day}`, { sampleSize: 0, retainedUsers: 0, rate: null }]),
-    ),
-  };
-}
-
-function emptyHourlyComparison({
-  comparisonMode = 'full_day',
-  currentHourCount = 0,
-  previousHourCount = 0,
-} = {}) {
-  return {
-    granularity: 'hour_rollup',
-    comparisonMode,
-    currentHourCount,
-    previousHourCount,
-    metrics: {
-      activeUsers: [],
-      sessions: [],
-      averageActiveDuration: [],
-      events: [],
-    },
   };
 }
 
@@ -1608,70 +1506,6 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
   };
 }
 
-function attentionWindowLabels(comparisonWindow) {
-  if (comparisonWindow === 'completed_hours') {
-    return {
-      currentWindow: '所选日期已结束小时',
-      previousWindow: '昨天同一时段',
-      previousFullWindow: '昨天同一时段',
-      trailingWindow: '最近 3 个已结束小时',
-    };
-  }
-
-  if (comparisonWindow === 'day') {
-    return {
-      currentWindow: '所选日期',
-      previousWindow: '前一天',
-      previousFullWindow: '前一天',
-      trailingWindow: '所选日期最后 3 小时',
-    };
-  }
-
-  return {
-    currentWindow: '近 24h',
-    previousWindow: '前 24h',
-    previousFullWindow: '前一个 24h',
-    trailingWindow: '最近 3 小时',
-  };
-}
-
-function attentionItemsForHealth(current, previous, now, { comparisonWindow = 'rolling_24h' } = {}) {
-  const items = [];
-  const labels = attentionWindowLabels(comparisonWindow);
-  const activeUsersChange = percentChange(current.activeUsers, previous.activeUsers);
-  const sessionsChange = percentChange(current.sessionCount, previous.sessionCount);
-  const eventsChange = percentChange(current.eventCount, previous.eventCount);
-
-  if (previous.eventCount > 0 && current.eventCount === 0) {
-    items.push({ code: 'event_stream_stopped', severity: 'high', message: `${labels.currentWindow}没有新事件，但${labels.previousFullWindow}有事件。` });
-  }
-  if (current.lastEventAt && now.getTime() - current.lastEventAt.getTime() >= 3 * 60 * 60 * 1000 && previous.eventCount > 0) {
-    items.push({ code: 'no_recent_events', severity: 'medium', message: `${labels.trailingWindow}没有收到新事件。` });
-  }
-  if (previous.activeUsers >= 3 && activeUsersChange <= -0.4) {
-    items.push({ code: 'active_users_dropped', severity: 'medium', message: `${labels.currentWindow}活跃用户较${labels.previousWindow}下降 ${formatPercentForMessage(activeUsersChange)}。` });
-  }
-  if (previous.sessionCount >= 3 && sessionsChange <= -0.4) {
-    items.push({ code: 'sessions_dropped', severity: 'medium', message: `${labels.currentWindow}活跃会话较${labels.previousWindow}下降 ${formatPercentForMessage(sessionsChange)}。` });
-  }
-  if (previous.eventCount >= 5 && eventsChange <= -0.4) {
-    items.push({ code: 'events_dropped', severity: 'medium', message: `${labels.currentWindow}用户行为事件较${labels.previousWindow}下降 ${formatPercentForMessage(eventsChange)}。` });
-  }
-  if (previous.eventCount >= 5 && eventsChange >= 1) {
-    items.push({ code: 'events_spiked', severity: 'low', message: `${labels.currentWindow}用户行为事件较${labels.previousWindow}上升 ${formatPercentForMessage(eventsChange)}。` });
-  }
-  if (current.failureEventCount > previous.failureEventCount && current.failureEventCount > 0) {
-    items.push({ code: 'failure_events_increased', severity: 'high', message: `${labels.currentWindow}失败或错误事件 ${current.failureEventCount} 条，高于${labels.previousFullWindow}。` });
-  }
-
-  const topEvent = current.topEvents[0];
-  if (topEvent && current.eventCount >= 10 && topEvent.count / current.eventCount >= 0.8) {
-    items.push({ code: 'top_event_concentration', severity: 'low', message: `${labels.currentWindow}高频事件 ${topEvent.label} 占比过高。` });
-  }
-
-  return items;
-}
-
 export function summarizeProjectHealthForWindow({
   events = [],
   presenceSessions = [],
@@ -1770,67 +1604,6 @@ export function summarizeProjectHealthRollupForWindow({
     windowEnd,
     now: windowEnd,
   }, { includeRollupDetails: true, distributeActiveDuration: true });
-}
-
-export function summarizeProjectHealthFromDailyReports({
-  currentReport,
-  previousReport,
-  retention = null,
-} = {}) {
-  const comparisonMode = currentReport?.comparisonWindow?.mode || 'full_day';
-  const current = {
-    ...emptyHealthWindow(),
-    ...(currentReport?.current || {}),
-    newUsers: Number(currentReport?.current?.newUsers ?? currentReport?.newActorKeys?.length ?? 0),
-    retention: retention || emptyHealthWindow().retention,
-  };
-  const previous = {
-    ...emptyHealthWindow(),
-    ...(currentReport?.previous || previousReport?.current || {}),
-    newUsers: Number(currentReport?.previous?.newUsers ?? previousReport?.current?.newUsers ?? previousReport?.newActorKeys?.length ?? 0),
-  };
-  const currentStart = validDate(currentReport?.sourceWindow?.startAt);
-  const currentEnd = validDate(currentReport?.sourceWindow?.endAt);
-  const previousStart = validDate(currentReport?.comparisonWindow?.previousStartAt) || validDate(previousReport?.sourceWindow?.startAt);
-  const previousEnd = validDate(currentReport?.comparisonWindow?.previousEndAt) || validDate(previousReport?.sourceWindow?.endAt);
-  const attentionItems = attentionItemsForHealth(current, previous, currentEnd || new Date(), {
-    comparisonWindow: comparisonMode === 'completed_hours' ? 'completed_hours' : 'day',
-  });
-  const sdkUpgradeFindings = current.sdkUpgradeFindings || [];
-
-  return {
-    window: {
-      currentStart,
-      currentEnd,
-      previousStart,
-      previousEnd,
-      reportDate: currentReport?.reportDate || '',
-      previousReportDate: currentReport?.previousReportDate || previousReport?.reportDate || '',
-      granularity: currentReport?.comparisonWindow?.granularity || 'day',
-      comparisonMode,
-      currentHourCount: Number(currentReport?.comparisonWindow?.currentHourCount || 0),
-      previousHourCount: Number(currentReport?.comparisonWindow?.previousHourCount || 0),
-      timezone: DAILY_REPORT_TIMEZONE,
-      retentionDays: HEALTH_RETENTION_DAYS,
-    },
-    hourlyComparison: currentReport?.hourlyComparison || emptyHourlyComparison({
-      comparisonMode,
-      currentHourCount: Number(currentReport?.comparisonWindow?.currentHourCount || 0),
-      previousHourCount: Number(currentReport?.comparisonWindow?.previousHourCount || 0),
-    }),
-    status: attentionItems.length || sdkUpgradeFindings.length ? 'needs_attention' : 'normal',
-    attentionSummary: attentionItems[0]?.message || sdkUpgradeFindings[0]?.message || '',
-    attentionItems,
-    sdkUpgradeFindings,
-    current,
-    previous,
-    trends: currentReport?.trends || {
-      activeUsers: percentChange(current.activeUsers, previous.activeUsers),
-      sessions: percentChange(current.sessionCount, previous.sessionCount),
-      averageActiveDuration: percentChange(current.averageActiveDurationMs, previous.averageActiveDurationMs),
-      events: percentChange(current.eventCount, previous.eventCount),
-    },
-  };
 }
 
 export function summarizeProjectHealth({ events = [], presenceSessions = [], now = new Date() } = {}) {
