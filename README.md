@@ -732,7 +732,7 @@ window.__TraceMindLoaded
 
 网络影响：
 
-- 页面会额外加载一次 `capture.js`。
+- 页面会额外加载一次稳定入口 `capture.js`。该入口直接返回压缩脚本，带 `ETag` 和约 60 秒短缓存，兼容已经接入的旧 snippet、严格 CSP 和 SRI/代理环境。
 - 自动事件和在线区间先写入本地队列，再批量发送到 `/api/capture` 和 `/api/presence`。
 - 普通前台发送使用 `fetch` 获取成功/失败结果；页面隐藏或关闭时优先使用 `navigator.sendBeacon`。
 - 发送失败会保留队列并重试，队列超过上限时才丢弃最旧记录。

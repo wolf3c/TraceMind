@@ -104,6 +104,8 @@ iOS/macOS 使用 `TraceMind.recordOpenURL(url, sourceApplication:)` 从 universa
 
 ## Web 可靠发送队列
 
+Web 接入代码继续使用稳定的 `/capture.js` 地址，方便客户自动跟随当前部署版本并兼容已经接入的旧 snippet。服务端会对该入口直接返回压缩脚本，带 `ETag` 和约 60 秒短缓存；部署回滚后，客户最多等待入口缓存过期即可回到回滚版本，不需要修改 snippet。内容哈希命名的脚本路径作为附加 immutable asset 保留，但默认接入代码不依赖它。
+
 Web Auto Capture 不再把每个事件直接交给 `sendBeacon` 或 `fetch` 后立即丢弃。脚本会先把 `page_view`、`click`、`input`、`submit`、`route_change`、`custom`、`app_error` 和 presence 写入内存队列，并尽量同步保存到 `localStorage`。队列按项目 key 隔离，默认最多保留 300 条；超过上限或浏览器存储 quota 不足时才丢弃最旧记录，并把丢弃数量记录到 delivery diagnostics。
 
 普通前台发送会按批次写入 `/api/capture` 或 `/api/presence`，每批默认最多 20 条。发送失败时事件保留在队列中，使用 1 秒起步、60 秒封顶的指数退避重试。`online`、`visibilitychange`、`pagehide`、`beforeunload`、presence heartbeat 和 `window.TraceMind.flush()` 都会触发 flush。页面隐藏或卸载时，脚本会把单批控制在约 60KB 内并优先使用 `sendBeacon`。

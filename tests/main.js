@@ -642,6 +642,122 @@ describe('TraceMind', function () {
       assert.ok(!script.includes('navigator.sendBeacon && navigator.sendBeacon(endpoint'));
     });
 
+    it('builds a minified hashed Web Auto Capture asset that remains executable', async function () {
+      const { Script, createContext } = await import('vm');
+      const {
+        buildCaptureScriptAsset,
+        clientScript,
+      } = await import('../server/capture_routes');
+      const host = 'https://tracemind.example.com';
+      const rawScript = clientScript(host);
+      const asset = await buildCaptureScriptAsset(host);
+      const repeatedAsset = await buildCaptureScriptAsset(host);
+      const storage = new Map();
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind asset page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener() {},
+          hasFocus() { return true; },
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch() {
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      assert.ok(asset.body.length < rawScript.length);
+      assert.match(asset.path, /^\/capture\.[a-f0-9]{64}\.js$/);
+      assert.strictEqual(asset.etag, `"sha256-${asset.hash}"`);
+      assert.strictEqual(repeatedAsset.hash, asset.hash);
+      assert.strictEqual(repeatedAsset.etag, asset.etag);
+      assert.strictEqual(repeatedAsset.body, asset.body);
+      assert.ok(asset.body.includes('/api/capture'));
+      assert.ok(asset.body.includes('/api/presence'));
+      assert.ok(asset.body.includes('/api/user-feedback'));
+
+      new Script(asset.body).runInContext(createContext(sandbox));
+
+      assert.ok(sandbox.window.TraceMind);
+      assert.strictEqual(typeof sandbox.window.TraceMind.capture, 'function');
+      assert.strictEqual(typeof sandbox.window.TraceMind.flush, 'function');
+    });
+
+    it('serves the stable Web Auto Capture entry directly and keeps immutable hash assets available', async function () {
+      const {
+        CAPTURE_SCRIPT_ENTRY_CACHE_CONTROL,
+        CAPTURE_SCRIPT_IMMUTABLE_CACHE_CONTROL,
+        buildCaptureScriptAsset,
+        captureScriptResponse,
+      } = await import('../server/capture_routes');
+      const host = 'https://tracemind.example.com';
+      const asset = await buildCaptureScriptAsset(host);
+      const entry = await captureScriptResponse('/capture.js', host);
+      const hashAsset = await captureScriptResponse(asset.path, host);
+      const stale = await captureScriptResponse('/capture.0000000000000000000000000000000000000000000000000000000000000000.js', host);
+
+      assert.strictEqual(entry.statusCode, 200);
+      assert.strictEqual(entry.headers['Content-Type'], 'application/javascript; charset=utf-8');
+      assert.strictEqual(entry.headers['Cache-Control'], CAPTURE_SCRIPT_ENTRY_CACHE_CONTROL);
+      assert.strictEqual(entry.headers['Access-Control-Allow-Origin'], '*');
+      assert.match(entry.headers.ETag, /^"sha256-[a-f0-9]{64}"$/);
+      assert.ok(!entry.headers.Location);
+      assert.ok(entry.body.includes('/api/capture'));
+
+      assert.strictEqual(hashAsset.statusCode, 200);
+      assert.strictEqual(hashAsset.headers['Content-Type'], 'application/javascript; charset=utf-8');
+      assert.strictEqual(hashAsset.headers['Cache-Control'], CAPTURE_SCRIPT_IMMUTABLE_CACHE_CONTROL);
+      assert.strictEqual(hashAsset.headers['Access-Control-Allow-Origin'], '*');
+      assert.strictEqual(hashAsset.headers.ETag, entry.headers.ETag);
+      assert.strictEqual(hashAsset.body, entry.body);
+
+      assert.strictEqual(stale.statusCode, 302);
+      assert.strictEqual(stale.headers.Location, asset.path);
+      assert.strictEqual(stale.headers['Cache-Control'], CAPTURE_SCRIPT_ENTRY_CACHE_CONTROL);
+      assert.notStrictEqual(stale.headers['Cache-Control'], CAPTURE_SCRIPT_IMMUTABLE_CACHE_CONTROL);
+    });
+
     it('queues web capture records in localStorage and clears them after a successful flush', async function () {
       const { Script, createContext } = await import('vm');
       const { clientScript } = await import('../server/capture_routes');

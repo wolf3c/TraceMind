@@ -3,6 +3,7 @@ import { WebApp } from 'meteor/webapp';
 import { Random } from 'meteor/random';
 import { Meteor } from 'meteor/meteor';
 import { TraceMindServer } from '@tracemind/server-node';
+import { minify } from 'terser';
 import {
   CaptureDeliveryReports,
   ACTIVE_IDLE_TIMEOUT_MS,
@@ -34,6 +35,8 @@ const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
 const AGENT_GUIDANCE_VERSION = '2026.05.28.1';
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
+export const CAPTURE_SCRIPT_ENTRY_CACHE_CONTROL = 'public, max-age=60, must-revalidate';
+export const CAPTURE_SCRIPT_IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
 const PRODUCT_USAGE_EVENT_NAME = 'customer_project_capture_active';
@@ -162,6 +165,9 @@ const APPROVED_AUTO_EVENT_NAMES = new Set([
   'mcp_prompt_request',
   'agent_skill_lifecycle',
 ]);
+const CAPTURE_SCRIPT_ENTRY_PATH = '/capture.js';
+const CAPTURE_SCRIPT_ASSET_PATH_PATTERN = /^\/capture\.([a-f0-9]{64})\.js$/;
+const captureScriptAssetCache = new Map();
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -5652,6 +5658,114 @@ export function clientScript(host) {
 })();`;
 }
 
+function normalizedScriptHost(host) {
+  return String(host || '').replace(/\/+$/, '');
+}
+
+function captureScriptAssetPath(hash) {
+  return `/capture.${hash}.js`;
+}
+
+function captureScriptHash(body) {
+  return crypto.createHash('sha256').update(body).digest('hex');
+}
+
+export async function buildCaptureScriptAsset(host) {
+  const normalizedHost = normalizedScriptHost(host);
+  const cached = captureScriptAssetCache.get(normalizedHost);
+  if (cached) return cached;
+
+  const rawBody = clientScript(normalizedHost);
+  const minified = await minify(rawBody, {
+    compress: { passes: 2 },
+    mangle: true,
+    format: {
+      ascii_only: true,
+      comments: false,
+    },
+  });
+  const body = minified.code;
+  if (!body) throw new Error('TraceMind capture script minification produced an empty result.');
+
+  const hash = captureScriptHash(body);
+  const asset = {
+    host: normalizedHost,
+    body,
+    hash,
+    etag: `"sha256-${hash}"`,
+    path: captureScriptAssetPath(hash),
+    rawBytes: Buffer.byteLength(rawBody),
+    bytes: Buffer.byteLength(body),
+  };
+  captureScriptAssetCache.set(normalizedHost, asset);
+  return asset;
+}
+
+function captureScriptRedirectResponse(asset) {
+  return {
+    statusCode: 302,
+    headers: {
+      Location: asset.path,
+      'Cache-Control': CAPTURE_SCRIPT_ENTRY_CACHE_CONTROL,
+      'Access-Control-Allow-Origin': '*',
+    },
+    body: '',
+  };
+}
+
+function captureScriptEntryResponse(asset) {
+  return {
+    statusCode: 200,
+    headers: {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': CAPTURE_SCRIPT_ENTRY_CACHE_CONTROL,
+      'Access-Control-Allow-Origin': '*',
+      ETag: asset.etag,
+    },
+    body: asset.body,
+  };
+}
+
+function captureScriptAssetResponse(asset) {
+  return {
+    statusCode: 200,
+    headers: {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': CAPTURE_SCRIPT_IMMUTABLE_CACHE_CONTROL,
+      'Access-Control-Allow-Origin': '*',
+      ETag: asset.etag,
+    },
+    body: asset.body,
+  };
+}
+
+export async function captureScriptResponse(pathname, host) {
+  const asset = await buildCaptureScriptAsset(host);
+  if (pathname === CAPTURE_SCRIPT_ENTRY_PATH) return captureScriptEntryResponse(asset);
+
+  const match = CAPTURE_SCRIPT_ASSET_PATH_PATTERN.exec(pathname);
+  if (!match) return null;
+  if (match[1] !== asset.hash) return captureScriptRedirectResponse(asset);
+  return captureScriptAssetResponse(asset);
+}
+
+function requestHost(req) {
+  return `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
+}
+
+function requestPathname(req, host) {
+  return new URL(req.url || '/', host).pathname;
+}
+
+function isCaptureScriptPath(pathname) {
+  return pathname === CAPTURE_SCRIPT_ENTRY_PATH || CAPTURE_SCRIPT_ASSET_PATH_PATTERN.test(pathname);
+}
+
+function sendHttpResponse(res, response) {
+  res.writeHead(response.statusCode, response.headers);
+  res.end(response.body);
+}
+
 async function insertCaptureEvent(project, payload = {}, req = {}) {
   const source = normalizeCaptureSource(payload, req.headers || {});
   const isServerAppSource = source.sourceType === 'server_app';
@@ -6088,14 +6202,25 @@ async function handleMcpPost(req, res) {
 }
 
 export function registerTraceMindRoutes() {
-  WebApp.handlers.use('/capture.js', (req, res) => {
-    const host = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
-    res.writeHead(200, {
-      'Content-Type': 'application/javascript; charset=utf-8',
-      'Cache-Control': 'no-store',
-      'Access-Control-Allow-Origin': '*',
-    });
-    res.end(clientScript(host));
+  WebApp.handlers.use((req, res, next) => {
+    const host = requestHost(req);
+    const pathname = requestPathname(req, host);
+    if (!isCaptureScriptPath(pathname)) {
+      next();
+      return;
+    }
+
+    captureScriptResponse(pathname, host)
+      .then((response) => sendHttpResponse(res, response))
+      .catch((error) => {
+        console.error('[TraceMind] capture script failed', error);
+        res.writeHead(500, {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end('/* TraceMind capture script unavailable. */');
+      });
   });
 
   WebApp.handlers.use('/api/capture', (req, res) => {

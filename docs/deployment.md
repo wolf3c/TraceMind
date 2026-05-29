@@ -71,7 +71,7 @@ Use the Galaxy deployment page to inspect deployment progress when a deploy is a
 After deployment, verify these URLs:
 
 - `https://tracemind.sandbox.galaxycloud.app/` loads the TraceMind console.
-- `https://tracemind.sandbox.galaxycloud.app/capture.js` returns JavaScript with `Content-Type: application/javascript`.
+- `https://tracemind.sandbox.galaxycloud.app/capture.js` returns `200 OK` JavaScript directly, not a redirect, with `Content-Type: application/javascript`, `ETag`, `Access-Control-Allow-Origin: *`, and `Cache-Control: public, max-age=60, must-revalidate`.
 - `https://tracemind.sandbox.galaxycloud.app/mcp?mcpToken=tm_mcp_xxx` returns the MCP preview for a valid token.
 - A page using the capture snippet writes raw behavior records and semantic events.
 

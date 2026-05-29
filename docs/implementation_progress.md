@@ -1,5 +1,11 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-05-29
+
+### Completed
+
+- Optimized Web Auto Capture script delivery: `/capture.js` remains the stable customer snippet URL and directly serves a minified script with short caching plus an ETag, while content-hashed immutable assets remain available without becoming the default customer contract.
+
 ## 2026-05-28
 
 ### Completed

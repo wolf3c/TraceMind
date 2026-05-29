@@ -83,7 +83,11 @@ This skill covers the TraceMind Meteor app deployment, the immutable SDK GitHub 
    - `npm run deploy:logs` when logs are needed to confirm startup health.
    - `curl -I https://tracemind.sandbox.galaxycloud.app/`
    - `curl -I https://tracemind.sandbox.galaxycloud.app/capture.js`
-   - Confirm `/capture.js` serves JavaScript and the app URL responds successfully.
+   - Confirm the app URL responds successfully.
+   - Confirm `/capture.js` is still the canonical customer script URL and returns `200 OK` JavaScript directly, not a redirect to `/capture.<hash>.js`.
+   - Confirm `/capture.js` headers include `Content-Type: application/javascript`, `ETag`, `Access-Control-Allow-Origin: *`, and `Cache-Control: public, max-age=60, must-revalidate`.
+   - Run `curl -L -s https://tracemind.sandbox.galaxycloud.app/capture.js | wc -c` and report the script byte size. If it is empty, HTML, or unexpectedly much larger than the pre-deploy local smoke size, inspect deploy logs before declaring the release healthy.
+   - Do not require customer snippets or deploy verification to use `/capture.<hash>.js`; the hash path is an optional immutable asset, while `/capture.js` remains the compatibility contract.
    - If MCP behavior changed or needs release confidence, verify `/mcp` with a valid MCP token without exposing the token in the final response.
 
 ## Version Selection Rules
@@ -105,6 +109,6 @@ Report:
 - files changed
 - verification commands run and their result
 - deploy command run and whether it succeeded, if deployment was requested
-- deployed URL checks and log findings, if deployment was requested
+- deployed app URL check, `/capture.js` status/header/byte-size check, and log findings, if deployment was requested
 - any remaining old-version matches and why they were left untouched
 - suggested commit message, for example `Deploy TraceMind 2026.5.12-2`
