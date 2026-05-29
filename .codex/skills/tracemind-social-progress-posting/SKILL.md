@@ -20,11 +20,11 @@ Use this skill for original TraceMind product-progress posts on social platforms
 
 Update this section after successful publishing so the next run has a reliable cutoff.
 
-- Last published at: `2026-05-26 10:15:46 +0800`
-- Last cutoff commit: `5afebcbdfb6f2eb3377e9a9a29ea58f99d35fa31`
-- Last platforms: `即刻`
-- Last source window: `plan-defined carry-over evidence (94a433d, 24270e0), verified at 5afebcb; publish-state range 0aaebf5..5afebcb`
-- Last notes: `Day 3 agent setup freshness post published to 即刻 by user; X/Twitter blocked by blank/network-error load; V2EX skipped by platform rules; 小红书/Appinn skipped by plan.`
+- Last published at: `2026-05-29 13:31:55 +0800`
+- Last cutoff commit: `7f89c2cbd68702fadf903442551990a6edf184a8`
+- Last platforms: `X/Twitter, 小红书, 即刻, X Vibe Coding Community, X 独立开发者 Community, X 创造工程师 Community, Reddit r/VibeCodeDevs`
+- Last source window: `5afebcbdfb6f2eb3377e9a9a29ea58f99d35fa31..7f89c2cbd68702fadf903442551990a6edf184a8`
+- Last notes: `Production error context posts published to X/Twitter and 小红书; X URL https://x.com/old_farmer_/status/2060190760725778936; 小红书 visible in note manager as 线上报错有没有真的影响用户？ at 2026-05-29 10:49; 即刻 AI探索站 intro post published by wolf3c and verified in topic feed; X Vibe Coding Community intro thread published at https://x.com/old_farmer_/status/2060204312647839971 with link reply https://x.com/old_farmer_/status/2060204448987885698 and capability reply https://x.com/old_farmer_/status/2060204557419114568; X 独立开发者 Community Chinese intro thread published at https://x.com/old_farmer_/status/2060205600240484712 with link reply https://x.com/old_farmer_/status/2060205969683193919, capability reply https://x.com/old_farmer_/status/2060206101619167243, and value supplement reply https://x.com/old_farmer_/status/2060213869352751379; X 创造工程师 Community Chinese intro thread published at https://x.com/old_farmer_/status/2060214881375387666 with link reply https://x.com/old_farmer_/status/2060215125215445365 and capability reply https://x.com/old_farmer_/status/2060215233625673940; Reddit r/VibeCodeDevs initial intro post published at https://www.reddit.com/r/VibeCodeDevs/comments/1tqr1fp/im_building_tracemind_analytics_your_coding_agent/ and later removed by Reddit platform policy; user then published a lower-promotion r/VibeCodeDevs discussion-style version from saved private template.`
 
 ## Source Inputs
 
@@ -120,6 +120,43 @@ Tone guidance:
 - V2EX: do not draft, publish, or retry TraceMind promotional posts because this conflicts with the community's rules and norms.
 - 少数派: polished tool/productivity framing; explain workflow value and setup effort.
 - Appinn/小众软件: use only for meaningful milestone updates; concise `开发者自荐` style with problem, audience, setup, and feedback ask.
+
+For X/Twitter product intro posts, especially inside Communities, default to a three-part thread:
+
+1. Main post: short, warm intro with no product link, ending with `Link in comments 👇`.
+2. First reply: product name plus the landing-page link with the matching UTM source.
+3. Second reply: a concise capability/advantage list.
+
+Preferred X Community intro template:
+
+```text
+Hi everyone, I’m building TraceMind — an AI-native analytics tool for vibe-coded products.
+
+AI coding helps us ship faster, but after launch I still want my coding agent to understand: where users got stuck, what was actually used, and whether the latest change helped.
+
+Link in comments 👇
+```
+
+For Chinese X Community product intro posts, keep the same thread shape but make the main post itself value-forward. It should do more than name TraceMind: briefly state what TraceMind lets AI-coding builders accomplish, such as turning real user behavior into coding-agent-readable context, finding where users get stuck, seeing which features are actually used, identifying errors that affect key paths, and judging whether a change improved the flow. Do not leave all product value for replies.
+
+Preferred first reply:
+
+```text
+TraceMind:
+https://tracemind.sandbox.galaxycloud.app/?utm_source=<source>
+```
+
+Preferred second reply:
+
+```text
+What TraceMind helps with:
+
+- Auto-capture user behavior
+- Turn behavior into AI-readable evidence
+- Ask your coding agent where users got stuck
+- Check which features were actually used
+- Verify whether a product change improved the flow
+```
 
 Default Chinese pattern:
 
