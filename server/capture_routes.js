@@ -4024,6 +4024,164 @@ function validationResult(findings, recommendations = []) {
   });
 }
 
+const TRACE_MIND_DIFF_PAYLOAD_APIS = [
+  'capture',
+  'captureError',
+  'capture_error',
+  'submitFeedback',
+  'submit_feedback',
+  'captureSkillLifecycle',
+  'capture_skill_lifecycle',
+];
+const TRACE_MIND_DIFF_PAYLOAD_API_PATTERN = TRACE_MIND_DIFF_PAYLOAD_APIS.join('|');
+const TRACE_MIND_DIFF_CALL_PATTERN = new RegExp(
+  `\\b(?:(?:window\\s*\\.\\s*)?TraceMind(?:MCP|Server)?\\s*\\.\\s*(?:${TRACE_MIND_DIFF_PAYLOAD_API_PATTERN})|(?:${TRACE_MIND_DIFF_PAYLOAD_API_PATTERN}))\\s*\\(`,
+  'g',
+);
+
+function matchingClosingParenIndex(source, openIndex) {
+  let depth = 0;
+  let quote = '';
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = openIndex; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+
+    if (lineComment) {
+      if (char === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === quote) {
+        quote = '';
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === '(') {
+      depth += 1;
+    } else if (char === ')') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+
+  return -1;
+}
+
+function isLikelyFunctionDeclaration(source, matchIndex) {
+  const lineStart = source.lastIndexOf('\n', matchIndex - 1) + 1;
+  const linePrefix = source.slice(lineStart, matchIndex);
+  return /\bfunction\s*\*?\s*$/.test(linePrefix);
+}
+
+function isLikelyNonTraceMindMemberCall(source, matchIndex, matchedText) {
+  if (/^(?:window\s*\.\s*)?TraceMind/.test(matchedText)) return false;
+  let index = matchIndex - 1;
+  while (index >= 0 && /\s/.test(source[index])) index -= 1;
+  return source[index] === '.';
+}
+
+function isInsideStringOrComment(source, targetIndex) {
+  let quote = '';
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < targetIndex; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+
+    if (lineComment) {
+      if (char === '\n') lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === quote) {
+        quote = '';
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      blockComment = true;
+      index += 1;
+    }
+  }
+
+  return Boolean(quote || lineComment || blockComment);
+}
+
+function extractTraceMindDiffCallSnippets(addedText) {
+  const source = String(addedText || '');
+  const snippets = [];
+  TRACE_MIND_DIFF_CALL_PATTERN.lastIndex = 0;
+  let match;
+
+  while ((match = TRACE_MIND_DIFF_CALL_PATTERN.exec(source))) {
+    if (isInsideStringOrComment(source, match.index)) continue;
+    if (isLikelyFunctionDeclaration(source, match.index)) continue;
+    if (isLikelyNonTraceMindMemberCall(source, match.index, match[0])) continue;
+    const openIndex = TRACE_MIND_DIFF_CALL_PATTERN.lastIndex - 1;
+    const closeIndex = matchingClosingParenIndex(source, openIndex);
+    const fallbackEnd = source.indexOf('\n', openIndex);
+    const endIndex = closeIndex >= 0
+      ? closeIndex + 1
+      : (fallbackEnd >= 0 ? fallbackEnd : source.length);
+    snippets.push(source.slice(match.index, endIndex));
+  }
+
+  return snippets;
+}
+
 function extractSensitiveKeysFromDiff(addedText) {
   const findings = [];
   const seenKeys = new Set();
@@ -4062,10 +4220,11 @@ async function diffFindings(project, diff = '') {
     );
   }
 
-  privacyFindings({ diff: addedText }).forEach((finding) => findings.push(finding));
-  extractSensitiveKeysFromDiff(addedText).forEach((finding) => findings.push(finding));
+  const instrumentationText = extractTraceMindDiffCallSnippets(addedText).join('\n');
+  privacyFindings({ diff: instrumentationText }).forEach((finding) => findings.push(finding));
+  extractSensitiveKeysFromDiff(instrumentationText).forEach((finding) => findings.push(finding));
 
-  const eventNameMatches = [...addedText.matchAll(/eventName\s*:\s*['"]([^'"]+)['"]/g)];
+  const eventNameMatches = [...instrumentationText.matchAll(/eventName\s*:\s*['"]([^'"]+)['"]/g)];
   const knownEvents = await projectEventNames(project, '', 50);
   const knownNames = new Set(knownEvents.flatMap((event) => [event.eventType, event.eventName]).filter(Boolean));
   eventNameMatches.forEach((match) => {

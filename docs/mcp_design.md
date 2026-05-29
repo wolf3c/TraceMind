@@ -698,7 +698,7 @@ Input:
 
 ### `tracemind.validate_instrumentation_diff`
 
-检查本次代码 diff 是否包含明显错误的埋点调用、敏感字段、命名问题或绕过 TraceMind 规范的调用。它只返回 findings，不修改代码。
+检查本次代码 diff 是否包含明显错误的埋点调用、敏感字段、命名问题或绕过 TraceMind 规范的调用。它只返回 findings，不修改代码。隐私字段检查只作用于 TraceMind 上报调用片段，避免把测试 fixture、mock request options、项目配置或规则文本里的敏感字段名误判为真实 analytics payload。
 
 Input:
 

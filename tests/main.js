@@ -1648,6 +1648,57 @@ describe('TraceMind', function () {
       assert.ok(!mcpAutoDiffValidation.structuredContent.findings.some((finding) => finding.message.includes('promptName')));
     });
 
+    it('limits instrumentation diff privacy validation to TraceMind payloads', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const project = { _id: `project-diff-payload-scope-${Date.now()}`, name: 'Diff Payload Scope Project' };
+
+      const fixtureOnlyValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
+        diff: [
+          '+ const project = {',
+          '+   mcpTokens: [{ token: "tm_mcp_fixture" }],',
+          '+   eventName: "fixture_event_only",',
+          '+ };',
+          '+ const req = { headers: { authorization: "Bearer fixture" } };',
+          '+ localTransport.capture({ headers: req.headers });',
+        ].join('\n'),
+      });
+      assert.strictEqual(fixtureOnlyValidation.structuredContent.ok, true);
+      assert.ok(!fixtureOnlyValidation.structuredContent.findings.some((finding) => finding.code === 'forbidden_property'));
+      assert.ok(!fixtureOnlyValidation.structuredContent.findings.some((finding) => finding.code === 'new_event_requires_review'));
+
+      const mixedValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
+        diff: [
+          '+ const project = { mcpTokens: [{ token: "tm_mcp_fixture" }] };',
+          '+ const req = { headers: { authorization: "Bearer fixture" } };',
+          '+ TraceMindMCP.capture("custom", { eventName: "unsafe_capture_event", properties: { plan: "pro", "headers.authorization": token, raw_prompt: prompt } });',
+        ].join('\n'),
+      });
+      assert.strictEqual(mixedValidation.structuredContent.ok, false);
+      assert.ok(mixedValidation.structuredContent.findings.some((finding) => finding.code === 'new_event_requires_review'));
+      assert.ok(mixedValidation.structuredContent.findings.some((finding) => finding.message.includes('headers.authorization')));
+      assert.ok(mixedValidation.structuredContent.findings.some((finding) => finding.message.includes('raw_prompt')));
+      assert.ok(!mixedValidation.structuredContent.findings.some((finding) => finding.message.includes('mcpTokens')));
+
+      const errorValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
+        diff: [
+          '+ const docs = "TraceMind.captureError({ headers: fixture })";',
+          '+ TraceMind.captureError(error, { path: "/checkout", headers: req.headers, authorization: token });',
+        ].join('\n'),
+      });
+      assert.strictEqual(errorValidation.structuredContent.ok, false);
+      assert.ok(errorValidation.structuredContent.findings.some((finding) => finding.message.includes('headers')));
+      assert.ok(errorValidation.structuredContent.findings.some((finding) => finding.message.includes('authorization')));
+
+      const snakeCaseValidation = await callMcpTool(project, 'tracemind.validate_instrumentation_diff', {
+        diff: [
+          '+ TraceMindServer.capture_error(error, path="/jobs", context={"headers": headers});',
+          '+ TraceMindServer.submit_feedback({ message: { fields: { headers: "bad" } } });',
+        ].join('\n'),
+      });
+      assert.strictEqual(snakeCaseValidation.structuredContent.ok, false);
+      assert.ok(snakeCaseValidation.structuredContent.findings.some((finding) => finding.message.includes('headers')));
+    });
+
     it('checks local agent setup freshness without echoing sensitive content', async function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
