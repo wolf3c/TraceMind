@@ -6404,7 +6404,7 @@ async function handleMcpPost(req, res) {
 }
 
 export function registerTraceMindRoutes() {
-  WebApp.handlers.use((req, res, next) => {
+  WebApp.rawConnectHandlers.use((req, res, next) => {
     const host = requestHost(req);
     const pathname = requestPathname(req, host);
     if (!isCaptureScriptPath(pathname)) {

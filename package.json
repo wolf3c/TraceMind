@@ -1,6 +1,6 @@
 {
   "name": "TraceMind",
-  "version": "2026.6.1-2",
+  "version": "2026.6.1-3",
   "private": true,
   "scripts": {
     "start": "meteor run",
