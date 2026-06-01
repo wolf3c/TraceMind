@@ -5,13 +5,13 @@ description: Use when the user invokes `$deploy` or asks to release or deploy Tr
 
 # TraceMind Deploy
 
-Use this skill when preparing or deploying a TraceMind release. It owns the main-branch release gate, version bump, SDK GitHub source publication gate, SDK registry publication gate, pre-deploy checks, Meteor deploy command, and post-deploy verification.
+Use this skill when preparing or deploying a TraceMind release. It owns the main-branch release gate, version bump, SDK GitHub source publication gate, SDK registry publication gate, pre-deploy checks, Meteor deploy command, Cloudflare Pages Web Auto Capture script publication, and post-deploy verification.
 
 ## Scope
 
 The canonical app version is `package.json` field `version`. The current UI reads that value from `imports/ui/App.svelte` and renders it in the footer, so do not add another version constant unless the user explicitly changes the product contract.
 
-This skill covers the TraceMind Meteor app deployment, release metadata consistency gates, the immutable SDK GitHub source tag used by `capture_setup` local-source SDK installs, and the registry publication gate for npm, PyPI, and Maven Central SDK packages. Registry publishing itself is performed by the `SDK Publish` GitHub Actions workflow triggered by the release tag; this skill waits for and verifies that workflow before deploying. Out of scope unless requested: release notes, changelog writing, SwiftPM package publishing, and automatically changing TraceMind release metadata markers.
+This skill covers the TraceMind Meteor app deployment, release metadata consistency gates, the Cloudflare Pages `capture.js` static distribution, the immutable SDK GitHub source tag used by `capture_setup` local-source SDK installs, and the registry publication gate for npm, PyPI, and Maven Central SDK packages. Registry publishing itself is performed by the `SDK Publish` GitHub Actions workflow triggered by the release tag; this skill waits for and verifies that workflow before deploying. Out of scope unless requested: release notes, changelog writing, SwiftPM package publishing, and automatically changing TraceMind release metadata markers.
 
 Release metadata markers live in `imports/api/release_metadata.js`. They are customer-visible runtime/guidance contract versions, not the app version. Do not bump them on every deploy:
 
@@ -84,20 +84,30 @@ The deploy workflow must verify these markers are consistent everywhere they are
 11. Deploy when the user asks for deployment or the request clearly says this is a deployment release:
    - Prefer the repository script: `npm run deploy`.
    - In this repo the deploy script is the canonical command and currently expands to `meteor deploy tracemind.sandbox.galaxycloud.app --settings .deploy/settings.json`.
+   - Confirm the Galaxy runtime environment includes `TRACEMIND_CAPTURE_SCRIPT_ORIGIN=https://tracemind-capture.pages.dev` before deploying a release whose production `capture_setup` should return Cloudflare script URLs.
    - If the user explicitly specifies another Meteor app target, run that exact command form, for example `meteor deploy TraceMind --settings .deploy/settings.json`.
    - Do not print or commit `.deploy/settings.json`; it is intentionally private.
    - If deploy fails because of missing Galaxy/runtime environment, inspect or request logs and report the exact missing variable. `MONGO_URL` must be available in the Galaxy runtime environment before the app can start.
    - Do not deploy from GitHub Actions. `$deploy` is the only release path that may run the Meteor deploy command, so a tag push cannot cause a duplicate deploy.
-12. Verify the deployed app after a successful deploy:
+12. Publish the Web Auto Capture static script to Cloudflare Pages after a successful Galaxy deploy:
+   - Run `npm run build:capture-static`. The default source is `https://tracemind.sandbox.galaxycloud.app/capture.js`, and the default output is `.codex/scratch/capture-static/${version}/`.
+   - Confirm the generated `capture.js` contains the current `scriptReleaseId`, posts to Galaxy `/api/capture`, `/api/presence`, and `/api/user-feedback`, and uses the Cloudflare script origin for auto-update fallback.
+   - Use the Cloudflare API plugin to ensure Pages project `tracemind-capture` exists. If it does not exist, create it with production branch `main` and no Git source binding.
+   - Upload a Direct Upload deployment for the generated output, including `manifest`, `_headers`, `capture.js`, and `capture.<sha256>.js`. Include the current release commit SHA and commit message as deployment metadata.
+   - Query the Cloudflare Pages deployment until its stage is `success`. If the deployment fails or remains pending beyond the tool timeout, stop before declaring the release healthy.
+   - Run `npm run check:capture-static-publication` after Cloudflare deploy. It must verify the Cloudflare `/capture.js` status, JavaScript content type, `ETag`, CORS `*`, `Cache-Control: public, max-age=60, must-revalidate`, no `Set-Cookie`, non-empty body, current `scriptReleaseId`, and matching immutable `capture.<sha256>.js`.
+13. Verify the deployed app after a successful deploy:
    - `npm run deploy:logs` when logs are needed to confirm startup health.
    - `curl -I https://tracemind.sandbox.galaxycloud.app/`
+   - `curl -I https://tracemind-capture.pages.dev/capture.js`
    - `curl -I https://tracemind.sandbox.galaxycloud.app/capture.js`
    - Confirm the app URL responds successfully.
-   - Confirm `/capture.js` is still the canonical customer script URL and returns `200 OK` JavaScript directly, not a redirect to `/capture.<hash>.js`.
-   - Confirm `/capture.js` headers include `Content-Type: application/javascript`, `ETag`, `Access-Control-Allow-Origin: *`, and `Cache-Control: public, max-age=60, must-revalidate`.
-   - Confirm deployed `/capture.js` contains the `scriptReleaseId` from `imports/api/release_metadata.js`. If the deployed script reports an older release id, inspect deploy logs and stop before declaring the release healthy.
-   - Run `curl -L -s https://tracemind.sandbox.galaxycloud.app/capture.js | wc -c` and report the script byte size. If it is empty, HTML, or unexpectedly much larger than the pre-deploy local smoke size, inspect deploy logs before declaring the release healthy.
-   - Do not require customer snippets or deploy verification to use `/capture.<hash>.js`; the hash path is an optional immutable asset, while `/capture.js` remains the compatibility contract.
+   - Confirm Cloudflare `/capture.js` is the canonical production customer script URL and returns `200 OK` JavaScript directly, not a redirect to `/capture.<hash>.js`.
+   - Confirm Cloudflare `/capture.js` headers include `Content-Type: application/javascript`, `ETag`, `Access-Control-Allow-Origin: *`, and `Cache-Control: public, max-age=60, must-revalidate`.
+   - Confirm deployed Cloudflare `/capture.js` contains the `scriptReleaseId` from `imports/api/release_metadata.js`. If the deployed script reports an older release id, inspect Galaxy deploy output, the static build source, and Cloudflare deployment status before declaring the release healthy.
+   - Run `curl -L -s https://tracemind-capture.pages.dev/capture.js | wc -c` and report the script byte size. If it is empty, HTML, or unexpectedly much larger than the pre-deploy local smoke size, inspect deploy logs and Cloudflare output before declaring the release healthy.
+   - Confirm Galaxy `/capture.js` still returns a fallback JavaScript body with the current `scriptReleaseId`, but do not require its `Cache-Control` header to match the production Cloudflare contract.
+   - Do not require customer snippets or deploy verification to use `/capture.<hash>.js`; the hash path is an optional immutable asset, while Cloudflare `/capture.js` remains the compatibility contract.
    - If MCP behavior changed or needs release confidence, verify `/mcp` with a valid MCP token without exposing the token in the final response.
 
 ## Version Selection Rules
@@ -120,7 +130,8 @@ Report:
 - files changed
 - verification commands run and their result
 - deploy command run and whether it succeeded, if deployment was requested
-- deployed app URL check, `/capture.js` status/header/byte-size check, and log findings, if deployment was requested
-- deployed `/capture.js` scriptReleaseId check, if deployment was requested
+- Cloudflare Pages project/deployment result, generated static script hash, and `check:capture-static-publication` result
+- deployed app URL check, Cloudflare `/capture.js` status/header/byte-size check, Galaxy fallback `/capture.js` body check, and log findings, if deployment was requested
+- deployed Cloudflare `/capture.js` scriptReleaseId check, if deployment was requested
 - any remaining old-version matches and why they were left untouched
 - suggested commit message, for example `Deploy TraceMind 2026.5.12-2`

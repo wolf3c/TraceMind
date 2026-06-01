@@ -1,6 +1,6 @@
 {
   "name": "TraceMind",
-  "version": "2026.6.1-3",
+  "version": "2026.6.1-4",
   "private": true,
   "scripts": {
     "start": "meteor run",
@@ -10,9 +10,11 @@
     "check:deploy-git-publication": "node scripts/check-deploy-git-publication.js",
     "check:sdk-registry-publication": "node scripts/check-sdk-registry-publication.js",
     "check:release-metadata": "node scripts/check-release-metadata.js",
+    "build:capture-static": "node scripts/capture-static-assets.js",
+    "check:capture-static-publication": "node scripts/check-capture-static-publication.js",
     "update:sdk-manifest": "node scripts/check-sdk-release-manifest.js --write",
     "test:sdk-release": "node scripts/check-sdk-release-manifest.js --check",
-    "test:deploy-gates": "node --test scripts/deploy-git-publication.test.js scripts/sdk-registry-publication.test.js scripts/release-metadata.test.js",
+    "test:deploy-gates": "node --test scripts/deploy-git-publication.test.js scripts/sdk-registry-publication.test.js scripts/release-metadata.test.js scripts/capture-static-assets.test.js",
     "test:sdk:android": "sh sdk/android/test.sh",
     "test:sdk:ios": "CLANG_MODULE_CACHE_PATH=.swiftpm-cache/clang swift test --disable-sandbox --package-path sdk/ios",
     "test:sdk:mcp-node": "npm test --prefix sdk/mcp-node",

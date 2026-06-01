@@ -1,5 +1,12 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-06-01
+
+### Completed
+
+- Split Web Auto Capture script distribution from the Galaxy API origin: production `capture_setup` can return Cloudflare Pages `capture.js` while the script still posts capture, presence, and feedback traffic to Galaxy.
+- Added static capture-script build and publication checks for Cloudflare Pages, including stable entry headers, immutable hash assets, release-id validation, CORS, ETag, and no-cookie checks.
+
 ## 2026-05-29
 
 ### Completed

@@ -6,10 +6,11 @@ TraceMind runs as an independent Meteor application on Galaxy. It is not bundled
 
 - yezi2 remains on `https://super-tree.com`.
 - TraceMind is served from `https://tracemind.sandbox.galaxycloud.app`.
+- Web Auto Capture script distribution is served from Cloudflare Pages at `https://tracemind-capture.pages.dev/capture.js` in production.
 - TraceMind keeps separate Meteor routes and runtime settings.
 - TraceMind should use its own Mongo database, for example the `tracemind` database on the existing Mongo cluster.
 
-This preserves TraceMind's `/capture.js`, `/api/capture`, and `/mcp` endpoints without adding global routes to yezi2.
+Galaxy remains the API and app origin for `/api/capture`, `/api/presence`, `/api/user-feedback`, `/mcp`, and the dashboard. Galaxy `/capture.js` stays available for local development, old links, and emergency rollback, but the production `tracemind.capture_setup` snippet should point at Cloudflare Pages when `TRACEMIND_CAPTURE_SCRIPT_ORIGIN` is configured.
 
 ## Local Deploy Files
 
@@ -17,6 +18,7 @@ The deploy files live under `.deploy/`, which is intentionally ignored because i
 
 - `.deploy/settings.json` provides Meteor settings such as `private.MAIL_URL`.
 - `.deploy/settings.json` can provide Galaxy runtime variables under `galaxy.meteor.com.env`, including `MONGO_URL`.
+- `TRACEMIND_CAPTURE_SCRIPT_ORIGIN` should be set in the Galaxy runtime environment to `https://tracemind-capture.pages.dev` for production so MCP setup snippets and Web script auto-update URLs use Cloudflare Pages.
 - `.deploy/mup.js` is legacy self-hosted deployment config. Use it only if TraceMind is moved back to a custom server/domain, and provide `TRACEMIND_DOMAIN` explicitly.
 
 ## Product Usage Instrumentation
@@ -53,6 +55,9 @@ git push origin tracemind-release-<version>
 npm run check:deploy-git-publication -- <version>
 npm run check:sdk-registry-publication -- <version>
 npm run deploy
+npm run build:capture-static
+# Upload .codex/scratch/capture-static/<version>/ to Cloudflare Pages project tracemind-capture.
+npm run check:capture-static-publication
 ```
 
 If `check:release-metadata` fails, do not deploy. It verifies customer-visible release markers from `imports/api/release_metadata.js`, including Web Auto Capture `scriptReleaseId` and public agent guidance versions, so Dashboard/MCP/docs do not disagree with runtime code.
@@ -74,7 +79,9 @@ Use the Galaxy deployment page to inspect deployment progress when a deploy is a
 After deployment, verify these URLs:
 
 - `https://tracemind.sandbox.galaxycloud.app/` loads the TraceMind console.
-- `https://tracemind.sandbox.galaxycloud.app/capture.js` returns `200 OK` JavaScript directly, not a redirect, with `Content-Type: application/javascript`, `ETag`, `Access-Control-Allow-Origin: *`, and `Cache-Control: public, max-age=60, must-revalidate`.
+- `https://tracemind-capture.pages.dev/capture.js` returns `200 OK` JavaScript directly, not a redirect, with `Content-Type: application/javascript`, `ETag`, `Access-Control-Allow-Origin: *`, `Cache-Control: public, max-age=60, must-revalidate`, no `Set-Cookie`, a non-empty body, and the current `scriptReleaseId`.
+- `https://tracemind-capture.pages.dev/capture.<sha256>.js` returns the same body with `Cache-Control: public, max-age=31536000, immutable`.
+- `https://tracemind.sandbox.galaxycloud.app/capture.js` returns a fallback JavaScript body with the current `scriptReleaseId`; Galaxy response headers are not the production cache-header compliance target.
 - `https://tracemind.sandbox.galaxycloud.app/mcp?mcpToken=tm_mcp_xxx` returns the MCP preview for a valid token.
 - A page using the capture snippet writes raw behavior records and semantic events.
 

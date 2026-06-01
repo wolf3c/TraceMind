@@ -420,7 +420,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.06.01.2'));
+      assert.ok(skill.includes('version: 2026.06.01.3'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -487,7 +487,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.check_agent_setup'));
       assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.ok(snippet.includes('Guidance version: `2026.06.01.2`'));
+      assert.ok(snippet.includes('Guidance version: `2026.06.01.3`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -531,7 +531,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.ok(snippet.includes('tracemind.check_agent_setup'));
       assert.ok(snippet.includes('agentSetupNotice'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.06.01.2');
+      assert.strictEqual(manifest.guidanceVersion, '2026.06.01.3');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -663,6 +663,7 @@ describe('TraceMind', function () {
     });
 
     it('builds a minified hashed Web Auto Capture asset that remains executable', async function () {
+      this.timeout(5000);
       const { Script, createContext } = await import('vm');
       const {
         buildCaptureScriptAsset,
@@ -742,6 +743,27 @@ describe('TraceMind', function () {
       assert.ok(sandbox.window.TraceMind);
       assert.strictEqual(typeof sandbox.window.TraceMind.capture, 'function');
       assert.strictEqual(typeof sandbox.window.TraceMind.flush, 'function');
+    });
+
+    it('can serve Web Auto Capture from a separate script origin while posting to the API origin', async function () {
+      const {
+        buildCaptureScriptAsset,
+        clientScript,
+      } = await import('../server/capture_routes');
+      const origins = {
+        apiOrigin: 'https://tracemind.sandbox.galaxycloud.app',
+        scriptOrigin: 'https://tracemind-capture.pages.dev',
+      };
+      const script = clientScript(origins);
+      const asset = await buildCaptureScriptAsset(origins);
+
+      [script, asset.body].forEach((body) => {
+        assert.ok(body.includes('https://tracemind.sandbox.galaxycloud.app/api/capture'));
+        assert.ok(body.includes('https://tracemind.sandbox.galaxycloud.app/api/presence'));
+        assert.ok(body.includes('https://tracemind.sandbox.galaxycloud.app/api/user-feedback'));
+        assert.ok(body.includes('https://tracemind-capture.pages.dev/capture.js?tm_refresh='));
+        assert.ok(!body.includes('https://tracemind-capture.pages.dev/api/capture'));
+      });
     });
 
     it('serves the stable Web Auto Capture entry directly and keeps immutable hash assets available', async function () {
@@ -890,6 +912,27 @@ describe('TraceMind', function () {
       assert.strictEqual(stale.observedReleaseId, '2026.05.28.1');
       assert.strictEqual(stale.reason, 'stale_script_release');
       assert.strictEqual(current, null);
+    });
+
+    it('returns Web Auto Capture script updates from the configured script origin', async function () {
+      const { webCaptureScriptUpdateForPayload } = await import('../server/capture_routes');
+      const previous = process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN;
+      process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN = 'https://tracemind-capture.pages.dev/';
+      try {
+        const req = { headers: { host: 'tracemind.example.com', 'x-forwarded-proto': 'https' } };
+        const update = webCaptureScriptUpdateForPayload({
+          platform: 'web',
+          source: { type: 'web', url: 'https://app.example.com/docs' },
+        }, req);
+
+        assert.strictEqual(update.latestScriptUrl, `https://tracemind-capture.pages.dev/capture.js?tm_refresh=${encodeURIComponent(CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID)}`);
+      } finally {
+        if (previous === undefined) {
+          delete process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN;
+        } else {
+          process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN = previous;
+        }
+      }
     });
 
     it('preserves supported script attributes when Web Auto Capture auto-updates', async function () {
@@ -2079,10 +2122,10 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.01.2');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.01.3');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
-      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.01.2');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.01.3');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
@@ -2094,7 +2137,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
       assert.ok(guidance.structuredContent.workflow.includes('For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.'));
-      assert.ok(guidance.structuredContent.workflow.includes('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the stable /capture.js snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.'));
+      assert.ok(guidance.structuredContent.workflow.includes('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.'));
       assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.'));
@@ -2229,7 +2272,7 @@ describe('TraceMind', function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
       const currentRules = `---
-version: 2026.06.01.2
+version: 2026.06.01.3
 ---
 TraceMind Project Binding
 Project ID: project-agent-setup-check
@@ -2242,7 +2285,7 @@ Use distributionMode: "registry" install commands from npm, PyPI, or Maven Centr
 Treat latestSdk.sourceRef and contentHash as SDK source of truth.
 For server_node, server_python, and server_http setup, run returned preDeployChecks and postDeployVerification after deployment.
 Use the returned public projectKey only for capture writes; never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.
-When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the stable /capture.js snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.
+When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.
 If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing reporting tools by increasing tracemind.summary.limit.`;
 
       const empty = await callMcpTool(project, 'tracemind.check_agent_setup', {});
@@ -2254,14 +2297,14 @@ If reporting tools such as tracemind.project_health, tracemind.recent_online, tr
       const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules,
         agentInstructionContent: currentRules,
-        manifestContent: JSON.stringify({ guidanceVersion: '2026.06.01.2' }),
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.06.01.3' }),
       });
       assert.strictEqual(current.structuredContent.status, 'current');
       assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
 
       const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('version: 2026.06.01.2', 'version: 2026.05.17.7'),
+        skillContent: currentRules.replace('version: 2026.06.01.3', 'version: 2026.05.17.7'),
         agentInstructionContent: currentRules,
       });
       assert.strictEqual(outdated.structuredContent.status, 'outdated');
@@ -2292,7 +2335,7 @@ If reporting tools such as tracemind.project_health, tracemind.recent_online, tr
       assert.ok(missingProjectKeyUsage.structuredContent.findings.some((finding) => finding.code === 'missing_project_key_usage_guidance'));
 
       const missingWebScriptUpdate = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the stable /capture.js snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.', 'Check Web scripts if needed.'),
+        skillContent: currentRules.replace('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.', 'Check Web scripts if needed.'),
       });
       assert.strictEqual(missingWebScriptUpdate.structuredContent.status, 'incomplete');
       assert.ok(missingWebScriptUpdate.structuredContent.findings.some((finding) => finding.code === 'missing_web_script_update_guidance'));
@@ -2450,7 +2493,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
       assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.06.01.2');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.06.01.3');
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 30);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
@@ -3025,7 +3068,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
       assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.01.2');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.01.3');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
       assert.strictEqual(setup.structuredContent.webCaptureScript.latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.ok(setup.structuredContent.webCaptureScript.upgradePrompt.includes('window.TraceMind.status()'));
@@ -3058,6 +3101,36 @@ projectKey: tm_proj_sensitive`,
       assert.ok(setup.structuredContent.networkRestrictionChecks.some((check) => check.includes('connect-src')));
       assert.ok(setup.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
       assert.ok(!JSON.stringify(setup.structuredContent).includes('tm_mcp_'));
+    });
+
+    it('returns the configured Cloudflare script URL through Web and hybrid capture setup', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const previous = process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN;
+      process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN = 'https://tracemind-capture.pages.dev/';
+      try {
+        const project = {
+          _id: `project-cloudflare-capture-setup-${Date.now()}`,
+          name: 'Cloudflare Capture Setup Project',
+          projectKey: 'tm_proj_cloudflare',
+        };
+        const web = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'web' });
+        const hybrid = await callMcpTool(project, 'tracemind.capture_setup', { platform: 'hybrid' });
+
+        assert.strictEqual(web.structuredContent.captureScriptUrl, 'https://tracemind-capture.pages.dev/capture.js');
+        assert.ok(web.structuredContent.captureSnippet.includes('src="https://tracemind-capture.pages.dev/capture.js"'));
+        assert.ok(web.structuredContent.initSnippet.includes('src="https://tracemind-capture.pages.dev/capture.js"'));
+        assert.strictEqual(web.structuredContent.captureApiUrl, Meteor.absoluteUrl('/api/capture'));
+        assert.strictEqual(web.structuredContent.presenceApiUrl, Meteor.absoluteUrl('/api/presence'));
+        assert.strictEqual(web.structuredContent.userFeedbackApiUrl, Meteor.absoluteUrl('/api/user-feedback'));
+        assert.strictEqual(hybrid.structuredContent.captureScriptUrl, 'https://tracemind-capture.pages.dev/capture.js');
+        assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-framework="hybrid"'));
+      } finally {
+        if (previous === undefined) {
+          delete process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN;
+        } else {
+          process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN = previous;
+        }
+      }
     });
 
     it('returns native auto capture setup snippets through MCP', async function () {

@@ -43,6 +43,7 @@ const TRACE_MIND_SDK_SOURCE_REPO = 'https://github.com/wolf3c/TraceMind.git';
 const TRACE_MIND_SDK_SOURCE_CHECKOUT_DIR = '.tracemind-sdk-source';
 const PRODUCT_USAGE_EVENT_NAME = 'customer_project_capture_active';
 const PRODUCT_USAGE_SOURCE_KEY = 'tracemind-server';
+const CAPTURE_SCRIPT_ORIGIN_CONFIG_KEY = 'TRACEMIND_CAPTURE_SCRIPT_ORIGIN';
 const PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY = 'TRACEMIND_PRODUCT_USAGE_PROJECT_ID';
 const PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY = 'TRACEMIND_PRODUCT_USAGE_PROJECT_KEY';
 const PRODUCT_USAGE_PENDING_RETRY_MS = 10 * 60 * 1000;
@@ -173,6 +174,42 @@ const APPROVED_AUTO_EVENT_NAMES = new Set([
 const CAPTURE_SCRIPT_ENTRY_PATH = '/capture.js';
 const CAPTURE_SCRIPT_ASSET_PATH_PATTERN = /^\/capture\.([a-f0-9]{64})\.js$/;
 const captureScriptAssetCache = new Map();
+
+function normalizedOrigin(value) {
+  const text = String(value || '').trim().replace(/\/+$/, '');
+  if (!text) return '';
+  try {
+    const url = new URL(text);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    return url.origin;
+  } catch (error) {
+    return '';
+  }
+}
+
+function publicSettings() {
+  return Meteor.settings?.public || {};
+}
+
+function configuredCaptureScriptOrigin() {
+  return normalizedOrigin(
+    privateSettings()[CAPTURE_SCRIPT_ORIGIN_CONFIG_KEY]
+      || publicSettings().captureScriptOrigin
+      || publicSettings()[CAPTURE_SCRIPT_ORIGIN_CONFIG_KEY]
+      || process.env[CAPTURE_SCRIPT_ORIGIN_CONFIG_KEY],
+  );
+}
+
+function captureScriptUrlFromOrigin(origin) {
+  return `${normalizedOrigin(origin)}${CAPTURE_SCRIPT_ENTRY_PATH}`;
+}
+
+function captureSetupScriptUrl() {
+  const configuredOrigin = configuredCaptureScriptOrigin();
+  return configuredOrigin
+    ? captureScriptUrlFromOrigin(configuredOrigin)
+    : Meteor.absoluteUrl(CAPTURE_SCRIPT_ENTRY_PATH);
+}
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -1142,7 +1179,7 @@ function guidanceResult(extra = {}) {
       'For server_node, server_python, and server_http setup, use capture_setup projectKeyUsage, configurationModes, preDeployChecks, postDeployVerification, and expectedCaptureQuery before judging deployment success or inactivity.',
       'For SDK platforms, use capture_setup latestSdk, installedVersionDetection, installedSdkManifest, upgradeCommands, and verificationCommands; write .tracemind-sdk.json for local_source vendored installs and compare contentHash instead of relying only on displayVersion.',
       'When project_health returns sdkUpgradeFindings, update the vendored SDK through the coding agent workflow rather than silently editing customer code.',
-      'When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the stable /capture.js snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.',
+      'When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.',
       'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
       'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
@@ -1416,7 +1453,7 @@ function checkAgentSetupResult(args = {}) {
     recommendedActions.push('Clarify that customer server capture uses the returned public projectKey, not MCP tokens, Bearer tokens, or TraceMind internal dogfood configuration.');
   }
   if (findingCodes.has('missing_web_script_update_guidance')) {
-    recommendedActions.push('Add Web Auto Capture update guidance for captureScriptFindings, stable /capture.js, CDN/service worker/WebView cache checks, and window.TraceMind.status().scriptReleaseId verification.');
+    recommendedActions.push('Add Web Auto Capture update guidance for captureScriptFindings, returned stable captureScriptUrl, CDN/service worker/WebView cache checks, and window.TraceMind.status().scriptReleaseId verification.');
   }
   if (findingCodes.has('missing_mcp_tool_discovery_recovery_guidance')) {
     recommendedActions.push('Add MCP tool discovery recovery guidance for missing reporting tools: read tools/list or retry exact tool discovery, refresh connector/session/MCP config/token if needed, and do not increase summary.limit as a substitute.');
@@ -1845,7 +1882,7 @@ function webCaptureScriptUpgradePrompt() {
   return `TraceMind 检测到旧 Web Auto Capture 脚本仍在运行。请执行：
 1. 调用 tracemind.capture_setup({ platform: "web" }) 获取最新 Web 接入片段。
 2. 搜索项目中的 capture.js、capture.<hash>.js、TraceMind script、自托管脚本副本。
-3. 如果使用 capture.<hash>.js 或本地复制脚本，改回稳定 /capture.js。
+3. 如果使用 capture.<hash>.js 或本地复制脚本，改回 capture_setup 返回的稳定 captureScriptUrl。
 4. 检查 service worker、Workbox、CDN、反向代理、WebView bundle 是否缓存或内置旧脚本。
 5. 部署后打开真实页面，调用 window.TraceMind.status()，确认 scriptReleaseId 等于最新版本。
 6. 触发一次真实行为，再调用 tracemind.project_health，确认 captureScriptFindings 消失。`;
@@ -2413,7 +2450,7 @@ function platformSetup(project, platform, options = {}) {
   }
 
   if (platform === 'hybrid') {
-    const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
+    const captureScriptUrl = captureSetupScriptUrl();
     const captureSnippet = `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" data-tracemind-framework="hybrid" async></script>`;
     const swiftSdkSetup = localSwiftSdkSetup();
     const androidSdkSetup = registryAndroidSdkSetup();
@@ -3059,7 +3096,7 @@ function platformSetup(project, platform, options = {}) {
     };
   }
 
-  const captureScriptUrl = Meteor.absoluteUrl('/capture.js');
+  const captureScriptUrl = captureSetupScriptUrl();
   return {
     ...common,
     platform: 'web',
@@ -4524,7 +4561,27 @@ export async function callMcpTool(project, name, args = {}, options = {}) {
   throw new Error(`Unknown tool: ${name}`);
 }
 
+function normalizeClientScriptOrigins(input) {
+  if (input && typeof input === 'object') {
+    const apiOrigin = normalizedOrigin(input.apiOrigin || input.host || input.origin);
+    const scriptOrigin = normalizedOrigin(input.scriptOrigin || input.captureScriptOrigin || input.host || input.origin || input.apiOrigin);
+    return {
+      apiOrigin,
+      scriptOrigin: scriptOrigin || apiOrigin,
+      cacheKey: `api=${apiOrigin}|script=${scriptOrigin || apiOrigin}`,
+    };
+  }
+
+  const origin = normalizedOrigin(input);
+  return {
+    apiOrigin: origin,
+    scriptOrigin: origin,
+    cacheKey: origin,
+  };
+}
+
 export function clientScript(host) {
+  const origins = normalizeClientScriptOrigins(host);
   return `
 (function () {
   var SCRIPT_RELEASE_ID = '${CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID}';
@@ -4543,9 +4600,9 @@ export function clientScript(host) {
 
   var script = document.currentScript;
   var projectKey = script && script.getAttribute('data-tracemind-token');
-  var endpoint = (script && script.getAttribute('data-tracemind-endpoint')) || '${host}/api/capture';
-  var presenceEndpoint = (script && script.getAttribute('data-tracemind-presence-endpoint')) || '${host}/api/presence';
-  var feedbackEndpoint = (script && script.getAttribute('data-tracemind-feedback-endpoint')) || '${host}/api/user-feedback';
+  var endpoint = (script && script.getAttribute('data-tracemind-endpoint')) || '${origins.apiOrigin}/api/capture';
+  var presenceEndpoint = (script && script.getAttribute('data-tracemind-presence-endpoint')) || '${origins.apiOrigin}/api/presence';
+  var feedbackEndpoint = (script && script.getAttribute('data-tracemind-feedback-endpoint')) || '${origins.apiOrigin}/api/user-feedback';
   var staticUserId = script && script.getAttribute('data-tracemind-user-id');
   var userIdProvider = script && script.getAttribute('data-tracemind-user-id-provider');
   var sourceFramework = frameworkName(script && script.getAttribute('data-tracemind-framework'));
@@ -5040,7 +5097,7 @@ export function clientScript(host) {
     scriptUpdateInProgress = true;
     var nextScript = document.createElement('script');
     nextScript.async = true;
-    nextScript.src = update.latestScriptUrl || '${host}/capture.js?tm_refresh=' + encodeURIComponent(update.latestReleaseId);
+    nextScript.src = update.latestScriptUrl || '${origins.scriptOrigin}/capture.js?tm_refresh=' + encodeURIComponent(update.latestReleaseId);
     function copyScriptAttribute(name, fallback) {
       var value = script && script.getAttribute(name);
       if (value) {
@@ -5804,7 +5861,7 @@ export function clientScript(host) {
 }
 
 function normalizedScriptHost(host) {
-  return String(host || '').replace(/\/+$/, '');
+  return normalizedOrigin(host) || String(host || '').trim().replace(/\/+$/, '');
 }
 
 function captureScriptAssetPath(hash) {
@@ -5816,11 +5873,12 @@ function captureScriptHash(body) {
 }
 
 export async function buildCaptureScriptAsset(host) {
-  const normalizedHost = normalizedScriptHost(host);
+  const origins = normalizeClientScriptOrigins(host);
+  const normalizedHost = origins.cacheKey || normalizedScriptHost(host);
   const cached = captureScriptAssetCache.get(normalizedHost);
   if (cached) return cached;
 
-  const rawBody = clientScript(normalizedHost);
+  const rawBody = clientScript(origins);
   const minified = await minify(rawBody, {
     compress: { passes: 2 },
     mangle: true,
@@ -5834,7 +5892,8 @@ export async function buildCaptureScriptAsset(host) {
 
   const hash = captureScriptHash(body);
   const asset = {
-    host: normalizedHost,
+    host: origins.apiOrigin,
+    scriptOrigin: origins.scriptOrigin,
     body,
     hash,
     etag: `"sha256-${hash}"`,
@@ -5937,12 +5996,13 @@ export function webCaptureScriptUpdateForPayload(payload = {}, req = {}) {
   if (!candidate) return null;
 
   const observedReleaseId = payloadWebScriptReleaseId(candidate) || 'legacy';
+  const scriptOrigin = configuredCaptureScriptOrigin() || normalizedOrigin(requestHost(req));
   return {
     type: 'web_capture_script_update_available',
     latestReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
     observedReleaseId,
     reason: observedReleaseId === 'legacy' ? 'missing_script_release' : 'stale_script_release',
-    latestScriptUrl: `${requestHost(req)}${CAPTURE_SCRIPT_ENTRY_PATH}?tm_refresh=${encodeURIComponent(CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID)}`,
+    latestScriptUrl: `${scriptOrigin}${CAPTURE_SCRIPT_ENTRY_PATH}?tm_refresh=${encodeURIComponent(CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID)}`,
     autoUpdate: true,
   };
 }

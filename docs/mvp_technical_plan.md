@@ -48,9 +48,9 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 
 ## Deployment Shape
 
-TraceMind is deployed as a separate Meteor app on Galaxy, served from `https://tracemind.sandbox.galaxycloud.app`. It keeps its own Meteor routes, runtime settings, and Mongo database. The yezi2 root app remains on `https://super-tree.com`.
+TraceMind is deployed as a separate Meteor app on Galaxy, served from `https://tracemind.sandbox.galaxycloud.app`. It keeps its own Meteor routes, runtime settings, and Mongo database. The production Web Auto Capture script is distributed from Cloudflare Pages at `https://tracemind-capture.pages.dev/capture.js`, while capture, presence, feedback, MCP, and dashboard API traffic remain on Galaxy. The yezi2 root app remains on `https://super-tree.com`.
 
-This deployment shape keeps `/capture.js`, `/api/capture`, and `/mcp` owned by TraceMind and avoids mixing TraceMind's background semantic extraction job or passwordless email templates into the yezi2 Meteor process. See `docs/deployment.md` for the operational commands and verification checklist.
+This deployment shape keeps TraceMind's script, `/api/capture`, and `/mcp` ownership separate from yezi2 and avoids mixing TraceMind's background semantic extraction job or passwordless email templates into the yezi2 Meteor process. Galaxy `/capture.js` remains a fallback compatibility route. See `docs/deployment.md` for the operational commands and verification checklist.
 
 ## Run Commands
 
