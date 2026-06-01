@@ -1,15 +1,15 @@
 {
   "manifestVersion": 1,
-  "generatedAt": "2026-06-01T08:17:33.810Z",
+  "generatedAt": "2026-06-01T10:21:48.500Z",
   "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-  "sourceRef": "tracemind-release-2026.6.1-1",
+  "sourceRef": "tracemind-release-2026.6.1-2",
   "sdks": [
     {
       "sdkName": "swift",
       "displayVersion": "0.1.0",
       "contentHash": "sha256:1a0c7b852cf11e56591f227561d3299d023cca43d60e9200fd867efcd6c0acd1",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/ios",
       "platforms": [
         "ios",
@@ -32,7 +32,7 @@
       "displayVersion": "0.1.0",
       "contentHash": "sha256:ecf7664858b22db5b2f6d74131672ba19a5982e77f907e60bde066dd229eef3b",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/android",
       "platforms": [
         "android"
@@ -66,7 +66,7 @@
       "localSourceFallback": {
         "distributionMode": "local_source",
         "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-        "sourceRef": "tracemind-release-2026.6.1-1",
+        "sourceRef": "tracemind-release-2026.6.1-2",
         "sdkSourcePath": "sdk/android"
       }
     },
@@ -75,7 +75,7 @@
       "displayVersion": "0.1.0",
       "contentHash": "sha256:5c69e6c053570abf24b2eba6eebd44b7e149795d63f094b4d024b10554f297e6",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/react-native",
       "platforms": [
         "react_native"
@@ -109,7 +109,7 @@
       "localSourceFallback": {
         "distributionMode": "local_source",
         "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-        "sourceRef": "tracemind-release-2026.6.1-1",
+        "sourceRef": "tracemind-release-2026.6.1-2",
         "sdkSourcePath": "sdk/react-native"
       }
     },
@@ -118,7 +118,7 @@
       "displayVersion": "0.1.0",
       "contentHash": "sha256:305aa792043af13630cfb76d23ed4e90aeb89d69ce29a72f79a6d31f686a2f90",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/mini-program",
       "platforms": [
         "mini_program"
@@ -152,7 +152,7 @@
       "localSourceFallback": {
         "distributionMode": "local_source",
         "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-        "sourceRef": "tracemind-release-2026.6.1-1",
+        "sourceRef": "tracemind-release-2026.6.1-2",
         "sdkSourcePath": "sdk/mini-program"
       }
     },
@@ -161,7 +161,7 @@
       "displayVersion": "0.1.0",
       "contentHash": "sha256:08dddeaedb8fa4d6e1e1645f7954f5dc28ec9a1a39a23f2deb86e4a0b2d5daa0",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/browser-extension",
       "platforms": [
         "browser_extension"
@@ -195,7 +195,7 @@
       "localSourceFallback": {
         "distributionMode": "local_source",
         "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-        "sourceRef": "tracemind-release-2026.6.1-1",
+        "sourceRef": "tracemind-release-2026.6.1-2",
         "sdkSourcePath": "sdk/browser-extension"
       }
     },
@@ -204,7 +204,7 @@
       "displayVersion": "0.1.0",
       "contentHash": "sha256:93db7aee1392bc4bd9c9947a6987eae1801a9d9c707aaff9703c81cbd38e4c7c",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/mcp-node",
       "platforms": [
         "mcp_node",
@@ -239,7 +239,7 @@
       "localSourceFallback": {
         "distributionMode": "local_source",
         "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-        "sourceRef": "tracemind-release-2026.6.1-1",
+        "sourceRef": "tracemind-release-2026.6.1-2",
         "sdkSourcePath": "sdk/mcp-node"
       }
     },
@@ -248,7 +248,7 @@
       "displayVersion": "0.1.0",
       "contentHash": "sha256:e13435d521ce6a41e19e0e6e835f0ddfa8a3f14c877fca57df4f5b8b163ae573",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/mcp-python",
       "platforms": [
         "mcp_python"
@@ -280,7 +280,7 @@
       "localSourceFallback": {
         "distributionMode": "local_source",
         "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-        "sourceRef": "tracemind-release-2026.6.1-1",
+        "sourceRef": "tracemind-release-2026.6.1-2",
         "sdkSourcePath": "sdk/mcp-python"
       }
     },
@@ -289,7 +289,7 @@
       "displayVersion": "0.1.0",
       "contentHash": "sha256:3589d33c9722a7460d4b4638b10d810c1700d7b4cb9fb6ba50570ff1c62f8e25",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/server-node",
       "platforms": [
         "server_node"
@@ -323,7 +323,7 @@
       "localSourceFallback": {
         "distributionMode": "local_source",
         "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-        "sourceRef": "tracemind-release-2026.6.1-1",
+        "sourceRef": "tracemind-release-2026.6.1-2",
         "sdkSourcePath": "sdk/server-node"
       }
     },
@@ -332,7 +332,7 @@
       "displayVersion": "0.1.0",
       "contentHash": "sha256:0a685a9dc9a80889cce6616c7b40a982e98fcc5c13f2a698d987afcfe39e36ba",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-      "sourceRef": "tracemind-release-2026.6.1-1",
+      "sourceRef": "tracemind-release-2026.6.1-2",
       "sdkSourcePath": "sdk/server-python",
       "platforms": [
         "server_python"
@@ -364,7 +364,7 @@
       "localSourceFallback": {
         "distributionMode": "local_source",
         "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
-        "sourceRef": "tracemind-release-2026.6.1-1",
+        "sourceRef": "tracemind-release-2026.6.1-2",
         "sdkSourcePath": "sdk/server-python"
       }
     }
