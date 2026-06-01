@@ -38,6 +38,7 @@ export function emptyHealthWindow() {
     topDurationUsers: [],
     topDurationPaths: [],
     topBouncePages: [],
+    captureScriptFindings: [],
     sdkUpgradeFindings: [],
     newUsers: 0,
     retention: Object.fromEntries(
@@ -153,6 +154,7 @@ export function summarizeProjectHealthFromDailyReports({
   const attentionItems = attentionItemsForHealth(current, previous, currentEnd || new Date(), {
     comparisonWindow: comparisonMode === 'completed_hours' ? 'completed_hours' : 'day',
   });
+  const captureScriptFindings = current.captureScriptFindings || [];
   const sdkUpgradeFindings = current.sdkUpgradeFindings || [];
 
   return {
@@ -175,9 +177,10 @@ export function summarizeProjectHealthFromDailyReports({
       currentHourCount: Number(currentReport?.comparisonWindow?.currentHourCount || 0),
       previousHourCount: Number(currentReport?.comparisonWindow?.previousHourCount || 0),
     }),
-    status: attentionItems.length || sdkUpgradeFindings.length ? 'needs_attention' : 'normal',
-    attentionSummary: attentionItems[0]?.message || sdkUpgradeFindings[0]?.message || '',
+    status: attentionItems.length || captureScriptFindings.length || sdkUpgradeFindings.length ? 'needs_attention' : 'normal',
+    attentionSummary: attentionItems[0]?.message || captureScriptFindings[0]?.message || sdkUpgradeFindings[0]?.message || '',
     attentionItems,
+    captureScriptFindings,
     sdkUpgradeFindings,
     current,
     previous,

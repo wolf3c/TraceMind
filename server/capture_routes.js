@@ -7,6 +7,8 @@ import { minify } from 'terser';
 import {
   CaptureDeliveryReports,
   ACTIVE_IDLE_TIMEOUT_MS,
+  CURRENT_AGENT_GUIDANCE_VERSION,
+  CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
   DATA_RETENTION_POLICY,
   EVENT_DEFINITIONS,
   FeedbackReports,
@@ -33,7 +35,7 @@ import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
-const AGENT_GUIDANCE_VERSION = '2026.05.28.1';
+const AGENT_GUIDANCE_VERSION = CURRENT_AGENT_GUIDANCE_VERSION;
 const CAPTURE_SETUP_PLATFORMS = ['web', 'ios', 'macos', 'android', 'react_native', 'hybrid', 'mini_program', 'browser_extension', 'mcp_node', 'mcp_python', 'agent_skill', 'server_node', 'server_python', 'server_http'];
 export const CAPTURE_SCRIPT_ENTRY_CACHE_CONTROL = 'public, max-age=60, must-revalidate';
 export const CAPTURE_SCRIPT_IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
@@ -1007,6 +1009,7 @@ function projectHealthResult(project, reportDate, report, health = {}) {
       status: health.status || 'normal',
       attentionSummary: health.attentionSummary || '',
       attentionItems: health.attentionItems || [],
+      captureScriptFindings: health.captureScriptFindings || health.current?.captureScriptFindings || [],
       sdkUpgradeFindings: health.sdkUpgradeFindings || health.current?.sdkUpgradeFindings || [],
       current: health.current || {},
       previous: health.previous || {},
@@ -1136,6 +1139,7 @@ function guidanceResult(extra = {}) {
       'For server_node, server_python, and server_http setup, use capture_setup projectKeyUsage, configurationModes, preDeployChecks, postDeployVerification, and expectedCaptureQuery before judging deployment success or inactivity.',
       'For SDK platforms, use capture_setup latestSdk, installedVersionDetection, installedSdkManifest, upgradeCommands, and verificationCommands; write .tracemind-sdk.json for local_source vendored installs and compare contentHash instead of relying only on displayVersion.',
       'When project_health returns sdkUpgradeFindings, update the vendored SDK through the coding agent workflow rather than silently editing customer code.',
+      'When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the stable /capture.js snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.',
       'Use capture_setup trafficAttribution guidance before adding source-related manual events or URL/deeplink handlers.',
       'If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.',
       'Verify existing Auto Capture initialization before editing so the agent does not add duplicate setup.',
@@ -1341,6 +1345,11 @@ function checkAgentSetupResult(args = {}) {
       patterns: [/contentHash/, /sdkContentHash/],
     },
     {
+      code: 'missing_web_script_update_guidance',
+      message: 'Local rules should tell agents to handle project_health captureScriptFindings by refreshing Web Auto Capture through capture_setup and verifying window.TraceMind.status().scriptReleaseId.',
+      patterns: [/captureScriptFindings[\s\S]{0,240}window\.TraceMind\.status\(\)[\s\S]{0,120}scriptReleaseId/i],
+    },
+    {
       code: 'missing_project_binding',
       message: 'Local rules should include TraceMind project binding checks with Project ID, expected MCP server, and tracemind.project_info verification.',
       patterns: [/TraceMind Project Binding/i, /TraceMind project binding/i, /Project ID[\s\S]{0,240}Expected MCP server/i],
@@ -1391,6 +1400,9 @@ function checkAgentSetupResult(args = {}) {
   }
   if (findingCodes.has('missing_project_key_usage_guidance')) {
     recommendedActions.push('Clarify that customer server capture uses the returned public projectKey, not MCP tokens, Bearer tokens, or TraceMind internal dogfood configuration.');
+  }
+  if (findingCodes.has('missing_web_script_update_guidance')) {
+    recommendedActions.push('Add Web Auto Capture update guidance for captureScriptFindings, stable /capture.js, CDN/service worker/WebView cache checks, and window.TraceMind.status().scriptReleaseId verification.');
   }
   recommendedActions.push('Call tracemind.agent_guidance to confirm the current authority version before instrumentation work.');
   recommendedActions.push('Call tracemind.capture_setup for the target platform and use registry install commands when distributionMode is registry.');
@@ -1810,6 +1822,16 @@ function serverDeployVerificationFields({
     },
     expectedCaptureQuery,
   };
+}
+
+function webCaptureScriptUpgradePrompt() {
+  return `TraceMind 检测到旧 Web Auto Capture 脚本仍在运行。请执行：
+1. 调用 tracemind.capture_setup({ platform: "web" }) 获取最新 Web 接入片段。
+2. 搜索项目中的 capture.js、capture.<hash>.js、TraceMind script、自托管脚本副本。
+3. 如果使用 capture.<hash>.js 或本地复制脚本，改回稳定 /capture.js。
+4. 检查 service worker、Workbox、CDN、反向代理、WebView bundle 是否缓存或内置旧脚本。
+5. 部署后打开真实页面，调用 window.TraceMind.status()，确认 scriptReleaseId 等于最新版本。
+6. 触发一次真实行为，再调用 tracemind.project_health，确认 captureScriptFindings 消失。`;
 }
 
 function commonSetup(project, platform) {
@@ -3028,6 +3050,17 @@ function platformSetup(project, platform, options = {}) {
     captureScriptUrl,
     captureSnippet: `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" async></script>`,
     initSnippet: `<script src="${captureScriptUrl}" data-tracemind-token="${project.projectKey}" async></script>`,
+    webCaptureScript: {
+      latestReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
+      versionSource: 'sourceDetails.scriptReleaseId',
+      updateFindingCode: 'web_capture_script_update_required',
+      upgradePrompt: webCaptureScriptUpgradePrompt(),
+      verificationSteps: [
+        `Open the customer app and confirm window.TraceMind.status().scriptReleaseId === "${CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID}".`,
+        'Trigger a real page load, click, input, or submit event.',
+        'Call tracemind.project_health and confirm health.captureScriptFindings is empty or no longer includes the Web source.',
+      ],
+    },
     installCommands: [
       'No package install is required. Add captureSnippet to the global HTML head or root document layout.',
     ],
@@ -3037,6 +3070,7 @@ function platformSetup(project, platform, options = {}) {
     initLocation: 'Global document head or root layout loaded on every page.',
     idempotencyChecks: [
       'Search for /capture.js',
+      'Search for capture.<hash>.js, self-hosted TraceMind script copies, service worker precache entries, CDN long-cache rules, and WebView bundles that may pin an old Web Auto Capture script.',
       'Search for data-tracemind-token',
       'Do not add a second script if Auto Capture is already initialized for this project.',
     ],
@@ -3052,6 +3086,7 @@ function platformSetup(project, platform, options = {}) {
     networkRestrictionChecks: WEB_NETWORK_RESTRICTION_CHECKS,
     verificationCommands: [
       'Run the web app, trigger a page load/click/input/submit, then query TraceMind raw behaviors or semantic events.',
+      `Open the app and check window.TraceMind.status().scriptReleaseId equals ${CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID}.`,
     ],
     identifySnippet: 'window.TraceMind.identify("user_123", { plan: "pro" })',
     manualCaptureExamples: [
@@ -4475,7 +4510,18 @@ export async function callMcpTool(project, name, args = {}, options = {}) {
 export function clientScript(host) {
   return `
 (function () {
-  if (window.__TraceMindLoaded) return;
+  var SCRIPT_RELEASE_ID = '${CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID}';
+  var existingRuntime = window.__TraceMindRuntime;
+  if (existingRuntime && existingRuntime.releaseId === SCRIPT_RELEASE_ID && existingRuntime.disabled !== true) return;
+  if (existingRuntime && typeof existingRuntime.disable === 'function') existingRuntime.disable('replaced');
+  var runtime = {
+    releaseId: SCRIPT_RELEASE_ID,
+    disabled: false,
+    disable: function () {
+      runtime.disabled = true;
+    }
+  };
+  window.__TraceMindRuntime = runtime;
   window.__TraceMindLoaded = true;
 
   var script = document.currentScript;
@@ -4486,6 +4532,10 @@ export function clientScript(host) {
   var staticUserId = script && script.getAttribute('data-tracemind-user-id');
   var userIdProvider = script && script.getAttribute('data-tracemind-user-id-provider');
   var sourceFramework = frameworkName(script && script.getAttribute('data-tracemind-framework'));
+
+  function runtimeActive() {
+    return window.__TraceMindRuntime === runtime && runtime.disabled !== true;
+  }
 
   function frameworkName(value) {
     var text = String(value || '').trim().toLowerCase();
@@ -4604,12 +4654,14 @@ export function clientScript(host) {
   }
 
   function currentSource() {
+    var details = { scriptReleaseId: SCRIPT_RELEASE_ID };
+    if (sourceFramework) details.framework = sourceFramework;
     var source = {
       type: 'web',
       url: safePageUrl(location.href),
-      referrer: document.referrer ? safePageUrl(document.referrer) : ''
+      referrer: document.referrer ? safePageUrl(document.referrer) : '',
+      details: details
     };
-    if (sourceFramework) source.details = { framework: sourceFramework };
     return source;
   }
 
@@ -4716,6 +4768,18 @@ export function clientScript(host) {
   var flushTimer = null;
   var flushing = false;
   var queueStorageAvailable = true;
+
+  runtime.disable = function () {
+    runtime.disabled = true;
+    if (presenceTimer) {
+      clearInterval(presenceTimer);
+      presenceTimer = null;
+    }
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+  };
 
   function defaultDeliveryStats() {
     return {
@@ -4831,11 +4895,13 @@ export function clientScript(host) {
       lastFlushAt: deliveryStats.lastFlushAt,
       lastFailedFlushAt: deliveryStats.lastFailedFlushAt,
       nextRetryAt: nextRetryAt ? new Date(nextRetryAt).toISOString() : '',
+      scriptReleaseId: SCRIPT_RELEASE_ID,
       storage: queueStorageAvailable ? 'localStorage' : 'memory'
     };
   }
 
   function scheduleFlush(delay) {
+    if (!runtimeActive()) return;
     if (flushTimer) return;
     flushTimer = setTimeout(function () {
       flushTimer = null;
@@ -4861,7 +4927,7 @@ export function clientScript(host) {
   }
 
   function enqueue(kind, payload) {
-    if (!projectKey) return;
+    if (!projectKey || !runtimeActive()) return;
     var record = {
       id: recordId(),
       kind: kind,
@@ -4948,6 +5014,45 @@ export function clientScript(host) {
     scheduleFlush(retryDelay(1));
   }
 
+  var scriptUpdateInProgress = false;
+
+  function applyScriptUpdate(update) {
+    if (!update || update.autoUpdate !== true || scriptUpdateInProgress) return;
+    if (!update.latestReleaseId || update.latestReleaseId === SCRIPT_RELEASE_ID) return;
+    if (!document.createElement || !document.head || !document.head.appendChild) return;
+    scriptUpdateInProgress = true;
+    var nextScript = document.createElement('script');
+    nextScript.async = true;
+    nextScript.src = update.latestScriptUrl || '${host}/capture.js?tm_refresh=' + encodeURIComponent(update.latestReleaseId);
+    function copyScriptAttribute(name, fallback) {
+      var value = script && script.getAttribute(name);
+      if (value) {
+        nextScript.setAttribute(name, value);
+      } else if (fallback) {
+        nextScript.setAttribute(name, fallback);
+      }
+    }
+    copyScriptAttribute('data-tracemind-token', projectKey);
+    copyScriptAttribute('data-tracemind-endpoint');
+    copyScriptAttribute('data-tracemind-presence-endpoint');
+    copyScriptAttribute('data-tracemind-feedback-endpoint');
+    copyScriptAttribute('data-tracemind-framework', sourceFramework);
+    copyScriptAttribute('data-tracemind-user-id', staticUserId);
+    copyScriptAttribute('data-tracemind-user-id-provider', userIdProvider);
+    nextScript.onload = function () {
+      runtime.disable('updated');
+    };
+    nextScript.onerror = function () {
+      scriptUpdateInProgress = false;
+    };
+    document.head.appendChild(nextScript);
+  }
+
+  function handleServerResponse(body) {
+    if (!body || typeof body !== 'object') return;
+    applyScriptUpdate(body.webCaptureScriptUpdate);
+  }
+
   function sendBatch(endpoint, body, unloadMode) {
     var json = JSON.stringify(body);
     if (unloadMode && navigator.sendBeacon) {
@@ -4960,11 +5065,20 @@ export function clientScript(host) {
       keepalive: !!unloadMode
     }).then(function (response) {
       if (!response.ok) throw new Error('http_' + response.status);
+      if (typeof response.json === 'function') {
+        return response.json().then(function (body) {
+          handleServerResponse(body);
+          return response;
+        }).catch(function () {
+          return response;
+        });
+      }
       return response;
     });
   }
 
   function flushKind(kind, reason, unloadMode) {
+    if (!runtimeActive()) return Promise.resolve();
     var records = dueRecords(
       kind,
       kind === 'capture' ? CAPTURE_BATCH_SIZE : (kind === 'presence' ? PRESENCE_BATCH_SIZE : FEEDBACK_BATCH_SIZE),
@@ -5002,6 +5116,7 @@ export function clientScript(host) {
   }
 
   function flushQueue(reason, unloadMode) {
+    if (!runtimeActive()) return Promise.resolve(queueStatus());
     if (flushTimer) {
       clearTimeout(flushTimer);
       flushTimer = null;
@@ -5234,7 +5349,7 @@ export function clientScript(host) {
   }
 
   function send(type, data) {
-    if (!projectKey) return;
+    if (!projectKey || !runtimeActive()) return;
     enqueue('capture', buildCapturePayload(type, data));
   }
 
@@ -5424,7 +5539,7 @@ export function clientScript(host) {
   }
 
   function sendPresence(state) {
-    if (!projectKey || !currentPresenceId) return;
+    if (!projectKey || !currentPresenceId || !runtimeActive()) return;
     enqueue('presence', buildPresencePayload(state));
   }
 
@@ -5442,7 +5557,7 @@ export function clientScript(host) {
   }
 
   function startPresence(state) {
-    if (!projectKey || document.visibilityState === 'hidden' || currentPresenceId) return;
+    if (!projectKey || !runtimeActive() || document.visibilityState === 'hidden' || currentPresenceId) return;
     resetActiveClock();
     currentPresenceId = newPresenceId();
     resumeActiveWindow();
@@ -5763,7 +5878,56 @@ export async function captureScriptResponse(pathname, host) {
 }
 
 function requestHost(req) {
-  return `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`;
+  const headers = req.headers || {};
+  return `${headers['x-forwarded-proto'] || 'http'}://${headers.host || 'localhost'}`;
+}
+
+function cleanWebScriptReleaseId(value) {
+  const releaseId = safeString(value, 80).trim();
+  return /^\d{4}\.\d{2}\.\d{2}\.\d+$/.test(releaseId) ? releaseId : '';
+}
+
+function payloadWebScriptReleaseId(payload = {}) {
+  const source = safeObject(payload.source);
+  const details = {
+    ...safeObject(payload.sourceDetails),
+    ...safeObject(source.details),
+  };
+  return cleanWebScriptReleaseId(details.scriptReleaseId);
+}
+
+function payloadLooksLikeWebCapture(payload = {}) {
+  const source = safeObject(payload.source);
+  const sourceType = safeString(source.type || payload.sourceType || payload.platform, 40).toLowerCase();
+  return sourceType === 'web' || (!sourceType && !payload.sourceType && !payload.platform);
+}
+
+function capturePayloadCandidates(payload = {}) {
+  if (!Array.isArray(payload.events)) return [payload];
+  const sharedPayload = { ...payload };
+  delete sharedPayload.events;
+  return payload.events.slice(0, 100).map((eventPayload) => ({
+    ...sharedPayload,
+    ...safeObject(eventPayload),
+  }));
+}
+
+export function webCaptureScriptUpdateForPayload(payload = {}, req = {}) {
+  const candidate = capturePayloadCandidates(payload).find((item) => (
+    payloadLooksLikeWebCapture(item)
+      && payloadWebScriptReleaseId(item) !== CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID
+  ));
+  if (!candidate) return null;
+
+  const observedReleaseId = payloadWebScriptReleaseId(candidate) || 'legacy';
+  return {
+    type: 'web_capture_script_update_available',
+    latestReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
+    observedReleaseId,
+    reason: observedReleaseId === 'legacy' ? 'missing_script_release' : 'stale_script_release',
+    latestScriptUrl: `${requestHost(req)}${CAPTURE_SCRIPT_ENTRY_PATH}?tm_refresh=${encodeURIComponent(CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID)}`,
+    autoUpdate: true,
+  };
 }
 
 function requestPathname(req, host) {
@@ -6031,7 +6195,11 @@ async function handleCapture(req, res) {
     return;
   }
 
-  sendJson(res, 202, { ok: true });
+  const webCaptureScriptUpdate = webCaptureScriptUpdateForPayload(payload, req);
+  sendJson(res, 202, {
+    ok: true,
+    ...(webCaptureScriptUpdate ? { webCaptureScriptUpdate } : {}),
+  });
 }
 
 async function handlePresence(req, res) {
@@ -6059,7 +6227,11 @@ async function handlePresence(req, res) {
     return;
   }
 
-  sendJson(res, 202, { ok: true });
+  const webCaptureScriptUpdate = webCaptureScriptUpdateForPayload(payload, req);
+  sendJson(res, 202, {
+    ok: true,
+    ...(webCaptureScriptUpdate ? { webCaptureScriptUpdate } : {}),
+  });
 }
 
 async function handleUserFeedback(req, res) {

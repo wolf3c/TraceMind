@@ -205,3 +205,9 @@ Then add the capture snippet to a small test web page, generate several interact
 - Published the new health window metadata through Dashboard and MCP (`granularity: "hour_rollup"`, `comparisonMode`, and hour counts) so agents and the UI do not treat a partial day as comparable with yesterday's full day.
 - Added sanitized hourly comparison series to project health and rendered compact in-card trends for active users, active sessions, average active time, and total events, with hover/click detail for the selected hour and yesterday's matching hour.
 - Added a full-site Web feedback widget that submits terminal user feedback through `window.TraceMind.submitFeedback` and the dedicated `/api/user-feedback` pipeline, keeping it separate from capture events and MCP developer feedback.
+
+## 2026-06-01
+
+### Completed
+
+- Added Web Auto Capture script release detection with `sourceDetails.scriptReleaseId`, `/api/capture` and `/api/presence` auto-update responses, `captureScriptFindings` in project health, Dashboard warnings, MCP `capture_setup` upgrade prompts, and agent setup freshness checks for stale Web script guidance.

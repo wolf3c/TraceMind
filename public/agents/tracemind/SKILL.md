@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.05.28.1
+version: 2026.06.01.1
 description: Use when reviewing TraceMind product operations, online health, or analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -49,16 +49,17 @@ TraceMind separates recent drilldown detail from long-term analysis summaries:
 3. For operations review or product behavior analysis, use Dashboard-aligned `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown.
 4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
 5. If local TraceMind Skill or AGENTS rules may be stale, call `tracemind.check_agent_setup` with the local Skill, AGENTS/rules, and manifest text before editing instrumentation or SDK setup.
-6. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
-7. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
-8. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `errorCaptureWorkflow`, `errorCaptureMethods`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup. For server application platforms, also use the returned `projectKeyUsage`, `configurationModes`, `preDeployChecks`, `postDeployVerification`, and `expectedCaptureQuery`.
-9. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
-10. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
-11. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
-12. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
-13. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
-14. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
-15. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
+6. If `tracemind.project_health` returns `captureScriptFindings`, call `tracemind.capture_setup({ platform: "web" })`, replace fixed `capture.<hash>.js` or self-hosted Web scripts with the stable `/capture.js` snippet, check CDN/service worker/WebView caches, verify `window.TraceMind.status().scriptReleaseId`, trigger a real event, and re-check `project_health`.
+7. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
+8. Call `tracemind.capture_setup` with the matching `platform` before installing Auto Capture or adding manual custom events.
+9. Use the returned `installCommands`, `filesToEdit`, `initLocation`, `idempotencyChecks`, `initSnippet`, `identifySnippet`, `manualCaptureExamples`, `errorCaptureWorkflow`, `errorCaptureMethods`, `supportedPropertyTypes`, and `manualCaptureWorkflow` to install, verify, and implement setup. For server application platforms, also use the returned `projectKeyUsage`, `configurationModes`, `preDeployChecks`, `postDeployVerification`, and `expectedCaptureQuery`.
+10. Search for an existing event with `tracemind.search_event_names` before adding manual `custom` events.
+11. If an event looks relevant, call `tracemind.suggest_instrumentation` or inspect the returned event details before using it.
+12. Use only approved TraceMind capture APIs or SDK helpers already present in the project.
+13. After code changes, call `tracemind.validate_instrumentation_diff` with the current diff.
+14. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
+15. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
+16. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
 
 ## Product Behavior Analysis Workflows
 
@@ -91,7 +92,7 @@ Never store `utm_term`, arbitrary `ref` params, full URLs with query strings, se
 
 For product apps, first check whether TraceMind Auto Capture is already initialized. Do not add duplicate scripts, package dependencies, native modules, or `TraceMind.start(...)` calls.
 
-- Web: call `tracemind.capture_setup` with no platform or `{ "platform": "web" }`; install the returned `captureSnippet` in the global document head or root layout. Web Auto Capture records safe JavaScript error and unhandled-rejection summaries as `app_error`.
+- Web: call `tracemind.capture_setup` with no platform or `{ "platform": "web" }`; install the returned `captureSnippet` in the global document head or root layout. Prefer the stable `/capture.js` URL over fixed `capture.<hash>.js` assets or self-hosted copies. Web Auto Capture records safe JavaScript error and unhandled-rejection summaries as `app_error`.
 - iOS: call `tracemind.capture_setup` with `{ "platform": "ios" }`; follow the returned local-source GitHub clone, `vendor/TraceMind` copy, and SwiftPM local path instructions, then initialize once from `App.swift`, `AppDelegate.swift`, or the startup file named by the app.
 - macOS: call `tracemind.capture_setup` with `{ "platform": "macos" }`; use the same local-source Swift package instructions and initialize once from the macOS app bootstrap. Auto Capture records app/session start and window or screen changes; use `TraceMind.setScreen(...)` when the app has better semantic screen names.
 - Android: call `tracemind.capture_setup` with `{ "platform": "android" }`; use the returned Maven Central dependency unless `localSourceFallback` is explicitly needed, then initialize once from `Application.onCreate()`.
@@ -131,6 +132,15 @@ TraceMind customers may rely entirely on a coding agent. Do not assume they unde
 - SDK runtimes report safe source metadata as `sourceDetails.sdkVersion` and `sourceDetails.sdkContentHash`. `tracemind.project_health` may return `sdkUpgradeFindings` when an app reports an older hash or no SDK hash.
 - If TraceMind reports an SDK update, copy the update prompt to the customer coding agent. The agent should call `tracemind.project_health`, call `tracemind.capture_setup({ platform })`, apply the returned registry or fallback install commands, run `verificationCommands`, and report the result.
 - For TraceMind repository work, any SDK runtime change must run `npm run update:sdk-manifest` and `npm run test:sdk-release`. Before a release deploy, run `npm run prepare:sdk-release-ref -- <version>`, publish the matching release tag, wait for the `SDK Publish` workflow, and pass `npm run check:sdk-registry-publication -- <version>` before Galaxy deploy. The release gate is authoritative; do not rely on memory or manual version bump discipline.
+
+## Web Capture Script Update Governance
+
+TraceMind Web Auto Capture reports the running script identity through `sourceDetails.scriptReleaseId`. `tracemind.project_health` may return `captureScriptFindings` when Web events are still coming from a legacy script with no release id or a stale `scriptReleaseId`.
+
+- A normal request for `/capture.js` returns the current script, but this does not prove the customer app will request it again. Old tabs, CDN/reverse-proxy caches, service workers, WebView bundles, self-hosted copies, and fixed `capture.<hash>.js` assets can keep an older runtime alive.
+- If `captureScriptFindings` appears, use the upgrade prompt returned by `tracemind.capture_setup({ platform: "web" })`. Search the codebase for `capture.js`, `capture.<hash>.js`, TraceMind script tags, and self-hosted copies. Replace fixed or copied scripts with the stable `/capture.js` snippet.
+- Check service worker precache rules, Workbox manifests, CDN/cache headers, reverse proxy config, and WebView bundles for embedded old scripts.
+- After deployment, open a real app page and verify `window.TraceMind.status().scriptReleaseId` matches the latest release id returned by `capture_setup`. Trigger a real behavior, then call `tracemind.project_health` again and confirm the relevant `captureScriptFindings` are gone.
 
 ## Platform Loading And Network Restrictions
 

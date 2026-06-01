@@ -1,5 +1,9 @@
 import { cleanSdkContentHash, sdkUpgradeFindingsForRecords } from './sdk_release';
 import {
+  CURRENT_AGENT_GUIDANCE_VERSION,
+  CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
+} from './release_metadata';
+import {
   DAILY_REPORT_TIMEZONE,
   HEALTH_RETENTION_DAYS,
   attentionItemsForHealth,
@@ -37,6 +41,10 @@ export const HEALTH_ROLLUP_HOUR_MS = 60 * 60 * 1000;
 export const RECENT_ONLINE_WINDOW_MS = 30 * 60 * 1000;
 export const RECENT_ONLINE_BUCKET_MS = 5 * 60 * 1000;
 export const DAILY_REPORT_DRAFT_MIN_REFRESH_MS = 60 * 1000;
+export {
+  CURRENT_AGENT_GUIDANCE_VERSION,
+  CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
+};
 
 const DAILY_REPORT_TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAILY_REPORT_DAY_MS = 24 * 60 * 60 * 1000;
@@ -171,6 +179,11 @@ function cleanFramework(value) {
 function cleanSdkVersion(value) {
   const version = cleanString(value, 80);
   return /^[A-Za-z0-9._+-]{1,80}$/.test(version) ? version : '';
+}
+
+function cleanWebCaptureScriptReleaseId(value) {
+  const releaseId = cleanString(value, 80);
+  return /^\d{4}\.\d{2}\.\d{2}\.\d+$/.test(releaseId) ? releaseId : '';
 }
 
 function sourceGovernanceDetails(sourceDetails = {}) {
@@ -328,14 +341,19 @@ export function normalizeCaptureSource(payload = {}, headers = {}) {
       const sourceKey = cleanString(pageUrl.hostname.toLowerCase(), 200, 'unknown');
       const payloadUrlMatchesSource = payloadUrl && payloadUrl.hostname.toLowerCase() === sourceKey;
       const detailUrl = payloadUrlMatchesSource ? payloadUrl : (!originUrl && referrerUrl ? referrerUrl : null);
-      const framework = cleanFramework(safeObject(source.details).framework)
-        || cleanFramework(safeObject(payload.sourceDetails).framework);
+      const inputDetails = {
+        ...safeObject(payload.sourceDetails),
+        ...safeObject(source.details),
+      };
+      const framework = cleanFramework(inputDetails.framework);
+      const scriptReleaseId = cleanWebCaptureScriptReleaseId(inputDetails.scriptReleaseId);
       const sourceDetails = {
         origin: pageUrl.origin,
         path: detailUrl ? `${detailUrl.pathname || '/'}${detailUrl.search || ''}` : '/',
         referrer,
       };
       if (framework) sourceDetails.framework = framework;
+      if (scriptReleaseId) sourceDetails.scriptReleaseId = scriptReleaseId;
 
       return {
         sourceType,
@@ -407,6 +425,42 @@ export function normalizeCaptureSource(payload = {}, headers = {}) {
         ...safeObject(source.details),
       }),
   };
+}
+
+function webCaptureScriptReleaseIdForRecord(record = {}) {
+  return cleanWebCaptureScriptReleaseId(safeObject(record.sourceDetails).scriptReleaseId);
+}
+
+export function captureScriptFindingsForRecords(records = []) {
+  const findingsByKey = new Map();
+
+  records.forEach((record) => {
+    const sourceType = cleanString(record.sourceType || record.platform, 40).toLowerCase();
+    const platform = cleanString(record.platform, 40).toLowerCase();
+    if (sourceType !== 'web' && platform !== 'web') return;
+
+    const sourceKey = cleanString(record.sourceKey || 'unknown', 200, 'unknown');
+    const sourceLabel = cleanString(record.sourceLabel || sourceKey, 200, sourceKey);
+    const observedReleaseId = webCaptureScriptReleaseIdForRecord(record) || 'legacy';
+    if (observedReleaseId === CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID) return;
+
+    const key = `web_capture_script_update_required:${sourceKey}:${observedReleaseId}`;
+    findingsByKey.set(key, {
+      code: 'web_capture_script_update_required',
+      severity: 'medium',
+      sourceType: 'web',
+      sourceKey,
+      sourceLabel,
+      observedReleaseId,
+      latestReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
+      message: `检测到 ${sourceLabel} 仍有旧 Web Auto Capture 脚本在运行。`,
+    });
+  });
+
+  return [...findingsByKey.values()].sort((left, right) => (
+    left.sourceKey.localeCompare(right.sourceKey)
+    || left.observedReleaseId.localeCompare(right.observedReleaseId)
+  ));
 }
 
 export function normalizeBlockedSource(input = {}) {
@@ -1231,6 +1285,7 @@ function summarizeWindow({
     topDurationUsers: topDurations(durationUsers, 3),
     topDurationPaths: topDurations(durationPaths, 3),
     topBouncePages: topBouncePagesForSessions(bounceSessions, 3),
+    captureScriptFindings: captureScriptFindingsForRecords(sdkRecords),
     sdkUpgradeFindings: sdkUpgradeFindingsForRecords(sdkRecords),
   };
 
@@ -1410,6 +1465,8 @@ function uniqueFindings(findings = []) {
       code: finding?.code || '',
       sdkName: finding?.sdkName || '',
       sourceKey: finding?.sourceKey || '',
+      observedReleaseId: finding?.observedReleaseId || '',
+      latestReleaseId: finding?.latestReleaseId || '',
       message: finding?.message || '',
     });
     if (seen.has(key)) return false;
@@ -1439,6 +1496,7 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
   const durationUsers = new Map();
   const durationPaths = new Map();
   const bouncePages = new Map();
+  const captureScriptFindings = [];
   const sdkUpgradeFindings = [];
   let eventCount = 0;
   let failureEventCount = 0;
@@ -1467,6 +1525,7 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
     mergeDurationEntries(durationUsers, rollup.durationUsers || current.topDurationUsers, 'label');
     mergeDurationEntries(durationPaths, rollup.durationPaths || current.topDurationPaths, 'path');
     mergeBouncePageEntries(bouncePages, rollup.topBouncePages || current.topBouncePages);
+    captureScriptFindings.push(...(current.captureScriptFindings || []));
     sdkUpgradeFindings.push(...(current.sdkUpgradeFindings || []));
   });
 
@@ -1499,6 +1558,7 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
       topDurationUsers: topDurations(durationUsers, 3),
       topDurationPaths: topDurations(durationPaths, 3),
       topBouncePages: aggregatedBouncePages(bouncePages, 3),
+      captureScriptFindings: uniqueFindings(captureScriptFindings),
       sdkUpgradeFindings: uniqueFindings(sdkUpgradeFindings),
       newUsers: Number.isFinite(newUsers) ? Math.max(0, newUsers) : 0,
       retention: retention || emptyHealthWindow().retention,
@@ -1563,6 +1623,7 @@ export function summarizeProjectHealthForWindow({
   );
 
   const attentionItems = attentionItemsForHealth(current, previous, windowEnd);
+  const captureScriptFindings = current.captureScriptFindings || [];
   const sdkUpgradeFindings = current.sdkUpgradeFindings || [];
 
   return {
@@ -1573,9 +1634,10 @@ export function summarizeProjectHealthForWindow({
       previousEnd: resolvedPreviousEnd,
       retentionDays: HEALTH_RETENTION_DAYS,
     },
-    status: attentionItems.length || sdkUpgradeFindings.length ? 'needs_attention' : 'normal',
-    attentionSummary: attentionItems[0]?.message || sdkUpgradeFindings[0]?.message || '',
+    status: attentionItems.length || captureScriptFindings.length || sdkUpgradeFindings.length ? 'needs_attention' : 'normal',
+    attentionSummary: attentionItems[0]?.message || captureScriptFindings[0]?.message || sdkUpgradeFindings[0]?.message || '',
     attentionItems,
+    captureScriptFindings,
     sdkUpgradeFindings,
     current,
     previous,

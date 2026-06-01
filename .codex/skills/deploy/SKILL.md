@@ -11,7 +11,14 @@ Use this skill when preparing or deploying a TraceMind release. It owns the main
 
 The canonical app version is `package.json` field `version`. The current UI reads that value from `imports/ui/App.svelte` and renders it in the footer, so do not add another version constant unless the user explicitly changes the product contract.
 
-This skill covers the TraceMind Meteor app deployment, the immutable SDK GitHub source tag used by `capture_setup` local-source SDK installs, and the registry publication gate for npm, PyPI, and Maven Central SDK packages. Registry publishing itself is performed by the `SDK Publish` GitHub Actions workflow triggered by the release tag; this skill waits for and verifies that workflow before deploying. Out of scope unless requested: release notes, changelog writing, SwiftPM package publishing, and changing TraceMind agent guidance versions such as `AGENT_GUIDANCE_VERSION`.
+This skill covers the TraceMind Meteor app deployment, release metadata consistency gates, the immutable SDK GitHub source tag used by `capture_setup` local-source SDK installs, and the registry publication gate for npm, PyPI, and Maven Central SDK packages. Registry publishing itself is performed by the `SDK Publish` GitHub Actions workflow triggered by the release tag; this skill waits for and verifies that workflow before deploying. Out of scope unless requested: release notes, changelog writing, SwiftPM package publishing, and automatically changing TraceMind release metadata markers.
+
+Release metadata markers live in `imports/api/release_metadata.js`. They are customer-visible runtime/guidance contract versions, not the app version. Do not bump them on every deploy:
+
+- `CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID`: bump only when the deployed Web Auto Capture script should cause running older Web scripts to be marked stale and offered an update.
+- `CURRENT_AGENT_GUIDANCE_VERSION`: bump only when public TraceMind Skill / AGENTS / MCP setup guidance changes and customer coding agents should detect stale local rules.
+
+The deploy workflow must verify these markers are consistent everywhere they are surfaced. Do not rely on this skill text as the only guard; `npm run check:release-metadata` is the executable source of truth for consistency.
 
 ## Workflow
 
@@ -30,6 +37,7 @@ This skill covers the TraceMind Meteor app deployment, the immutable SDK GitHub 
    - `package.json`
    - `package-lock.json`, if present
    - UI/runtime references that import `package.json` or display the app version
+   - `imports/api/release_metadata.js` only to understand whether customer-visible Web script or agent-guidance markers changed; do not treat those markers as app release versions.
    - docs only when they intentionally describe the current release version
 4. Update only the canonical version fields required by the package manager:
    - Change `package.json.version`.
@@ -45,6 +53,7 @@ This skill covers the TraceMind Meteor app deployment, the immutable SDK GitHub 
    - If SDK runtime files changed and the manifest gate fails, fix the SDK manifest/hash mismatch before continuing.
 7. Run pre-deploy checks:
    - `node -e "const p=require('./package.json'); console.log(p.version)"`
+   - `npm run check:release-metadata`
    - `npm test` when release timing allows.
    - If `npm test` cannot run, state the blocker and the exact command left for the user.
 8. Confirm production TTL indexes match the code retention policy before publishing:
@@ -86,6 +95,7 @@ This skill covers the TraceMind Meteor app deployment, the immutable SDK GitHub 
    - Confirm the app URL responds successfully.
    - Confirm `/capture.js` is still the canonical customer script URL and returns `200 OK` JavaScript directly, not a redirect to `/capture.<hash>.js`.
    - Confirm `/capture.js` headers include `Content-Type: application/javascript`, `ETag`, `Access-Control-Allow-Origin: *`, and `Cache-Control: public, max-age=60, must-revalidate`.
+   - Confirm deployed `/capture.js` contains the `scriptReleaseId` from `imports/api/release_metadata.js`. If the deployed script reports an older release id, inspect deploy logs and stop before declaring the release healthy.
    - Run `curl -L -s https://tracemind.sandbox.galaxycloud.app/capture.js | wc -c` and report the script byte size. If it is empty, HTML, or unexpectedly much larger than the pre-deploy local smoke size, inspect deploy logs before declaring the release healthy.
    - Do not require customer snippets or deploy verification to use `/capture.<hash>.js`; the hash path is an optional immutable asset, while `/capture.js` remains the compatibility contract.
    - If MCP behavior changed or needs release confidence, verify `/mcp` with a valid MCP token without exposing the token in the final response.
@@ -105,10 +115,12 @@ Report:
 - branch state checked, any merges performed, and whether deployment ran from `main`
 - SDK source release tag, push status, and `check:deploy-git-publication` result
 - production TTL index check result compared against `DATA_RETENTION_POLICY`, including checked collections and TTL seconds
+- release metadata check result, including `CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID` and `CURRENT_AGENT_GUIDANCE_VERSION`
 - SDK registry publication workflow status and `check:sdk-registry-publication` result
 - files changed
 - verification commands run and their result
 - deploy command run and whether it succeeded, if deployment was requested
 - deployed app URL check, `/capture.js` status/header/byte-size check, and log findings, if deployment was requested
+- deployed `/capture.js` scriptReleaseId check, if deployment was requested
 - any remaining old-version matches and why they were left untouched
 - suggested commit message, for example `Deploy TraceMind 2026.5.12-2`

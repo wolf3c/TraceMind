@@ -14,6 +14,7 @@ import {
   SemanticEvents,
   buildEventQuery,
   buildRawBehaviorQuery,
+  CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
   isSourceBlocked,
   mcpServerNameForProject,
   normalizeCaptureSource,
@@ -410,7 +411,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.05.28.1'));
+      assert.ok(skill.includes('version: 2026.06.01.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -474,7 +475,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.check_agent_setup'));
       assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.ok(snippet.includes('Guidance version: `2026.05.28.1`'));
+      assert.ok(snippet.includes('Guidance version: `2026.06.01.1`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -516,7 +517,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.ok(snippet.includes('tracemind.check_agent_setup'));
       assert.ok(snippet.includes('agentSetupNotice'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.05.28.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.06.01.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -544,6 +545,8 @@ describe('TraceMind', function () {
       assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
       assert.ok(manifest.updatePolicy.includes('operations review uses dashboard-aligned project_health/recent_online before instrumentation setup'));
       assert.ok(manifest.updatePolicy.includes('tracemind.check_agent_setup'));
+      assert.ok(manifest.updatePolicy.includes('captureScriptFindings'));
+      assert.ok(manifest.updatePolicy.includes('window.TraceMind.status().scriptReleaseId'));
       assert.ok(manifest.updatePolicy.includes('server deploy verification'));
       assert.ok(manifest.updatePolicy.includes('preDeployChecks'));
       assert.ok(manifest.updatePolicy.includes('postDeployVerification'));
@@ -597,6 +600,7 @@ describe('TraceMind', function () {
       const { clientScript } = await import('../server/capture_routes');
       const script = clientScript('https://tracemind.example.com');
 
+      assert.ok(script.includes(`SCRIPT_RELEASE_ID = '${CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID}'`));
       assert.ok(script.includes('/api/presence'));
       assert.ok(script.includes('heartbeatIntervalMs = 5000'));
       assert.ok(script.includes('ACTIVE_IDLE_TIMEOUT_MS = 60 * 1000'));
@@ -832,8 +836,258 @@ describe('TraceMind', function () {
       assert.strictEqual(flushedQueue.length, 0);
       assert.strictEqual(captureBody.events.length, 1);
       assert.strictEqual(presenceBody.events.length, 1);
+      assert.strictEqual(captureBody.events[0].source.details.scriptReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
+      assert.strictEqual(presenceBody.events[0].source.details.scriptReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.strictEqual(captureBody.deliveryStats.sent, 1);
       assert.strictEqual(presenceBody.deliveryStats.sent, 1);
+    });
+
+    it('returns a Web Auto Capture script update instruction for legacy or stale script releases', async function () {
+      const { webCaptureScriptUpdateForPayload } = await import('../server/capture_routes');
+      const req = { headers: { host: 'tracemind.example.com', 'x-forwarded-proto': 'https' } };
+
+      const legacy = webCaptureScriptUpdateForPayload({
+        platform: 'web',
+        source: { type: 'web', url: 'https://app.example.com/docs' },
+      }, req);
+      const stale = webCaptureScriptUpdateForPayload({
+        platform: 'web',
+        source: {
+          type: 'web',
+          url: 'https://app.example.com/docs',
+          details: { scriptReleaseId: '2026.05.28.1' },
+        },
+      }, req);
+      const current = webCaptureScriptUpdateForPayload({
+        platform: 'web',
+        source: {
+          type: 'web',
+          url: 'https://app.example.com/docs',
+          details: { scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID },
+        },
+      }, req);
+
+      assert.strictEqual(legacy.type, 'web_capture_script_update_available');
+      assert.strictEqual(legacy.observedReleaseId, 'legacy');
+      assert.strictEqual(legacy.latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
+      assert.ok(legacy.latestScriptUrl.includes('/capture.js?tm_refresh='));
+      assert.strictEqual(stale.observedReleaseId, '2026.05.28.1');
+      assert.strictEqual(stale.reason, 'stale_script_release');
+      assert.strictEqual(current, null);
+    });
+
+    it('preserves supported script attributes when Web Auto Capture auto-updates', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const appendedScripts = [];
+      const currentAttributes = new Map([
+        ['data-tracemind-token', 'tm_proj_test'],
+        ['data-tracemind-endpoint', 'https://collector.example.com/api/capture'],
+        ['data-tracemind-presence-endpoint', 'https://collector.example.com/api/presence'],
+        ['data-tracemind-feedback-endpoint', 'https://collector.example.com/api/user-feedback'],
+        ['data-tracemind-framework', 'svelte'],
+        ['data-tracemind-user-id', 'user_123'],
+        ['data-tracemind-user-id-provider', 'TraceMindUser.currentId'],
+        ['data-tracemind-unknown', 'do-not-copy'],
+      ]);
+      const makeScriptElement = () => ({
+        async: false,
+        src: '',
+        attributes: new Map(),
+        setAttribute(name, value) {
+          this.attributes.set(name, value);
+        },
+        getAttribute(name) {
+          return this.attributes.get(name) || null;
+        },
+      });
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind update page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              return currentAttributes.get(name) || null;
+            },
+          },
+          head: {
+            appendChild(element) {
+              appendedScripts.push(element);
+              return element;
+            },
+          },
+          createElement(tagName) {
+            assert.strictEqual(tagName, 'script');
+            return makeScriptElement();
+          },
+          addEventListener() {},
+          hasFocus() { return true; },
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch() {
+          return Promise.resolve({
+            ok: true,
+            status: 202,
+            json() {
+              return Promise.resolve({
+                webCaptureScriptUpdate: {
+                  autoUpdate: true,
+                  latestReleaseId: '2026.06.02.1',
+                  latestScriptUrl: 'https://tracemind.example.com/capture.js?tm_refresh=2026.06.02.1',
+                },
+              });
+            },
+          });
+        },
+      };
+      sandbox.window = {
+        TraceMindUser: { currentId: 'user_123' },
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      await sandbox.window.TraceMind.flush();
+
+      assert.strictEqual(appendedScripts.length, 1);
+      const replacement = appendedScripts[0];
+      assert.strictEqual(replacement.src, 'https://tracemind.example.com/capture.js?tm_refresh=2026.06.02.1');
+      assert.strictEqual(replacement.attributes.get('data-tracemind-token'), 'tm_proj_test');
+      assert.strictEqual(replacement.attributes.get('data-tracemind-endpoint'), 'https://collector.example.com/api/capture');
+      assert.strictEqual(replacement.attributes.get('data-tracemind-presence-endpoint'), 'https://collector.example.com/api/presence');
+      assert.strictEqual(replacement.attributes.get('data-tracemind-feedback-endpoint'), 'https://collector.example.com/api/user-feedback');
+      assert.strictEqual(replacement.attributes.get('data-tracemind-framework'), 'svelte');
+      assert.strictEqual(replacement.attributes.get('data-tracemind-user-id'), 'user_123');
+      assert.strictEqual(replacement.attributes.get('data-tracemind-user-id-provider'), 'TraceMindUser.currentId');
+      assert.strictEqual(replacement.attributes.has('data-tracemind-unknown'), false);
+    });
+
+    it('omits optional script attributes when Web Auto Capture auto-updates without them', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const appendedScripts = [];
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind minimal update page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              return name === 'data-tracemind-token' ? 'tm_proj_test' : null;
+            },
+          },
+          head: {
+            appendChild(element) {
+              appendedScripts.push(element);
+              return element;
+            },
+          },
+          createElement() {
+            return {
+              async: false,
+              src: '',
+              attributes: new Map(),
+              setAttribute(name, value) {
+                this.attributes.set(name, value);
+              },
+            };
+          },
+          addEventListener() {},
+          hasFocus() { return true; },
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch() {
+          return Promise.resolve({
+            ok: true,
+            status: 202,
+            json() {
+              return Promise.resolve({
+                webCaptureScriptUpdate: {
+                  autoUpdate: true,
+                  latestReleaseId: '2026.06.02.1',
+                },
+              });
+            },
+          });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener() {},
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      await sandbox.window.TraceMind.flush();
+
+      assert.strictEqual(appendedScripts.length, 1);
+      const replacement = appendedScripts[0];
+      assert.strictEqual(replacement.attributes.get('data-tracemind-token'), 'tm_proj_test');
+      assert.strictEqual(replacement.attributes.has('data-tracemind-endpoint'), false);
+      assert.strictEqual(replacement.attributes.has('data-tracemind-user-id'), false);
+      assert.strictEqual(replacement.attributes.has('data-tracemind-user-id-provider'), false);
     });
 
     it('deduplicates web route changes before splitting presence', async function () {
@@ -1809,10 +2063,10 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.05.28.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.01.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
-      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.28.1');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.01.1');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
@@ -1824,6 +2078,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
       assert.ok(guidance.structuredContent.workflow.includes('For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.'));
+      assert.ok(guidance.structuredContent.workflow.includes('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the stable /capture.js snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.'));
       assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.'));
@@ -1955,7 +2210,7 @@ describe('TraceMind', function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
       const currentRules = `---
-version: 2026.05.28.1
+version: 2026.06.01.1
 ---
 TraceMind Project Binding
 Project ID: project-agent-setup-check
@@ -1967,7 +2222,8 @@ Call tracemind.capture_setup before setup.
 Use distributionMode: "registry" install commands from npm, PyPI, or Maven Central.
 Treat latestSdk.sourceRef and contentHash as SDK source of truth.
 For server_node, server_python, and server_http setup, run returned preDeployChecks and postDeployVerification after deployment.
-Use the returned public projectKey only for capture writes; never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.`;
+Use the returned public projectKey only for capture writes; never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.
+When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the stable /capture.js snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.`;
 
       const empty = await callMcpTool(project, 'tracemind.check_agent_setup', {});
       assert.strictEqual(empty.structuredContent.ok, true);
@@ -1978,14 +2234,14 @@ Use the returned public projectKey only for capture writes; never use an MCP tok
       const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules,
         agentInstructionContent: currentRules,
-        manifestContent: JSON.stringify({ guidanceVersion: '2026.05.28.1' }),
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.06.01.1' }),
       });
       assert.strictEqual(current.structuredContent.status, 'current');
       assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
 
       const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('version: 2026.05.28.1', 'version: 2026.05.17.7'),
+        skillContent: currentRules.replace('version: 2026.06.01.1', 'version: 2026.05.17.7'),
         agentInstructionContent: currentRules,
       });
       assert.strictEqual(outdated.structuredContent.status, 'outdated');
@@ -2014,6 +2270,12 @@ Use the returned public projectKey only for capture writes; never use an MCP tok
       });
       assert.strictEqual(missingProjectKeyUsage.structuredContent.status, 'incomplete');
       assert.ok(missingProjectKeyUsage.structuredContent.findings.some((finding) => finding.code === 'missing_project_key_usage_guidance'));
+
+      const missingWebScriptUpdate = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the stable /capture.js snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.', 'Check Web scripts if needed.'),
+      });
+      assert.strictEqual(missingWebScriptUpdate.structuredContent.status, 'incomplete');
+      assert.ok(missingWebScriptUpdate.structuredContent.findings.some((finding) => finding.code === 'missing_web_script_update_guidance'));
 
       const missingBinding = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules
@@ -2101,6 +2363,15 @@ projectKey: tm_proj_sensitive`,
           averageActiveDurationMs: 30000,
           failureEventCount: 1,
           topEvents: [{ label: 'signup_failed', count: 4 }],
+          captureScriptFindings: [{
+            code: 'web_capture_script_update_required',
+            severity: 'medium',
+            sourceType: 'web',
+            sourceKey: 'app.example.com',
+            observedReleaseId: 'legacy',
+            latestReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
+            message: '检测到旧 Web Auto Capture 脚本仍在运行。',
+          }],
           newUsers: 1,
           retention: { d2: { sampleSize: 1, retainedUsers: 1, rate: 1 } },
         },
@@ -2152,11 +2423,13 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
       assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.05.28.1');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.06.01.1');
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 30);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
       assert.strictEqual(structured.health.current.eventCount, 6);
+      assert.strictEqual(structured.health.captureScriptFindings[0].sourceKey, 'app.example.com');
+      assert.strictEqual(structured.health.current.captureScriptFindings[0].latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.strictEqual(structured.health.previous.eventCount, 20);
       assert.strictEqual(structured.health.trends.events, -0.7);
       assert.strictEqual(structured.delivery.accepted, 7);
@@ -2519,7 +2792,11 @@ projectKey: tm_proj_sensitive`,
         deviceId: 'tm_dev_feedback',
         platform: 'web',
         path: '/pricing',
-        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        source: {
+          type: 'web',
+          url: 'https://app.example.com/pricing',
+          details: { scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID },
+        },
         occurredAt: occurredAt.toISOString(),
         message: {
           formatVersion: 1,
@@ -2721,8 +2998,11 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
       assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.05.28.1');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.01.1');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
+      assert.strictEqual(setup.structuredContent.webCaptureScript.latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
+      assert.ok(setup.structuredContent.webCaptureScript.upgradePrompt.includes('window.TraceMind.status()'));
+      assert.ok(setup.structuredContent.webCaptureScript.verificationSteps.some((step) => step.includes('scriptReleaseId')));
       assert.ok(setup.structuredContent.captureSnippet.includes('/capture.js'));
       assert.ok(setup.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_test"'));
       assert.ok(setup.structuredContent.installCommands.some((step) => step.includes('No package install')));
@@ -3926,6 +4206,61 @@ projectKey: tm_proj_sensitive`,
     assert.ok(health.sdkUpgradeFindings.some((finding) => finding.code === 'sdk_version_unknown' && finding.sdkName === 'android'));
     assert.ok(!health.sdkUpgradeFindings.some((finding) => finding.sourceKey === 'app.example.com'));
     assert.ok(!health.sdkUpgradeFindings.some((finding) => finding.sourceKey === 'raw-http'));
+  });
+
+  it('surfaces Web Auto Capture script update findings from legacy and stale releases', function () {
+    const now = new Date('2026-05-09T12:00:00.000Z');
+    const health = summarizeProjectHealth({
+      events: [
+        {
+          eventType: 'page_view',
+          eventName: 'page_view',
+          userId: 'legacy-web-user',
+          platform: 'web',
+          sourceType: 'web',
+          sourceKey: 'legacy.example.com',
+          sourceDetails: {},
+          path: '/',
+          occurredAt: new Date('2026-05-09T11:00:00.000Z'),
+        },
+        {
+          eventType: 'page_view',
+          eventName: 'page_view',
+          userId: 'stale-web-user',
+          platform: 'web',
+          sourceType: 'web',
+          sourceKey: 'stale.example.com',
+          sourceDetails: { scriptReleaseId: '2026.05.28.1' },
+          path: '/',
+          occurredAt: new Date('2026-05-09T11:10:00.000Z'),
+        },
+        {
+          eventType: 'page_view',
+          eventName: 'page_view',
+          userId: 'current-web-user',
+          platform: 'web',
+          sourceType: 'web',
+          sourceKey: 'current.example.com',
+          sourceDetails: { scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID },
+          path: '/',
+          occurredAt: new Date('2026-05-09T11:20:00.000Z'),
+        },
+      ],
+      now,
+    });
+
+    assert.ok(health.captureScriptFindings.some((finding) => (
+      finding.code === 'web_capture_script_update_required'
+      && finding.sourceKey === 'legacy.example.com'
+      && finding.observedReleaseId === 'legacy'
+    )));
+    assert.ok(health.captureScriptFindings.some((finding) => (
+      finding.code === 'web_capture_script_update_required'
+      && finding.sourceKey === 'stale.example.com'
+      && finding.observedReleaseId === '2026.05.28.1'
+    )));
+    assert.ok(!health.captureScriptFindings.some((finding) => finding.sourceKey === 'current.example.com'));
+    assert.strictEqual(health.status, 'needs_attention');
   });
 
   it('formats daily report health attention copy by selected day', function () {
@@ -6328,7 +6663,11 @@ projectKey: tm_proj_sensitive`,
         projectKey,
         presenceId: 'tm_pres_attr',
         sessionId: 'tm_sess_attr',
-        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        source: {
+          type: 'web',
+          url: 'https://app.example.com/pricing',
+          details: { scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID },
+        },
         path: '/pricing',
         state: 'start',
         attribution: {
@@ -6380,7 +6719,11 @@ projectKey: tm_proj_sensitive`,
         deviceId: 'tm_dev_presence',
         deviceFingerprint: 'tm_fp_presence',
         platform: 'web',
-        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        source: {
+          type: 'web',
+          url: 'https://app.example.com/pricing',
+          details: { scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID },
+        },
         path: '/pricing',
         title: 'Pricing',
         state: 'start',
@@ -6399,7 +6742,11 @@ projectKey: tm_proj_sensitive`,
         userId: 'user-presence',
         deviceId: 'tm_dev_presence',
         platform: 'web',
-        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        source: {
+          type: 'web',
+          url: 'https://app.example.com/pricing',
+          details: { scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID },
+        },
         path: '/pricing',
         title: 'Pricing',
         state: 'heartbeat',
@@ -6417,7 +6764,11 @@ projectKey: tm_proj_sensitive`,
         userId: 'user-presence',
         deviceId: 'tm_dev_presence',
         platform: 'web',
-        source: { type: 'web', url: 'https://app.example.com/pricing' },
+        source: {
+          type: 'web',
+          url: 'https://app.example.com/pricing',
+          details: { scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID },
+        },
         path: '/pricing',
         title: 'Pricing',
         state: 'end',
@@ -6438,6 +6789,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(session.state, 'end');
       assert.strictEqual(session.path, '/pricing');
       assert.strictEqual(session.sourceKey, 'app.example.com');
+      assert.strictEqual(session.sourceDetails.scriptReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.strictEqual(session.heartbeatCount, 1);
       assert.strictEqual(session.durationMs, 10000);
       assert.strictEqual(session.activeDurationMs, 7000);
@@ -6488,7 +6840,11 @@ projectKey: tm_proj_sensitive`,
         {
           projectKey,
           type: 'page_view',
-          source: { type: 'web', url: 'https://app.example.com/docs' },
+          source: {
+            type: 'web',
+            url: 'https://app.example.com/docs',
+            details: { scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID },
+          },
         },
         { headers: {}, socket: {} },
       );
@@ -6502,6 +6858,7 @@ projectKey: tm_proj_sensitive`,
         origin: 'https://app.example.com',
         path: '/docs',
         referrer: '',
+        scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
       });
     });
 
