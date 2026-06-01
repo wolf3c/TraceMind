@@ -43,6 +43,12 @@ Authorization: Bearer MCP_TOKEN
 - `tools/call` 调用 TraceMind 工具。
 - `GET /mcp?mcpToken=...` 保留为人工调试 JSON preview。
 
+## Tool Discovery Recovery
+
+客户 coding agent 的当前 active tool list 可能因为懒加载、缓存或宽泛 discovery 召回限制而只显示部分 TraceMind tools。看到 `tracemind.project_health`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback` 缺失时，agent 不能直接判断服务端不支持这些工具。
+
+恢复路径固定为：先读取 MCP `tools/list` 或按精确工具名重新 discovery；如果仍缺失，刷新 connector/session/MCP 配置/token，再调用 `tracemind.project_info` 复核项目绑定。不要通过增大 `tracemind.summary.limit` 来代偿缺失的 reporting tools；只能使用已文档化的 fallback 来源并在结论中标注数据缺口。
+
 ## Tools
 
 ### `tracemind.event_definitions`

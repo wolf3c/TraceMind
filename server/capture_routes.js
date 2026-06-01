@@ -104,6 +104,9 @@ const AGENT_SETUP_SAFE_UPDATE_INSTRUCTIONS = [
   'Keep MCP URLs, Bearer tokens, mcpToken values, projectKey values, and secrets out of committed instruction files.',
   'After updating, call tracemind.check_agent_setup again and report the new status.',
 ];
+const MCP_TOOL_DISCOVERY_RECOVERY_GUIDANCE = 'If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again.';
+const MCP_TOOL_DISCOVERY_FALLBACK_GUIDANCE = 'Do not compensate for missing reporting tools by increasing tracemind.summary.limit; use the documented fallback source and mark the data gap until discovery is repaired.';
+const MCP_TOOL_DISCOVERY_RECOVERY_STEP = 'MCP tools/list or exact tool discovery if reporting tools are missing';
 const SERVER_PROJECT_KEY_ENV_VAR = 'TRACEMIND_PROJECT_KEY';
 const SERVER_DEFAULT_SOURCE_KEY = 'billing-api';
 const FORBIDDEN_ANALYTICS_KEYS = [
@@ -1098,7 +1101,7 @@ function guidanceResult(extra = {}) {
       {
         name: 'Daily operations review',
         prompt: 'Review the Dashboard-aligned daily health report, trend changes, attention items, traffic, active users, sessions, active time, events, and delivery health.',
-        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.recent_online if the user asks about current online users or the last 30 minutes', 'tracemind.summary/query_events only for non-natural-day windows or evidence drilldown'],
+        steps: ['tracemind.project_info', MCP_TOOL_DISCOVERY_RECOVERY_STEP, 'tracemind.project_health', 'tracemind.recent_online if the user asks about current online users or the last 30 minutes', 'tracemind.summary/query_events only for non-natural-day windows or evidence drilldown'],
       },
       {
         name: 'Last 24 hours operations review',
@@ -1146,6 +1149,8 @@ function guidanceResult(extra = {}) {
       'Search existing events before adding a custom event.',
       'Validate payloads and diffs before finishing.',
       'If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.',
+      MCP_TOOL_DISCOVERY_RECOVERY_GUIDANCE,
+      MCP_TOOL_DISCOVERY_FALLBACK_GUIDANCE,
       'When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.',
       'If the developer asks whether you can directly feedback to TraceMind, look for and use tracemind.submit_feedback instead of concluding from a partial active tool list that no feedback tool exists.',
       'Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.',
@@ -1350,6 +1355,15 @@ function checkAgentSetupResult(args = {}) {
       patterns: [/captureScriptFindings[\s\S]{0,240}window\.TraceMind\.status\(\)[\s\S]{0,120}scriptReleaseId/i],
     },
     {
+      code: 'missing_mcp_tool_discovery_recovery_guidance',
+      message: 'Local rules should tell agents to recover from partial MCP tool discovery by reading tools/list or retrying exact tool discovery before concluding reporting tools are unavailable.',
+      patterns: [
+        /active tool list[\s\S]{0,220}(project_health|query_raw_behaviors|submit_feedback)[\s\S]{0,260}tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,260}summary\.limit/i,
+        /reporting tools[\s\S]{0,180}(project_health|query_raw_behaviors|submit_feedback)[\s\S]{0,260}active tool list[\s\S]{0,180}tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,260}summary\.limit/i,
+        /tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,260}(project_health|query_raw_behaviors|submit_feedback)[\s\S]{0,260}summary\.limit/i,
+      ],
+    },
+    {
       code: 'missing_project_binding',
       message: 'Local rules should include TraceMind project binding checks with Project ID, expected MCP server, and tracemind.project_info verification.',
       patterns: [/TraceMind Project Binding/i, /TraceMind project binding/i, /Project ID[\s\S]{0,240}Expected MCP server/i],
@@ -1403,6 +1417,9 @@ function checkAgentSetupResult(args = {}) {
   }
   if (findingCodes.has('missing_web_script_update_guidance')) {
     recommendedActions.push('Add Web Auto Capture update guidance for captureScriptFindings, stable /capture.js, CDN/service worker/WebView cache checks, and window.TraceMind.status().scriptReleaseId verification.');
+  }
+  if (findingCodes.has('missing_mcp_tool_discovery_recovery_guidance')) {
+    recommendedActions.push('Add MCP tool discovery recovery guidance for missing reporting tools: read tools/list or retry exact tool discovery, refresh connector/session/MCP config/token if needed, and do not increase summary.limit as a substitute.');
   }
   recommendedActions.push('Call tracemind.agent_guidance to confirm the current authority version before instrumentation work.');
   recommendedActions.push('Call tracemind.capture_setup for the target platform and use registry install commands when distributionMode is registry.');

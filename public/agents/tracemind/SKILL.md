@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.06.01.1
+version: 2026.06.01.2
 description: Use when reviewing TraceMind product operations, online health, or analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -60,6 +60,12 @@ TraceMind separates recent drilldown detail from long-term analysis summaries:
 14. When a developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly requested submission.
 15. Before calling `tracemind.submit_feedback`, collect a short sanitized summary and TraceMind evidence references such as event IDs, raw behavior IDs, paths, `actionKey`, `targetHash`, and time window.
 16. Prefer evidence references over raw copied content; never submit PII, secrets, tokens, raw prompts, tool arguments/results, source diffs, request/response bodies, headers, cookies, authorization values, or full query URLs.
+
+## MCP Tool Discovery Recovery
+
+If the current active tool list does not show `tracemind.project_health`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`, do not conclude that TraceMind lacks those tools. First read MCP `tools/list` or retry discovery with the exact tool name before deciding the tool is unavailable.
+
+If the tools are still missing, refresh the connector, session, MCP config, or token, then call `tracemind.project_info` again to confirm the project binding. Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`; use the documented fallback source and mark the data gap until discovery is repaired.
 
 ## Product Behavior Analysis Workflows
 

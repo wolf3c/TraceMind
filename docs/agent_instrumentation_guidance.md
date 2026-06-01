@@ -52,6 +52,8 @@ Agent 分析产品行为时应先按只读路径使用 MCP：
 7. `tracemind.submit_feedback`：只有开发者明确确认上报后，才提交脱敏摘要和证据引用。
 8. `tracemind.query_user_feedback` / `tracemind.update_user_feedback`：处理终端用户反馈时使用，前者查询反馈和证据引用，后者只更新状态、备注、解决说明、关联 issue 或重复关系，不修改用户原始 message。
 
+如果当前 active tool list 看不到 `tracemind.project_health`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback`，不要直接判断这些工具不可用。先读取 MCP `tools/list` 或按精确工具名重新 discovery；如果仍缺失，刷新 connector/session/MCP 配置/token，再调用 `tracemind.project_info` 复核项目绑定。不要通过增大 `tracemind.summary.limit` 来代偿缺失的 reporting tools；使用已文档化的 fallback 来源并明确标注数据缺口。
+
 固定分析任务：
 
 - 今日健康检查：报告 `project_health.health.attentionItems`、`trends`、`delivery` 和需要继续下钻的指标。
