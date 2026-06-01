@@ -53,6 +53,9 @@ import {
   resolveInitialProjectSummaryState,
   resolveSelectedProjectId,
   shouldApplyProjectSummaryResponse,
+  readSetupDetailsPreference,
+  setupDetailsPreferenceKey,
+  writeSetupDetailsPreference,
 } from '../imports/ui/project_console_state';
 import enMessages from '../imports/ui/i18n/locales/en';
 import zhMessages from '../imports/ui/i18n/locales/zh';
@@ -3769,6 +3772,36 @@ projectKey: tm_proj_sensitive`,
       assert.deepStrictEqual(sameDashboard.projects.map((project) => project.name), ['Existing', 'Created again']);
       assert.strictEqual(sameDashboard.projects.length, 2);
       assert.strictEqual(sameDashboard.rawCount, 1);
+    });
+
+    it('defaults setup details open and persists the user collapse preference', function () {
+      const values = new Map();
+      const storage = {
+        getItem(key) {
+          return values.has(key) ? values.get(key) : null;
+        },
+        setItem(key, value) {
+          values.set(key, value);
+        },
+      };
+      const blockedStorage = {
+        getItem() {
+          throw new Error('blocked');
+        },
+        setItem() {
+          throw new Error('blocked');
+        },
+      };
+
+      assert.strictEqual(readSetupDetailsPreference(undefined), true);
+      assert.strictEqual(readSetupDetailsPreference(storage), true);
+      assert.strictEqual(writeSetupDetailsPreference(storage, false), true);
+      assert.strictEqual(values.get(setupDetailsPreferenceKey), 'false');
+      assert.strictEqual(readSetupDetailsPreference(storage), false);
+      assert.strictEqual(writeSetupDetailsPreference(storage, true), true);
+      assert.strictEqual(readSetupDetailsPreference(storage), true);
+      assert.strictEqual(readSetupDetailsPreference(blockedStorage), true);
+      assert.strictEqual(writeSetupDetailsPreference(blockedStorage, false), false);
     });
 
     it('rejects stale project summary responses', function () {

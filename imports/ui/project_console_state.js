@@ -59,3 +59,26 @@ export function shouldApplyProjectSummaryResponse({
     && requestUserId === currentUserId
     && projectId === selectedProjectId;
 }
+
+export const setupDetailsPreferenceKey = 'tracemind.setupDetailsExpanded';
+
+export function readSetupDetailsPreference(storage) {
+  if (!storage?.getItem) return true;
+
+  try {
+    return storage.getItem(setupDetailsPreferenceKey) !== 'false';
+  } catch (error) {
+    return true;
+  }
+}
+
+export function writeSetupDetailsPreference(storage, expanded) {
+  if (!storage?.setItem) return false;
+
+  try {
+    storage.setItem(setupDetailsPreferenceKey, expanded ? 'true' : 'false');
+    return true;
+  } catch (error) {
+    return false;
+  }
+}

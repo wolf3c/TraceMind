@@ -30,6 +30,8 @@
     shouldLoadProjectSummaryForSetup,
     shouldShowProjectHealthRefresh,
     shouldApplyProjectSummaryResponse,
+    readSetupDetailsPreference,
+    writeSetupDetailsPreference,
   } from "./project_console_state";
 
   const currentOrigin = () => (typeof location === "undefined" ? "" : location.origin);
@@ -47,6 +49,7 @@
   const appVersion = packageInfo.version || "dev";
   const reportTimezoneOffsetMs = 8 * 60 * 60 * 1000;
   const eventStreamPageSize = 20;
+  const browserStorage = () => (typeof window === "undefined" ? undefined : window.localStorage);
 
   let email = $state("");
   let code = $state("");
@@ -67,7 +70,7 @@
   let showProjectCreate = $state(false);
   let showProjectActions = $state(false);
   let showProjectRename = $state(false);
-  let showSetupDetails = $state(false);
+  let showSetupDetails = $state(readSetupDetailsPreference(browserStorage()));
   let showActiveTimeTip = $state(false);
   let recentOnline = $state(null);
   let recentOnlineLoading = $state(false);
@@ -278,6 +281,9 @@
       resetRecentOnline();
       showSetupDetails = false;
     } else if (nextSelectedProjectId !== selectedProjectId) {
+      if (!selectedProjectId) {
+        showSetupDetails = readSetupDetailsPreference(browserStorage());
+      }
       selectedProjectId = nextSelectedProjectId;
       selectedProjectSummary = null;
       projectSummaryLastLoadedAt = null;
@@ -632,6 +638,13 @@
 
   function handleSetupDetailsOpened() {
     loadProjectSummaryIfNeeded().catch(() => {});
+  }
+
+  function updateSetupDetailsPreference(expanded) {
+    writeSetupDetailsPreference(browserStorage(), expanded);
+    if (expanded) {
+      handleSetupDetailsOpened();
+    }
   }
 
   function startProjectRename() {
@@ -1279,6 +1292,7 @@
           {showProjectActions}
           {showProjectRename}
           bind:showSetupDetails
+          {updateSetupDetailsPreference}
           {projectSummaryLoading}
           {projectSummaryError}
           {copiedTarget}
@@ -1288,7 +1302,6 @@
           {copiedLabel}
           {changeSelectedProject}
           {toggleProjectActions}
-          {handleSetupDetailsOpened}
           {startProjectRename}
           {removeProject}
           {createProject}
