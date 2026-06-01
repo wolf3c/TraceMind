@@ -836,6 +836,138 @@ describe('TraceMind', function () {
       assert.strictEqual(presenceBody.deliveryStats.sent, 1);
     });
 
+    it('deduplicates web route changes before splitting presence', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const fetchCalls = [];
+      const windowListeners = {};
+      const timers = [];
+      const locationState = {
+        origin: 'https://app.example.com',
+        href: 'https://app.example.com/app/rN9MLsx2THfXCEJ5d',
+        pathname: '/app/rN9MLsx2THfXCEJ5d',
+        hash: '',
+      };
+      function setLocation(value) {
+        const url = new URL(value, locationState.origin);
+        locationState.href = url.href;
+        locationState.pathname = url.pathname || '/';
+        locationState.hash = url.hash || '';
+      }
+      function runTimers() {
+        while (timers.length) {
+          const handler = timers.shift();
+          handler();
+        }
+      }
+      function flushedEvents(endpointSuffix) {
+        return fetchCalls
+          .filter((call) => call.endpoint.endsWith(endpointSuffix))
+          .flatMap((call) => JSON.parse(call.body).events);
+      }
+      const sandbox = {
+        window: {},
+        document: {
+          title: 'TraceMind route page',
+          referrer: '',
+          visibilityState: 'visible',
+          currentScript: {
+            getAttribute(name) {
+              if (name === 'data-tracemind-token') return 'tm_proj_test';
+              return null;
+            },
+          },
+          addEventListener() {},
+          hasFocus() { return true; },
+        },
+        navigator: {
+          userAgent: 'test-agent',
+          language: 'en',
+          platform: 'test',
+          onLine: true,
+        },
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: locationState,
+        history: {
+          pushState(_state, _title, url) {
+            if (url) setLocation(url);
+          },
+          replaceState(_state, _title, url) {
+            if (url) setLocation(url);
+          },
+        },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout(handler, delay) {
+          if (delay === 0) timers.push(handler);
+          return timers.length;
+        },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch(endpoint, options) {
+          fetchCalls.push({ endpoint, body: options.body });
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener(type, handler) {
+          windowListeners[type] = handler;
+        },
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      await sandbox.window.TraceMind.flush();
+      fetchCalls.length = 0;
+
+      sandbox.history.replaceState({}, '', '/app/rN9MLsx2THfXCEJ5d');
+      runTimers();
+      setLocation('/app/rN9MLsx2THfXCEJ5d#!');
+      windowListeners.hashchange();
+      runTimers();
+      await sandbox.window.TraceMind.flush();
+
+      assert.strictEqual(flushedEvents('/api/capture').filter((event) => event.type === 'route_change').length, 0);
+      assert.strictEqual(flushedEvents('/api/presence').length, 0);
+
+      sandbox.history.pushState({}, '', '/app/another');
+      runTimers();
+      setLocation('/app/another#!/detail');
+      windowListeners.hashchange();
+      runTimers();
+      await sandbox.window.TraceMind.flush();
+
+      const routeChanges = flushedEvents('/api/capture').filter((event) => event.type === 'route_change');
+      const presenceEvents = flushedEvents('/api/presence');
+      assert.deepStrictEqual(routeChanges.map((event) => event.path), [
+        '/app/another',
+        '/app/another#!/detail',
+      ]);
+      assert.deepStrictEqual(presenceEvents.map((event) => event.state), [
+        'end',
+        'start',
+        'end',
+        'start',
+      ]);
+    });
+
     it('queues sanitized app_error records from web errors and manual captureError', async function () {
       const { Script, createContext } = await import('vm');
       const { clientScript } = await import('../server/capture_routes');
@@ -1586,6 +1718,10 @@ describe('TraceMind', function () {
       assert.ok(script.includes("document.addEventListener('blur'"));
       assert.ok(script.includes('history.replaceState = function ()'));
       assert.ok(script.includes("window.addEventListener('hashchange'"));
+      assert.ok(script.includes('function routeCapturePath()'));
+      assert.ok(script.includes("if (hashValue === '#' || hashValue === '#!') hashValue = '';"));
+      assert.ok(script.includes('function sendRouteChangeIfChanged(nextPath)'));
+      assert.ok(script.includes('sendRouteChangeIfChanged(routeCapturePath())'));
       assert.ok(script.includes("document.addEventListener('keydown'"));
       assert.ok(script.includes('location.pathname,'));
       assert.ok(!script.includes('path: location.pathname + location.search'));

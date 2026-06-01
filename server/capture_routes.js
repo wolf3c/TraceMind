@@ -4573,6 +4573,24 @@ export function clientScript(host) {
     return (location.pathname || '/') + (location.hash || '');
   }
 
+  function routeCapturePath() {
+    var pathname = location.pathname || '/';
+    var hashValue = location.hash || '';
+    if (hashValue === '#' || hashValue === '#!') hashValue = '';
+    return pathname + hashValue;
+  }
+
+  var lastRoutePath = routeCapturePath();
+
+  function sendRouteChangeIfChanged(nextPath) {
+    if (!nextPath || nextPath === lastRoutePath) return false;
+    lastRoutePath = nextPath;
+    stopPresence('end');
+    send('route_change', { path: nextPath });
+    startPresence('start');
+    return true;
+  }
+
   function safeCapturePath(value) {
     if (!value) return currentPath();
     try {
@@ -5576,11 +5594,10 @@ export function clientScript(host) {
   });
 
   function captureRouteChange(callback) {
-    stopPresence('end');
     callback();
+    var nextPath = routeCapturePath();
     setTimeout(function () {
-      send('route_change');
-      startPresence('start');
+      sendRouteChangeIfChanged(nextPath);
     }, 0);
   }
 
@@ -5595,14 +5612,10 @@ export function clientScript(host) {
     captureRouteChange(function () { replaceState.apply(history, args); });
   };
   window.addEventListener('popstate', function () {
-    stopPresence('end');
-    send('route_change');
-    startPresence('start');
+    sendRouteChangeIfChanged(routeCapturePath());
   });
   window.addEventListener('hashchange', function () {
-    stopPresence('end');
-    send('route_change');
-    startPresence('start');
+    sendRouteChangeIfChanged(routeCapturePath());
   });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') {
