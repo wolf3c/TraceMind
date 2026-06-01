@@ -5944,7 +5944,11 @@ function captureScriptAssetResponse(asset) {
 }
 
 export async function captureScriptResponse(pathname, host) {
-  const asset = await buildCaptureScriptAsset(host);
+  const apiOrigin = normalizedScriptHost(host);
+  const asset = await buildCaptureScriptAsset({
+    apiOrigin,
+    scriptOrigin: configuredCaptureScriptOrigin() || apiOrigin,
+  });
   if (pathname === CAPTURE_SCRIPT_ENTRY_PATH) return captureScriptEntryResponse(asset);
 
   const match = CAPTURE_SCRIPT_ASSET_PATH_PATTERN.exec(pathname);

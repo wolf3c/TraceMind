@@ -800,6 +800,28 @@ describe('TraceMind', function () {
       assert.notStrictEqual(stale.headers['Cache-Control'], CAPTURE_SCRIPT_IMMUTABLE_CACHE_CONTROL);
     });
 
+    it('serves Galaxy fallback capture.js with Galaxy API endpoints and configured script updates', async function () {
+      const { captureScriptResponse } = await import('../server/capture_routes');
+      const previous = process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN;
+      process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN = 'https://tracemind-capture.pages.dev/';
+      try {
+        const response = await captureScriptResponse('/capture.js', 'https://tracemind.sandbox.galaxycloud.app');
+
+        assert.strictEqual(response.statusCode, 200);
+        assert.ok(response.body.includes('https://tracemind.sandbox.galaxycloud.app/api/capture'));
+        assert.ok(response.body.includes('https://tracemind.sandbox.galaxycloud.app/api/presence'));
+        assert.ok(response.body.includes('https://tracemind.sandbox.galaxycloud.app/api/user-feedback'));
+        assert.ok(response.body.includes('https://tracemind-capture.pages.dev/capture.js?tm_refresh='));
+        assert.ok(!response.body.includes('https://tracemind-capture.pages.dev/api/capture'));
+      } finally {
+        if (previous === undefined) {
+          delete process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN;
+        } else {
+          process.env.TRACEMIND_CAPTURE_SCRIPT_ORIGIN = previous;
+        }
+      }
+    });
+
     it('queues web capture records in localStorage and clears them after a successful flush', async function () {
       const { Script, createContext } = await import('vm');
       const { clientScript } = await import('../server/capture_routes');

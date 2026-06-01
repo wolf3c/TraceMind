@@ -251,7 +251,7 @@ Output:
         "sourceType": "web",
         "sourceKey": "app.example.com",
         "observedReleaseId": "legacy",
-        "latestReleaseId": "2026.06.01.2",
+        "latestReleaseId": "2026.06.01.3",
         "message": "检测到旧 Web Auto Capture 脚本仍在运行。"
       }
     ]
@@ -365,12 +365,12 @@ Output:
   "captureSnippet": "<script src=\"https://tracemind-capture.pages.dev/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
   "initSnippet": "<script src=\"https://tracemind-capture.pages.dev/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
   "webCaptureScript": {
-    "latestReleaseId": "2026.06.01.2",
+    "latestReleaseId": "2026.06.01.3",
     "versionSource": "sourceDetails.scriptReleaseId",
     "updateFindingCode": "web_capture_script_update_required",
     "upgradePrompt": "TraceMind 检测到旧 Web Auto Capture 脚本仍在运行。请执行：...",
     "verificationSteps": [
-      "Open the customer app and confirm window.TraceMind.status().scriptReleaseId === \"2026.06.01.2\".",
+      "Open the customer app and confirm window.TraceMind.status().scriptReleaseId === \"2026.06.01.3\".",
       "Trigger a real page load, click, input, or submit event.",
       "Call tracemind.project_health and confirm health.captureScriptFindings is empty or no longer includes the Web source."
     ]
