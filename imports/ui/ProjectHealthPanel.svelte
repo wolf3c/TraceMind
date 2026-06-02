@@ -43,7 +43,9 @@
   let completedHoursComparison = $derived(health?.window?.comparisonMode === "completed_hours");
   let healthSamplesPending = $derived(completedHoursComparison && Number(health?.window?.currentHourCount || 0) === 0);
   let hourlyMetrics = $derived(health?.hourlyComparison?.metrics || {});
-  let captureScriptFindings = $derived((health?.captureScriptFindings?.length ? health.captureScriptFindings : healthCurrent?.captureScriptFindings) || []);
+  let dashboardAttentionItems = $derived(health?.attentionItems || []);
+  let dashboardAttentionSummary = $derived(dashboardAttentionItems[0]?.message || "");
+  let dashboardNeedsAttention = $derived(Boolean(dashboardAttentionItems.length));
 
   function recentOnlineBarHeight(bucket) {
     const value = Number(bucket?.onlineUsers || 0);
@@ -71,8 +73,8 @@
   <div>
     <div class="health-title-row">
       <span>{$t("Project health overview")}</span>
-      <strong class={`health-status ${health?.status === "needs_attention" ? "needs-attention" : ""}`}>
-        {health?.status === "needs_attention" ? $t("Needs attention") : $t("Normal")}
+      <strong class={`health-status ${dashboardNeedsAttention ? "needs-attention" : ""}`}>
+        {dashboardNeedsAttention ? $t("Needs attention") : $t("Normal")}
       </strong>
     </div>
     <h3>{primaryProject?.name || $t("Project")}</h3>
@@ -89,11 +91,8 @@
       </button>
       <input type="date" value={selectedReportDate} max={todayReportDate} onchange={changeReportDate} aria-label={$t("Select report date")} />
     </div>
-    {#if health?.attentionSummary}
-      <p class="health-attention">{$t("Needs attention")}: {health.attentionSummary}</p>
-    {/if}
-    {#if captureScriptFindings.length}
-      <p class="health-attention">{$t("Web Auto Capture script update")}: {captureScriptFindings[0].message}</p>
+    {#if dashboardAttentionSummary}
+      <p class="health-attention">{$t("Needs attention")}: {dashboardAttentionSummary}</p>
     {/if}
   </div>
   <div class="refresh-control">
@@ -193,24 +192,6 @@
             {/if}
           </dd>
         </div>
-      </dl>
-    </details>
-  {/if}
-  {#if captureScriptFindings.length}
-    <details class="health-card">
-      <summary>
-        <span>{$t("Web Auto Capture script")}</span>
-        <strong>{formatNumber(captureScriptFindings.length)}</strong>
-        <small class="trend-negative">{$t("Update required")}</small>
-        <em>{$t("old script releases still reporting")}</em>
-      </summary>
-      <dl class="health-detail-list">
-        {#each captureScriptFindings as finding, index (`capture-script-${index}-${finding.sourceKey}-${finding.observedReleaseId}`)}
-          <div>
-            <dt>{finding.sourceLabel || finding.sourceKey}</dt>
-            <dd>{$t("Observed release")}: {finding.observedReleaseId || "legacy"} / {$t("Latest release")}: {finding.latestReleaseId}</dd>
-          </div>
-        {/each}
       </dl>
     </details>
   {/if}

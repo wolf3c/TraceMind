@@ -33,7 +33,7 @@ import {
   latestSdkForSetup,
 } from '../imports/api/sdk_release';
 import * as TraceMindApi from '../imports/api/tracemind';
-import { buildAgentInstallPrompt } from '../imports/ui/agent_setup';
+import { buildAgentInstallPrompt, buildWebCaptureUpdatePrompt } from '../imports/ui/agent_setup';
 import { resolveConsoleState } from '../imports/ui/console_state';
 import {
   PRODUCT_UPDATES,
@@ -410,6 +410,25 @@ describe('TraceMind', function () {
       assert.strictEqual(mcpServerNameForProject({ _id: 'project-中文-ABC123', name: '中文项目' }), 'tracemind-abc123');
       assert.strictEqual(mcpServerNameForProject({ _id: 'tiny' }), 'tracemind-tiny');
       assert.strictEqual(mcpServerNameForProject({ name: 'No id' }), 'tracemind-project');
+    });
+
+    it('builds a one-line Web Auto Capture update prompt for coding agents', function () {
+      const prompt = buildWebCaptureUpdatePrompt({
+        locale: 'zh',
+        findings: [
+          { sourceLabel: 'super-tree.com', observedReleaseId: 'legacy', latestReleaseId: '2026.6.1-5' },
+          { sourceKey: 'checkout.example.com', observedReleaseId: '2026.05.28.1', latestReleaseId: '2026.6.1-5' },
+        ],
+      });
+
+      assert.strictEqual(prompt.split('\n').length, 1);
+      assert.ok(prompt.includes('super-tree.com、checkout.example.com'));
+      assert.ok(prompt.includes('tracemind.capture_setup({ platform: "web" })'));
+      assert.ok(prompt.includes('captureScriptUrl'));
+      assert.ok(prompt.includes('固定 `capture.<hash>.js` 或自托管脚本'));
+      assert.ok(prompt.includes('service worker/CDN/反向代理/WebView 缓存'));
+      assert.ok(prompt.includes('window.TraceMind.status().scriptReleaseId'));
+      assert.ok(prompt.includes('tracemind.project_health'));
     });
 
     it('ships static public guidance without project tokens or hard-coded deployment URLs', async function () {

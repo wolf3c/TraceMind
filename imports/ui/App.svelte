@@ -12,7 +12,7 @@
   } from "../api/collections";
   import { summarizeProjectHealthFromDailyReports } from "../api/project_health_summary";
   import AuthPanel from "./AuthPanel.svelte";
-  import { buildAgentInstallPrompt } from "./agent_setup";
+  import { buildAgentInstallPrompt, buildWebCaptureUpdatePrompt } from "./agent_setup";
   import ConsoleStatePanel from "./ConsoleStatePanel.svelte";
   import { resolveConsoleState } from "./console_state";
   import EventStreamPanel from "./EventStreamPanel.svelte";
@@ -21,6 +21,7 @@
   import { locale, locales, t } from "./i18n/i18n";
   import ProductUpdateNotice from "./ProductUpdateNotice.svelte";
   import ProductUpdatesPage from "./ProductUpdatesPage.svelte";
+  import ProjectActionNoticePanel from "./ProjectActionNoticePanel.svelte";
   import ProjectHealthPanel from "./ProjectHealthPanel.svelte";
   import ProjectSetupPanel from "./ProjectSetupPanel.svelte";
   import {
@@ -139,6 +140,7 @@
   let summary = $derived(summaryFromHealth(publishedProjectHealth || selectedMethodProjectHealth()) || selectedProjectSummary?.summary);
   let health = $derived(publishedProjectHealth || selectedMethodProjectHealth());
   let healthCurrent = $derived(health?.current || {});
+  let captureScriptFindings = $derived((health?.captureScriptFindings?.length ? health.captureScriptFindings : healthCurrent?.captureScriptFindings) || []);
   let delivery = $derived(publishedDailyReport?.delivery || (
     selectedProjectSummary?.summaryWindow?.reportDate === selectedReportDate ? selectedProjectSummary?.delivery : {}
   ));
@@ -166,6 +168,14 @@
         skillUrl: agentSkillUrl,
         snippetUrl: agentSnippetUrl,
         manifestUrl: agentManifestUrl,
+      })
+      : "",
+  );
+  let webCaptureUpdatePrompt = $derived(
+    captureScriptFindings.length
+      ? buildWebCaptureUpdatePrompt({
+        locale: selectedLocale,
+        findings: captureScriptFindings,
       })
       : "",
   );
@@ -870,6 +880,10 @@
     await copyText("agent-install-prompt", agentInstallPrompt, "Agent install prompt copied.");
   }
 
+  async function copyWebCaptureUpdatePrompt() {
+    await copyText("web-capture-update-prompt", webCaptureUpdatePrompt, "Web Auto Capture update instruction copied.");
+  }
+
   async function copyText(target, value, message) {
     if (!value || !navigator?.clipboard) {
       showStatus(translateNow("Clipboard is unavailable in this browser."));
@@ -1349,6 +1363,15 @@
           {unblockSource}
         />
       </div>
+
+      {#if captureScriptFindings.length}
+        <ProjectActionNoticePanel
+          findings={captureScriptFindings}
+          {copiedTarget}
+          {webCaptureUpdatePrompt}
+          {copyWebCaptureUpdatePrompt}
+        />
+      {/if}
 
       <div class="events card-panel">
         <ProjectHealthPanel

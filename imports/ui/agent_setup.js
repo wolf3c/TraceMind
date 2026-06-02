@@ -4,6 +4,30 @@ function promptLine(value, fallback) {
   return String(value || fallback).replace(/\s+/g, ' ').trim() || fallback;
 }
 
+function promptSourceLabel(finding) {
+  return promptLine(finding?.sourceLabel || finding?.sourceKey, '').slice(0, 80);
+}
+
+function promptSourceList(findings = [], locale = 'en') {
+  const labels = findings.map(promptSourceLabel).filter(Boolean);
+  const uniqueLabels = [...new Set(labels)];
+  if (!uniqueLabels.length) return locale === 'zh' ? '当前项目' : 'the current project';
+  const visibleLabels = uniqueLabels.slice(0, 3);
+  const remainder = uniqueLabels.length - visibleLabels.length;
+  if (locale === 'zh') {
+    return `${visibleLabels.join('、')}${remainder > 0 ? ` 等 ${uniqueLabels.length} 个来源` : ''}`;
+  }
+  return `${visibleLabels.join(', ')}${remainder > 0 ? ` and ${remainder} more source${remainder > 1 ? 's' : ''}` : ''}`;
+}
+
+export function buildWebCaptureUpdatePrompt({ locale, findings = [] } = {}) {
+  const sourceList = promptSourceList(findings, locale);
+  if (locale === 'zh') {
+    return `TraceMind 检测到 ${sourceList} 仍在运行旧 Web Auto Capture 脚本，请在本项目的 coding agent 中调用 \`tracemind.capture_setup({ platform: "web" })\` 获取最新稳定 \`captureScriptUrl\`，替换固定 \`capture.<hash>.js\` 或自托管脚本，检查 service worker/CDN/反向代理/WebView 缓存，触发一次真实行为后用 \`window.TraceMind.status().scriptReleaseId\` 和 \`tracemind.project_health\` 验证完成。`;
+  }
+  return `TraceMind detected ${sourceList} still running an old Web Auto Capture script; in this project's coding agent, call \`tracemind.capture_setup({ platform: "web" })\` to get the latest stable \`captureScriptUrl\`, replace fixed \`capture.<hash>.js\` or self-hosted scripts, check service worker/CDN/reverse proxy/WebView caches, then trigger one real behavior and verify completion with \`window.TraceMind.status().scriptReleaseId\` and \`tracemind.project_health\`.`;
+}
+
 export function buildAgentInstallPrompt({
   locale,
   origin,
