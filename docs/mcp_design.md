@@ -31,6 +31,14 @@ Authorization: Bearer MCP_TOKEN
 
 安装到用户项目时，动态 install prompt 会把非敏感绑定信息写入项目级 `AGENTS.md`、`CLAUDE.md` 或 rules 文件：项目显示名、`projectId` 和 expected MCP server name。Agent 写入前必须先确认当前工作目录或仓库就是用户要接入 TraceMind 的目标项目；如果项目级规则里已有不同 Project ID 的 `TraceMind project binding`，必须停止并询问用户是否切换该仓库的 TraceMind 项目，不能直接追加第二个绑定。Agent 看到多个 `tracemind-*` TraceMind MCP server 时，必须先使用 expected server 调用 `tracemind.project_info`，并只在返回的 `projectId` 与项目级规则匹配时继续；不匹配时停止并要求用户配置正确 MCP，不要只凭 server name 猜。
 
+## 接入漏斗可观测性
+
+控制台在“复制安装提示词”成功写入剪贴板后创建内部 `tracemind_setup_attempts` 记录，用于判断新用户是否从复制动作进入了真实接入流程。记录只保存 `developerId`、`projectId`、`mcpTokenId`、安全来源归因、状态和阶段时间，不保存 MCP token 原文、prompt、源码、工具参数、工具结果、用户输入或完整带 query URL。
+
+后续 MCP 端点会用同一个 `projectId + mcpTokenId` 自动归因最近 24 小时内最新未完成记录：`GET /mcp`、`initialize` 和 `tools/list` 推进到 `mcp_connected`；`tracemind.agent_guidance` 和 `tracemind.check_agent_setup` 推进到 `guidance_loaded`；`tracemind.capture_setup` 推进到 `capture_setup_called` 并只聚合安全 platform 名称。没有匹配记录时不新建 attempt，避免把老客户的正常 MCP 使用误算成新接入。
+
+客户项目第一次成功写入 `/api/capture` 或 `/api/presence` 后，最近未完成 attempt 推进到 `first_capture_received`；第一次 `type: "custom"` 的 capture 再推进到 `first_manual_event_received`。这条运营漏斗不要求安装提示词携带 `setupAttemptId`，也不要求客户项目或 coding agent 增加额外上报动作。
+
 ## Transport
 
 端点实现最小 Streamable HTTP JSON-RPC MCP 表面，协议版本为 `2025-06-18`，兼容 `2025-03-26`：

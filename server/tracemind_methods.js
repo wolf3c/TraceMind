@@ -26,6 +26,7 @@ import {
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 import { queueProjectDailyHealthRefresh, reportDateBounds, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 import { emailFromUserAccount } from './oauth_accounts';
+import { createSetupAttempt } from './setup_attempts';
 
 const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
 const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
@@ -452,6 +453,25 @@ Meteor.methods({
 
     await Projects.updateAsync(project._id, { $set: { mcpTokens } });
     return publicProject(await Projects.findOneAsync(project._id));
+  },
+
+  async 'tracemind.setupAttempt.create'(projectId, mcpTokenId, locale, attribution) {
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const project = await findOwnedProjectWithMcpTokens(projectId, this.userId);
+    const normalizedTokenId = String(mcpTokenId || '').trim();
+    if (!project?.mcpTokens?.some((token) => token.id === normalizedTokenId)) {
+      throw new Meteor.Error('not-found', 'MCP token not found.');
+    }
+
+    const attempt = await createSetupAttempt({
+      developerId: developer._id,
+      projectId: project._id,
+      mcpTokenId: normalizedTokenId,
+      locale,
+      attribution,
+    });
+
+    return { ok: Boolean(attempt), setupAttemptId: attempt?._id };
   },
 
   async 'tracemind.project.source.block'(projectId, sourceInput) {

@@ -5,6 +5,7 @@
 ### Completed
 
 - Updated the developer console setup panel so configuration details default collapsed while the Coding Agent install-prompt copy action remains visible as the primary setup path, with a mobile-first single-task layout.
+- Added privacy-safe setup attempt tracking so successful install-prompt copies can be followed through natural MCP connection, `capture_setup`, first capture, and first manual event without changing the customer agent workflow.
 - Added Google and GitHub OAuth login alongside the email verification-code fallback, with same-email account binding so existing developer projects are reused.
 
 ## 2026-06-01

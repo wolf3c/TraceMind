@@ -936,7 +936,10 @@
   }
 
   async function copyAgentInstallPrompt() {
-    await copyText("agent-install-prompt", agentInstallPrompt, "Agent install prompt copied.");
+    const copied = await copyText("agent-install-prompt", agentInstallPrompt, "Agent install prompt copied.");
+    if (copied) recordAgentInstallPromptCopied().catch((error) => {
+      console.warn("TraceMind setup attempt recording failed", error);
+    });
   }
 
   async function copyWebCaptureUpdatePrompt() {
@@ -946,7 +949,7 @@
   async function copyText(target, value, message) {
     if (!value || !navigator?.clipboard) {
       showStatus(translateNow("Clipboard is unavailable in this browser."));
-      return;
+      return false;
     }
     try {
       await navigator.clipboard.writeText(value);
@@ -957,9 +960,55 @@
         copiedTarget = "";
         copiedTargetTimer = null;
       }, 1800);
+      return true;
     } catch (error) {
       showStatus(errorMessage(error));
+      return false;
     }
+  }
+
+  function setupAttemptAttribution() {
+    const params = typeof location === "undefined" ? new URLSearchParams() : new URLSearchParams(location.search || "");
+    const referrer = typeof document === "undefined" ? "" : document.referrer;
+    let referrerDomain = "";
+    if (referrer) {
+      try {
+        referrerDomain = new URL(referrer).hostname;
+      } catch (error) {
+        referrerDomain = "";
+      }
+    }
+
+    const currentHost = typeof location === "undefined" ? "" : location.hostname;
+    const referrerType = referrerDomain
+      ? (referrerDomain === currentHost ? "internal" : "external")
+      : "direct";
+    const landingPath = typeof location === "undefined"
+      ? "/"
+      : `${location.pathname || "/"}${location.hash || ""}`;
+
+    return {
+      source: params.get("utm_source") || referrerDomain || "direct",
+      medium: params.get("utm_medium") || (referrerDomain ? "external" : "direct"),
+      campaign: params.get("utm_campaign") || "",
+      content: params.get("utm_content") || "",
+      referrerDomain,
+      referrerType,
+      landingPath,
+      gclidPresent: params.has("gclid"),
+      fbclidPresent: params.has("fbclid"),
+    };
+  }
+
+  async function recordAgentInstallPromptCopied() {
+    if (!primaryProject?._id || !primaryMcpToken?.id) return;
+    await callMethod(
+      "tracemind.setupAttempt.create",
+      primaryProject._id,
+      primaryMcpToken.id,
+      selectedLocale,
+      setupAttemptAttribution(),
+    );
   }
 
   async function blockSource(source) {

@@ -39,6 +39,8 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 
 控制台默认只展示 Coding Agent 安装提示词复制入口，项目配置详情保持收起。公开 guidance 链接随复制的安装提示词交给 coding agent 使用；`projectKey`、MCP URL 和采集来源放在配置详情或 token 管理区域，不在默认首屏展开。
 
+复制安装提示词成功后，控制台会创建内部 setup attempt，用于运营上判断用户是否继续完成 MCP 连接、调用 guidance / `capture_setup`、以及是否产生首条 capture / presence 数据。这个记录不改变提示词内容，不要求 agent 携带 `setupAttemptId`，也不保存 prompt、MCP token 原文、工具参数、工具结果、源码、用户输入或完整带 query URL。
+
 ## MCP 工作流
 
 Agent 分析产品行为时应先按只读路径使用 MCP：

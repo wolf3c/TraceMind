@@ -11,3 +11,4 @@ export const UserFeedbackReports = new Mongo.Collection('tracemind_user_feedback
 export const ProjectDailyReports = new Mongo.Collection('tracemind_project_daily_reports');
 export const ProjectHourlyReports = new Mongo.Collection('tracemind_project_hourly_reports');
 export const ProductUsageMarkers = new Mongo.Collection('tracemind_product_usage_markers');
+export const SetupAttempts = new Mongo.Collection('tracemind_setup_attempts');

@@ -31,6 +31,11 @@ import {
 import { SDK_RELEASE_MANIFEST, latestSdkForSetup } from '/imports/api/sdk_release';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 import { queueProjectDailyHealthRefresh, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
+import {
+  recordSetupAttemptFirstCapture,
+  recordSetupAttemptMcpConnection,
+  recordSetupAttemptMcpTool,
+} from './setup_attempts';
 import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
@@ -77,6 +82,15 @@ const MINI_PROGRAM_PROVIDER_FILE_NAMES = {
   douyin: 'app.js',
   dingtalk: 'app.js',
 };
+
+async function recordSetupAttemptSafely(record) {
+  try {
+    return await record();
+  } catch (error) {
+    console.error('[TraceMind] setup attempt tracking failed', error);
+    return null;
+  }
+}
 const MINI_PROGRAM_PLATFORM_ALIASES = {
   wechat_mini_program: 'wechat',
   weixin_mini_program: 'wechat',
@@ -4379,6 +4393,12 @@ async function projectEventNames(project, query = '', limit = 20) {
 }
 
 export async function callMcpTool(project, name, args = {}, options = {}) {
+  const result = await callMcpToolResult(project, name, args, options);
+  await recordSetupAttemptSafely(() => recordSetupAttemptMcpTool(project, name, args, options));
+  return result;
+}
+
+async function callMcpToolResult(project, name, args = {}, options = {}) {
   if (name === 'tracemind.event_definitions') {
     return textResult(
       EVENT_DEFINITIONS.map((event) => `${event.eventType}: ${event.meaning}`).join('\n'),
@@ -6089,6 +6109,7 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     createdAt: new Date(),
   });
   queueProductUsageActivity(project, 'capture', payload);
+  await recordSetupAttemptSafely(() => recordSetupAttemptFirstCapture(project._id, { eventType }));
 
   return { ok: true, ignored: false };
 }
@@ -6211,6 +6232,7 @@ async function upsertPresenceEvent(project, payload = {}, req = {}) {
     { upsert: true },
   );
   queueProductUsageActivity(project, 'presence', payload);
+  await recordSetupAttemptSafely(() => recordSetupAttemptFirstCapture(project._id, { eventType: 'presence' }));
 
   return { ok: true, ignored: false };
 }
@@ -6356,6 +6378,7 @@ async function handleMcpGet(req, res) {
     sendJson(res, 401, { error: 'invalid_mcp_token' });
     return;
   }
+  await recordSetupAttemptSafely(() => recordSetupAttemptMcpConnection(project, mcpToken));
 
   const events = await SemanticEvents.find(
     { projectId: project._id },
@@ -6409,6 +6432,9 @@ async function handleMcpPost(req, res) {
     }
 
     if (item.method === 'initialize') {
+      if (requestProject) {
+        await recordSetupAttemptSafely(() => recordSetupAttemptMcpConnection(requestProject, mcpToken));
+      }
       res.setHeader('Mcp-Session-Id', `tm_mcp_${Random.secret(24)}`);
       responses.push(jsonRpcResult(item.id, {
         protocolVersion: MCP_PROTOCOL_VERSION,
@@ -6437,6 +6463,7 @@ async function handleMcpPost(req, res) {
     }
 
     if (item.method === 'tools/list') {
+      await recordSetupAttemptSafely(() => recordSetupAttemptMcpConnection(project, mcpToken));
       responses.push(jsonRpcResult(item.id, { tools: mcpTools(project) }));
       continue;
     }

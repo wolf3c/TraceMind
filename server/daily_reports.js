@@ -15,6 +15,7 @@ import {
   Projects,
   RawBehaviors,
   SemanticEvents,
+  SetupAttempts,
   UserFeedbackReports,
   aggregateProjectHealthHourlyReports,
   buildProjectHealthHourlyComparison,
@@ -464,6 +465,18 @@ export async function ensureTraceMindIndexes() {
     UserFeedbackReports.rawCollection().createIndex(
       { projectId: 1, rateKeys: 1, createdAt: -1 },
       { name: 'user_feedback_project_rate_keys_time' },
+    ),
+    SetupAttempts.rawCollection().createIndex(
+      { projectId: 1, mcpTokenId: 1, updatedAt: -1 },
+      { name: 'setup_attempt_project_token_time' },
+    ),
+    SetupAttempts.rawCollection().createIndex(
+      { developerId: 1, createdAt: -1 },
+      { name: 'setup_attempt_developer_time' },
+    ),
+    SetupAttempts.rawCollection().createIndex(
+      { status: 1, updatedAt: -1 },
+      { name: 'setup_attempt_status_time' },
     ),
     ProductUsageMarkers.rawCollection().createIndex(
       { projectId: 1, reportDate: 1 },

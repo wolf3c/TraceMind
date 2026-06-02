@@ -13,6 +13,7 @@ import {
   Projects,
   RawBehaviors,
   SemanticEvents,
+  SetupAttempts,
   buildEventQuery,
   buildRawBehaviorQuery,
   CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
@@ -5265,6 +5266,29 @@ projectKey: tm_proj_sensitive`,
       resetProductUsageInstrumentationForTest?.();
     });
 
+    async function createDashboardAccount(prefix) {
+      const email = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: email, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const dashboard = await dashboardMethod.apply({ userId }, []);
+      const publicProject = dashboard.projects[0];
+      return {
+        userId,
+        dashboard,
+        publicProject,
+        project: await Projects.findOneAsync(publicProject._id),
+        mcpToken: publicProject.mcpTokens[0],
+      };
+    }
+
+    async function createSetupAttemptForCopy({ userId, projectId, mcpTokenId, locale = 'en', attribution = {} }) {
+      const createAttemptMethod = Meteor.server.method_handlers['tracemind.setupAttempt.create'];
+      return createAttemptMethod.apply({ userId }, [projectId, mcpTokenId, locale, attribution]);
+    }
+
     it('creates indexes for capture, MCP, presence, and event query paths', async function () {
       this.timeout(5000);
       await ensureTraceMindIndexes();
@@ -5280,6 +5304,7 @@ projectKey: tm_proj_sensitive`,
       const deliveryIndexes = await indexNames(CaptureDeliveryReports);
       const feedbackIndexes = await indexNames(FeedbackReports);
       const userFeedbackIndexes = await indexNames(TraceMindApi.UserFeedbackReports);
+      const setupAttemptIndexes = await indexNames(SetupAttempts);
       const reportIndexes = await indexNames(ProjectDailyReports);
       const hourlyReportIndexes = await indexNames(ProjectHourlyReports);
       const productUsageMarkerIndexes = await indexNames(ProductUsageMarkers);
@@ -5325,10 +5350,196 @@ projectKey: tm_proj_sensitive`,
         'user_feedback_project_actor_time',
         'user_feedback_project_fingerprint_time',
       ].forEach((name) => assert.ok(userFeedbackIndexes.has(name), `missing ${name}`));
+      [
+        'setup_attempt_project_token_time',
+        'setup_attempt_developer_time',
+        'setup_attempt_status_time',
+      ].forEach((name) => assert.ok(setupAttemptIndexes.has(name), `missing ${name}`));
       assert.ok(reportIndexes.has('projectId_1_reportDate_1'));
       assert.ok(hourlyReportIndexes.has('project_hour_unique'));
       assert.ok(hourlyReportIndexes.has('projectId_1_hourStartAt_1'));
       assert.ok(productUsageMarkerIndexes.has('product_usage_project_day_unique'));
+    });
+
+    it('creates safe setup attempts only for project owners after prompt copy', async function () {
+      const { userId, project, mcpToken } = await createDashboardAccount('setup-attempt-owner');
+      const rawToken = mcpToken.token;
+
+      const result = await createSetupAttemptForCopy({
+        userId,
+        projectId: project._id,
+        mcpTokenId: mcpToken.id,
+        locale: 'zh',
+        attribution: {
+          source: 'reddit',
+          medium: 'social',
+          campaign: 'launch',
+          referrerDomain: 'old.reddit.com',
+          referrerType: 'external',
+          landingPath: '/dashboard?secret=1',
+          gclidPresent: true,
+          prompt: 'raw install prompt',
+          code: 'source code',
+          toolArgs: { secret: 'value' },
+        },
+      });
+
+      const attempt = await SetupAttempts.findOneAsync(result.setupAttemptId);
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(attempt.developerId, project.developerId);
+      assert.strictEqual(attempt.projectId, project._id);
+      assert.strictEqual(attempt.mcpTokenId, mcpToken.id);
+      assert.strictEqual(attempt.locale, 'zh');
+      assert.strictEqual(attempt.status, 'copied');
+      assert.strictEqual(attempt.attribution.source, 'reddit');
+      assert.strictEqual(attempt.attribution.referrerDomain, 'old.reddit.com');
+      assert.strictEqual(attempt.attribution.landingPath, '/dashboard');
+      assert.strictEqual(attempt.attribution.gclidPresent, true);
+
+      const serialized = JSON.stringify(attempt);
+      assert.ok(!serialized.includes(rawToken));
+      assert.ok(!serialized.includes('raw install prompt'));
+      assert.ok(!serialized.includes('source code'));
+      assert.ok(!serialized.includes('toolArgs'));
+      assert.ok(!serialized.includes('secret=1'));
+
+      const other = await createDashboardAccount('setup-attempt-other');
+      await assert.rejects(
+        () => createSetupAttemptForCopy({
+          userId: other.userId,
+          projectId: project._id,
+          mcpTokenId: mcpToken.id,
+        }),
+        /not-found|not-authorized/,
+      );
+    });
+
+    it('marks the latest copied attempt when MCP connection is observed', async function () {
+      const { recordSetupAttemptMcpConnection } = await import('../server/setup_attempts');
+      const { userId, project, mcpToken } = await createDashboardAccount('setup-attempt-tools-list');
+      const result = await createSetupAttemptForCopy({
+        userId,
+        projectId: project._id,
+        mcpTokenId: mcpToken.id,
+      });
+
+      await recordSetupAttemptMcpConnection(project, mcpToken.token);
+
+      const attempt = await SetupAttempts.findOneAsync(result.setupAttemptId);
+      assert.strictEqual(attempt.status, 'mcp_connected');
+      assert.ok(attempt.mcpConnectedAt instanceof Date);
+    });
+
+    it('advances setup attempts from MCP guidance and capture setup calls', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const { userId, project, mcpToken } = await createDashboardAccount('setup-attempt-mcp-tool');
+      const result = await createSetupAttemptForCopy({
+        userId,
+        projectId: project._id,
+        mcpTokenId: mcpToken.id,
+      });
+
+      await callMcpTool(project, 'tracemind.agent_guidance', {}, { mcpToken: mcpToken.token });
+      let attempt = await SetupAttempts.findOneAsync(result.setupAttemptId);
+      assert.strictEqual(attempt.status, 'guidance_loaded');
+      assert.strictEqual(attempt.lastMcpToolName, 'tracemind.agent_guidance');
+      assert.ok(attempt.mcpConnectedAt instanceof Date);
+      assert.ok(attempt.guidanceLoadedAt instanceof Date);
+
+      await callMcpTool(project, 'tracemind.capture_setup', { platform: 'web' }, { mcpToken: mcpToken.token });
+      attempt = await SetupAttempts.findOneAsync(result.setupAttemptId);
+      assert.strictEqual(attempt.status, 'capture_setup_called');
+      assert.strictEqual(attempt.lastMcpToolName, 'tracemind.capture_setup');
+      assert.ok(attempt.captureSetupCalledAt instanceof Date);
+      assert.deepStrictEqual(attempt.platforms, ['web']);
+    });
+
+    it('advances setup attempts when the customer project first sends presence, capture, and manual events', async function () {
+      const presenceAccount = await createDashboardAccount('setup-attempt-presence');
+      const presenceAttempt = await createSetupAttemptForCopy({
+        userId: presenceAccount.userId,
+        projectId: presenceAccount.project._id,
+        mcpTokenId: presenceAccount.mcpToken.id,
+      });
+
+      const presenceResult = await ingestPresencePayload({
+        projectKey: presenceAccount.project.projectKey,
+        presenceId: `presence-${Date.now()}`,
+        state: 'start',
+        platform: 'web',
+      }, { headers: {} });
+      assert.strictEqual(presenceResult.ok, true);
+      const presenceDoc = await SetupAttempts.findOneAsync(presenceAttempt.setupAttemptId);
+      assert.strictEqual(presenceDoc.status, 'first_capture_received');
+      assert.ok(presenceDoc.firstCaptureReceivedAt instanceof Date);
+
+      const captureAccount = await createDashboardAccount('setup-attempt-custom');
+      const customAttempt = await createSetupAttemptForCopy({
+        userId: captureAccount.userId,
+        projectId: captureAccount.project._id,
+        mcpTokenId: captureAccount.mcpToken.id,
+      });
+
+      const captureResult = await ingestCapturePayload({
+        projectKey: captureAccount.project.projectKey,
+        type: 'custom',
+        eventName: 'onboarding_completed',
+        properties: { step: 'setup' },
+      }, { headers: {} });
+      assert.strictEqual(captureResult.ok, true);
+      const customDoc = await SetupAttempts.findOneAsync(customAttempt.setupAttemptId);
+      assert.strictEqual(customDoc.status, 'first_manual_event_received');
+      assert.ok(customDoc.firstCaptureReceivedAt instanceof Date);
+      assert.ok(customDoc.firstManualEventReceivedAt instanceof Date);
+    });
+
+    it('attributes MCP activity only to the newest open attempt in the recent window', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const { project, mcpToken } = await createDashboardAccount('setup-attempt-latest');
+      const now = new Date();
+      const olderId = await SetupAttempts.insertAsync({
+        developerId: project.developerId,
+        projectId: project._id,
+        mcpTokenId: mcpToken.id,
+        status: 'copied',
+        locale: 'en',
+        attribution: {},
+        platforms: [],
+        copiedAt: new Date(now.getTime() - 10 * 60 * 1000),
+        createdAt: new Date(now.getTime() - 10 * 60 * 1000),
+        updatedAt: new Date(now.getTime() - 10 * 60 * 1000),
+      });
+      const newerId = await SetupAttempts.insertAsync({
+        developerId: project.developerId,
+        projectId: project._id,
+        mcpTokenId: mcpToken.id,
+        status: 'copied',
+        locale: 'en',
+        attribution: {},
+        platforms: [],
+        copiedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await callMcpTool(project, 'tracemind.project_info', {}, { mcpToken: mcpToken.token });
+
+      const older = await SetupAttempts.findOneAsync(olderId);
+      const newer = await SetupAttempts.findOneAsync(newerId);
+      assert.strictEqual(older.status, 'copied');
+      assert.strictEqual(newer.status, 'mcp_connected');
+      assert.strictEqual(newer.lastMcpToolName, 'tracemind.project_info');
+    });
+
+    it('does not create setup attempts for MCP activity without a copied attempt', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const { project, mcpToken } = await createDashboardAccount('setup-attempt-none');
+      const countBefore = await SetupAttempts.find({ projectId: project._id }).countAsync();
+
+      await callMcpTool(project, 'tracemind.agent_guidance', {}, { mcpToken: mcpToken.token });
+
+      const countAfter = await SetupAttempts.find({ projectId: project._id }).countAsync();
+      assert.strictEqual(countAfter, countBefore);
     });
 
     it('records one self-instrumented capture usage event per customer project day', async function () {

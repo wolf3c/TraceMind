@@ -24,6 +24,7 @@ export {
   ProjectDailyReports,
   ProjectHourlyReports,
   ProductUsageMarkers,
+  SetupAttempts,
 } from './collections';
 export { DATA_RETENTION_POLICY } from './data_retention';
 export { mcpServerNameForProject } from './project_identity';
