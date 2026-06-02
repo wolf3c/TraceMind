@@ -28,11 +28,10 @@
     mergeProjectIntoDashboard,
     resolveInitialProjectSummaryState,
     resolveSelectedProjectId,
+    resolveInitialSetupDetailsState,
     shouldLoadProjectSummaryForSetup,
     shouldShowProjectHealthRefresh,
     shouldApplyProjectSummaryResponse,
-    readSetupDetailsPreference,
-    writeSetupDetailsPreference,
   } from "./project_console_state";
 
   const currentOrigin = () => (typeof location === "undefined" ? "" : location.origin);
@@ -51,7 +50,6 @@
   const reportTimezoneOffsetMs = 8 * 60 * 60 * 1000;
   const eventStreamPageSize = 20;
   const statusAutoDismissMs = 5200;
-  const browserStorage = () => (typeof window === "undefined" ? undefined : window.localStorage);
 
   let email = $state("");
   let code = $state("");
@@ -72,7 +70,7 @@
   let showProjectCreate = $state(false);
   let showProjectActions = $state(false);
   let showProjectRename = $state(false);
-  let showSetupDetails = $state(readSetupDetailsPreference(browserStorage()));
+  let showSetupDetails = $state(resolveInitialSetupDetailsState());
   let showActiveTimeTip = $state(false);
   let recentOnline = $state(null);
   let recentOnlineLoading = $state(false);
@@ -318,7 +316,7 @@
       showSetupDetails = false;
     } else if (nextSelectedProjectId !== selectedProjectId) {
       if (!selectedProjectId) {
-        showSetupDetails = readSetupDetailsPreference(browserStorage());
+        showSetupDetails = resolveInitialSetupDetailsState();
       }
       selectedProjectId = nextSelectedProjectId;
       selectedProjectSummary = null;
@@ -676,8 +674,7 @@
     loadProjectSummaryIfNeeded().catch(() => {});
   }
 
-  function updateSetupDetailsPreference(expanded) {
-    writeSetupDetailsPreference(browserStorage(), expanded);
+  function handleSetupDetailsChange(expanded) {
     if (expanded) {
       handleSetupDetailsOpened();
     }
@@ -1335,7 +1332,7 @@
           {showProjectActions}
           {showProjectRename}
           bind:showSetupDetails
-          {updateSetupDetailsPreference}
+          {handleSetupDetailsChange}
           {projectSummaryLoading}
           {projectSummaryError}
           {copiedTarget}

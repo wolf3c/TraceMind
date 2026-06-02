@@ -14,7 +14,7 @@
     showProjectActions,
     showProjectRename,
     showSetupDetails = $bindable(false),
-    updateSetupDetailsPreference = () => {},
+    handleSetupDetailsChange = () => {},
     projectSummaryLoading,
     projectSummaryError,
     copiedTarget,
@@ -44,7 +44,7 @@
 
   function toggleSetupDetails() {
     showSetupDetails = !showSetupDetails;
-    updateSetupDetailsPreference(showSetupDetails);
+    handleSetupDetailsChange(showSetupDetails);
   }
 
   function changeProject(event) {

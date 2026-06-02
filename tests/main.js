@@ -53,10 +53,8 @@ import {
   resolveInitialProjectSummaryState,
   resolveSelectedProjectId,
   shouldApplyProjectSummaryResponse,
-  readSetupDetailsPreference,
-  setupDetailsPreferenceKey,
-  writeSetupDetailsPreference,
 } from '../imports/ui/project_console_state';
+import * as ProjectConsoleState from '../imports/ui/project_console_state';
 import enMessages from '../imports/ui/i18n/locales/en';
 import zhMessages from '../imports/ui/i18n/locales/zh';
 import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n';
@@ -3975,34 +3973,22 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(sameDashboard.rawCount, 1);
     });
 
-    it('defaults setup details collapsed and persists the user expanded preference', function () {
-      const values = new Map();
+    it('defaults setup details collapsed without reading a stored preference', function () {
+      let storageReads = 0;
       const storage = {
-        getItem(key) {
-          return values.has(key) ? values.get(key) : null;
-        },
-        setItem(key, value) {
-          values.set(key, value);
-        },
-      };
-      const blockedStorage = {
         getItem() {
-          throw new Error('blocked');
+          storageReads += 1;
+          return 'true';
         },
         setItem() {
-          throw new Error('blocked');
+          throw new Error('setup details should not be persisted');
         },
       };
 
-      assert.strictEqual(readSetupDetailsPreference(undefined), false);
-      assert.strictEqual(readSetupDetailsPreference(storage), false);
-      assert.strictEqual(writeSetupDetailsPreference(storage, false), true);
-      assert.strictEqual(values.get(setupDetailsPreferenceKey), 'false');
-      assert.strictEqual(readSetupDetailsPreference(storage), false);
-      assert.strictEqual(writeSetupDetailsPreference(storage, true), true);
-      assert.strictEqual(readSetupDetailsPreference(storage), true);
-      assert.strictEqual(readSetupDetailsPreference(blockedStorage), false);
-      assert.strictEqual(writeSetupDetailsPreference(blockedStorage, false), false);
+      assert.strictEqual(typeof ProjectConsoleState.resolveInitialSetupDetailsState, 'function');
+      assert.strictEqual(ProjectConsoleState.resolveInitialSetupDetailsState(), false);
+      assert.strictEqual(ProjectConsoleState.resolveInitialSetupDetailsState(storage), false);
+      assert.strictEqual(storageReads, 0);
     });
 
     it('rejects stale project summary responses', function () {

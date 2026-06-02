@@ -29,6 +29,10 @@ export function resolveInitialProjectSummaryState() {
   };
 }
 
+export function resolveInitialSetupDetailsState() {
+  return false;
+}
+
 export function shouldLoadProjectSummaryForSetup({
   projectId,
   reportDate,
@@ -58,27 +62,4 @@ export function shouldApplyProjectSummaryResponse({
   return requestId === activeRequestId
     && requestUserId === currentUserId
     && projectId === selectedProjectId;
-}
-
-export const setupDetailsPreferenceKey = 'tracemind.setupDetailsExpanded';
-
-export function readSetupDetailsPreference(storage) {
-  if (!storage?.getItem) return false;
-
-  try {
-    return storage.getItem(setupDetailsPreferenceKey) === 'true';
-  } catch (error) {
-    return false;
-  }
-}
-
-export function writeSetupDetailsPreference(storage, expanded) {
-  if (!storage?.setItem) return false;
-
-  try {
-    storage.setItem(setupDetailsPreferenceKey, expanded ? 'true' : 'false');
-    return true;
-  } catch (error) {
-    return false;
-  }
 }
