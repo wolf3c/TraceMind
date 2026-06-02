@@ -5,6 +5,36 @@ const supportedProductUpdateLocales = ["en", "zh"];
 
 export const PRODUCT_UPDATES = [
   {
+    id: "2026-06-02-web-capture-script-updates",
+    categoryLabel: {
+      en: "New feature notice",
+      zh: "新功能提醒",
+    },
+    moduleTitle: {
+      en: "Web capture script updates",
+      zh: "Web 采集脚本更新",
+    },
+    summary: {
+      en: "TraceMind now flags projects still running old Web capture scripts and gives coding agents update instructions, keeping behavior evidence reliable.",
+      zh: "TraceMind 现在会提醒仍在运行旧 Web 采集脚本的项目，并给 coding agent 更新指令，让用户行为证据保持可靠。",
+    },
+    publishedAt: "2026-06-02",
+    details: [
+      {
+        en: "Web setup keeps using a stable capture.js address. The production script is distributed by Cloudflare Pages, while capture, presence, and feedback data still go to the Galaxy API.",
+        zh: "Web 接入继续使用稳定的 capture.js 地址，生产脚本由 Cloudflare Pages 分发，采集、在线和反馈数据仍写入 Galaxy API。",
+      },
+      {
+        en: "Project health and MCP use sourceDetails.scriptReleaseId to find old Web Auto Capture scripts that are still running and reporting, without guessing from caches that have no recent reports.",
+        zh: "项目健康和 MCP 会通过 sourceDetails.scriptReleaseId 发现仍在运行并上报的旧 Web Auto Capture 脚本，同时避免把没有近期上报的缓存猜成问题。",
+      },
+      {
+        en: "When a warning appears, developers can copy the update instruction to a coding agent so it fetches the latest captureScriptUrl, checks fixed hash scripts or caches, and verifies the update with one real behavior.",
+        zh: "看到提醒后，可以复制升级指令给 coding agent，让它获取最新 captureScriptUrl、检查固定 hash 脚本或缓存，并用一次真实行为验证完成。",
+      },
+    ],
+  },
+  {
     id: "2026-05-25-production-error-capture",
     categoryLabel: {
       en: "New feature notice",

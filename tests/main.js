@@ -200,7 +200,6 @@ describe('TraceMind', function () {
       const update = PRODUCT_UPDATES.find((item) => item.id === '2026-05-25-production-error-capture');
 
       assert.strictEqual(update.publishedAt, '2026-05-25');
-      assert.strictEqual(latestProductUpdate(PRODUCT_UPDATES).id, update.id);
       assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'en'), 'Production error capture');
       assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'zh-CN'), '线上报错采集');
       assert.strictEqual(
@@ -211,6 +210,24 @@ describe('TraceMind', function () {
         '各终端报错会作为统一的 app_error 摘要进入行为路径、来源、session、用户和健康趋势分析。',
         '支持自动捕获或手动上报两种接入方式，让线上错误能和发生前后的用户行为一起排查。',
         '隐私安全：只保留错误类型、消息指纹、handled/fatal、path/screen、component、release 等错误信息，不采集请求体、响应体、raw prompt、secret、截图或录屏。',
+      ]);
+    });
+
+    it('includes the Web capture script update governance product update', function () {
+      const update = PRODUCT_UPDATES.find((item) => item.id === '2026-06-02-web-capture-script-updates');
+
+      assert.strictEqual(update.publishedAt, '2026-06-02');
+      assert.strictEqual(latestProductUpdate(PRODUCT_UPDATES).id, update.id);
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'en'), 'Web capture script updates');
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'zh-CN'), 'Web 采集脚本更新');
+      assert.strictEqual(
+        localizedProductUpdateText(update.summary, 'zh'),
+        'TraceMind 现在会提醒仍在运行旧 Web 采集脚本的项目，并给 coding agent 更新指令，让用户行为证据保持可靠。',
+      );
+      assert.deepStrictEqual(localizedProductUpdateDetails(update.details, 'zh'), [
+        'Web 接入继续使用稳定的 capture.js 地址，生产脚本由 Cloudflare Pages 分发，采集、在线和反馈数据仍写入 Galaxy API。',
+        '项目健康和 MCP 会通过 sourceDetails.scriptReleaseId 发现仍在运行并上报的旧 Web Auto Capture 脚本，同时避免把没有近期上报的缓存猜成问题。',
+        '看到提醒后，可以复制升级指令给 coding agent，让它获取最新 captureScriptUrl、检查固定 hash 脚本或缓存，并用一次真实行为验证完成。',
       ]);
     });
 
