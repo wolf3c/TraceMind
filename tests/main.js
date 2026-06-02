@@ -3754,6 +3754,7 @@ projectKey: tm_proj_sensitive`,
       'Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Mini Program (WeChat / Alipay / Douyin / DingTalk) · Browser Extension (Chrome / Edge / Firefox) · Server · MCP · Agent Skill',
       'Email',
       'Send code',
+      'Dismiss status message',
       'Checking your session...',
       'Loading your console...',
       'Could not load your console.',
@@ -3795,6 +3796,51 @@ projectKey: tm_proj_sensitive`,
 
       assert.strictEqual(translateMessage(messages, 'greeting', { name: 'TraceMind' }), 'Hello TraceMind');
       assert.strictEqual(translateMessage(messages, 'missing.key'), 'missing.key');
+    });
+  });
+
+  describe('Auth status alert', function () {
+    if (!Meteor.isServer) return;
+
+    it('keeps login feedback inline and dismissible instead of fixed over controls', async function () {
+      const { access, readFile } = await import('node:fs/promises');
+      const path = await import('node:path');
+      let sourceRoot = '';
+      const candidateRoots = [
+        process.env.TRACEMIND_SOURCE_ROOT,
+        process.env.INIT_CWD,
+        process.env.PWD,
+        process.cwd(),
+      ].filter(Boolean);
+
+      for (const candidateRoot of candidateRoots) {
+        let currentRoot = candidateRoot;
+        for (let depth = 0; depth < 8; depth += 1) {
+          try {
+            await access(path.join(currentRoot, 'imports/ui/App.svelte'));
+            sourceRoot = currentRoot;
+            break;
+          } catch {
+            const parent = path.dirname(currentRoot);
+            if (parent === currentRoot) break;
+            currentRoot = parent;
+          }
+        }
+        if (sourceRoot) break;
+      }
+      assert.ok(sourceRoot, 'Could not find TraceMind source root.');
+
+      const [appSource, authPanelSource, cssSource] = await Promise.all([
+        readFile(path.join(sourceRoot, 'imports/ui/App.svelte'), 'utf8'),
+        readFile(path.join(sourceRoot, 'imports/ui/AuthPanel.svelte'), 'utf8'),
+        readFile(path.join(sourceRoot, 'client/main.css'), 'utf8'),
+      ]);
+
+      assert.match(appSource, /<AuthPanel[\s\S]*\{status\}[\s\S]*\{dismissStatus\}/);
+      assert.doesNotMatch(appSource, /\{#if status\}\s*<p class="status-alert"/);
+      assert.match(authPanelSource, /class="status-alert auth-status-alert"/);
+      assert.match(authPanelSource, /onclick=\{dismissStatus\}/);
+      assert.doesNotMatch(cssSource, /\.status-alert\s*\{[^}]*position:\s*fixed/s);
     });
   });
 

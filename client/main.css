@@ -3001,20 +3001,51 @@ code {
 }
 
 .status-alert {
-  position: fixed;
-  right: clamp(16px, 4vw, 36px);
-  bottom: calc(82px + env(safe-area-inset-bottom));
-  left: clamp(16px, 4vw, 36px);
-  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: min(760px, 100%);
   max-width: 760px;
-  margin: 0 auto;
+  margin: 18px 0 0;
   border: 1px solid #cbd8d1;
   border-radius: 8px;
   padding: 12px 16px;
   color: var(--deep);
   font-weight: 650;
   background: #eaf2ee;
-  box-shadow: 0 18px 42px rgba(15, 47, 42, 0.16);
+  box-shadow: 0 12px 28px rgba(15, 47, 42, 0.1);
+}
+
+.auth-status-alert {
+  width: 100%;
+  margin: 0;
+}
+
+.status-alert span {
+  min-width: 0;
+}
+
+.status-dismiss {
+  align-self: start;
+  display: inline-grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  place-items: center;
+  border: 1px solid rgba(43, 80, 70, 0.18);
+  border-radius: 50%;
+  padding: 0;
+  color: var(--deep);
+  background: rgba(255, 253, 248, 0.76);
+  box-shadow: none;
+}
+
+.status-dismiss:hover,
+.status-dismiss:focus-visible {
+  color: #fffdf8;
+  background: var(--deep);
 }
 
 @media (max-width: 1100px) {
@@ -3170,6 +3201,10 @@ code {
   .workflow,
   .console {
     padding: 42px clamp(18px, 5vw, 32px);
+  }
+
+  .console {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
 
   .product-update-notice {

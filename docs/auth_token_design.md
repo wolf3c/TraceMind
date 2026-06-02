@@ -15,6 +15,8 @@ Provide the minimum login and authorization flow developers need before installi
    - `projectKey`: public Auto Capture key for the default project.
    - `mcpTokens`: one or more independent MCP tokens for the default project. These tokens read behavior evidence and user feedback, submit developer feedback reports, and update user feedback handling status/notes.
 
+Login status feedback stays inside the form flow, is dismissible, and successful transient messages clear automatically so verification and login controls remain clickable.
+
 The developer `authToken` still exists internally for compatibility with early API experiments, but the MVP console does not expose it. New users only need the project key.
 
 ## Client Session Restore

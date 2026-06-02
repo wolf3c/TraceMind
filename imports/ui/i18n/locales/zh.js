@@ -420,6 +420,7 @@ export default {
   "Deleting this MCP token immediately invalidates it. Continue?": "删除后这个 MCP Token 会立即失效，确认删除？",
   "Block source {{source}}? New events from it will be silently rejected.": "屏蔽来源 {{source}} 后，新事件会被静默拒收，确认继续？",
   "Verification code sent. Check your inbox or use the login link in the email.": "验证码已发送，请检查邮箱。也可以点击邮件中的登录链接直接进入。",
+  "Dismiss status message": "关闭状态提示",
   "Logged in.": "已登录。",
   "Project created.": "项目已创建。",
   "Project created and selected.": "项目已创建并切换。",

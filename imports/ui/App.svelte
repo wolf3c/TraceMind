@@ -49,6 +49,7 @@
   const appVersion = packageInfo.version || "dev";
   const reportTimezoneOffsetMs = 8 * 60 * 60 * 1000;
   const eventStreamPageSize = 20;
+  const statusAutoDismissMs = 5200;
   const browserStorage = () => (typeof window === "undefined" ? undefined : window.localStorage);
 
   let email = $state("");
@@ -98,6 +99,7 @@
   let currentPath = $state(normalizeAppPath(typeof location === "undefined" ? "/" : location.pathname));
   let dashboardLoadPromise = null;
   let copiedTargetTimer = null;
+  let statusTimer = null;
 
   function publicProjectFromClient(project) {
     if (!project) return null;
@@ -198,6 +200,30 @@
     }
 
     return messages[error.error] ? translateNow(messages[error.error]) : reason;
+  }
+
+  function clearStatusTimer() {
+    if (!statusTimer || typeof window === "undefined") return;
+    window.clearTimeout(statusTimer);
+    statusTimer = null;
+  }
+
+  function showStatus(message, { autoDismiss = false } = {}) {
+    clearStatusTimer();
+    status = message;
+    if (!message || !autoDismiss || typeof window === "undefined") return;
+    statusTimer = window.setTimeout(() => {
+      status = "";
+      statusTimer = null;
+    }, statusAutoDismissMs);
+  }
+
+  function showSuccessStatus(message) {
+    showStatus(message, { autoDismiss: true });
+  }
+
+  function dismissStatus() {
+    showStatus("");
   }
 
   function reportDateForDate(value = Date.now()) {
@@ -502,16 +528,16 @@
 
   async function requestCode() {
     loading = true;
-    status = "";
+    showStatus("");
     try {
       const normalizedEmail = email.trim().toLowerCase();
       await requestLoginToken({
         selector: { email: normalizedEmail },
         userData: { email: normalizedEmail },
       });
-      status = translateNow("Verification code sent. Check your inbox or use the login link in the email.");
+      showSuccessStatus(translateNow("Verification code sent. Check your inbox or use the login link in the email."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -519,13 +545,13 @@
 
   async function verifyCode() {
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await passwordlessLogin({ email: email.trim().toLowerCase() }, code.trim());
       await loadDashboard();
-      status = translateNow("Logged in.");
+      showSuccessStatus(translateNow("Logged in."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -566,18 +592,18 @@
   }
 
   async function retryDashboard() {
-    status = "";
+    showStatus("");
     try {
       await loadDashboard();
     } catch (error) {
       if (dashboard) {
-        status = errorMessage(error);
+        showStatus(errorMessage(error));
       }
     }
   }
 
   async function retryProjectSummary() {
-    status = "";
+    showStatus("");
     if (!canRefreshProjectHealth) return;
     try {
       requestDailyReportRefresh();
@@ -589,7 +615,7 @@
         loadProjectSummaryIfNeeded().catch(() => {});
       }
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     }
   }
 
@@ -675,7 +701,7 @@
     if (!name) return;
 
     loading = true;
-    status = "";
+    showStatus("");
     try {
       const createdProject = await callMethod("tracemind.project.create", name);
       replaceProject(createdProject);
@@ -690,9 +716,9 @@
       if (showSetupDetails) {
         loadProjectSummaryIfNeeded(createdProject._id).catch(() => {});
       }
-      status = translateNow("Project created and selected.");
+      showSuccessStatus(translateNow("Project created and selected."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -704,14 +730,14 @@
     if (!name) return;
 
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await callMethod("tracemind.project.rename", primaryProject._id, name);
       showProjectRename = false;
       renameProjectName = "";
-      status = translateNow("Project name updated.");
+      showSuccessStatus(translateNow("Project name updated."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -723,7 +749,7 @@
 
     const removedProjectId = primaryProject._id;
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await callMethod("tracemind.project.remove", removedProjectId);
       selectedProjectSummary = null;
@@ -738,9 +764,9 @@
       showProjectRename = false;
       showProjectCreate = false;
       showSetupDetails = false;
-      status = translateNow("Project deleted.");
+      showSuccessStatus(translateNow("Project deleted."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -764,7 +790,7 @@
     if (!primaryProject) return;
 
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await callMethod(
         "tracemind.project.mcpToken.create",
@@ -772,9 +798,9 @@
         mcpTokenName.trim() || "MCP Token",
       );
       mcpTokenName = "";
-      status = translateNow("MCP token created.");
+      showSuccessStatus(translateNow("MCP token created."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -784,7 +810,7 @@
     if (!primaryProject || !token) return;
 
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await callMethod(
         "tracemind.project.mcpToken.rename",
@@ -792,9 +818,9 @@
         token.id,
         token.name,
       );
-      status = translateNow("MCP token name updated.");
+      showSuccessStatus(translateNow("MCP token name updated."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -805,16 +831,16 @@
     if (!window.confirm(translateNow("Refreshing this MCP token immediately invalidates the old token. Continue?"))) return;
 
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await callMethod(
         "tracemind.project.mcpToken.refresh",
         primaryProject._id,
         token.id,
       );
-      status = translateNow("MCP token refreshed. The old token is invalid.");
+      showSuccessStatus(translateNow("MCP token refreshed. The old token is invalid."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -825,16 +851,16 @@
     if (!window.confirm(translateNow("Deleting this MCP token immediately invalidates it. Continue?"))) return;
 
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await callMethod(
         "tracemind.project.mcpToken.remove",
         primaryProject._id,
         token.id,
       );
-      status = translateNow("MCP token deleted.");
+      showSuccessStatus(translateNow("MCP token deleted."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -846,20 +872,20 @@
 
   async function copyText(target, value, message) {
     if (!value || !navigator?.clipboard) {
-      status = translateNow("Clipboard is unavailable in this browser.");
+      showStatus(translateNow("Clipboard is unavailable in this browser."));
       return;
     }
     try {
       await navigator.clipboard.writeText(value);
       copiedTarget = target;
-      status = translateNow(message);
+      showSuccessStatus(translateNow(message));
       if (copiedTargetTimer) window.clearTimeout(copiedTargetTimer);
       copiedTargetTimer = window.setTimeout(() => {
         copiedTarget = "";
         copiedTargetTimer = null;
       }, 1800);
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     }
   }
 
@@ -869,7 +895,7 @@
     if (!window.confirm(translateNow("Block source {{source}}? New events from it will be silently rejected.", { source: sourceName }))) return;
 
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await callMethod("tracemind.project.source.block", primaryProject._id, {
         sourceType: source.sourceType,
@@ -878,9 +904,9 @@
         reason: "Blocked from console",
       });
       await loadProjectSummary();
-      status = translateNow("Source blocked. Future events from it will not enter the database.");
+      showSuccessStatus(translateNow("Source blocked. Future events from it will not enter the database."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
@@ -890,22 +916,23 @@
     if (!primaryProject || !source) return;
 
     loading = true;
-    status = "";
+    showStatus("");
     try {
       await callMethod("tracemind.project.source.unblock", primaryProject._id, {
         sourceType: source.sourceType,
         sourceKey: source.sourceKey,
       });
       await loadProjectSummary();
-      status = translateNow("Source unblocked.");
+      showSuccessStatus(translateNow("Source unblocked."));
     } catch (error) {
-      status = errorMessage(error);
+      showStatus(errorMessage(error));
     } finally {
       loading = false;
     }
   }
 
   function logout() {
+    showStatus("");
     dashboardRequestId += 1;
     dashboardLoadPromise = null;
     dashboardLoading = false;
@@ -1261,8 +1288,10 @@
         bind:email
         bind:code
         {loading}
+        {status}
         {requestCode}
         {verifyCode}
+        {dismissStatus}
       />
     {:else if consoleState === "restoring-session" || consoleState === "loading-dashboard" || consoleState === "dashboard-error"}
       <ConsoleStatePanel
@@ -1374,8 +1403,13 @@
       </div>
     {/if}
 
-    {#if status}
-      <p class="status-alert" role="status" aria-live="polite">{status}</p>
+    {#if consoleState !== "signed-out" && status}
+      <div class="status-alert" role="status" aria-live="polite">
+        <span>{status}</span>
+        <button class="status-dismiss" type="button" onclick={dismissStatus} aria-label={$t("Dismiss status message")}>
+          &times;
+        </button>
+      </div>
     {/if}
     </section>
   {/if}
