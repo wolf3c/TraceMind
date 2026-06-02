@@ -34,6 +34,7 @@ import {
 } from '../imports/api/sdk_release';
 import * as TraceMindApi from '../imports/api/tracemind';
 import { buildAgentInstallPrompt, buildWebCaptureUpdatePrompt } from '../imports/ui/agent_setup';
+import { WEB_CAPTURE_UPDATE_TARGET, buildProjectActionNotices } from '../imports/ui/project_action_notices';
 import { resolveConsoleState } from '../imports/ui/console_state';
 import {
   PRODUCT_UPDATES,
@@ -444,6 +445,43 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('service worker/CDN/反向代理/WebView 缓存'));
       assert.ok(prompt.includes('window.TraceMind.status().scriptReleaseId'));
       assert.ok(prompt.includes('tracemind.project_health'));
+    });
+
+    it('builds reusable project action notices for Web capture script updates', function () {
+      const actionCalls = [];
+      const notices = buildProjectActionNotices({
+        captureScriptFindings: [
+          { sourceLabel: 'super-tree.com', observedReleaseId: '2026.06.01.1', latestReleaseId: '2026.06.01.3' },
+          { sourceKey: 'checkout.example.com' },
+        ],
+        copiedTarget: WEB_CAPTURE_UPDATE_TARGET,
+        webCaptureUpdatePrompt: 'update prompt',
+        copyWebCaptureUpdatePrompt() {
+          actionCalls.push('copy');
+        },
+        translate(key, vars = {}) {
+          return translateMessage(zhMessages, key, vars);
+        },
+      });
+
+      assert.strictEqual(notices.length, 1);
+      assert.strictEqual(notices[0].id, 'web-capture-script-update');
+      assert.strictEqual(notices[0].badge, '接入待办');
+      assert.strictEqual(notices[0].title, 'Web Auto Capture 脚本需要更新');
+      assert.ok(notices[0].description.includes('super-tree.com'));
+      assert.ok(notices[0].resolution.includes('不再检测到旧脚本上报'));
+      assert.deepStrictEqual(notices[0].meta.map((item) => item.label), ['来源', '检测到的版本', '最新版本', '同时影响']);
+      assert.deepStrictEqual(notices[0].meta.map((item) => item.value), ['super-tree.com', '2026.06.01.1', '2026.06.01.3', '另有 1 个来源']);
+      assert.strictEqual(notices[0].action.label, '已复制更新指令');
+      assert.strictEqual(notices[0].action.copied, true);
+      assert.strictEqual(notices[0].action.disabled, false);
+
+      notices[0].action.onClick();
+      assert.deepStrictEqual(actionCalls, ['copy']);
+    });
+
+    it('returns no project action notices when there are no actionable findings', function () {
+      assert.deepStrictEqual(buildProjectActionNotices({ captureScriptFindings: [] }), []);
     });
 
     it('ships static public guidance without project tokens or hard-coded deployment URLs', async function () {

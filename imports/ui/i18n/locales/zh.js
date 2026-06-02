@@ -267,6 +267,7 @@ export default {
   "Setup action": "接入待办",
   "Web Auto Capture script needs update": "Web Auto Capture 脚本需要更新",
   "Detected {{source}} is still running an old script. Copy the update instruction, then paste it into your coding agent to run the update and verification.": "检测到 {{source}} 仍在运行旧脚本。复制更新指令后，粘贴到你的 Coding Agent 中执行更新和验证。",
+  "After the update is deployed, trigger one real behavior and refresh project health. This notice disappears when TraceMind no longer detects old script reports.": "更新部署后，触发一次真实行为并再次刷新项目健康。当 TraceMind 不再检测到旧脚本上报时，这条提醒会自动消失。",
   "Update evidence": "更新依据",
   "Source": "来源",
   "Also affected": "同时影响",

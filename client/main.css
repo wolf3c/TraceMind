@@ -2108,6 +2108,12 @@ code {
   line-height: 1.48;
 }
 
+.project-action-notice-copy .project-action-resolution {
+  color: #7a665c;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .project-action-meta {
   display: flex;
   flex-wrap: wrap;

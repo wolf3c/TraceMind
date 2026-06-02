@@ -22,6 +22,7 @@
   import ProductUpdateNotice from "./ProductUpdateNotice.svelte";
   import ProductUpdatesPage from "./ProductUpdatesPage.svelte";
   import ProjectActionNoticePanel from "./ProjectActionNoticePanel.svelte";
+  import { buildProjectActionNotices } from "./project_action_notices";
   import ProjectHealthPanel from "./ProjectHealthPanel.svelte";
   import ProjectSetupPanel from "./ProjectSetupPanel.svelte";
   import {
@@ -177,6 +178,14 @@
       })
       : "",
   );
+  let projectActionNotices = $derived(buildProjectActionNotices({
+    locale: selectedLocale,
+    captureScriptFindings,
+    copiedTarget,
+    webCaptureUpdatePrompt,
+    copyWebCaptureUpdatePrompt,
+    translate: translateNow,
+  }));
 
   function callMethod(name, ...args) {
     return new Promise((resolve, reject) => {
@@ -1361,13 +1370,8 @@
         />
       </div>
 
-      {#if captureScriptFindings.length}
-        <ProjectActionNoticePanel
-          findings={captureScriptFindings}
-          {copiedTarget}
-          {webCaptureUpdatePrompt}
-          {copyWebCaptureUpdatePrompt}
-        />
+      {#if projectActionNotices.length}
+        <ProjectActionNoticePanel notices={projectActionNotices} />
       {/if}
 
       <div class="events card-panel">
