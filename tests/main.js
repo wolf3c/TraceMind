@@ -3939,7 +3939,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(sameDashboard.rawCount, 1);
     });
 
-    it('defaults setup details open and persists the user collapse preference', function () {
+    it('defaults setup details collapsed and persists the user expanded preference', function () {
       const values = new Map();
       const storage = {
         getItem(key) {
@@ -3958,14 +3958,14 @@ projectKey: tm_proj_sensitive`,
         },
       };
 
-      assert.strictEqual(readSetupDetailsPreference(undefined), true);
-      assert.strictEqual(readSetupDetailsPreference(storage), true);
+      assert.strictEqual(readSetupDetailsPreference(undefined), false);
+      assert.strictEqual(readSetupDetailsPreference(storage), false);
       assert.strictEqual(writeSetupDetailsPreference(storage, false), true);
       assert.strictEqual(values.get(setupDetailsPreferenceKey), 'false');
       assert.strictEqual(readSetupDetailsPreference(storage), false);
       assert.strictEqual(writeSetupDetailsPreference(storage, true), true);
       assert.strictEqual(readSetupDetailsPreference(storage), true);
-      assert.strictEqual(readSetupDetailsPreference(blockedStorage), true);
+      assert.strictEqual(readSetupDetailsPreference(blockedStorage), false);
       assert.strictEqual(writeSetupDetailsPreference(blockedStorage, false), false);
     });
 

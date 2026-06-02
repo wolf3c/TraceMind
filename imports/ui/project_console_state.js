@@ -63,12 +63,12 @@ export function shouldApplyProjectSummaryResponse({
 export const setupDetailsPreferenceKey = 'tracemind.setupDetailsExpanded';
 
 export function readSetupDetailsPreference(storage) {
-  if (!storage?.getItem) return true;
+  if (!storage?.getItem) return false;
 
   try {
-    return storage.getItem(setupDetailsPreferenceKey) !== 'false';
+    return storage.getItem(setupDetailsPreferenceKey) === 'true';
   } catch (error) {
-    return true;
+    return false;
   }
 }
 

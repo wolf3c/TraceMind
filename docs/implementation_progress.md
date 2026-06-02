@@ -1,5 +1,11 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-06-02
+
+### Completed
+
+- Updated the developer console setup panel so configuration details default collapsed while the Coding Agent install-prompt copy action remains visible as the primary setup path, with a mobile-first single-task layout.
+
 ## 2026-06-01
 
 ### Completed

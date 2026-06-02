@@ -1876,6 +1876,7 @@ code {
 .setup-toggle {
   min-height: 46px;
   padding: 0 16px;
+  color: #38524a;
   white-space: nowrap;
 }
 
@@ -1954,29 +1955,84 @@ code {
 
 .agent-setup-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
-  padding: 16px 0 20px;
+  align-items: center;
+  padding: 16px 0;
   border-top: 1px solid #e5ded2;
   border-bottom: 1px solid #e5ded2;
 }
 
 .agent-setup-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 12px;
-  align-items: end;
+  align-items: center;
 }
 
-.agent-setup-header span {
+.agent-setup-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(24, 167, 122, 0.24);
+  border-radius: 8px;
+  color: var(--deep);
+  background: rgba(24, 167, 122, 0.12);
+}
+
+.agent-setup-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.agent-setup-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agent-setup-copy span {
   display: block;
   color: #708179;
   font-size: 0.85rem;
+  font-weight: 720;
 }
 
-.agent-setup-header strong {
+.agent-setup-copy strong {
   display: block;
   margin-top: 3px;
   color: var(--deep);
+  font-size: 1.04rem;
+  line-height: 1.28;
+}
+
+.agent-setup-copy em {
+  display: block;
+  margin-top: 4px;
+  color: #708179;
+  font-size: 0.84rem;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.agent-install-copy {
+  min-height: 52px;
+  padding: 0 20px;
+  color: #fffdf8;
+  background: var(--deep);
+  box-shadow: 0 12px 26px rgba(15, 47, 42, 0.18);
+  white-space: nowrap;
+}
+
+.agent-setup-empty {
+  grid-column: 1 / -1;
+}
+
+.mobile-setup-details-hint {
+  display: none;
 }
 
 .disclosure-panel {
@@ -3085,6 +3141,72 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .account-panel {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .account-panel > span {
+    width: fit-content;
+  }
+
+  .project-compact-header {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-toggle {
+    display: none;
+  }
+
+  .agent-setup-panel {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    border: 1px solid #cfe0d9;
+    border-radius: 8px;
+    padding: 16px;
+    background: #fbfffc;
+  }
+
+  .agent-setup-header {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .agent-setup-copy strong {
+    margin-top: 10px;
+    font-size: 1.34rem;
+    line-height: 1.16;
+  }
+
+  .agent-setup-copy em {
+    color: var(--deep);
+    font-size: 0.98rem;
+  }
+
+  .agent-install-copy {
+    width: 100%;
+    min-height: 50px;
+    font-size: 1rem;
+  }
+
+  .mobile-setup-details-hint {
+    display: grid;
+    gap: 10px;
+    padding: 0 2px;
+    color: #708179;
+    font-size: 0.9rem;
+    font-weight: 650;
+  }
+
+  .setup-detail-link {
+    width: fit-content;
+    min-height: 38px;
+    padding: 0 12px;
+    font-size: 0.9rem;
+  }
+
   .compact-copy {
     min-height: 42px;
   }
@@ -3298,9 +3420,16 @@ code {
     margin: 0;
   }
 
+  .feedback-widget {
+    display: flex;
+    justify-content: flex-end;
+  }
+
   .feedback-trigger {
-    right: 18px;
-    bottom: calc(18px + env(safe-area-inset-bottom));
+    position: static;
+    min-height: 42px;
+    margin: 18px 20px calc(18px + env(safe-area-inset-bottom)) auto;
+    padding: 0 16px;
   }
 
   .feedback-toast {

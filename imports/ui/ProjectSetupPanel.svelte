@@ -80,6 +80,41 @@
         <span class="project-count">{$t("{{projects}} projects.", { projects: dashboard.projects.length })}</span>
       {/if}
     </div>
+    <div class="agent-setup-panel">
+      <div class="agent-setup-header">
+        <span class="agent-setup-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M8 8.5h7.5M8 12h7.5M8 15.5h5" />
+            <path d="M6.8 4.5h8.8c1.2 0 2.2 1 2.2 2.2v11.6c0 1.2-1 2.2-2.2 2.2H6.8c-1.2 0-2.2-1-2.2-2.2V6.7c0-1.2 1-2.2 2.2-2.2Z" />
+          </svg>
+        </span>
+        <div class="agent-setup-copy">
+          <span>{$t("Coding Agent Setup")}</span>
+          <strong>{$t("Copy the install prompt so your coding agent connects this project automatically.")}</strong>
+          {#if agentInstallPrompt}
+            <em>{$t("Agent install prompt is ready for this project.")}</em>
+          {/if}
+        </div>
+      </div>
+      <button class:copied={copiedTarget === "agent-install-prompt"} class="agent-install-copy" type="button" onclick={copyAgentInstallPrompt} disabled={!agentInstallPrompt}>
+        {copiedTarget === "agent-install-prompt" ? $t("Copied install prompt") : $t("Copy install prompt")}
+      </button>
+      {#if !agentInstallPrompt}
+        <p class="empty agent-setup-empty">{$t("Create an MCP token before generating the coding agent setup prompt.")}</p>
+      {/if}
+    </div>
+    <div class="mobile-setup-details-hint">
+      <span>{$t("Need project key, MCP Tokens, or capture sources?")}</span>
+      <button
+        class="ghost setup-detail-link"
+        type="button"
+        aria-controls="project-setup-details"
+        aria-expanded={showSetupDetails}
+        onclick={toggleSetupDetails}
+      >
+        {showSetupDetails ? $t("Collapse setup details") : $t("Expand setup details")}
+      </button>
+    </div>
     <div id="project-setup-details" class="project-setup-details" hidden={!showSetupDetails}>
       <div class="project-action-menu">
         <button class="ghost project-more-button" type="button" onclick={toggleProjectActions} aria-expanded={showProjectActions} aria-label={$t("Project actions")}>
@@ -127,21 +162,6 @@
           </button>
         </div>
       </label>
-      <div class="agent-setup-panel">
-        <div class="agent-setup-header">
-          <div>
-            <span>{$t("Coding Agent Setup")}</span>
-            <strong>{$t("Copy the install prompt and send it to your coding agent.")}</strong>
-          </div>
-          <button class:copied={copiedTarget === "agent-install-prompt"} class="ghost" type="button" onclick={copyAgentInstallPrompt} disabled={!agentInstallPrompt}>
-            {copiedTarget === "agent-install-prompt" ? $t("Copied install prompt") : $t("Copy install prompt")}
-          </button>
-        </div>
-        {#if !agentInstallPrompt}
-          <p class="empty">{$t("Create an MCP token before generating the coding agent setup prompt.")}</p>
-        {/if}
-      </div>
-
       <details class="disclosure-panel">
         <summary>
           <span>{$t("Manage MCP tokens")}</span>

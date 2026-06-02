@@ -29,7 +29,7 @@ Web 应用把下面这行代码放到页面的 `<head>` 或 `</body>` 前：
 - `async` 表示脚本异步加载，不阻塞页面解析。
 
 开发者控制台支持中英文切换，右上角选择语言后会保存在当前浏览器中。
-控制台默认收起项目配置区，只保留当前项目切换、必要时的项目数量提示和展开配置信息入口；展开后可以复制 `projectKey`、Coding Agent 安装提示词并管理 MCP Token。各环境的安装步骤与使用方式以本文档为准。
+控制台默认收起项目配置详情，但在收起态保留 Coding Agent 安装提示词复制入口；展开配置详情后可以复制 `projectKey`、管理 MCP Token 并查看采集来源。各环境的安装步骤与使用方式以本文档为准。
 
 Native、小程序、浏览器插件、MCP 和 server SDK 应先调用 `tracemind.capture_setup` 获取当前项目的真实安装方式。npm、PyPI 和 Maven Central 已发布的平台默认返回 registry 安装命令；Swift iOS/macOS 继续使用本地源码 Swift Package。所有 SDK setup 都会返回 `latestSdk`、`installedVersionDetection`、`upgradeCommands` 和 `verificationCommands`，并继续用 `contentHash` 判断是否需要升级，而不是只看版本号。registry 不可用或企业内网限制时，返回内容里的 `localSourceFallback` 可作为受控兜底。包安装和依赖配置完成后，业务代码只需要一行初始化：
 
