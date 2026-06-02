@@ -5,13 +5,13 @@
 Ship a thin cross-platform TraceMind MVP that proves the core loop:
 
 ```text
-email passwordless login -> project key -> one-line auto capture -> raw behavior storage
+Google/GitHub OAuth or email verification login -> project key -> one-line auto capture -> raw behavior storage
 -> scheduled semantic event extraction -> filtered remote MCP data access
 ```
 
 ## Architecture
 
-- Meteor Accounts owns passwordless email login. TraceMind server owns project keys, capture ingestion, semantic extraction, and MCP responses.
+- Meteor Accounts owns Google/GitHub OAuth plus passwordless email fallback login. TraceMind server owns project keys, capture ingestion, semantic extraction, and MCP responses.
 - Svelte client provides a landing page plus a small developer console.
 - MongoDB stores all MVP data in simple collections under `imports/api/tracemind.js`.
 - The event model keeps identity, session, device, platform, IP/geo, custom properties, and context fields stable so Web, iOS, Android, Mini Program, Browser Extension, MCP, Agent Skill, and ordinary server manual events can share one schema.
@@ -21,8 +21,8 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 
 | Module | Files | Responsibility |
 | --- | --- | --- |
-| Landing + console | `imports/ui/App.svelte`, `client/main.css` | Explain product, handle passwordless login, show project key/platform setup snippets/recent events |
-| Auth + projects | `server/tracemind_methods.js`, `server/tracemind_publications.js`, `imports/api/tracemind.js` | Configure passwordless email, map `Meteor.userId()` to developer record and project key, and publish owner-scoped console project metadata |
+| Landing + console | `imports/ui/App.svelte`, `imports/ui/AuthPanel.svelte`, `client/main.css` | Explain product, handle Google/GitHub OAuth and passwordless fallback login, show project key/platform setup snippets/recent events |
+| Auth + projects | `server/oauth_accounts.js`, `server/tracemind_methods.js`, `server/tracemind_publications.js`, `imports/api/tracemind.js` | Configure OAuth account binding and passwordless email, map `Meteor.userId()` to developer record and project key, and publish owner-scoped console project metadata |
 | Capture SDKs | `server/capture_routes.js`, `sdk/ios`, `sdk/android`, `sdk/react-native`, `sdk/mini-program`, `sdk/browser-extension`, `sdk/mcp-node`, `sdk/mcp-python`, `sdk/server-node`, `sdk/server-python` | Serve `/capture.js`, provide Web/Native/Mini Program/Browser Extension/MCP/server SDKs, and ingest `/api/capture` raw behavior with identity, device, source, IP/geo, custom fields |
 | Semantic extraction + reports | `server/semantic_jobs.js`, `server/daily_reports.js`, `imports/api/semantic.js` | Periodically convert raw behavior into semantic events and maintain daily project health reports |
 | Remote MCP | `server/capture_routes.js` | Serve `/mcp?mcpToken=...` or Bearer MCP tokens with event definitions, filtered semantic event queries, raw log queries, summaries, developer feedback submission, and a GET preview |
@@ -30,7 +30,7 @@ email passwordless login -> project key -> one-line auto capture -> raw behavior
 
 ## MVP Boundaries
 
-- Human login uses `accounts-passwordless` and Mailgun-backed Meteor `email`.
+- Human login uses Google/GitHub OAuth first and `accounts-passwordless` with Mailgun-backed Meteor `email` as the fallback. OAuth provider data is limited to the stable account email needed for same-email account binding.
 - SDK capture uses a public project key. MCP access uses independent `tm_mcp_*` tokens, separate from both project keys and Meteor Accounts browser sessions. MCP tokens read behavior evidence and can write developer feedback reports through `tracemind.submit_feedback`; feedback writes are deduplicated and rate limited per project/token, and other analysis tools remain read-only.
 - User online duration uses a separate presence store. Web, iOS, macOS, Android, React Native, Mini Program, and Browser Extension extension-owned pages write `/api/presence` heartbeat updates into `tracemind_presence_sessions`; these records do not create raw behaviors or semantic events. Dashboard health active-time metrics use strict `activeDurationMs`, not foreground `durationMs`: Web and Browser Extension pages require visible + focused + a 60-second interaction window, while iOS/macOS/Android/RN/Mini Program require foreground app state plus recent tap/text/screen activity.
 - Capture requests include cross-platform source fields. Project owners can block suspicious `sourceType + sourceKey` values after seeing them in the console; blocked events return ok but are not stored.

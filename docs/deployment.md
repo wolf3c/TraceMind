@@ -21,6 +21,41 @@ The deploy files live under `.deploy/`, which is intentionally ignored because i
 - `TRACEMIND_CAPTURE_SCRIPT_ORIGIN` should be set in the Galaxy runtime environment to `https://tracemind-capture.pages.dev` for production so MCP setup snippets and Web script auto-update URLs use Cloudflare Pages.
 - `.deploy/mup.js` is legacy self-hosted deployment config. Use it only if TraceMind is moved back to a custom server/domain, and provide `TRACEMIND_DOMAIN` explicitly.
 
+## OAuth Login Configuration
+
+Google and GitHub login use Meteor `service-configuration`. Keep the real OAuth client secrets in private Meteor settings or Galaxy settings only.
+
+```json
+{
+  "packages": {
+    "service-configuration": {
+      "google": {
+        "clientId": "google-client-id",
+        "secret": "google-client-secret",
+        "loginStyle": "popup"
+      },
+      "github": {
+        "clientId": "github-client-id",
+        "secret": "github-client-secret",
+        "loginStyle": "popup"
+      }
+    }
+  }
+}
+```
+
+Production callback URLs:
+
+- `https://tracemind.sandbox.galaxycloud.app/_oauth/google`
+- `https://tracemind.sandbox.galaxycloud.app/_oauth/github`
+
+Local development callback URLs when running with `ROOT_URL=http://localhost:3000`:
+
+- `http://localhost:3000/_oauth/google`
+- `http://localhost:3000/_oauth/github`
+
+Google OAuth clients can include both local and production redirect URIs, but each URI must match exactly. GitHub OAuth Apps accept one authorization callback URL, so use separate GitHub OAuth Apps for local development and production. GitHub login requests `user:email` only; do not add repo, org, code, or offline access scopes for dashboard login.
+
 ## Product Usage Instrumentation
 
 TraceMind can dogfood its own server-side manual capture to measure daily customer projects and accounts that send capture or presence data. The app uses the public `@tracemind/server-node` SDK in the same shape as a customer Node service. This is disabled unless both private settings or environment variables are present:

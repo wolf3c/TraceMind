@@ -15,7 +15,6 @@ import {
   SemanticEvents,
   UserFeedbackReports,
   isSourceBlocked,
-  normalizeEmail,
   normalizeBlockedSource,
   normalizeToken,
   publicProject,
@@ -26,6 +25,7 @@ import {
 } from '/imports/api/tracemind';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
 import { queueProjectDailyHealthRefresh, reportDateBounds, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
+import { emailFromUserAccount } from './oauth_accounts';
 
 const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
 const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
@@ -232,9 +232,15 @@ export async function buildProjectRecentOnline(project) {
 
 async function userEmail(userId) {
   const user = await Meteor.users.findOneAsync(userId, {
-    fields: { emails: 1 },
+    fields: {
+      emails: 1,
+      'services.google.email': 1,
+      'services.google.verified_email': 1,
+      'services.github.email': 1,
+      'services.github.emails': 1,
+    },
   });
-  const email = normalizeEmail(user?.emails?.[0]?.address);
+  const email = emailFromUserAccount(user);
   if (!email) {
     throw new Meteor.Error('email-not-found', 'Account email is required.');
   }

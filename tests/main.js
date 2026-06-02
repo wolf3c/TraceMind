@@ -1,5 +1,6 @@
 import assert from 'assert';
 import { Meteor } from 'meteor/meteor';
+import { Accounts } from 'meteor/accounts-base';
 import { buildSemanticEvent, summarizeSemanticEvents } from '../imports/api/semantic';
 import {
   CaptureDeliveryReports,
@@ -3824,6 +3825,15 @@ projectKey: tm_proj_sensitive`,
       '1-minute setup · public projectKey writes · independent MCP token authorization',
       'View setup docs',
       'Supported platforms: Web · iOS · macOS · Android · React Native · Hybrid (Electron / Tauri / Capacitor / Cordova) · Mini Program (WeChat / Alipay / Douyin / DingTalk) · Browser Extension (Chrome / Edge / Firefox) · Server · MCP · Agent Skill',
+      'Sign in to TraceMind',
+      'Choose Google or GitHub, or use your email verification code.',
+      'Continue with Google',
+      'Continue with GitHub',
+      'or use your email',
+      'Signing in with Google...',
+      'Signing in with GitHub...',
+      'OAuth login is not configured yet.',
+      'Could not finish OAuth login.',
       'Email',
       'Send code',
       'Dismiss status message',
@@ -3910,9 +3920,20 @@ projectKey: tm_proj_sensitive`,
 
       assert.match(appSource, /<AuthPanel[\s\S]*\{status\}[\s\S]*\{dismissStatus\}/);
       assert.doesNotMatch(appSource, /\{#if status\}\s*<p class="status-alert"/);
+      assert.match(appSource, /loginWithGoogle/);
+      assert.match(appSource, /loginWithGithub/);
+      assert.match(appSource, /let loginCodeRequested = \$state\(false\)/);
+      assert.match(appSource, /codeRequested=\{loginCodeRequested\}/);
+      assert.match(appSource, /Meteor\.loginWithGithub[\s\S]*requestPermissions:\s*\[\s*"user:email"\s*\]/);
+      assert.match(authPanelSource, /class="auth-header"[\s\S]*Sign in to TraceMind/);
       assert.match(authPanelSource, /class="status-alert auth-status-alert"/);
       assert.match(authPanelSource, /onclick=\{dismissStatus\}/);
+      assert.match(authPanelSource, /Continue with Google[\s\S]*Continue with GitHub[\s\S]*or use your email[\s\S]*class="email-code-request"[\s\S]*id="email"[\s\S]*Send code/);
+      assert.match(authPanelSource, /\{#if codeRequested\}[\s\S]*id="login-code"[\s\S]*Log in[\s\S]*\{\/if\}/);
       assert.doesNotMatch(cssSource, /\.status-alert\s*\{[^}]*position:\s*fixed/s);
+      assert.match(cssSource, /\.oauth-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+      assert.match(cssSource, /\.auth-panel\s*\{[^}]*margin-inline:\s*auto/s);
+      assert.match(cssSource, /\.email-code-request\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto/s);
     });
   });
 
@@ -5939,6 +5960,93 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(result.projects[0].mcpTokens.length, 1);
       assert.strictEqual(result.projects[0].mcpTokens[0].name, 'Default MCP Token');
       assert.ok(result.projects[0].mcpTokens[0].token.startsWith('tm_mcp_'));
+      assert.strictEqual(project._id, result.projects[0]._id);
+    });
+
+    it('reuses an existing email account when Google OAuth logs in later', async function () {
+      const email = `oauth-google-merge-${Date.now()}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: email, verified: true }],
+        createdAt: new Date(),
+      });
+
+      const result = await Accounts.updateOrCreateUserFromExternalService(
+        'google',
+        { id: `google-${Date.now()}`, email: email.toUpperCase(), verified_email: true },
+        { profile: { name: 'TraceMind Developer' } },
+      );
+
+      const users = await Meteor.users.find({
+        $or: [
+          { _id: userId },
+          { 'services.google.email': email },
+        ],
+      }).fetchAsync();
+
+      assert.strictEqual(result.userId, userId);
+      assert.strictEqual(users.length, 1);
+      assert.strictEqual(users[0].services.google.email, email);
+    });
+
+    it('rejects OAuth accounts when the provider has no usable email', async function () {
+      let thrown = null;
+
+      try {
+        await Accounts.updateOrCreateUserFromExternalService(
+          'google',
+          { id: `google-no-email-${Date.now()}` },
+          { profile: { name: 'No Email' } },
+        );
+      } catch (error) {
+        thrown = error;
+      }
+
+      assert(thrown);
+      assert.strictEqual(thrown.error, 'oauth-email-required');
+    });
+
+    it('creates GitHub OAuth accounts from the primary provider email', async function () {
+      const email = `oauth-github-${Date.now()}@example.com`;
+
+      const result = await Accounts.updateOrCreateUserFromExternalService(
+        'github',
+        {
+          id: `github-${Date.now()}`,
+          emails: [
+            { email: `secondary-${email}`, primary: false, verified: true },
+            { email: email.toUpperCase(), primary: true, verified: true },
+          ],
+        },
+        { profile: { name: 'GitHub Developer' } },
+      );
+
+      const user = await Meteor.users.findOneAsync(result.userId);
+
+      assert.strictEqual(user.services.github.email, email);
+      assert.deepStrictEqual(user.emails[0], { address: email, verified: true });
+    });
+
+    it('creates TraceMind developer data from an OAuth-only user email', async function () {
+      const email = `oauth-only-${Date.now()}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        services: {
+          google: {
+            id: `google-oauth-only-${Date.now()}`,
+            email,
+            verified_email: true,
+          },
+        },
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+
+      const result = await dashboardMethod.apply({ userId }, []);
+
+      const developer = await Developers.findOneAsync({ userId });
+      const project = await Projects.findOneAsync({ developerId: developer._id });
+
+      assert.strictEqual(result.developer.email, email);
+      assert.strictEqual(developer.email, email);
       assert.strictEqual(project._id, result.projects[0]._id);
     });
 

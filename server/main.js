@@ -1,4 +1,5 @@
 import { Meteor } from 'meteor/meteor';
+import './oauth_accounts';
 import './tracemind_methods';
 import './tracemind_publications';
 import { registerTraceMindRoutes, startProductUsageInstrumentation } from './capture_routes';

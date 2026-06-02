@@ -24,3 +24,5 @@ rspack@1.1.0                  # Integrate Rspack into Meteor for client and serv
 email
 accounts-passwordless
 service-configuration
+accounts-google
+accounts-github

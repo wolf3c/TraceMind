@@ -67,6 +67,10 @@
   let status = $state("");
   let copiedTarget = $state("");
   let loading = $state(false);
+  let loadingProvider = $state("");
+  let loginCodeRequested = $state(false);
+  let loginServicesReady = $state(Accounts.loginServicesConfigured());
+  let oauthServices = $state({ google: false, github: false });
   let selectedProjectId = $state("");
   let showProjectCreate = $state(false);
   let showProjectActions = $state(false);
@@ -211,6 +215,10 @@
     };
     const reason = error.reason || error.message || "";
 
+    if (error.error === "oauth-email-required") return translateNow("Could not finish OAuth login.");
+    if (reason.includes("Service not configured") || reason.includes("not configured")) {
+      return translateNow("OAuth login is not configured yet.");
+    }
     if (reason.includes("Expired token")) return translateNow("The verification code expired. Request a new one.");
     if (reason.includes("token mismatch") || reason.includes("Email or token mismatch")) {
       return translateNow("The verification code is incorrect. Check the email and try again.");
@@ -543,6 +551,49 @@
     });
   }
 
+  function oauthLogin(provider, loginMethod, options) {
+    const configured = Boolean(oauthServices[provider]);
+    if (!configured || typeof loginMethod !== "function") {
+      showStatus(translateNow("OAuth login is not configured yet."));
+      return Promise.resolve();
+    }
+
+    loading = true;
+    loadingProvider = provider;
+    showStatus(translateNow(provider === "google" ? "Signing in with Google..." : "Signing in with GitHub..."));
+
+    return new Promise((resolve, reject) => {
+      loginMethod(options, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    })
+      .then(() => loadDashboard())
+      .then(() => {
+        loginCodeRequested = false;
+        showSuccessStatus(translateNow("Logged in."));
+      })
+      .catch((error) => {
+        showStatus(errorMessage(error) || translateNow("Could not finish OAuth login."));
+      })
+      .finally(() => {
+        loading = false;
+        loadingProvider = "";
+      });
+  }
+
+  function loginWithGoogle() {
+    return oauthLogin("google", Meteor.loginWithGoogle, {
+      requestPermissions: ["email"],
+    });
+  }
+
+  function loginWithGithub() {
+    return oauthLogin("github", Meteor.loginWithGithub, {
+      requestPermissions: ["user:email"],
+    });
+  }
+
   async function requestCode() {
     loading = true;
     showStatus("");
@@ -552,6 +603,7 @@
         selector: { email: normalizedEmail },
         userData: { email: normalizedEmail },
       });
+      loginCodeRequested = true;
       showSuccessStatus(translateNow("Verification code sent. Check your inbox or use the login link in the email."));
     } catch (error) {
       showStatus(errorMessage(error));
@@ -566,6 +618,7 @@
     try {
       await passwordlessLogin({ email: email.trim().toLowerCase() }, code.trim());
       await loadDashboard();
+      loginCodeRequested = false;
       showSuccessStatus(translateNow("Logged in."));
     } catch (error) {
       showStatus(errorMessage(error));
@@ -1217,6 +1270,11 @@
       untrack(() => {
         const nextUserId = Meteor.userId();
         const nextLoggingIn = Meteor.loggingIn();
+        loginServicesReady = Accounts.loginServicesConfigured();
+        oauthServices = {
+          google: Boolean(Accounts.loginServiceConfiguration.findOne({ service: "google" })),
+          github: Boolean(Accounts.loginServiceConfiguration.findOne({ service: "github" })),
+        };
         userId = nextUserId;
         loggingIn = nextLoggingIn;
 
@@ -1245,6 +1303,7 @@
             showProjectActions = false;
             showProjectRename = false;
             showSetupDetails = false;
+            loginCodeRequested = false;
             dashboard = null;
           }
           return;
@@ -1308,7 +1367,13 @@
         bind:email
         bind:code
         {loading}
+        {loadingProvider}
+        codeRequested={loginCodeRequested}
         {status}
+        {loginServicesReady}
+        {oauthServices}
+        {loginWithGoogle}
+        {loginWithGithub}
         {requestCode}
         {verifyCode}
         {dismissStatus}
