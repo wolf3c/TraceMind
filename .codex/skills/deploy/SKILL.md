@@ -92,10 +92,14 @@ The deploy workflow must verify these markers are consistent everywhere they are
 12. Publish the Web Auto Capture static script to Cloudflare Pages after a successful Galaxy deploy:
    - Run `npm run build:capture-static`. The default source is `https://tracemind.sandbox.galaxycloud.app/capture.js`, and the default output is `.codex/scratch/capture-static/${version}/`.
    - Confirm the generated `capture.js` contains the current `scriptReleaseId`, posts to Galaxy `/api/capture`, `/api/presence`, and `/api/user-feedback`, and uses the Cloudflare script origin for auto-update fallback.
-   - Use the Cloudflare API plugin to ensure Pages project `tracemind-capture` exists. If it does not exist, create it with production branch `main` and no Git source binding.
-   - Upload a Direct Upload deployment for the generated output, including `manifest`, `_headers`, `capture.js`, and `capture.<sha256>.js`. Include the current release commit SHA and commit message as deployment metadata.
-   - Query the Cloudflare Pages deployment until its stage is `success`. If the deployment fails or remains pending beyond the tool timeout, stop before declaring the release healthy.
-   - Run `npm run check:capture-static-publication` after Cloudflare deploy. It must verify the Cloudflare `/capture.js` status, JavaScript content type, `ETag`, CORS `*`, `Cache-Control: public, max-age=60, must-revalidate`, no `Set-Cookie`, non-empty body, current `scriptReleaseId`, and matching immutable `capture.<sha256>.js`.
+   - Prefer the `Cloudflare Capture Publish` GitHub Actions workflow for the Direct Upload step. It is manual-only (`workflow_dispatch`) and must be triggered only after Galaxy deploy succeeds, because it snapshots Galaxy `/capture.js` as the Cloudflare source.
+   - Trigger it with the release version and release commit SHA, for example:
+     `gh workflow run cloudflare-capture-publish.yml -f version=${version} -f commit_sha=$(git rev-parse HEAD)`.
+   - Wait for that exact workflow run to finish successfully with `gh run watch <run-id> --exit-status` or an equivalent GitHub Actions status check. If the workflow fails or cannot be found, inspect the run logs before using a fallback.
+   - Do not add `push` or release-tag triggers to the Cloudflare workflow. The release tag is pushed before Galaxy deploy, so an automatic tag-triggered Cloudflare upload could publish an old Galaxy script.
+   - If GitHub Actions is unavailable, use the local Cloudflare Direct Upload fallback with non-interactive credentials from `.deploy/private/cloudflare.env` or the environment. Do not print or commit `CLOUDFLARE_API_TOKEN` or `CLOUDFLARE_ACCOUNT_ID`.
+   - Fallback command shape: `npx -y wrangler@latest pages deploy .codex/scratch/capture-static/${version}/ --project-name=tracemind-capture --branch=main --commit-hash=$(git rev-parse HEAD) --commit-message="Deploy TraceMind ${version} capture static script"`.
+   - Run `npm run check:capture-static-publication` after Cloudflare deploy, even if the workflow already ran it. The local check must verify the Cloudflare `/capture.js` status, JavaScript content type, `ETag`, CORS `*`, `Cache-Control: public, max-age=60, must-revalidate`, no `Set-Cookie`, non-empty body, current `scriptReleaseId`, and matching immutable `capture.<sha256>.js`.
 13. Verify the deployed app after a successful deploy:
    - `npm run deploy:logs` when logs are needed to confirm startup health.
    - `curl -I https://tracemind.sandbox.galaxycloud.app/`

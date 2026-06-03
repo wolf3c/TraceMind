@@ -91,7 +91,8 @@ npm run check:deploy-git-publication -- <version>
 npm run check:sdk-registry-publication -- <version>
 npm run deploy
 npm run build:capture-static
-# Upload .codex/scratch/capture-static/<version>/ to Cloudflare Pages project tracemind-capture.
+gh workflow run cloudflare-capture-publish.yml -f version=<version> -f commit_sha=<release-commit-sha>
+# Wait for the Cloudflare Capture Publish workflow to finish successfully.
 npm run check:capture-static-publication
 ```
 
@@ -100,6 +101,16 @@ If `check:release-metadata` fails, do not deploy. It verifies customer-visible r
 If `check:deploy-git-publication` fails, do not deploy. It verifies `package.json.version`, the manifest `sourceRef`, clean `main`, `origin/main`, and the remote release tag so the Galaxy app cannot advertise SDK source that is missing or mismatched on GitHub.
 
 The release tag also triggers the `SDK Publish` GitHub Actions workflow. That workflow publishes registry-backed SDKs to npm, PyPI, and Maven Central and does not run `npm run deploy`. `$deploy` remains the only path that runs the Meteor deploy command. If `check:sdk-registry-publication` fails, do not deploy; the app must not advertise registry install commands until every registry-backed SDK in `sdk/release_manifest.json` is visible in its package registry. Swift remains a local-source SDK in this flow.
+
+After a successful Galaxy deploy, publish the Web Auto Capture static script with the manual `Cloudflare Capture Publish` GitHub Actions workflow. It snapshots `https://tracemind.sandbox.galaxycloud.app/capture.js`, deploys the generated `capture.js`, `_headers`, and immutable `capture.<sha256>.js` files to the Cloudflare Pages project `tracemind-capture`, and verifies the public Cloudflare contract. Trigger it manually only after Galaxy is serving the release commit:
+
+```bash
+gh workflow run cloudflare-capture-publish.yml \
+  -f version=<version> \
+  -f commit_sha=<release-commit-sha>
+```
+
+Do not add a tag or push trigger to the Cloudflare capture workflow. Release tags are pushed before Galaxy deploy so the SDK publish workflow can run, and an automatic Cloudflare upload at that point could snapshot the previous Galaxy script. If GitHub Actions is unavailable, run a local Wrangler Direct Upload from `.codex/scratch/capture-static/<version>/` with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` loaded from a private, ignored environment file.
 
 Tail production logs:
 

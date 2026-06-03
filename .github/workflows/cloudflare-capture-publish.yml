@@ -1,0 +1,100 @@
+name: Cloudflare Capture Publish
+
+"on":
+  workflow_dispatch:
+    inputs:
+      version:
+        description: TraceMind app version, for example 2026.6.2-3.
+        required: true
+        type: string
+      commit_sha:
+        description: Release commit SHA that has already been deployed to Galaxy.
+        required: true
+        type: string
+      source_url:
+        description: Galaxy capture.js source URL to snapshot after Galaxy deploy.
+        required: false
+        default: https://tracemind.sandbox.galaxycloud.app/capture.js
+        type: string
+      project_name:
+        description: Cloudflare Pages project name.
+        required: false
+        default: tracemind-capture
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: cloudflare-capture-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish capture.js to Cloudflare Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ inputs.version }}
+      COMMIT_SHA: ${{ inputs.commit_sha }}
+      SOURCE_URL: ${{ inputs.source_url }}
+      PROJECT_NAME: ${{ inputs.project_name }}
+      OUTPUT_DIR: .capture-static/${{ inputs.version }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate release inputs
+        run: |
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const version = process.env.VERSION || '';
+          const commitSha = process.env.COMMIT_SHA || '';
+          if (!/^\d{4}\.\d{1,2}\.\d{1,2}-\d+$/.test(version)) {
+            throw new Error(`Invalid TraceMind app version: ${version}`);
+          }
+          if (!/^[0-9a-f]{40}$/i.test(commitSha)) {
+            throw new Error(`Invalid release commit SHA: ${commitSha}`);
+          }
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (pkg.version !== version) {
+            throw new Error(`Input version ${version} does not match package.json version ${pkg.version}.`);
+          }
+          NODE
+          test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
+          git fetch --tags --force
+          git tag --points-at HEAD | grep -Fx "tracemind-release-$VERSION"
+
+      - name: Build static capture assets from Galaxy
+        run: npm run build:capture-static -- --source-url "$SOURCE_URL" --output-dir "$OUTPUT_DIR"
+
+      - name: Inspect generated capture contract
+        run: |
+          test -s "$OUTPUT_DIR/capture.js"
+          test -f "$OUTPUT_DIR/_headers"
+          grep -F '/api/capture' "$OUTPUT_DIR/capture.js"
+          grep -F '/api/presence' "$OUTPUT_DIR/capture.js"
+          grep -F '/api/user-feedback' "$OUTPUT_DIR/capture.js"
+          grep -F 'https://tracemind-capture.pages.dev' "$OUTPUT_DIR/capture.js"
+
+      - name: Deploy to Cloudflare Pages
+        run: |
+          npx -y wrangler@latest pages deploy "$OUTPUT_DIR" \
+            --project-name="$PROJECT_NAME" \
+            --branch=main \
+            --commit-hash="$COMMIT_SHA" \
+            --commit-message="Deploy TraceMind $VERSION capture static script"
+
+      - name: Verify published capture contract
+        run: npm run check:capture-static-publication
