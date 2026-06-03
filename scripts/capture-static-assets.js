@@ -14,7 +14,7 @@ function captureStaticHeaders() {
     '  Cache-Control: public, max-age=60, must-revalidate',
     '  Access-Control-Allow-Origin: *',
     '',
-    '/capture.*',
+    '/capture.*.js',
     '  Cache-Control: public, max-age=31536000, immutable',
     '  Access-Control-Allow-Origin: *',
     '',
