@@ -20,7 +20,7 @@
   let showOAuthOptions = $derived(!loginServicesReady || oauthServices.google || oauthServices.github);
 </script>
 
-<div class="auth-panel card-panel">
+<div id="login" class="auth-panel card-panel">
   <div class="auth-header">
     <div class="auth-brand-lockup">
       <svg class="auth-brand-mark" viewBox="0 0 64 64" aria-hidden="true">

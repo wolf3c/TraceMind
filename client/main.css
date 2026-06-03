@@ -130,8 +130,10 @@ button:disabled {
 
 .nav-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .brand {
@@ -161,6 +163,33 @@ button:disabled {
   color: #071b18;
   background: var(--signal);
   border-color: var(--signal);
+}
+
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  border: 1px solid rgba(255, 253, 248, 0.3);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #fffdf8;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 720;
+  text-decoration: none;
+}
+
+.github-link:hover,
+.github-link:focus-visible {
+  border-color: rgba(255, 253, 248, 0.52);
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+}
+
+.nav-login-link {
+  min-height: 38px;
+  padding: 0 14px;
+  font-weight: 760;
+  box-shadow: none;
 }
 
 .brand-mark {
@@ -1526,6 +1555,7 @@ button:disabled {
   display: grid;
   max-width: 620px;
   margin-inline: auto;
+  scroll-margin-top: 28px;
   gap: 20px;
   padding: clamp(22px, 4vw, 30px);
 }
@@ -3644,11 +3674,17 @@ code {
 
   .nav {
     align-items: flex-start;
+    flex-direction: column;
     gap: 18px;
   }
 
   .brand {
-    align-self: center;
+    align-self: flex-start;
+  }
+
+  .nav-actions {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .hero-grid {

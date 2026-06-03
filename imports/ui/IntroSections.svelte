@@ -40,6 +40,10 @@
             {/each}
           </select>
         </label>
+        <a class="github-link" href="https://github.com/wolf3c/TraceMind" target="_blank" rel="noreferrer">GitHub</a>
+        {#if !userId}
+          <a class="button nav-login-link" href="#login">{$t("Log in")}</a>
+        {/if}
         {#if userId}
           <button class="ghost" type="button" onclick={logout}>{$t("Log out")}</button>
         {/if}
@@ -55,7 +59,7 @@
         </h1>
         <p class="lede">{$t("TraceMind turns real user behavior into daily health, AI-readable evidence, and MCP tools so your Coding Agent can see what changed, what users did, and what to improve next.")}</p>
         <div class="hero-actions">
-          <a href="#console" class="button">{$t("Let Agent set it up")}</a>
+          <a href={userId ? "#console" : "#login"} class="button">{$t("Let Agent set it up")}</a>
           <a href={setupDocsUrl} class="button secondary" target="_blank" rel="noreferrer">{$t("View setup docs")}</a>
         </div>
         <p class="hero-proof">{$t("Prompt-based setup · AI-readable evidence · independent MCP token authorization")}</p>

@@ -3913,9 +3913,10 @@ projectKey: tm_proj_sensitive`,
       }
       assert.ok(sourceRoot, 'Could not find TraceMind source root.');
 
-      const [appSource, authPanelSource, cssSource] = await Promise.all([
+      const [appSource, authPanelSource, introSource, cssSource] = await Promise.all([
         readFile(path.join(sourceRoot, 'imports/ui/App.svelte'), 'utf8'),
         readFile(path.join(sourceRoot, 'imports/ui/AuthPanel.svelte'), 'utf8'),
+        readFile(path.join(sourceRoot, 'imports/ui/IntroSections.svelte'), 'utf8'),
         readFile(path.join(sourceRoot, 'client/main.css'), 'utf8'),
       ]);
 
@@ -3927,13 +3928,19 @@ projectKey: tm_proj_sensitive`,
       assert.match(appSource, /codeRequested=\{loginCodeRequested\}/);
       assert.match(appSource, /Meteor\.loginWithGithub[\s\S]*requestPermissions:\s*\[\s*"user:email"\s*\]/);
       assert.match(authPanelSource, /class="auth-header"[\s\S]*Sign in to TraceMind/);
+      assert.match(authPanelSource, /id="login"[\s\S]*class="auth-panel card-panel"/);
       assert.match(authPanelSource, /class="status-alert auth-status-alert"/);
       assert.match(authPanelSource, /onclick=\{dismissStatus\}/);
       assert.match(authPanelSource, /Continue with Google[\s\S]*Continue with GitHub[\s\S]*or use your email[\s\S]*class="email-code-request"[\s\S]*id="email"[\s\S]*Send code/);
       assert.match(authPanelSource, /\{#if codeRequested\}[\s\S]*id="login-code"[\s\S]*Log in[\s\S]*\{\/if\}/);
+      assert.match(introSource, /href=\{userId \? "#console" : "#login"\}[\s\S]*Let Agent set it up/);
+      assert.match(introSource, /\{#if !userId\}[\s\S]*href="#login"[\s\S]*>\{\$t\("Log in"\)\}<\/a>[\s\S]*\{\/if\}/);
+      assert.match(introSource, /href="https:\/\/github\.com\/wolf3c\/TraceMind"[\s\S]*target="_blank"[\s\S]*GitHub/);
       assert.doesNotMatch(cssSource, /\.status-alert\s*\{[^}]*position:\s*fixed/s);
+      assert.match(cssSource, /\.nav-login-link\s*\{/);
+      assert.match(cssSource, /\.github-link\s*\{/);
       assert.match(cssSource, /\.oauth-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
-      assert.match(cssSource, /\.auth-panel\s*\{[^}]*margin-inline:\s*auto/s);
+      assert.match(cssSource, /\.auth-panel\s*\{[^}]*margin-inline:\s*auto[\s\S]*scroll-margin-top:/s);
       assert.match(cssSource, /\.email-code-request\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto/s);
     });
   });
