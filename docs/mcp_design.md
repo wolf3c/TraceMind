@@ -71,7 +71,7 @@ Input:
 
 ### `tracemind.summary`
 
-汇总最近语义事件样本，返回样本内总事件数、事件分布、路径分布、去重用户数、去重设备数和 DAU。`limit` 默认 200，最大 500；`summary.totalEvents`、`topActions` 和 `dailyActiveUsers` 都是样本口径，不能当作自然日全量指标。返回值包含 `summarySample`，说明实际样本大小、是否因上限截断，以及自然日全量指标应使用 `tracemind.project_health`。返回值也包含 `presence`，用于分析当前在线用户、在线 session、最近在线、总在线时长、平均 session 时长，以及按 path/source 聚合的停留时长。Presence 来自 `/api/presence` 和 `tracemind_presence_sessions`，不是 semantic event。
+汇总最近语义事件样本，返回样本内总事件数、事件分布、路径分布、去重用户数、去重设备数和 DAU。`limit` 默认 200，最大 500；`summary.totalEvents`、`topActions` 和 `dailyActiveUsers` 都是样本口径，不能当作自然日全量指标。`summary.topActions` 保留原始 actionKey 排行；分析用户意图时优先读取 `summary.topIntentActions`，高频输入框、表单字段等活动读取 `summary.topFieldInteractions`，避免把字段编辑噪声误读成提交意图。返回值包含 `summarySample`，说明实际样本大小、是否因上限截断，以及自然日全量指标应使用 `tracemind.project_health`。返回值也包含 `presence`，用于分析当前在线用户、在线 session、最近在线、总在线时长、平均 session 时长，以及按 path/source 聚合的停留时长。Presence 来自 `/api/presence` 和 `tracemind_presence_sessions`，不是 semantic event。
 
 Input:
 
@@ -842,7 +842,7 @@ Input:
 
 1. 调用 `tracemind.project_info` 确认当前 MCP 绑定项目。
 2. 调用 `tracemind.project_health` 获取日报健康、当前报告窗口的对比变化、需关注项和上报健康；需要实时态势时并列调用 `tracemind.recent_online`。
-3. 调用 `tracemind.summary` 获取相关时间窗口内的样本概览、DAU/设备数线索和 presence 在线时长；读取 `summarySample`，并把 `summary.totalEvents`、`topActions`、`dailyActiveUsers` 标注为样本口径。
+3. 调用 `tracemind.summary` 获取相关时间窗口内的样本概览、DAU/设备数线索和 presence 在线时长；读取 `summarySample`，并把 `summary.totalEvents`、`topActions`、`dailyActiveUsers` 标注为样本口径。解释用户意图时优先看 `topIntentActions`，把 `topFieldInteractions` 作为输入框/表单字段交互噪声或弱信号单独说明。
 4. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
 5. 只有当语义事件含义不够或需要排查 30 天内采集问题时，调用 `tracemind.query_raw_behaviors`；超过明细窗口时继续使用语义事件、`summary` 和 `project_health`。
 6. 当开发者发现问题或提出想法时，先询问是否需要上报；若开发者明确要求上报，收集脱敏摘要和证据引用后调用 `tracemind.submit_feedback`。

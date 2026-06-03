@@ -165,10 +165,38 @@ export function buildSemanticEvent(behavior) {
   };
 }
 
+const EDITABLE_TARGET_TAGS = new Set(['input', 'select', 'textarea']);
+const BUTTON_INPUT_TYPES = new Set(['button', 'submit', 'reset', 'image']);
+
+function isEditableTarget(event) {
+  const tag = cleanText(event.targetTag).toLowerCase();
+  const type = cleanText(event.target?.type).toLowerCase();
+  if (tag === 'input') return !BUTTON_INPUT_TYPES.has(type);
+  if (EDITABLE_TARGET_TAGS.has(tag)) return true;
+  if (type && !BUTTON_INPUT_TYPES.has(type)) return true;
+  return event.target?.isContentEditable === true;
+}
+
+function summarizeActionEntry(event) {
+  return {
+    actionKey: event.actionKey,
+    count: 0,
+    eventType: event.eventType,
+    targetHash: event.targetHash || '',
+    targetTag: event.targetTag || '',
+  };
+}
+
+function sortedActionEntries(actions) {
+  return Object.values(actions).sort((a, b) => b.count - a.count);
+}
+
 export function summarizeSemanticEvents(events) {
   const counts = {};
   const paths = {};
   const actions = {};
+  const intentActions = {};
+  const fieldInteractions = {};
   const activeUsersByDay = {};
   const uniqueUsers = new Set();
   const uniqueDevices = new Set();
@@ -178,6 +206,13 @@ export function summarizeSemanticEvents(events) {
     paths[event.path] = (paths[event.path] || 0) + 1;
     if (event.actionKey) {
       actions[event.actionKey] = (actions[event.actionKey] || 0) + 1;
+      if (event.eventType === 'input' || (event.eventType === 'click' && isEditableTarget(event))) {
+        fieldInteractions[event.actionKey] = fieldInteractions[event.actionKey] || summarizeActionEntry(event);
+        fieldInteractions[event.actionKey].count += 1;
+      } else if (['click', 'submit', 'custom'].includes(event.eventType)) {
+        intentActions[event.actionKey] = intentActions[event.actionKey] || summarizeActionEntry(event);
+        intentActions[event.actionKey].count += 1;
+      }
     }
     const actorId = event.userId || event.anonymousId;
     if (actorId) {
@@ -212,6 +247,8 @@ export function summarizeSemanticEvents(events) {
     topEvents,
     topPaths,
     topActions,
+    topIntentActions: sortedActionEntries(intentActions),
+    topFieldInteractions: sortedActionEntries(fieldInteractions),
     ...summarizeTrafficAttribution(events, { limit: 5 }),
   };
 }

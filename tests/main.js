@@ -2245,7 +2245,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.'));
       assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
-      assert.ok(guidance.structuredContent.workflow.includes('Treat tracemind.summary results as sampled evidence: summary.totalEvents, topActions, and dailyActiveUsers are derived from the returned semantic-event sample, not full-day totals.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Treat tracemind.summary results as sampled evidence: summary.totalEvents, topActions, and dailyActiveUsers are derived from the returned semantic-event sample, not full-day totals. Prefer topIntentActions for user-intent interpretation; use topFieldInteractions to explain high-frequency input or editable-field noise.'));
       assert.ok(guidance.structuredContent.workflow.includes('If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.some((item) => item.includes('Respect data retention windows')));
@@ -4285,6 +4285,86 @@ projectKey: tm_proj_sensitive`,
     assert.deepStrictEqual(summary.dailyActiveUsers[0], { date: '2026-05-06', count: 2 });
   });
 
+  it('separates intent actions from field interaction noise in semantic summaries', function () {
+    const summary = summarizeSemanticEvents([
+      {
+        eventType: 'input',
+        path: '/app/chat',
+        actionKey: 'web:/app/chat:input:target:id:chat-input',
+        targetHash: 'tm_target_input',
+        targetTag: 'TEXTAREA',
+      },
+      {
+        eventType: 'input',
+        path: '/app/chat',
+        actionKey: 'web:/app/chat:input:target:id:chat-input',
+        targetHash: 'tm_target_input',
+        targetTag: 'TEXTAREA',
+      },
+      {
+        eventType: 'click',
+        path: '/app/chat',
+        actionKey: 'web:/app/chat:click:target:id:chat-input',
+        targetHash: 'tm_target_input',
+        targetTag: 'TEXTAREA',
+      },
+      {
+        eventType: 'click',
+        path: '/app/chat',
+        actionKey: 'web:/app/chat:click:target:text:/app/chat:button:send',
+        targetHash: 'tm_target_send',
+        targetTag: 'BUTTON',
+      },
+      {
+        eventType: 'click',
+        path: '/app/chat',
+        actionKey: 'web:/app/chat:click:target:id:submit-message',
+        targetHash: 'tm_target_submit',
+        targetTag: 'INPUT',
+        target: { type: 'submit' },
+      },
+    ]);
+
+    assert.deepStrictEqual(summary.topActions.map((item) => item.actionKey), [
+      'web:/app/chat:input:target:id:chat-input',
+      'web:/app/chat:click:target:id:chat-input',
+      'web:/app/chat:click:target:text:/app/chat:button:send',
+      'web:/app/chat:click:target:id:submit-message',
+    ]);
+    assert.deepStrictEqual(summary.topIntentActions, [
+      {
+        actionKey: 'web:/app/chat:click:target:text:/app/chat:button:send',
+        count: 1,
+        eventType: 'click',
+        targetHash: 'tm_target_send',
+        targetTag: 'BUTTON',
+      },
+      {
+        actionKey: 'web:/app/chat:click:target:id:submit-message',
+        count: 1,
+        eventType: 'click',
+        targetHash: 'tm_target_submit',
+        targetTag: 'INPUT',
+      },
+    ]);
+    assert.deepStrictEqual(summary.topFieldInteractions, [
+      {
+        actionKey: 'web:/app/chat:input:target:id:chat-input',
+        count: 2,
+        eventType: 'input',
+        targetHash: 'tm_target_input',
+        targetTag: 'TEXTAREA',
+      },
+      {
+        actionKey: 'web:/app/chat:click:target:id:chat-input',
+        count: 1,
+        eventType: 'click',
+        targetHash: 'tm_target_input',
+        targetTag: 'TEXTAREA',
+      },
+    ]);
+  });
+
   it('summarizes project health with rolling 24 hour windows and new-user retention cohorts', function () {
     const now = new Date('2026-05-09T12:00:00.000Z');
     const health = summarizeProjectHealth({
@@ -5854,6 +5934,8 @@ projectKey: tm_proj_sensitive`,
       });
       assert.ok(summary.content[0].text.includes('样本'));
       assert.ok(summary.content[0].text.includes('tracemind.project_health'));
+      assert.ok(summary.content[0].text.includes('主要意图动作'));
+      assert.ok(summary.content[0].text.includes('字段交互噪声'));
     });
 
     it('adds product usage instrumentation warnings to MCP summary only for product usage queries', async function () {

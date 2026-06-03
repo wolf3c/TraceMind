@@ -580,7 +580,7 @@ export function mcpTools(project) {
         properties: {
           limit: {
             type: 'number',
-            description: '最多统计多少条最近语义事件样本，默认 200，最大 500；summary.totalEvents/topActions/dailyActiveUsers 均为样本口径。',
+            description: '最多统计多少条最近语义事件样本，默认 200，最大 500；summary.totalEvents/topActions/dailyActiveUsers 均为样本口径。优先用 topIntentActions 判断用户意图，用 topFieldInteractions 解释输入框等字段交互噪声。',
           },
           startAt: { type: 'string', description: 'ISO 时间，查询起点。' },
           endAt: { type: 'string', description: 'ISO 时间，查询终点。' },
@@ -1210,7 +1210,7 @@ function guidanceResult(extra = {}) {
       'For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.',
       'Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
-      'Treat tracemind.summary results as sampled evidence: summary.totalEvents, topActions, and dailyActiveUsers are derived from the returned semantic-event sample, not full-day totals.',
+      'Treat tracemind.summary results as sampled evidence: summary.totalEvents, topActions, and dailyActiveUsers are derived from the returned semantic-event sample, not full-day totals. Prefer topIntentActions for user-intent interpretation; use topFieldInteractions to explain high-frequency input or editable-field noise.',
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
       'Respect data retention windows: capture delivery diagnostics are retained for 7 days; presence sessions and raw behaviors are retained for 30 days. If raw detail is unavailable outside those windows, use semantic events, summary, and daily/hourly project_health reports before assuming data loss.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
@@ -4595,7 +4595,7 @@ async function callMcpToolResult(project, name, args = {}, options = {}) {
       });
     }
     return textResult(
-      `TraceMind 找到 ${summary.totalEvents} 条语义事件样本（最多读取最近 ${summarySample.appliedLimit} 条；summary.totalEvents/topActions/dailyActiveUsers 均为样本口径，不替代 tracemind.project_health 全天指标）。主要事件类型：${summary.topEvents.map((item) => `${item.eventType}（${item.count}）`).join('，') || '暂无'}。`,
+      `TraceMind 找到 ${summary.totalEvents} 条语义事件样本（最多读取最近 ${summarySample.appliedLimit} 条；summary.totalEvents/topActions/dailyActiveUsers 均为样本口径，不替代 tracemind.project_health 全天指标）。主要事件类型：${summary.topEvents.map((item) => `${item.eventType}（${item.count}）`).join('，') || '暂无'}。主要意图动作：${summary.topIntentActions.map((item) => `${item.actionKey}（${item.count}）`).join('，') || '暂无'}；字段交互噪声：${summary.topFieldInteractions.map((item) => `${item.actionKey}（${item.count}）`).join('，') || '暂无'}。`,
       structuredContent,
     );
   }
