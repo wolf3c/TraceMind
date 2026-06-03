@@ -3935,10 +3935,13 @@ projectKey: tm_proj_sensitive`,
       assert.match(authPanelSource, /\{#if codeRequested\}[\s\S]*id="login-code"[\s\S]*Log in[\s\S]*\{\/if\}/);
       assert.match(introSource, /href=\{userId \? "#console" : "#login"\}[\s\S]*Let Agent set it up/);
       assert.match(introSource, /\{#if !userId\}[\s\S]*href="#login"[\s\S]*>\{\$t\("Log in"\)\}<\/a>[\s\S]*\{\/if\}/);
-      assert.match(introSource, /href="https:\/\/github\.com\/wolf3c\/TraceMind"[\s\S]*target="_blank"[\s\S]*GitHub/);
+      assert.match(introSource, /class="github-link"[\s\S]*href="https:\/\/github\.com\/wolf3c\/TraceMind"[\s\S]*aria-label="GitHub"[\s\S]*<svg/);
+      assert.ok(introSource.indexOf('class="github-link"') < introSource.indexOf('class="language-label"'));
       assert.doesNotMatch(cssSource, /\.status-alert\s*\{[^}]*position:\s*fixed/s);
       assert.match(cssSource, /\.nav-login-link\s*\{/);
-      assert.match(cssSource, /\.github-link\s*\{/);
+      assert.match(cssSource, /\.github-link\s*\{[\s\S]*width:\s*44px[\s\S]*height:\s*44px/s);
+      assert.match(cssSource, /\.nav-login-link\s*\{[\s\S]*min-height:\s*44px/s);
+      assert.match(cssSource, /\.language-label select\s*\{[\s\S]*min-height:\s*44px/s);
       assert.match(cssSource, /\.oauth-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
       assert.match(cssSource, /\.auth-panel\s*\{[^}]*margin-inline:\s*auto[\s\S]*scroll-margin-top:/s);
       assert.match(cssSource, /\.email-code-request\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto/s);

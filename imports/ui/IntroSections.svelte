@@ -32,6 +32,11 @@
         {/if}
       </div>
       <div class="nav-actions">
+        <a class="github-link" href="https://github.com/wolf3c/TraceMind" target="_blank" rel="noreferrer" aria-label="GitHub">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path fill="currentColor" d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.28-.01-1.22-.01-2.24-3.02.55-3.8-.74-4.04-1.41-.13-.34-.72-1.41-1.23-1.69-.42-.23-1.02-.78-.01-.8.94-.01 1.62.87 1.84 1.23 1.08 1.82 2.81 1.3 3.5.99.1-.78.42-1.3.76-1.6-2.67-.3-5.46-1.34-5.46-5.93 0-1.3.47-2.38 1.23-3.22-.12-.3-.54-1.53.12-3.18 0 0 1-.32 3.3 1.23.96-.27 1.98-.41 3-.41s2.04.14 3 .41c2.3-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.23 1.92 1.23 3.22 0 4.61-2.8 5.62-5.47 5.93.43.37.81 1.09.81 2.21 0 1.6-.01 2.9-.01 3.3 0 .32.22.69.82.58A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
         <label class="language-label" for="locale-select">
           <span class="sr-only">{$t("Language")}</span>
           <select id="locale-select" bind:value={selectedLocale} onchange={changeLocale}>
@@ -40,7 +45,6 @@
             {/each}
           </select>
         </label>
-        <a class="github-link" href="https://github.com/wolf3c/TraceMind" target="_blank" rel="noreferrer">GitHub</a>
         {#if !userId}
           <a class="button nav-login-link" href="#login">{$t("Log in")}</a>
         {/if}

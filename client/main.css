@@ -168,14 +168,22 @@ button:disabled {
 .github-link {
   display: inline-flex;
   align-items: center;
-  min-height: 38px;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
   border: 1px solid rgba(255, 253, 248, 0.3);
   border-radius: 6px;
-  padding: 0 12px;
+  padding: 0;
   color: #fffdf8;
   background: rgba(255, 255, 255, 0.08);
-  font-weight: 720;
   text-decoration: none;
+}
+
+.github-link svg {
+  width: 22px;
+  height: 22px;
 }
 
 .github-link:hover,
@@ -186,7 +194,7 @@ button:disabled {
 }
 
 .nav-login-link {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 14px;
   font-weight: 760;
   box-shadow: none;
@@ -1955,7 +1963,7 @@ button.copied {
 }
 
 .language-label select {
-  min-height: 38px;
+  min-height: 44px;
   padding: 8px 34px 8px 10px;
   color: var(--deep);
   background: rgba(255, 253, 248, 0.86);
