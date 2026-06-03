@@ -122,6 +122,8 @@ const AGENT_SETUP_SAFE_UPDATE_INSTRUCTIONS = [
 const MCP_TOOL_DISCOVERY_RECOVERY_GUIDANCE = 'If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again.';
 const MCP_TOOL_DISCOVERY_FALLBACK_GUIDANCE = 'Do not compensate for missing reporting tools by increasing tracemind.summary.limit; use the documented fallback source and mark the data gap until discovery is repaired.';
 const MCP_TOOL_DISCOVERY_RECOVERY_STEP = 'MCP tools/list or exact tool discovery if reporting tools are missing';
+const SUMMARY_DEFAULT_LIMIT = 200;
+const SUMMARY_MAX_LIMIT = 500;
 const SERVER_PROJECT_KEY_ENV_VAR = 'TRACEMIND_PROJECT_KEY';
 const SERVER_DEFAULT_SOURCE_KEY = 'billing-api';
 const FORBIDDEN_ANALYTICS_KEYS = [
@@ -572,13 +574,13 @@ export function mcpTools(project) {
     {
       name: 'tracemind.summary',
       title: projectScopedTitle('TraceMind Behavior Summary', project),
-      description: projectScopedDescription('汇总当前产品语义行为事件，支持非自然日时间窗、功能/路径/来源过滤和证据聚合；用于下钻分析，不替代 Dashboard 日报口径。', project),
+      description: projectScopedDescription('汇总当前产品最近语义事件样本，支持非自然日时间窗、功能/路径/来源过滤和证据聚合；默认读取 200 条，最大 500 条，用于下钻分析，不替代 Dashboard 日报口径或 project_health。', project),
       inputSchema: {
         type: 'object',
         properties: {
           limit: {
             type: 'number',
-            description: '最多统计多少条最近语义事件，默认 200。',
+            description: '最多统计多少条最近语义事件样本，默认 200，最大 500；summary.totalEvents/topActions/dailyActiveUsers 均为样本口径。',
           },
           startAt: { type: 'string', description: 'ISO 时间，查询起点。' },
           endAt: { type: 'string', description: 'ISO 时间，查询终点。' },
@@ -670,6 +672,28 @@ function safeLimit(value, fallback, max) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return fallback;
   return Math.min(Math.floor(number), max);
+}
+
+function requestedLimitValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return Math.floor(number);
+}
+
+function summarySampleMetadata(args, events, appliedLimit) {
+  const requestedLimit = requestedLimitValue(args.limit);
+  return {
+    source: 'tracemind_semantic_events',
+    mode: 'recent_semantic_event_sample',
+    requestedLimit,
+    defaultLimit: SUMMARY_DEFAULT_LIMIT,
+    appliedLimit,
+    maxLimit: SUMMARY_MAX_LIMIT,
+    sampleSize: events.length,
+    limitCapped: requestedLimit !== null && requestedLimit > appliedLimit,
+    totalsAreSampled: true,
+    fullDayMetricsTool: 'tracemind.project_health',
+  };
 }
 
 let productUsageConfig = null;
@@ -1152,7 +1176,7 @@ function guidanceResult(extra = {}) {
       {
         name: 'Daily operations review',
         prompt: 'Review the Dashboard-aligned daily health report, trend changes, attention items, traffic, active users, sessions, active time, events, and delivery health.',
-        steps: ['tracemind.project_info', MCP_TOOL_DISCOVERY_RECOVERY_STEP, 'tracemind.project_health', 'tracemind.recent_online if the user asks about current online users or the last 30 minutes', 'tracemind.summary/query_events only for non-natural-day windows or evidence drilldown'],
+        steps: ['tracemind.project_info', MCP_TOOL_DISCOVERY_RECOVERY_STEP, 'tracemind.project_health', 'tracemind.recent_online if the user asks about current online users or the last 30 minutes', 'tracemind.summary/query_events only for non-natural-day windows or evidence drilldown', 'treat tracemind.summary totals as sample-derived when used for fallback evidence'],
       },
       {
         name: 'Last 24 hours operations review',
@@ -1186,6 +1210,7 @@ function guidanceResult(extra = {}) {
       'For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.',
       'Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
+      'Treat tracemind.summary results as sampled evidence: summary.totalEvents, topActions, and dailyActiveUsers are derived from the returned semantic-event sample, not full-day totals.',
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
       'Respect data retention windows: capture delivery diagnostics are retained for 7 days; presence sessions and raw behaviors are retained for 30 days. If raw detail is unavailable outside those windows, use semantic events, summary, and daily/hourly project_health reports before assuming data loss.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
@@ -1415,6 +1440,14 @@ function checkAgentSetupResult(args = {}) {
       ],
     },
     {
+      code: 'missing_summary_sample_guidance',
+      message: 'Local rules should tell agents that tracemind.summary totals are sample-derived and should be interpreted through summarySample.',
+      patterns: [
+        /summarySample[\s\S]{0,180}(sample-derived|sampled|样本)/i,
+        /tracemind\.summary[\s\S]{0,180}(sample-derived|sampled|样本)[\s\S]{0,180}summarySample/i,
+      ],
+    },
+    {
       code: 'missing_project_binding',
       message: 'Local rules should include TraceMind project binding checks with Project ID, expected MCP server, and tracemind.project_info verification.',
       patterns: [/TraceMind Project Binding/i, /TraceMind project binding/i, /Project ID[\s\S]{0,240}Expected MCP server/i],
@@ -1471,6 +1504,9 @@ function checkAgentSetupResult(args = {}) {
   }
   if (findingCodes.has('missing_mcp_tool_discovery_recovery_guidance')) {
     recommendedActions.push('Add MCP tool discovery recovery guidance for missing reporting tools: read tools/list or retry exact tool discovery, refresh connector/session/MCP config/token if needed, and do not increase summary.limit as a substitute.');
+  }
+  if (findingCodes.has('missing_summary_sample_guidance')) {
+    recommendedActions.push('Add summarySample guidance: tracemind.summary totals are sample-derived and full-day metrics should come from tracemind.project_health.');
   }
   recommendedActions.push('Call tracemind.agent_guidance to confirm the current authority version before instrumentation work.');
   recommendedActions.push('Call tracemind.capture_setup for the target platform and use registry install commands when distributionMode is registry.');
@@ -4539,12 +4575,15 @@ async function callMcpToolResult(project, name, args = {}, options = {}) {
   }
 
   if (name === 'tracemind.summary') {
-    const events = await queryProjectEvents(project, { ...args, limit: safeLimit(args.limit, 200, 500) });
+    const appliedLimit = safeLimit(args.limit, SUMMARY_DEFAULT_LIMIT, SUMMARY_MAX_LIMIT);
+    const events = await queryProjectEvents(project, { ...args, limit: appliedLimit });
     const presenceSessions = await loadProjectPresenceSessions(project);
     const summary = summarizeSemanticEvents(events);
+    const summarySample = summarySampleMetadata(args, events, appliedLimit);
     const structuredContent = {
       project: { _id: project._id, name: project.name },
       summary,
+      summarySample,
       presence: summarizePresenceSessions(presenceSessions),
       eventDefinitions: EVENT_DEFINITIONS,
     };
@@ -4556,7 +4595,7 @@ async function callMcpToolResult(project, name, args = {}, options = {}) {
       });
     }
     return textResult(
-      `TraceMind 找到 ${summary.totalEvents} 条语义事件。主要事件类型：${summary.topEvents.map((item) => `${item.eventType}（${item.count}）`).join('，') || '暂无'}。`,
+      `TraceMind 找到 ${summary.totalEvents} 条语义事件样本（最多读取最近 ${summarySample.appliedLimit} 条；summary.totalEvents/topActions/dailyActiveUsers 均为样本口径，不替代 tracemind.project_health 全天指标）。主要事件类型：${summary.topEvents.map((item) => `${item.eventType}（${item.count}）`).join('，') || '暂无'}。`,
       structuredContent,
     );
   }

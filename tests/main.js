@@ -344,6 +344,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('`tracemind.recent_online` 查看实时在线态势'));
       assert.ok(prompt.includes('功能使用分析'));
       assert.ok(prompt.includes('异常或下降原因分析'));
+      assert.ok(prompt.includes('必须按 `summarySample` 把 `tracemind.summary` 的 totals 视为样本口径'));
       assert.ok(prompt.includes('如果当前 active tool list 看不到 `tracemind.project_health`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback`'));
       assert.ok(prompt.includes('先读取 MCP `tools/list` 或按精确工具名重新 discovery'));
       assert.ok(prompt.includes('不要通过增大 `tracemind.summary.limit` 来代偿缺失的 reporting tools'));
@@ -402,6 +403,7 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('`tracemind.recent_online` for real-time online status'));
       assert.ok(prompt.includes('feature usage analysis'));
       assert.ok(prompt.includes('anomaly or drop investigation'));
+      assert.ok(prompt.includes('Treat `tracemind.summary` totals as sample-derived according to `summarySample`'));
       assert.ok(prompt.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
       assert.ok(prompt.includes('read MCP `tools/list` or retry discovery with the exact tool name'));
       assert.ok(prompt.includes('Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`'));
@@ -494,7 +496,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.06.01.3'));
+      assert.ok(skill.includes('version: 2026.06.03.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -520,6 +522,8 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('## Product Behavior Analysis Workflows'));
       assert.ok(skill.includes('tracemind.project_health'));
       assert.ok(skill.includes('tracemind.recent_online'));
+      assert.ok(skill.includes('summarySample'));
+      assert.ok(skill.includes('sample-derived evidence'));
       assert.ok(skill.includes('MCP Tool Discovery Recovery'));
       assert.ok(skill.includes('read MCP `tools/list` or retry discovery with the exact tool name'));
       assert.ok(skill.includes('Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`'));
@@ -561,7 +565,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.check_agent_setup'));
       assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.ok(snippet.includes('Guidance version: `2026.06.01.3`'));
+      assert.ok(snippet.includes('Guidance version: `2026.06.03.1`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -596,6 +600,8 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('TraceMind internal product usage dogfood variables'));
       assert.ok(snippet.includes('tracemind.project_health'));
       assert.ok(snippet.includes('tracemind.recent_online'));
+      assert.ok(snippet.includes('summarySample'));
+      assert.ok(snippet.includes('sample-derived evidence'));
       assert.ok(snippet.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
       assert.ok(snippet.includes('Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`'));
       assert.ok(snippet.includes('tracemind.submit_feedback'));
@@ -605,7 +611,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.ok(snippet.includes('tracemind.check_agent_setup'));
       assert.ok(snippet.includes('agentSetupNotice'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.06.01.3');
+      assert.strictEqual(manifest.guidanceVersion, '2026.06.03.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -631,6 +637,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.platforms.includes('server_http'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_info'));
       assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
+      assert.ok(manifest.updatePolicy.includes('Treat tracemind.summary totals as sample-derived according to summarySample'));
       assert.ok(manifest.updatePolicy.includes('read MCP tools/list or retry discovery with the exact tool name'));
       assert.ok(manifest.updatePolicy.includes('Do not compensate for missing reporting tools by increasing tracemind.summary.limit'));
       assert.ok(manifest.updatePolicy.includes('operations review uses dashboard-aligned project_health/recent_online before instrumentation setup'));
@@ -2181,6 +2188,8 @@ describe('TraceMind', function () {
       assert.ok(projectTools.some((tool) => (
         tool.name === 'tracemind.summary'
         && tool.description.includes('非自然日时间窗')
+        && tool.description.includes('最近语义事件样本')
+        && tool.description.includes('最大 500')
         && tool.description.includes('不替代 Dashboard 日报口径')
       )));
       assert.ok(projectTools.some((tool) => (
@@ -2218,10 +2227,10 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.01.3');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.03.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
-      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.01.3');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.03.1');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
@@ -2236,6 +2245,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.'));
       assert.ok(guidance.structuredContent.workflow.includes('Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Treat tracemind.summary results as sampled evidence: summary.totalEvents, topActions, and dailyActiveUsers are derived from the returned semantic-event sample, not full-day totals.'));
       assert.ok(guidance.structuredContent.workflow.includes('If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.some((item) => item.includes('Respect data retention windows')));
@@ -2254,6 +2264,7 @@ describe('TraceMind', function () {
       assert.ok(dailyOperationsWorkflow.steps.includes('tracemind.project_health'));
       assert.ok(dailyOperationsWorkflow.steps.some((step) => step.includes('tools/list or exact tool discovery if reporting tools are missing')));
       assert.ok(dailyOperationsWorkflow.steps.includes('tracemind.summary/query_events only for non-natural-day windows or evidence drilldown'));
+      assert.ok(dailyOperationsWorkflow.steps.includes('treat tracemind.summary totals as sample-derived when used for fallback evidence'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_mcp_'));
       assert.ok(!JSON.stringify(guidance.structuredContent).includes('tm_proj_'));
 
@@ -2368,7 +2379,7 @@ describe('TraceMind', function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
       const currentRules = `---
-version: 2026.06.01.3
+version: 2026.06.03.1
 ---
 TraceMind Project Binding
 Project ID: project-agent-setup-check
@@ -2382,6 +2393,7 @@ Treat latestSdk.sourceRef and contentHash as SDK source of truth.
 For server_node, server_python, and server_http setup, run returned preDeployChecks and postDeployVerification after deployment.
 Use the returned public projectKey only for capture writes; never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.
 When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.
+Treat tracemind.summary totals as sample-derived according to summarySample; do not use summary.totalEvents, topActions, or dailyActiveUsers as full-day totals.
 If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing reporting tools by increasing tracemind.summary.limit.`;
 
       const empty = await callMcpTool(project, 'tracemind.check_agent_setup', {});
@@ -2393,14 +2405,14 @@ If reporting tools such as tracemind.project_health, tracemind.recent_online, tr
       const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules,
         agentInstructionContent: currentRules,
-        manifestContent: JSON.stringify({ guidanceVersion: '2026.06.01.3' }),
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.06.03.1' }),
       });
       assert.strictEqual(current.structuredContent.status, 'current');
       assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
 
       const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('version: 2026.06.01.3', 'version: 2026.05.17.7'),
+        skillContent: currentRules.replace('version: 2026.06.03.1', 'version: 2026.05.17.7'),
         agentInstructionContent: currentRules,
       });
       assert.strictEqual(outdated.structuredContent.status, 'outdated');
@@ -2442,6 +2454,12 @@ If reporting tools such as tracemind.project_health, tracemind.recent_online, tr
       assert.strictEqual(missingToolDiscoveryRecovery.structuredContent.status, 'incomplete');
       assert.ok(missingToolDiscoveryRecovery.structuredContent.findings.some((finding) => finding.code === 'missing_mcp_tool_discovery_recovery_guidance'));
       assert.ok(missingToolDiscoveryRecovery.structuredContent.recommendedActions.some((action) => action.includes('tool discovery recovery')));
+
+      const missingSummarySampleGuidance = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('Treat tracemind.summary totals as sample-derived according to summarySample; do not use summary.totalEvents, topActions, or dailyActiveUsers as full-day totals.', 'Use summary for totals.'),
+      });
+      assert.strictEqual(missingSummarySampleGuidance.structuredContent.status, 'incomplete');
+      assert.ok(missingSummarySampleGuidance.structuredContent.findings.some((finding) => finding.code === 'missing_summary_sample_guidance'));
 
       const missingBinding = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules
@@ -2589,7 +2607,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
       assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.06.01.3');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.06.03.1');
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 30);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
@@ -3164,7 +3182,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
       assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.01.3');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.03.1');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
       assert.strictEqual(setup.structuredContent.webCaptureScript.latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.ok(setup.structuredContent.webCaptureScript.upgradePrompt.includes('window.TraceMind.status()'));
@@ -5791,6 +5809,51 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(summary.structuredContent.summary.uniqueUsers, 1);
       assert.strictEqual(summary.structuredContent.productUsageInstrumentation.enabled, true);
       assert.strictEqual(summary.structuredContent.productUsageInstrumentation.authoritative, true);
+    });
+
+    it('marks MCP summary totals as capped semantic-event samples', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const projectId = `project-summary-sample-${Date.now()}`;
+      const project = { _id: projectId, name: 'Summary Sample Project' };
+      const events = Array.from({ length: 501 }, (_, index) => ({
+        projectId,
+        eventType: index % 2 === 0 ? 'click' : 'page_view',
+        eventName: `sample_event_${index}`,
+        path: '/summary-sample',
+        actionKey: `web:/summary-sample:${index % 2 === 0 ? 'click' : 'page_view'}`,
+        anonymousId: `anon-${index % 7}`,
+        deviceId: `device-${index % 11}`,
+        occurredAt: new Date(Date.UTC(2026, 4, 21, 12, 0, index)),
+        createdAt: new Date(),
+      }));
+      await SemanticEvents.rawCollection().insertMany(events);
+
+      const summary = await callMcpTool(
+        project,
+        'tracemind.summary',
+        {
+          startAt: '2026-05-21T00:00:00.000Z',
+          endAt: '2026-05-21T23:59:59.999Z',
+          path: '/summary-sample',
+          limit: 1000,
+        },
+      );
+
+      assert.strictEqual(summary.structuredContent.summary.totalEvents, 500);
+      assert.deepStrictEqual(summary.structuredContent.summarySample, {
+        source: 'tracemind_semantic_events',
+        mode: 'recent_semantic_event_sample',
+        requestedLimit: 1000,
+        defaultLimit: 200,
+        appliedLimit: 500,
+        maxLimit: 500,
+        sampleSize: 500,
+        limitCapped: true,
+        totalsAreSampled: true,
+        fullDayMetricsTool: 'tracemind.project_health',
+      });
+      assert.ok(summary.content[0].text.includes('样本'));
+      assert.ok(summary.content[0].text.includes('tracemind.project_health'));
     });
 
     it('adds product usage instrumentation warnings to MCP summary only for product usage queries', async function () {

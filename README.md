@@ -8,7 +8,7 @@ TraceMind 的 MCP 查询路径面向三个高频客户问题：
 
 - 今天产品是否正常：先调用 `tracemind.project_info` 确认项目，再调用 `tracemind.project_health` 读取今日健康、较前一日变化、小时趋势、需关注项和上报健康。今天的日报基于已结束小时聚合，并与昨天同一小时段对比。
 - 现在是否有人在用：调用 `tracemind.recent_online` 查看近 30 分钟在线用户、5 分钟桶、地区 Top3、活跃页面 Top3 和高频事件 Top3。
-- 用户在做什么：在日报或实时态势判断大盘后，用 `tracemind.summary` 和 `tracemind.query_events` 按路径、事件名、设备来源、流量来源、用户或 session 下钻功能使用。
+- 用户在做什么：在日报或实时态势判断大盘后，用 `tracemind.summary` 和 `tracemind.query_events` 按路径、事件名、设备来源、流量来源、用户或 session 下钻功能使用；`summary` 返回最近语义事件样本，全天指标以 `project_health` 为准。
 - 用户从哪里来：先看 `project_health` 的 traffic sources，再用 `attributionSource`、`attributionMedium`、`attributionCampaign` 和 `landingPath` 过滤 `summary` / `query_events`，解释增长、下降或转化变化来自哪个渠道。
 - 为什么下降或哪里卡住：先用 `project_health` 锁定下降指标和时间窗口，再查 `query_events`，只有语义证据不足或需要排查采集问题时才查 `query_raw_behaviors`。
 
