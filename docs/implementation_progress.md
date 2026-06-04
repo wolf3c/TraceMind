@@ -222,6 +222,14 @@ Then add the capture snippet to a small test web page, generate several interact
 - Added sanitized hourly comparison series to project health and rendered compact in-card trends for active users, active sessions, average active time, and total events, with hover/click detail for the selected hour and yesterday's matching hour.
 - Added a full-site Web feedback widget that submits terminal user feedback through `window.TraceMind.submitFeedback` and the dedicated `/api/user-feedback` pipeline, keeping it separate from capture events and MCP developer feedback.
 
+## 2026-06-04
+
+### Completed
+
+- Added a completed-hour draft refresh job that checks projects with recent behavior, presence, semantic events, or delivery diagnostics every 5 minutes and updates today's `tracemind_project_daily_reports` draft from hourly rollups.
+- Changed today's manual project-health refresh to reuse the completed-hour draft path with per-project/date queue deduplication, so repeated clicks do not trigger redundant full-day hourly recomputation.
+- Kept final daily reports on the full recompute path while today's draft reports reuse older materialized hours and only force-refresh the most recent two completed hours.
+
 ## 2026-06-01
 
 ### Completed

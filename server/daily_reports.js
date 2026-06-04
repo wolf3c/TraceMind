@@ -28,6 +28,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const REPORT_TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
 const ACTOR_SET_VERSION = 1;
 const FINAL_REPORT_INTERVAL_MS = 60 * 60 * 1000;
+const HOURLY_DRAFT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const RECENT_COMPLETED_HOUR_COUNT = 2;
+
+const dailyDraftRefreshTasks = new Map();
+let hourlyDraftRefreshInProgress = false;
 
 function parseReportDate(reportDate) {
   const match = String(reportDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -275,7 +280,12 @@ async function ensureHourlyReports(projectId, startAt, endAt, { force = false, n
   );
 }
 
-export async function computeProjectDailyReport(projectId, reportDateInput, { final = false, force = false, now = new Date() } = {}) {
+export async function computeProjectDailyReport(projectId, reportDateInput, {
+  final = false,
+  force = false,
+  forceCurrentHourlyReports = final || force,
+  now = new Date(),
+} = {}) {
   const reportDate = reportDateInput || reportDateForDate(now);
   const previousReportDate = addReportDays(reportDate, -1);
   const existing = await ProjectDailyReports.findOneAsync({ projectId, reportDate });
@@ -288,7 +298,7 @@ export async function computeProjectDailyReport(projectId, reportDateInput, { fi
   const previousStartAt = new Date(startAt.getTime() - DAY_MS);
   const previousEndAt = new Date(previousStartAt.getTime() + comparisonDurationMs);
   const [currentHourlyReports, previousHourlyReports, deliveryReports] = await Promise.all([
-    ensureHourlyReports(projectId, startAt, sourceEndAt, { force: true, now: computedAt }),
+    ensureHourlyReports(projectId, startAt, sourceEndAt, { force: forceCurrentHourlyReports, now: computedAt }),
     ensureHourlyReports(projectId, previousStartAt, previousEndAt, { force, now: computedAt }),
     loadDayDeliveryReports(projectId, startAt, sourceEndAt),
   ]);
@@ -371,7 +381,7 @@ async function resolveCurrentReport(projectId, reportDate, now) {
     if (existing?.computedAt && now.getTime() - new Date(existing.computedAt).getTime() < DAILY_REPORT_DRAFT_MIN_REFRESH_MS) {
       return existing;
     }
-    return computeProjectDailyReport(projectId, reportDate, { final: false, now, force: true });
+    return refreshProjectDailyDraft(projectId, reportDate, { now, forceRecentCompletedHours: true });
   }
   return ensureReport(projectId, reportDate, { now, final: true });
 }
@@ -391,18 +401,142 @@ export async function resolveProjectDailyHealth(projectId, reportDateInput, { no
   return { report, previousReport, health };
 }
 
+function recentCompletedHourWindow(reportDate, now = new Date()) {
+  const { startAt, endAt } = reportDateBounds(reportDate);
+  const sourceEndAt = completedReportEnd(startAt, endAt, { final: false, now });
+  const recentStartMs = Math.max(
+    startAt.getTime(),
+    sourceEndAt.getTime() - RECENT_COMPLETED_HOUR_COUNT * HEALTH_ROLLUP_HOUR_MS,
+  );
+  return {
+    startAt,
+    sourceEndAt,
+    recentStartAt: new Date(recentStartMs),
+  };
+}
+
+async function distinctProjectIds(collection, query) {
+  const ids = await collection.rawCollection().distinct('projectId', query);
+  return ids.filter(Boolean).map(String);
+}
+
+async function recentActivityProjectIds(recentStartAt, sourceEndAt) {
+  const [rawProjectIds, semanticProjectIds, presenceProjectIds, deliveryProjectIds] = await Promise.all([
+    distinctProjectIds(RawBehaviors, {
+      occurredAt: { $gte: recentStartAt, $lt: sourceEndAt },
+    }),
+    distinctProjectIds(SemanticEvents, {
+      occurredAt: { $gte: recentStartAt, $lt: sourceEndAt },
+    }),
+    distinctProjectIds(PresenceSessions, {
+      startedAt: { $lt: sourceEndAt },
+      $or: [
+        { endedAt: { $gte: recentStartAt } },
+        { lastSeenAt: { $gte: recentStartAt } },
+        { endedAt: { $exists: false }, lastSeenAt: { $exists: false } },
+      ],
+    }),
+    distinctProjectIds(CaptureDeliveryReports, {
+      createdAt: { $gte: recentStartAt, $lt: sourceEndAt },
+    }),
+  ]);
+  const candidateIds = [...new Set([
+    ...rawProjectIds,
+    ...semanticProjectIds,
+    ...presenceProjectIds,
+    ...deliveryProjectIds,
+  ])];
+  if (!candidateIds.length) return [];
+  const projects = await Projects.find(
+    { _id: { $in: candidateIds } },
+    { fields: { _id: 1 } },
+  ).fetchAsync();
+  return projects.map((project) => project._id);
+}
+
+export async function refreshProjectDailyDraft(projectId, reportDateInput, {
+  now = new Date(),
+  forceRecentCompletedHours = true,
+} = {}) {
+  const reportDate = reportDateInput || reportDateForDate(now);
+  const today = reportDateForDate(now);
+  if (reportDate !== today) {
+    return ensureReport(projectId, reportDate, { now, final: true });
+  }
+
+  const { startAt, sourceEndAt, recentStartAt } = recentCompletedHourWindow(reportDate, now);
+  if (forceRecentCompletedHours && sourceEndAt.getTime() > startAt.getTime()) {
+    await ensureHourlyReports(projectId, recentStartAt, sourceEndAt, { force: true, now });
+  }
+
+  return computeProjectDailyReport(projectId, reportDate, {
+    final: false,
+    now,
+    forceCurrentHourlyReports: false,
+  });
+}
+
+export async function refreshCompletedHourDraftReports(now = new Date()) {
+  const reportDate = reportDateForDate(now);
+  const { startAt, sourceEndAt, recentStartAt } = recentCompletedHourWindow(reportDate, now);
+  if (sourceEndAt.getTime() <= startAt.getTime()) {
+    return { projectCount: 0, reportDate };
+  }
+
+  const projectIds = await recentActivityProjectIds(recentStartAt, sourceEndAt);
+  let projectCount = 0;
+  for (const projectId of projectIds) {
+    try {
+      await refreshProjectDailyDraft(projectId, reportDate, { now, forceRecentCompletedHours: true });
+      projectCount += 1;
+    } catch (error) {
+      console.error('[TraceMind] hourly draft report refresh failed', {
+        projectId,
+        message: error?.message || String(error),
+      });
+    }
+  }
+
+  return { projectCount, reportDate };
+}
+
+function dailyDraftRefreshKey(projectId, reportDate) {
+  return `${projectId}:${reportDate}`;
+}
+
 export function queueProjectDailyHealthRefresh(projectId, reportDateInput, { now = new Date() } = {}) {
   const reportDate = reportDateInput || reportDateForDate(now);
   const today = reportDateForDate(now);
   if (reportDate !== today) return false;
 
-  Meteor.defer(() => {
-    resolveCurrentReport(projectId, reportDate, new Date()).catch((error) => {
-      console.error('[TraceMind] daily report draft refresh failed', error);
+  const key = dailyDraftRefreshKey(projectId, reportDate);
+  if (dailyDraftRefreshTasks.has(key)) return true;
+
+  const task = new Promise((resolve) => {
+    Meteor.defer(() => {
+      resolve(refreshProjectDailyDraft(projectId, reportDate, {
+        now,
+        forceRecentCompletedHours: true,
+      }).catch((error) => {
+        console.error('[TraceMind] daily report draft refresh failed', error);
+        return null;
+      }));
     });
   });
+  dailyDraftRefreshTasks.set(key, task);
+  task.finally(() => dailyDraftRefreshTasks.delete(key));
 
   return true;
+}
+
+export async function drainDailyReportRefreshesForTest() {
+  while (dailyDraftRefreshTasks.size) {
+    await Promise.allSettled([...dailyDraftRefreshTasks.values()]);
+  }
+}
+
+export function dailyDraftRefreshTaskCountForTest() {
+  return dailyDraftRefreshTasks.size;
 }
 
 export async function ensureTraceMindIndexes() {
@@ -424,6 +558,7 @@ export async function ensureTraceMindIndexes() {
     Developers.rawCollection().createIndex({ email: 1 }, { unique: true, sparse: true, name: 'developer_email_unique' }),
     Developers.rawCollection().createIndex({ authToken: 1 }, { unique: true, sparse: true, name: 'developer_auth_token_unique' }),
     SemanticEvents.rawCollection().createIndex({ projectId: 1, occurredAt: -1 }),
+    SemanticEvents.rawCollection().createIndex({ occurredAt: -1, projectId: 1 }, { name: 'semantic_time_project' }),
     SemanticEvents.rawCollection().createIndex({ projectId: 1, eventName: 1, occurredAt: -1 }, { name: 'semantic_project_event_name_time' }),
     SemanticEvents.rawCollection().createIndex({ projectId: 1, eventType: 1, occurredAt: -1 }, { name: 'semantic_project_event_type_time' }),
     SemanticEvents.rawCollection().createIndex({ projectId: 1, actionKey: 1, occurredAt: -1 }, { name: 'semantic_project_action_time' }),
@@ -433,13 +568,17 @@ export async function ensureTraceMindIndexes() {
     PresenceSessions.rawCollection().createIndex({ projectId: 1, presenceId: 1 }, { unique: true, name: 'presence_project_presence_unique' }),
     PresenceSessions.rawCollection().createIndex({ projectId: 1, startedAt: -1 }),
     PresenceSessions.rawCollection().createIndex({ projectId: 1, lastSeenAt: -1 }),
+    PresenceSessions.rawCollection().createIndex({ lastSeenAt: -1, projectId: 1 }, { name: 'presence_last_seen_project' }),
+    PresenceSessions.rawCollection().createIndex({ endedAt: -1, projectId: 1 }, { name: 'presence_ended_project' }),
     RawBehaviors.rawCollection().createIndex({ projectId: 1, occurredAt: -1 }),
+    RawBehaviors.rawCollection().createIndex({ occurredAt: -1, projectId: 1 }, { name: 'raw_time_project' }),
     RawBehaviors.rawCollection().createIndex({ semanticStatus: 1, createdAt: 1 }, { name: 'raw_semantic_queue' }),
     RawBehaviors.rawCollection().createIndex({ semanticStatus: 1, semanticProcessingStartedAt: 1, createdAt: 1 }, { name: 'raw_semantic_claim_queue' }),
     RawBehaviors.rawCollection().createIndex({ projectId: 1, actionKey: 1, occurredAt: -1 }, { name: 'raw_project_action_time' }),
     RawBehaviors.rawCollection().createIndex({ projectId: 1, targetHash: 1, occurredAt: -1 }, { name: 'raw_project_target_time' }),
     RawBehaviors.rawCollection().createIndex({ projectId: 1, 'attribution.source': 1, occurredAt: -1 }, { name: 'raw_project_attribution_source_time' }),
     CaptureDeliveryReports.rawCollection().createIndex({ projectId: 1, createdAt: -1 }),
+    CaptureDeliveryReports.rawCollection().createIndex({ createdAt: -1, projectId: 1 }, { name: 'delivery_time_project' }),
     FeedbackReports.rawCollection().createIndex(
       { projectId: 1, mcpTokenId: 1, feedbackFingerprint: 1, createdAt: -1 },
       { name: 'feedback_project_token_fingerprint_time' },
@@ -502,4 +641,18 @@ export function startDailyReportJob() {
       console.error('[TraceMind] daily report finalization failed', error);
     });
   }, FINAL_REPORT_INTERVAL_MS);
+}
+
+export function startHourlyDraftReportJob() {
+  Meteor.setInterval(() => {
+    if (hourlyDraftRefreshInProgress) return;
+    hourlyDraftRefreshInProgress = true;
+    refreshCompletedHourDraftReports()
+      .catch((error) => {
+        console.error('[TraceMind] hourly draft report job failed', error);
+      })
+      .finally(() => {
+        hourlyDraftRefreshInProgress = false;
+      });
+  }, HOURLY_DRAFT_REFRESH_INTERVAL_MS);
 }

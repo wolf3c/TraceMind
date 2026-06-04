@@ -5343,6 +5343,11 @@ projectKey: tm_proj_sensitive`,
     let ingestPresencePayload;
     let computeProjectDailyReport;
     let ensureTraceMindIndexes;
+    let refreshProjectDailyDraft;
+    let refreshCompletedHourDraftReports;
+    let queueProjectDailyHealthRefresh;
+    let drainDailyReportRefreshesForTest;
+    let dailyDraftRefreshTaskCountForTest;
     let resolveProjectDailyHealth;
     let resolveProjectByMcpToken;
     let extractSemanticEventsOnce;
@@ -5361,6 +5366,11 @@ projectKey: tm_proj_sensitive`,
       ingestPresencePayload = captureRoutes.ingestPresencePayload;
       computeProjectDailyReport = dailyReports.computeProjectDailyReport;
       ensureTraceMindIndexes = dailyReports.ensureTraceMindIndexes;
+      refreshProjectDailyDraft = dailyReports.refreshProjectDailyDraft;
+      refreshCompletedHourDraftReports = dailyReports.refreshCompletedHourDraftReports;
+      queueProjectDailyHealthRefresh = dailyReports.queueProjectDailyHealthRefresh;
+      drainDailyReportRefreshesForTest = dailyReports.drainDailyReportRefreshesForTest;
+      dailyDraftRefreshTaskCountForTest = dailyReports.dailyDraftRefreshTaskCountForTest;
       resolveProjectDailyHealth = dailyReports.resolveProjectDailyHealth;
       resolveProjectByMcpToken = methods.resolveProjectByMcpToken;
       extractSemanticEventsOnce = semanticJobs.extractSemanticEventsOnce;
@@ -5429,6 +5439,7 @@ projectKey: tm_proj_sensitive`,
       ].forEach((name) => assert.ok(developerIndexes.has(name), `missing ${name}`));
       [
         'projectId_1_occurredAt_-1',
+        'raw_time_project',
         'raw_semantic_queue',
         'raw_semantic_claim_queue',
         'raw_project_action_time',
@@ -5437,6 +5448,7 @@ projectKey: tm_proj_sensitive`,
       ].forEach((name) => assert.ok(rawIndexes.has(name), `missing ${name}`));
       [
         'projectId_1_occurredAt_-1',
+        'semantic_time_project',
         'semantic_raw_behavior',
         'semantic_project_event_name_time',
         'semantic_project_event_type_time',
@@ -5448,8 +5460,11 @@ projectKey: tm_proj_sensitive`,
         'presence_project_presence_unique',
         'projectId_1_startedAt_-1',
         'projectId_1_lastSeenAt_-1',
+        'presence_last_seen_project',
+        'presence_ended_project',
       ].forEach((name) => assert.ok(presenceIndexes.has(name), `missing ${name}`));
       assert.ok(deliveryIndexes.has('projectId_1_createdAt_-1'));
+      assert.ok(deliveryIndexes.has('delivery_time_project'));
       [
         'feedback_project_token_fingerprint_time',
         'feedback_project_token_time',
@@ -6827,6 +6842,213 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(hourlyReports.length, 4);
       assert.ok(hourlyReports.every((hourlyReport) => hourlyReport.status === 'final'));
       assert.ok(hourlyReports.every((hourlyReport) => hourlyReport.activeActorKeys.every((key) => !key.includes('same-user'))));
+    });
+
+    it('refreshes completed-hour draft reports only for projects with recent activity', async function () {
+      this.timeout(5000);
+      const now = new Date('2026-05-12T18:20:00.000Z');
+      const activeProjectId = `project-hourly-auto-active-${Date.now()}`;
+      const inactiveProjectId = `project-hourly-auto-inactive-${Date.now()}`;
+      await ProjectDailyReports.removeAsync({ projectId: { $in: [activeProjectId, inactiveProjectId] } });
+      await ProjectHourlyReports.removeAsync({ projectId: { $in: [activeProjectId, inactiveProjectId] } });
+      await Projects.insertAsync({
+        _id: activeProjectId,
+        developerId: `developer-${activeProjectId}`,
+        name: 'Hourly Auto Active App',
+        projectKey: `tm_proj_hourly_auto_active_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      await Projects.insertAsync({
+        _id: inactiveProjectId,
+        developerId: `developer-${inactiveProjectId}`,
+        name: 'Hourly Auto Inactive App',
+        projectKey: `tm_proj_hourly_auto_inactive_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      await SemanticEvents.insertAsync({
+        projectId: activeProjectId,
+        eventType: 'custom',
+        eventName: 'recent_completed_hour',
+        anonymousId: 'auto-active-user',
+        sessionId: 'auto-active-session',
+        occurredAt: new Date('2026-05-12T17:10:00.000Z'),
+        createdAt: new Date('2026-05-12T17:10:00.000Z'),
+      });
+      await SemanticEvents.insertAsync({
+        projectId: inactiveProjectId,
+        eventType: 'custom',
+        eventName: 'outside_recent_completed_hours',
+        anonymousId: 'auto-inactive-user',
+        sessionId: 'auto-inactive-session',
+        occurredAt: new Date('2026-05-12T15:50:00.000Z'),
+        createdAt: new Date('2026-05-12T15:50:00.000Z'),
+      });
+
+      const result = await refreshCompletedHourDraftReports(now);
+      const activeReport = await ProjectDailyReports.findOneAsync({ projectId: activeProjectId, reportDate: '2026-05-13' });
+      const inactiveReport = await ProjectDailyReports.findOneAsync({ projectId: inactiveProjectId, reportDate: '2026-05-13' });
+
+      assert.ok(result.projectCount >= 1);
+      assert.strictEqual(result.reportDate, '2026-05-13');
+      assert.strictEqual(activeReport.status, 'draft');
+      assert.strictEqual(activeReport.current.eventCount, 1);
+      assert.strictEqual(inactiveReport, undefined);
+    });
+
+    it('refreshes today drafts without forcing older completed hourly reports', async function () {
+      this.timeout(5000);
+      const now = new Date('2026-05-12T21:20:00.000Z');
+      const projectId = `project-hourly-draft-reuse-${Date.now()}`;
+      const oldComputedAt = new Date('2026-05-12T18:00:00.000Z');
+      await ProjectDailyReports.removeAsync({ projectId });
+      await ProjectHourlyReports.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Hourly Draft Reuse App',
+        projectKey: `tm_proj_hourly_draft_reuse_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      await ProjectHourlyReports.insertAsync({
+        projectId,
+        hourKey: '2026-05-12T16:00:00.000Z',
+        hourStartAt: new Date('2026-05-12T16:00:00.000Z'),
+        hourEndAt: new Date('2026-05-12T17:00:00.000Z'),
+        timezone: 'Asia/Shanghai',
+        status: 'final',
+        computedAt: oldComputedAt,
+        sourceWindow: {
+          startAt: new Date('2026-05-12T16:00:00.000Z'),
+          endAt: new Date('2026-05-12T17:00:00.000Z'),
+        },
+        actorSetVersion: 1,
+        activeActorKeys: ['older-hour-actor'],
+        sessionKeys: [],
+        current: { eventCount: 99, activeUsers: 1, sessionCount: 0 },
+        rollup: { eventCounts: [{ label: 'cached_old_hour', count: 99 }] },
+        delivery: {},
+        createdAt: oldComputedAt,
+        updatedAt: oldComputedAt,
+      });
+      await ProjectHourlyReports.insertAsync({
+        projectId,
+        hourKey: '2026-05-12T20:00:00.000Z',
+        hourStartAt: new Date('2026-05-12T20:00:00.000Z'),
+        hourEndAt: new Date('2026-05-12T21:00:00.000Z'),
+        timezone: 'Asia/Shanghai',
+        status: 'final',
+        computedAt: oldComputedAt,
+        sourceWindow: {
+          startAt: new Date('2026-05-12T20:00:00.000Z'),
+          endAt: new Date('2026-05-12T21:00:00.000Z'),
+        },
+        actorSetVersion: 1,
+        activeActorKeys: ['recent-hour-stale-actor'],
+        sessionKeys: [],
+        current: { eventCount: 7, activeUsers: 1, sessionCount: 0 },
+        rollup: { eventCounts: [{ label: 'stale_recent_hour', count: 7 }] },
+        delivery: {},
+        createdAt: oldComputedAt,
+        updatedAt: oldComputedAt,
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'recent_hour_recomputed',
+        anonymousId: 'recent-hour-user',
+        occurredAt: new Date('2026-05-12T20:10:00.000Z'),
+        createdAt: new Date('2026-05-12T20:10:00.000Z'),
+      });
+
+      const report = await refreshProjectDailyDraft(projectId, '2026-05-13', {
+        now,
+        forceRecentCompletedHours: true,
+      });
+      const olderHour = await ProjectHourlyReports.findOneAsync({ projectId, hourKey: '2026-05-12T16:00:00.000Z' });
+      const recentHour = await ProjectHourlyReports.findOneAsync({ projectId, hourKey: '2026-05-12T20:00:00.000Z' });
+
+      assert.strictEqual(report.status, 'draft');
+      assert.strictEqual(report.comparisonWindow.currentHourCount, 5);
+      assert.strictEqual(report.current.eventCount, 100);
+      assert.strictEqual(olderHour.current.eventCount, 99);
+      assert.strictEqual(olderHour.computedAt.getTime(), oldComputedAt.getTime());
+      assert.strictEqual(recentHour.current.eventCount, 1);
+      assert.strictEqual(recentHour.computedAt.getTime(), now.getTime());
+    });
+
+    it('still forces full-day hourly reports for final daily reports', async function () {
+      const projectId = `project-final-hourly-force-${Date.now()}`;
+      const oldComputedAt = new Date('2026-05-12T18:00:00.000Z');
+      await ProjectDailyReports.removeAsync({ projectId });
+      await ProjectHourlyReports.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Final Hourly Force App',
+        projectKey: `tm_proj_final_hourly_force_${Date.now()}`,
+        createdAt: new Date(),
+      });
+      await ProjectHourlyReports.insertAsync({
+        projectId,
+        hourKey: '2026-05-12T16:00:00.000Z',
+        hourStartAt: new Date('2026-05-12T16:00:00.000Z'),
+        hourEndAt: new Date('2026-05-12T17:00:00.000Z'),
+        timezone: 'Asia/Shanghai',
+        status: 'final',
+        computedAt: oldComputedAt,
+        sourceWindow: {
+          startAt: new Date('2026-05-12T16:00:00.000Z'),
+          endAt: new Date('2026-05-12T17:00:00.000Z'),
+        },
+        actorSetVersion: 1,
+        activeActorKeys: ['stale-final-actor'],
+        sessionKeys: [],
+        current: { eventCount: 99, activeUsers: 1, sessionCount: 0 },
+        rollup: { eventCounts: [{ label: 'stale_final_hour', count: 99 }] },
+        delivery: {},
+        createdAt: oldComputedAt,
+        updatedAt: oldComputedAt,
+      });
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'final_hour_event',
+        anonymousId: 'final-hour-user',
+        occurredAt: new Date('2026-05-12T16:10:00.000Z'),
+        createdAt: new Date('2026-05-12T16:10:00.000Z'),
+      });
+
+      const report = await computeProjectDailyReport(projectId, '2026-05-13', {
+        final: true,
+        now: new Date('2026-05-13T18:20:00.000Z'),
+      });
+      const recomputedHour = await ProjectHourlyReports.findOneAsync({ projectId, hourKey: '2026-05-12T16:00:00.000Z' });
+
+      assert.strictEqual(report.status, 'final');
+      assert.strictEqual(report.current.eventCount, 1);
+      assert.strictEqual(recomputedHour.current.eventCount, 1);
+      assert.strictEqual(recomputedHour.computedAt.getTime(), new Date('2026-05-13T18:20:00.000Z').getTime());
+    });
+
+    it('deduplicates queued daily draft refreshes for the same project and report date', async function () {
+      const now = new Date('2026-05-12T18:20:00.000Z');
+      const projectId = `project-daily-refresh-dedupe-${Date.now()}`;
+      await ProjectDailyReports.removeAsync({ projectId });
+      await ProjectHourlyReports.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Daily Refresh Dedupe App',
+        projectKey: `tm_proj_daily_refresh_dedupe_${Date.now()}`,
+        createdAt: new Date(),
+      });
+
+      assert.strictEqual(queueProjectDailyHealthRefresh(projectId, '2026-05-13', { now }), true);
+      assert.strictEqual(queueProjectDailyHealthRefresh(projectId, '2026-05-13', { now }), true);
+      assert.strictEqual(dailyDraftRefreshTaskCountForTest(), 1);
+
+      await drainDailyReportRefreshesForTest();
+      assert.strictEqual(dailyDraftRefreshTaskCountForTest(), 0);
     });
 
     it('leaves today daily health empty before the first completed hour', async function () {
