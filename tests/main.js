@@ -5430,12 +5430,14 @@ projectKey: tm_proj_sensitive`,
       [
         'projectId_1_occurredAt_-1',
         'raw_semantic_queue',
+        'raw_semantic_claim_queue',
         'raw_project_action_time',
         'raw_project_target_time',
         'raw_project_attribution_source_time',
       ].forEach((name) => assert.ok(rawIndexes.has(name), `missing ${name}`));
       [
         'projectId_1_occurredAt_-1',
+        'semantic_raw_behavior',
         'semantic_project_event_name_time',
         'semantic_project_event_type_time',
         'semantic_project_action_time',
@@ -7257,11 +7259,71 @@ projectKey: tm_proj_sensitive`,
 
       await extractSemanticEventsOnce();
       const events = await SemanticEvents.find({ projectId }).fetchAsync();
+      const processedRaw = await RawBehaviors.findOneAsync({ projectId, path: '/pending' });
       const remainingRetry = await RawBehaviors.findOneAsync({ projectId, path: '/legacy' });
 
       assert.strictEqual(events.length, 1);
       assert.strictEqual(events[0].path, '/pending');
+      assert.strictEqual(processedRaw.semanticStatus, 'processed');
+      assert.strictEqual(processedRaw.semanticEventId, events[0]._id);
+      assert.strictEqual(processedRaw.semanticProcessingStartedAt, undefined);
       assert.strictEqual(remainingRetry.semanticStatus, 'retry');
+    });
+
+    it('prevents concurrent semantic extraction from duplicating one raw behavior', async function () {
+      const projectId = `project-semantic-concurrent-${Date.now()}`;
+      const rawId = await RawBehaviors.insertAsync({
+        projectId,
+        type: 'route_change',
+        path: '/app/one',
+        semanticStatus: 'pending',
+        occurredAt: new Date('2026-05-10T10:00:00.000Z'),
+        createdAt: new Date('2026-05-10T10:00:00.000Z'),
+      });
+
+      await Promise.all([
+        extractSemanticEventsOnce(),
+        extractSemanticEventsOnce(),
+      ]);
+
+      const events = await SemanticEvents.find({ rawBehaviorId: rawId }).fetchAsync();
+      const processedRaw = await RawBehaviors.findOneAsync(rawId);
+
+      assert.strictEqual(events.length, 1);
+      assert.strictEqual(events[0].path, '/app/one');
+      assert.strictEqual(processedRaw.semanticStatus, 'processed');
+      assert.strictEqual(processedRaw.semanticEventId, events[0]._id);
+    });
+
+    it('reuses existing semantic event for a pending raw behavior', async function () {
+      const projectId = `project-semantic-reuse-${Date.now()}`;
+      const rawId = await RawBehaviors.insertAsync({
+        projectId,
+        type: 'click',
+        path: '/reuse',
+        semanticStatus: 'pending',
+        occurredAt: new Date('2026-05-10T10:00:00.000Z'),
+        createdAt: new Date('2026-05-10T10:00:00.000Z'),
+      });
+      const existingEventId = await SemanticEvents.insertAsync({
+        projectId,
+        rawBehaviorId: rawId,
+        eventType: 'click',
+        eventName: 'click',
+        path: '/reuse',
+        occurredAt: new Date('2026-05-10T10:00:00.000Z'),
+        createdAt: new Date('2026-05-10T10:00:01.000Z'),
+      });
+
+      await extractSemanticEventsOnce();
+
+      const events = await SemanticEvents.find({ rawBehaviorId: rawId }).fetchAsync();
+      const processedRaw = await RawBehaviors.findOneAsync(rawId);
+
+      assert.strictEqual(events.length, 1);
+      assert.strictEqual(events[0]._id, existingEventId);
+      assert.strictEqual(processedRaw.semanticStatus, 'processed');
+      assert.strictEqual(processedRaw.semanticEventId, existingEventId);
     });
 
     it('records capture delivery stats separately from raw behavior', async function () {

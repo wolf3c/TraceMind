@@ -63,14 +63,18 @@ Do not expose MCP tokens, secrets, PII, raw prompts, raw user content, source di
 
 1. Confirm the time window. If the user did not specify one, use the last 7 days.
 2. Query feedback reports sorted by `createdAt` descending.
-3. Keep queries narrow:
+3. Treat reports with `status: "resolved"` as closed by default:
+   - Do not include resolved reports in the main `Triage` table or recommended next-action list.
+   - Count or briefly list resolved reports only in a separate resolved/background note.
+   - Include resolved reports in the main analysis only when the user explicitly asks to review resolved feedback, audit prior fixes, or check regressions.
+4. Keep queries narrow:
    - Filter by `createdAt`.
    - Add `projectId`, `projectName`, `type`, or `mcpTokenId` only when the user asks or the prior result is too broad.
    - Project only the fields needed for triage.
-4. If using MongoDB MCP, prefer read-only `find` or aggregation calls.
-5. If using `mongosh`, use `--quiet` and read-only commands unless the user explicitly authorizes a write.
-6. If the feedback references event IDs, raw behavior IDs, paths, `actionKeys`, `targetHashes`, sessions, or devices, query the relevant evidence only enough to validate the report shape.
-7. Summarize uncertainty explicitly. Do not claim a root cause when the evidence only supports a symptom.
+5. If using MongoDB MCP, prefer read-only `find` or aggregation calls.
+6. If using `mongosh`, use `--quiet` and read-only commands unless the user explicitly authorizes a write.
+7. If the feedback references event IDs, raw behavior IDs, paths, `actionKeys`, `targetHashes`, sessions, or devices, query the relevant evidence only enough to validate the report shape.
+8. Summarize uncertainty explicitly. Do not claim a root cause when the evidence only supports a symptom.
 
 ## Triage Rules
 
@@ -111,6 +115,9 @@ Return a concise brief with these sections:
 | Priority | Category | Issue | Evidence | Recommended action |
 | --- | --- | --- | --- | --- |
 | P1 | bug | ... | reports: ...; paths: ... | ... |
+
+**Resolved / Background**
+- ...
 
 **Needs Confirmation**
 - ...
