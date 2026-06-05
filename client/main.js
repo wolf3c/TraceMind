@@ -1,12 +1,15 @@
 import { Meteor } from 'meteor/meteor';
 import App from '../imports/ui/App.svelte';
 import { mount, unmount } from 'svelte';
+import { registerTraceMindPwa } from '../imports/ui/pwa_install';
 
 let app; // will hold the mounted instance
 
 window.TraceMindUserId = () => Meteor.userId();
 
 Meteor.startup(() => {
+  registerTraceMindPwa();
+
   const target = document.getElementById('app');
 
   // (Re)mount

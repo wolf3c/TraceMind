@@ -21,6 +21,7 @@
   import { locale, locales, t } from "./i18n/i18n";
   import ProductUpdateNotice from "./ProductUpdateNotice.svelte";
   import ProductUpdatesPage from "./ProductUpdatesPage.svelte";
+  import PwaInstallButton from "./PwaInstallButton.svelte";
   import ProjectActionNoticePanel from "./ProjectActionNoticePanel.svelte";
   import { buildProjectActionNotices } from "./project_action_notices";
   import ProjectHealthPanel from "./ProjectHealthPanel.svelte";
@@ -1404,6 +1405,7 @@
       {logout}
     />
     <ProductUpdateNotice {appVersion} canShowReminder={Boolean(userId)} />
+    <PwaInstallButton />
 
     <section id="console" class="console">
     {#if consoleState === "signed-out"}

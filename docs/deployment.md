@@ -128,6 +128,10 @@ After deployment, verify these URLs:
 - `https://tracemind-capture.pages.dev/capture.js` returns `200 OK` JavaScript directly, not a redirect, with `Content-Type: application/javascript`, `ETag`, `Access-Control-Allow-Origin: *`, `Cache-Control: public, max-age=60, must-revalidate`, no `Set-Cookie`, a non-empty body, and the current `scriptReleaseId`.
 - `https://tracemind-capture.pages.dev/capture.<sha256>.js` returns the same body with `Cache-Control: public, max-age=31536000, immutable`.
 - `https://tracemind.sandbox.galaxycloud.app/capture.js` returns a fallback JavaScript body with the current `scriptReleaseId`; Galaxy response headers are not the production cache-header compliance target.
+- `https://tracemind.sandbox.galaxycloud.app/site.webmanifest` returns valid JSON with `name` or `short_name`, `start_url: "/"`, `display: "standalone"`, `prefer_related_applications: false`, and PNG icons for 192x192 and 512x512 sizes.
+- `https://tracemind.sandbox.galaxycloud.app/service-worker.js` returns JavaScript that installs and activates at root scope without caching dashboard, MCP, capture, presence, feedback, or authenticated API data.
+- `https://tracemind.sandbox.galaxycloud.app/pwa/icon-192.png`, `/pwa/icon-512.png`, `/pwa/icon-maskable-192.png`, `/pwa/icon-maskable-512.png`, and `/pwa/apple-touch-icon.png` return PNG image bodies.
+- In Chrome or Edge DevTools, the Application panel shows the TraceMind manifest and service worker, and the browser install prompt becomes available on the app route. On iOS/iPadOS, verify Add to Home Screen uses the TraceMind title and icon.
 - `https://tracemind.sandbox.galaxycloud.app/mcp?mcpToken=tm_mcp_xxx` returns the MCP preview for a valid token.
 - A page using the capture snippet writes raw behavior records and semantic events.
 

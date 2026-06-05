@@ -5,6 +5,36 @@ const supportedProductUpdateLocales = ["en", "zh"];
 
 export const PRODUCT_UPDATES = [
   {
+    id: "2026-06-05-installable-pwa",
+    categoryLabel: {
+      en: "New feature notice",
+      zh: "新功能提醒",
+    },
+    moduleTitle: {
+      en: "Installable TraceMind app",
+      zh: "可安装的 TraceMind 应用",
+    },
+    summary: {
+      en: "TraceMind can now be installed from the browser, so users can open the console like an app.",
+      zh: "现在可以把 TraceMind 从浏览器安装到设备上，像打开 App 一样进入控制台。",
+    },
+    publishedAt: "2026-06-05",
+    details: [
+      {
+        en: "The Web console now ships a PWA manifest, app icons, and standalone window mode for desktop and mobile browser installs.",
+        zh: "Web 控制台新增 PWA manifest、应用图标和独立窗口模式，支持桌面和移动端浏览器安装。",
+      },
+      {
+        en: "The install entry opens the browser install prompt where supported; iOS and iPadOS show short Add to Home Screen guidance through the share menu.",
+        zh: "安装入口会在支持浏览器提示安装；iOS/iPadOS 会显示通过分享菜单添加到主屏幕的简短指引。",
+      },
+      {
+        en: "Privacy-safe: the PWA does not cache project data, MCP responses, capture APIs, or login-state content. Console data still loads through online requests.",
+        zh: "隐私安全：PWA 不缓存项目数据、MCP 响应、采集接口或登录态内容，控制台数据仍按在线请求加载。",
+      },
+    ],
+  },
+  {
     id: "2026-06-02-web-capture-script-updates",
     categoryLabel: {
       en: "New feature notice",

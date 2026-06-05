@@ -218,7 +218,6 @@ describe('TraceMind', function () {
       const update = PRODUCT_UPDATES.find((item) => item.id === '2026-06-02-web-capture-script-updates');
 
       assert.strictEqual(update.publishedAt, '2026-06-02');
-      assert.strictEqual(latestProductUpdate(PRODUCT_UPDATES).id, update.id);
       assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'en'), 'Web capture script updates');
       assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'zh-CN'), 'Web 采集脚本更新');
       assert.strictEqual(
@@ -229,6 +228,24 @@ describe('TraceMind', function () {
         'Web 接入继续使用稳定的 capture.js 地址，生产脚本由 Cloudflare Pages 分发，采集、在线和反馈数据仍写入 Galaxy API。',
         '项目健康和 MCP 会通过 sourceDetails.scriptReleaseId 发现仍在运行并上报的旧 Web Auto Capture 脚本，同时避免把没有近期上报的缓存猜成问题。',
         '看到提醒后，可以复制升级指令给 coding agent，让它获取最新 captureScriptUrl、检查固定 hash 脚本或缓存，并用一次真实行为验证完成。',
+      ]);
+    });
+
+    it('includes the installable PWA product update', function () {
+      const update = PRODUCT_UPDATES.find((item) => item.id === '2026-06-05-installable-pwa');
+
+      assert.strictEqual(update.publishedAt, '2026-06-05');
+      assert.strictEqual(latestProductUpdate(PRODUCT_UPDATES).id, update.id);
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'en'), 'Installable TraceMind app');
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'zh-CN'), '可安装的 TraceMind 应用');
+      assert.strictEqual(
+        localizedProductUpdateText(update.summary, 'zh'),
+        '现在可以把 TraceMind 从浏览器安装到设备上，像打开 App 一样进入控制台。',
+      );
+      assert.deepStrictEqual(localizedProductUpdateDetails(update.details, 'zh'), [
+        'Web 控制台新增 PWA manifest、应用图标和独立窗口模式，支持桌面和移动端浏览器安装。',
+        '安装入口会在支持浏览器提示安装；iOS/iPadOS 会显示通过分享菜单添加到主屏幕的简短指引。',
+        '隐私安全：PWA 不缓存项目数据、MCP 响应、采集接口或登录态内容，控制台数据仍按在线请求加载。',
       ]);
     });
 
@@ -301,6 +318,122 @@ describe('TraceMind', function () {
       assert.strictEqual(readDismissedProductUpdateId(storage), '2026-05-29-agent-health');
       assert.strictEqual(readDismissedProductUpdateId(blockedStorage), '');
       assert.strictEqual(writeDismissedProductUpdateId(blockedStorage, '2026-05-29-agent-health'), false);
+    });
+  });
+
+  describe('PWA installability', function () {
+    it('serves an installable web app manifest without user-identifying launch URLs', async function () {
+      if (!Meteor.isServer) return;
+
+      const response = await fetch(Meteor.absoluteUrl('/site.webmanifest'));
+      const manifest = await response.json();
+
+      assert.strictEqual(response.status, 200);
+      assert.strictEqual(manifest.name, 'TraceMind');
+      assert.strictEqual(manifest.short_name, 'TraceMind');
+      assert.strictEqual(manifest.id, '/');
+      assert.strictEqual(manifest.start_url, '/');
+      assert.strictEqual(manifest.scope, '/');
+      assert.strictEqual(manifest.display, 'standalone');
+      assert.strictEqual(manifest.prefer_related_applications, false);
+      assert.strictEqual(manifest.theme_color, '#0F2F2A');
+      assert.strictEqual(manifest.background_color, '#FFFDF8');
+      assert.ok(!manifest.id.includes('?'));
+      assert.ok(!manifest.id.includes('#'));
+      assert.ok(!manifest.start_url.includes('?'));
+      assert.ok(!manifest.start_url.includes('#'));
+
+      const requiredIcons = [
+        { sizes: '192x192', purpose: 'any' },
+        { sizes: '512x512', purpose: 'any' },
+        { sizes: '192x192', purpose: 'maskable' },
+        { sizes: '512x512', purpose: 'maskable' },
+      ];
+
+      requiredIcons.forEach((requiredIcon) => {
+        const icon = manifest.icons.find((candidate) => (
+          candidate.sizes === requiredIcon.sizes
+          && candidate.type === 'image/png'
+          && candidate.purpose === requiredIcon.purpose
+          && candidate.src.startsWith('/pwa/')
+        ));
+        assert.ok(icon, `missing ${requiredIcon.sizes} ${requiredIcon.purpose} PWA icon`);
+      });
+    });
+
+    it('serves manifest icon files as PNG assets', async function () {
+      if (!Meteor.isServer) return;
+
+      const manifestResponse = await fetch(Meteor.absoluteUrl('/site.webmanifest'));
+      const manifest = await manifestResponse.json();
+      const iconPaths = [
+        ...new Set([
+          ...manifest.icons.map((icon) => icon.src),
+          '/pwa/apple-touch-icon.png',
+        ]),
+      ];
+      const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+
+      for (const iconPath of iconPaths) {
+        const response = await fetch(Meteor.absoluteUrl(iconPath));
+        const body = new Uint8Array(await response.arrayBuffer());
+
+        assert.strictEqual(response.status, 200, `${iconPath} should be served`);
+        assert.deepStrictEqual(Array.from(body.slice(0, 8)), pngSignature, `${iconPath} should be a PNG`);
+      }
+    });
+
+    it('serves a conservative service worker without offline data caching rules', async function () {
+      if (!Meteor.isServer) return;
+
+      const response = await fetch(Meteor.absoluteUrl('/service-worker.js'));
+      const body = await response.text();
+
+      assert.strictEqual(response.status, 200);
+      assert.ok(body.includes('skipWaiting'));
+      assert.ok(body.includes('clients.claim'));
+      assert.ok(!body.includes('caches'));
+      assert.ok(!body.includes('CacheFirst'));
+      assert.ok(!body.includes('localStorage'));
+      assert.ok(!body.includes('indexedDB'));
+      assert.ok(!/\/api\/|\/mcp|\/capture\.js|\/api\/presence|\/api\/user-feedback/.test(body));
+    });
+
+    it('detects standalone browser display modes for install UI visibility', async function () {
+      const { isPwaStandalone } = await import('../imports/ui/pwa_install');
+
+      assert.strictEqual(isPwaStandalone({
+        matchMedia: () => ({ matches: true }),
+        navigator: {},
+      }), true);
+      assert.strictEqual(isPwaStandalone({
+        matchMedia: () => ({ matches: false }),
+        navigator: { standalone: true },
+      }), true);
+      assert.strictEqual(isPwaStandalone({
+        matchMedia: () => ({ matches: false }),
+        navigator: {},
+      }), false);
+    });
+
+    it('detects iOS and iPadOS browsers that need manual Add to Home Screen guidance', async function () {
+      const { isIosInstallGuidanceTarget } = await import('../imports/ui/pwa_install');
+
+      assert.strictEqual(isIosInstallGuidanceTarget({
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',
+        platform: 'iPhone',
+        maxTouchPoints: 5,
+      }), true);
+      assert.strictEqual(isIosInstallGuidanceTarget({
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 Version/17.5 Safari/605.1.15',
+        platform: 'MacIntel',
+        maxTouchPoints: 5,
+      }), true);
+      assert.strictEqual(isIosInstallGuidanceTarget({
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) Chrome/125.0.0.0 Safari/537.36',
+        platform: 'MacIntel',
+        maxTouchPoints: 0,
+      }), false);
     });
   });
 

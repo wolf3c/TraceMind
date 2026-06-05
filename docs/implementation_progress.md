@@ -1,5 +1,11 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-06-05
+
+### Completed
+
+- Added installable PWA support for the TraceMind Web console with a Web App Manifest, app icons, Apple home-screen metadata, a conservative service worker, and an explicit install entry that keeps dashboard data online-only.
+
 ## 2026-06-02
 
 ### Completed
