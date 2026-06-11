@@ -1,10 +1,16 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-06-11
+
+### Completed
+
+- Added local page-shell caching for repeat TraceMind Web console opens. The service worker caches only the anonymous shell, PWA assets, and same-origin static resources while keeping project data, MCP responses, capture APIs, presence, feedback, login-state content, and Meteor realtime connections online-only.
+
 ## 2026-06-05
 
 ### Completed
 
-- Added installable PWA support for the TraceMind Web console with a Web App Manifest, app icons, Apple home-screen metadata, a conservative service worker, and an explicit install entry that keeps dashboard data online-only.
+- Added installable PWA support for the TraceMind Web console with a Web App Manifest, app icons, Apple home-screen metadata, a conservative service worker baseline, and an explicit install entry that keeps dashboard data online-only.
 
 ## 2026-06-02
 

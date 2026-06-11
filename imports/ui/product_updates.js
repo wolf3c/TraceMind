@@ -5,6 +5,36 @@ const supportedProductUpdateLocales = ["en", "zh"];
 
 export const PRODUCT_UPDATES = [
   {
+    id: "2026-06-11-page-shell-cache",
+    categoryLabel: {
+      en: "Performance update",
+      zh: "性能优化",
+    },
+    moduleTitle: {
+      en: "Faster repeat console opens",
+      zh: "控制台重复打开更快",
+    },
+    summary: {
+      en: "TraceMind now caches the console page shell locally, so repeat opens reach the interface faster.",
+      zh: "TraceMind 现在会本地缓存控制台页面壳，让重复打开更快进入界面。",
+    },
+    publishedAt: "2026-06-11",
+    details: [
+      {
+        en: "The Web console caches the anonymous page shell, PWA icons, manifest, and same-origin static assets, then refreshes online data after showing the local frame.",
+        zh: "Web 控制台会缓存匿名页面壳、PWA 图标、manifest 和同源静态资源，后续打开时先显示本地页面框架再刷新线上数据。",
+      },
+      {
+        en: "Privacy-safe: project data, MCP responses, capture APIs, presence, feedback APIs, login-state content, and Meteor realtime connections still stay out of local cache.",
+        zh: "隐私安全：项目数据、MCP 响应、采集接口、在线状态、反馈接口、登录态内容和 Meteor 实时连接仍不进入本地缓存。",
+      },
+      {
+        en: "The stable capture.js address, short cache, and hashed asset release contract stay unchanged, so customer snippets are not pinned by the console page cache.",
+        zh: "采集脚本的稳定 capture.js 地址、短缓存和 hash 资源发布契约保持不变，客户接入脚本不会被控制台页面缓存固定住。",
+      },
+    ],
+  },
+  {
     id: "2026-06-05-installable-pwa",
     categoryLabel: {
       en: "New feature notice",

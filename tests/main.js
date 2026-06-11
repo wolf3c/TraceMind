@@ -235,7 +235,6 @@ describe('TraceMind', function () {
       const update = PRODUCT_UPDATES.find((item) => item.id === '2026-06-05-installable-pwa');
 
       assert.strictEqual(update.publishedAt, '2026-06-05');
-      assert.strictEqual(latestProductUpdate(PRODUCT_UPDATES).id, update.id);
       assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'en'), 'Installable TraceMind app');
       assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'zh-CN'), '可安装的 TraceMind 应用');
       assert.strictEqual(
@@ -246,6 +245,24 @@ describe('TraceMind', function () {
         'Web 控制台新增 PWA manifest、应用图标和独立窗口模式，支持桌面和移动端浏览器安装。',
         '安装入口会在支持浏览器提示安装；iOS/iPadOS 会显示通过分享菜单添加到主屏幕的简短指引。',
         '隐私安全：PWA 不缓存项目数据、MCP 响应、采集接口或登录态内容，控制台数据仍按在线请求加载。',
+      ]);
+    });
+
+    it('includes the page shell cache product update', function () {
+      const update = PRODUCT_UPDATES.find((item) => item.id === '2026-06-11-page-shell-cache');
+
+      assert.strictEqual(update.publishedAt, '2026-06-11');
+      assert.strictEqual(latestProductUpdate(PRODUCT_UPDATES).id, update.id);
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'en'), 'Faster repeat console opens');
+      assert.strictEqual(localizedProductUpdateText(update.moduleTitle, 'zh-CN'), '控制台重复打开更快');
+      assert.strictEqual(
+        localizedProductUpdateText(update.summary, 'zh'),
+        'TraceMind 现在会本地缓存控制台页面壳，让重复打开更快进入界面。',
+      );
+      assert.deepStrictEqual(localizedProductUpdateDetails(update.details, 'zh'), [
+        'Web 控制台会缓存匿名页面壳、PWA 图标、manifest 和同源静态资源，后续打开时先显示本地页面框架再刷新线上数据。',
+        '隐私安全：项目数据、MCP 响应、采集接口、在线状态、反馈接口、登录态内容和 Meteor 实时连接仍不进入本地缓存。',
+        '采集脚本的稳定 capture.js 地址、短缓存和 hash 资源发布契约保持不变，客户接入脚本不会被控制台页面缓存固定住。',
       ]);
     });
 
@@ -322,6 +339,140 @@ describe('TraceMind', function () {
   });
 
   describe('PWA installability', function () {
+    async function loadServiceWorkerHarness() {
+      const { Script, createContext } = await import('vm');
+      const origin = 'https://tracemind.example.com';
+      const response = await fetch(Meteor.absoluteUrl('/service-worker.js'));
+      const body = await response.text();
+      const listeners = new Map();
+      const cacheStores = new Map();
+      const preCachedUrls = [];
+      const cachePuts = [];
+      const cacheDeletes = [];
+      const fetchCalls = [];
+      let skipWaitingCalled = false;
+      let clientsClaimed = false;
+
+      function requestKey(input) {
+        const rawUrl = typeof input === 'string' ? input : input?.url;
+        const parsedUrl = new URL(rawUrl, origin);
+        return parsedUrl.origin === origin
+          ? `${parsedUrl.pathname}${parsedUrl.search}`
+          : parsedUrl.href;
+      }
+
+      function fakeResponse(text, options = {}) {
+        return {
+          ok: options.ok ?? true,
+          status: options.status || 200,
+          type: options.type || 'basic',
+          clone() {
+            return fakeResponse(text, options);
+          },
+          text: async () => text,
+        };
+      }
+
+      function createCache(name) {
+        const entries = new Map();
+        cacheStores.set(name, {
+          addAll: async (urls) => {
+            urls.forEach((url) => {
+              preCachedUrls.push(url);
+              entries.set(requestKey(url), fakeResponse(`cached:${requestKey(url)}`));
+            });
+          },
+          match: async (request) => entries.get(requestKey(request)) || null,
+          put: async (request, nextResponse) => {
+            cachePuts.push(requestKey(request));
+            entries.set(
+              requestKey(request),
+              nextResponse?.clone ? nextResponse.clone() : nextResponse,
+            );
+          },
+        });
+        return cacheStores.get(name);
+      }
+
+      const context = {
+        URL,
+        Promise,
+        fetch: async (request) => {
+          fetchCalls.push(requestKey(request));
+          return fakeResponse(`network:${requestKey(request)}`);
+        },
+        caches: {
+          open: async (name) => cacheStores.get(name) || createCache(name),
+          keys: async () => [...cacheStores.keys()],
+          delete: async (name) => {
+            cacheDeletes.push(name);
+            return cacheStores.delete(name);
+          },
+          match: async (request) => {
+            for (const cache of cacheStores.values()) {
+              const match = await cache.match(request);
+              if (match) return match;
+            }
+            return null;
+          },
+        },
+      };
+
+      context.self = {
+        location: { origin },
+        clients: {
+          claim: async () => {
+            clientsClaimed = true;
+          },
+        },
+        skipWaiting: () => {
+          skipWaitingCalled = true;
+        },
+        addEventListener: (type, listener) => {
+          const nextListeners = listeners.get(type) || [];
+          nextListeners.push(listener);
+          listeners.set(type, nextListeners);
+        },
+      };
+
+      new Script(body).runInContext(createContext(context));
+
+      async function trigger(type, eventInit = {}) {
+        const waitUntilPromises = [];
+        let responsePromise = null;
+        const event = {
+          ...eventInit,
+          waitUntil: (promise) => {
+            waitUntilPromises.push(Promise.resolve(promise));
+          },
+          respondWith: (promise) => {
+            responsePromise = Promise.resolve(promise);
+          },
+        };
+
+        (listeners.get(type) || []).forEach((listener) => listener(event));
+
+        const responseValue = responsePromise ? await responsePromise : null;
+        await Promise.all(waitUntilPromises);
+
+        return {
+          responded: Boolean(responsePromise),
+          response: responseValue,
+        };
+      }
+
+      return {
+        cacheDeletes,
+        cachePuts,
+        cacheStores,
+        clientsClaimed: () => clientsClaimed,
+        fetchCalls,
+        preCachedUrls,
+        skipWaitingCalled: () => skipWaitingCalled,
+        trigger,
+      };
+    }
+
     it('serves an installable web app manifest without user-identifying launch URLs', async function () {
       if (!Meteor.isServer) return;
 
@@ -383,7 +534,7 @@ describe('TraceMind', function () {
       }
     });
 
-    it('serves a conservative service worker without offline data caching rules', async function () {
+    it('serves a conservative service worker with safe shell caching rules', async function () {
       if (!Meteor.isServer) return;
 
       const response = await fetch(Meteor.absoluteUrl('/service-worker.js'));
@@ -392,11 +543,116 @@ describe('TraceMind', function () {
       assert.strictEqual(response.status, 200);
       assert.ok(body.includes('skipWaiting'));
       assert.ok(body.includes('clients.claim'));
-      assert.ok(!body.includes('caches'));
+      assert.ok(body.includes('caches'));
+      assert.ok(body.includes('/'));
+      assert.ok(body.includes('/site.webmanifest'));
+      assert.ok(body.includes('/favicon.svg'));
+      assert.ok(body.includes('/pwa/icon-192.png'));
       assert.ok(!body.includes('CacheFirst'));
       assert.ok(!body.includes('localStorage'));
       assert.ok(!body.includes('indexedDB'));
-      assert.ok(!/\/api\/|\/mcp|\/capture\.js|\/api\/presence|\/api\/user-feedback/.test(body));
+      assert.ok(body.includes('/api/'));
+      assert.ok(body.includes('/mcp'));
+      assert.ok(body.includes('/capture.js'));
+      assert.ok(body.includes('/sockjs/'));
+    });
+
+    it('pre-caches the TraceMind shell and public PWA assets during service worker install', async function () {
+      if (!Meteor.isServer) return;
+
+      const harness = await loadServiceWorkerHarness();
+      await harness.trigger('install');
+
+      assert.strictEqual(harness.skipWaitingCalled(), true);
+      assert.ok(harness.preCachedUrls.includes('/'));
+      assert.ok(harness.preCachedUrls.includes('/site.webmanifest'));
+      assert.ok(harness.preCachedUrls.includes('/favicon.svg'));
+      assert.ok(harness.preCachedUrls.includes('/pwa/icon-192.png'));
+      assert.ok(harness.preCachedUrls.includes('/pwa/icon-512.png'));
+      assert.ok(harness.preCachedUrls.includes('/pwa/icon-maskable-192.png'));
+      assert.ok(harness.preCachedUrls.includes('/pwa/icon-maskable-512.png'));
+      assert.ok(harness.preCachedUrls.includes('/pwa/apple-touch-icon.png'));
+      assert.ok([...harness.cacheStores.keys()].some((name) => name.startsWith('tracemind-page-shell-')));
+    });
+
+    it('serves cached navigation shell first and refreshes the shell in the background', async function () {
+      if (!Meteor.isServer) return;
+
+      const harness = await loadServiceWorkerHarness();
+      await harness.trigger('install');
+
+      const result = await harness.trigger('fetch', {
+        request: {
+          url: 'https://tracemind.example.com/console',
+          method: 'GET',
+          mode: 'navigate',
+          destination: 'document',
+        },
+      });
+
+      assert.strictEqual(result.responded, true);
+      assert.strictEqual(await result.response.text(), 'cached:/');
+      assert.ok(harness.fetchCalls.includes('/'));
+      assert.ok(harness.cachePuts.includes('/'));
+    });
+
+    it('caches same-origin static assets but bypasses data, capture, MCP, and DDP routes', async function () {
+      if (!Meteor.isServer) return;
+
+      const harness = await loadServiceWorkerHarness();
+      await harness.trigger('install');
+
+      const staticResult = await harness.trigger('fetch', {
+        request: {
+          url: 'https://tracemind.example.com/build-chunks/app.js',
+          method: 'GET',
+          mode: 'same-origin',
+          destination: 'script',
+        },
+      });
+
+      assert.strictEqual(staticResult.responded, true);
+      assert.strictEqual(await staticResult.response.text(), 'network:/build-chunks/app.js');
+      assert.ok(harness.cachePuts.includes('/build-chunks/app.js'));
+
+      const bypassPaths = [
+        '/api/capture',
+        '/api/presence',
+        '/api/user-feedback',
+        '/mcp?mcpToken=tm_mcp_test',
+        '/capture.js',
+        '/capture.0123456789abcdef.js',
+        '/sockjs/info',
+      ];
+
+      for (const path of bypassPaths) {
+        const result = await harness.trigger('fetch', {
+          request: {
+            url: `https://tracemind.example.com${path}`,
+            method: 'GET',
+            mode: 'same-origin',
+            destination: 'script',
+          },
+        });
+
+        assert.strictEqual(result.responded, false, `${path} should be handled by the network`);
+        assert.ok(!harness.cachePuts.includes(path), `${path} should not be cached`);
+      }
+    });
+
+    it('claims clients and clears old TraceMind page caches during activation', async function () {
+      if (!Meteor.isServer) return;
+
+      const harness = await loadServiceWorkerHarness();
+      await harness.cacheStores.set('tracemind-page-shell-old', {});
+      await harness.cacheStores.set('unrelated-cache', {});
+      await harness.trigger('install');
+      await harness.trigger('activate');
+
+      assert.strictEqual(harness.clientsClaimed(), true);
+      assert.ok(harness.cacheDeletes.includes('tracemind-page-shell-old'));
+      assert.ok(harness.cacheStores.has('unrelated-cache'));
+      assert.ok([...harness.cacheStores.keys()].some((name) => name.startsWith('tracemind-page-shell-')));
     });
 
     it('detects standalone browser display modes for install UI visibility', async function () {
