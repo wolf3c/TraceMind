@@ -6134,6 +6134,8 @@ projectKey: tm_proj_sensitive`,
 
       await ProductUsageMarkers.removeAsync({ projectId });
       const enabled = configureProductUsageInstrumentationForTest({
+        productProjectId: '',
+        productProjectKey: '',
         now: () => new Date('2026-05-21T02:00:00.000Z'),
         logger: () => {},
       });
@@ -6349,6 +6351,8 @@ projectKey: tm_proj_sensitive`,
       const selfProjectId = `project-product-usage-summary-warning-${Date.now()}`;
 
       configureProductUsageInstrumentationForTest({
+        productProjectId: '',
+        productProjectKey: '',
         now: () => new Date('2026-05-21T02:00:00.000Z'),
         logger: () => {},
       });

@@ -722,15 +722,24 @@ function configuredValue(settingsKey, envKey, fallback = '') {
   return String(privateSettings()[settingsKey] || process.env[envKey] || fallback || '').trim();
 }
 
+function overrideValue(overrides, key, fallback = '') {
+  if (Object.prototype.hasOwnProperty.call(overrides, key)) {
+    return String(overrides[key] ?? '').trim();
+  }
+  return String(fallback || '').trim();
+}
+
 function resolveProductUsageConfig(overrides = {}) {
-  const productProjectId = String(
-    overrides.productProjectId
-      || configuredValue(PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY, PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY),
-  ).trim();
-  const productProjectKey = String(
-    overrides.productProjectKey
-      || configuredValue(PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY, PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY),
-  ).trim();
+  const productProjectId = overrideValue(
+    overrides,
+    'productProjectId',
+    configuredValue(PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY, PRODUCT_USAGE_PROJECT_ID_CONFIG_KEY),
+  );
+  const productProjectKey = overrideValue(
+    overrides,
+    'productProjectKey',
+    configuredValue(PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY, PRODUCT_USAGE_PROJECT_KEY_CONFIG_KEY),
+  );
   const endpoint = String(
     overrides.endpoint
       || configuredValue('TRACEMIND_PRODUCT_USAGE_ENDPOINT', 'TRACEMIND_PRODUCT_USAGE_ENDPOINT', Meteor.absoluteUrl('/api/capture')),
