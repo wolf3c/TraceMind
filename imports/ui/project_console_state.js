@@ -21,6 +21,61 @@ export function mergeProjectIntoDashboard(dashboard, updatedProject) {
   };
 }
 
+function sourceMapKey(source = {}) {
+  const sourceType = String(source.sourceType || '').trim().toLowerCase();
+  const sourceKey = String(source.sourceKey || '').trim().toLowerCase();
+  return sourceType && sourceKey ? `${sourceType}:${sourceKey}` : '';
+}
+
+function unblockedSource(source) {
+  const { reason, blockedAt, ...rest } = source;
+  return { ...rest, blocked: false };
+}
+
+export function mergeBlockedSourcesIntoSourceSummary(sourceSummary = [], blockedSources = []) {
+  const blockedByKey = new Map();
+  blockedSources.forEach((source) => {
+    const key = sourceMapKey(source);
+    if (key) blockedByKey.set(key, source);
+  });
+
+  const sourcesByKey = new Map();
+  sourceSummary.forEach((source) => {
+    const key = sourceMapKey(source);
+    if (!key) return;
+
+    const blockedSource = blockedByKey.get(key);
+    sourcesByKey.set(key, blockedSource ? {
+      ...source,
+      sourceLabel: source.sourceLabel || blockedSource.sourceLabel || source.sourceKey,
+      blocked: true,
+      reason: blockedSource.reason || '',
+      blockedAt: blockedSource.blockedAt,
+    } : unblockedSource(source));
+  });
+
+  blockedByKey.forEach((source, key) => {
+    if (sourcesByKey.has(key)) return;
+    sourcesByKey.set(key, {
+      sourceType: source.sourceType,
+      sourceKey: source.sourceKey,
+      sourceLabel: source.sourceLabel || source.sourceKey,
+      count: 0,
+      lastSeenAt: null,
+      blocked: true,
+      reason: source.reason || '',
+      blockedAt: source.blockedAt,
+    });
+  });
+
+  return [...sourcesByKey.values()]
+    .filter((source) => source.blocked || Number(source.count) || source.lastSeenAt)
+    .sort((left, right) => {
+      if (right.count !== left.count) return right.count - left.count;
+      return new Date(right.lastSeenAt || 0) - new Date(left.lastSeenAt || 0);
+    });
+}
+
 export function resolveInitialProjectSummaryState() {
   return {
     selectedProjectSummary: null,

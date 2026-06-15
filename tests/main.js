@@ -52,6 +52,7 @@ import {
 import {
   shouldLoadProjectSummaryForSetup,
   shouldShowProjectHealthRefresh,
+  mergeBlockedSourcesIntoSourceSummary,
   mergeProjectIntoDashboard,
   resolveInitialProjectSummaryState,
   resolveSelectedProjectId,
@@ -4558,6 +4559,64 @@ projectKey: tm_proj_sensitive`,
         selectedProjectSummary: null,
         projectSummaryLoading: true,
       }), false);
+    });
+
+    it('merges blocked sources into the current source summary without a summary reload', function () {
+      const blockedAt = new Date('2026-06-15T09:20:00.000Z');
+      const currentSources = [
+        {
+          sourceType: 'web',
+          sourceKey: 'localhost',
+          sourceLabel: 'localhost',
+          count: 211,
+          lastSeenAt: new Date('2026-06-15T09:18:11.000Z'),
+          blocked: false,
+        },
+        {
+          sourceType: 'web',
+          sourceKey: 'super-tree.com',
+          sourceLabel: 'super-tree.com',
+          count: 265,
+          lastSeenAt: new Date('2026-06-15T09:00:39.000Z'),
+          blocked: false,
+        },
+      ];
+
+      const blockedSources = [
+        {
+          sourceType: 'web',
+          sourceKey: 'localhost',
+          sourceLabel: 'localhost',
+          reason: 'Blocked from console',
+          blockedAt,
+        },
+        {
+          sourceType: 'web',
+          sourceKey: '127.0.0.1',
+          sourceLabel: '127.0.0.1',
+          reason: 'Blocked from console',
+          blockedAt,
+        },
+      ];
+
+      const blockedSummary = mergeBlockedSourcesIntoSourceSummary(currentSources, blockedSources);
+      assert.strictEqual(blockedSummary.find((source) => source.sourceKey === 'localhost').blocked, true);
+      assert.strictEqual(blockedSummary.find((source) => source.sourceKey === 'localhost').reason, 'Blocked from console');
+      assert.deepStrictEqual(blockedSummary.find((source) => source.sourceKey === '127.0.0.1'), {
+        sourceType: 'web',
+        sourceKey: '127.0.0.1',
+        sourceLabel: '127.0.0.1',
+        count: 0,
+        lastSeenAt: null,
+        blocked: true,
+        reason: 'Blocked from console',
+        blockedAt,
+      });
+
+      const unblockedSummary = mergeBlockedSourcesIntoSourceSummary(blockedSummary, []);
+      assert.strictEqual(unblockedSummary.find((source) => source.sourceKey === 'localhost').blocked, false);
+      assert.strictEqual(unblockedSummary.find((source) => source.sourceKey === 'localhost').reason, undefined);
+      assert.strictEqual(unblockedSummary.some((source) => source.sourceKey === '127.0.0.1'), false);
     });
 
     it('shows project health refresh only for today', function () {

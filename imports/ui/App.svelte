@@ -27,6 +27,7 @@
   import ProjectHealthPanel from "./ProjectHealthPanel.svelte";
   import ProjectSetupPanel from "./ProjectSetupPanel.svelte";
   import {
+    mergeBlockedSourcesIntoSourceSummary,
     mergeProjectIntoDashboard,
     resolveInitialProjectSummaryState,
     resolveSelectedProjectId,
@@ -847,6 +848,20 @@
     dashboard = mergeProjectIntoDashboard(dashboard, updatedProject);
   }
 
+  function replaceProjectSourceState(updatedProject) {
+    replaceProject(updatedProject);
+    if (selectedProjectSummary?.project?._id !== updatedProject?._id) return;
+
+    selectedProjectSummary = {
+      ...selectedProjectSummary,
+      project: updatedProject,
+      sources: mergeBlockedSourcesIntoSourceSummary(
+        selectedProjectSummary.sources || [],
+        updatedProject.blockedSources || [],
+      ),
+    };
+  }
+
   function updateMcpTokenName(tokenId, name) {
     if (!primaryProject) return;
     replaceProject({
@@ -1021,13 +1036,13 @@
     loading = true;
     showStatus("");
     try {
-      await callMethod("tracemind.project.source.block", primaryProject._id, {
+      const updatedProject = await callMethod("tracemind.project.source.block", primaryProject._id, {
         sourceType: source.sourceType,
         sourceKey: source.sourceKey,
         sourceLabel: source.sourceLabel,
         reason: "Blocked from console",
       });
-      await loadProjectSummary();
+      replaceProjectSourceState(updatedProject);
       showSuccessStatus(translateNow("Source blocked. Future events from it will not enter the database."));
     } catch (error) {
       showStatus(errorMessage(error));
@@ -1042,11 +1057,11 @@
     loading = true;
     showStatus("");
     try {
-      await callMethod("tracemind.project.source.unblock", primaryProject._id, {
+      const updatedProject = await callMethod("tracemind.project.source.unblock", primaryProject._id, {
         sourceType: source.sourceType,
         sourceKey: source.sourceKey,
       });
-      await loadProjectSummary();
+      replaceProjectSourceState(updatedProject);
       showSuccessStatus(translateNow("Source unblocked."));
     } catch (error) {
       showStatus(errorMessage(error));

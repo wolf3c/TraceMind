@@ -1,5 +1,11 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-06-15
+
+### Completed
+
+- Made capture-source block and unblock actions update the visible source row from the returned project state instead of waiting for a full `tracemind.project.summary` reload. The server-side block contract and capture rejection behavior are unchanged.
+
 ## 2026-06-11
 
 ### Completed
