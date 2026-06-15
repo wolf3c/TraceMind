@@ -4355,6 +4355,44 @@ projectKey: tm_proj_sensitive`,
     });
   });
 
+  describe('Dashboard recent online loading', function () {
+    if (!Meteor.isServer) return;
+
+    it('starts the recent online request on the next browser tick', async function () {
+      const { access, readFile } = await import('node:fs/promises');
+      const path = await import('node:path');
+      let sourceRoot = '';
+      const candidateRoots = [
+        process.env.TRACEMIND_SOURCE_ROOT,
+        process.env.INIT_CWD,
+        process.env.PWD,
+        process.cwd(),
+      ].filter(Boolean);
+
+      for (const candidateRoot of candidateRoots) {
+        let currentRoot = candidateRoot;
+        for (let depth = 0; depth < 8; depth += 1) {
+          try {
+            await access(path.join(currentRoot, 'imports/ui/App.svelte'));
+            sourceRoot = currentRoot;
+            break;
+          } catch {
+            const parent = path.dirname(currentRoot);
+            if (parent === currentRoot) break;
+            currentRoot = parent;
+          }
+        }
+        if (sourceRoot) break;
+      }
+      assert.ok(sourceRoot, 'Could not find TraceMind source root.');
+
+      const appSource = await readFile(path.join(sourceRoot, 'imports/ui/App.svelte'), 'utf8');
+      assert.match(appSource, /const recentOnlineLazyLoadDelayMs = 0;/);
+      assert.match(appSource, /window\.setTimeout\([\s\S]*recentOnlineLazyLoadDelayMs\)/);
+      assert.doesNotMatch(appSource, /window\.setTimeout\([\s\S]*,\s*700\)/);
+    });
+  });
+
   describe('Console state', function () {
     it('shows the dashboard when dashboard data exists', function () {
       assert.strictEqual(

@@ -52,6 +52,7 @@
   const reportTimezoneOffsetMs = 8 * 60 * 60 * 1000;
   const eventStreamPageSize = 20;
   const statusAutoDismissMs = 5200;
+  const recentOnlineLazyLoadDelayMs = 0;
 
   let email = $state("");
   let code = $state("");
@@ -1310,7 +1311,7 @@
           loadRecentOnline(projectId, reportDate).catch(() => {});
         }
       });
-    }, 700);
+    }, recentOnlineLazyLoadDelayMs);
 
     return () => window.clearTimeout(timer);
   });
