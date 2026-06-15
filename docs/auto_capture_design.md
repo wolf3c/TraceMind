@@ -183,7 +183,7 @@ Native 和 React Native 使用同一语义：应用启动只调用一次 `TraceM
 
 `durationMs` 保留为前台/可见 presence 停留时长。`activeDurationMs` 是严格活跃时长：Web 必须页面可见、窗口有焦点，且处于初始/focus 60 秒窗口或最近 60 秒内发生 click、input、change、submit、keydown、scroll、touchstart、pointerdown；`window.blur` 立即截断严格活跃片段，但不结束前台 presence 区间。iOS/Android/RN 必须 App 前台，tap、text、screen 刷新同一个 60 秒窗口。旧数据缺少 `activeDurationMs` 时按 0 处理，不用旧 `durationMs` 兜底。
 
-Dashboard 日健康由小时级报告聚合得出。历史日期聚合完整 24 个小时并与前一天完整 24 小时对比；选择“今天”时只聚合已结束小时，并与昨天相同小时段对比，当前未结束小时不进入日报趋势。服务端每 5 分钟检查最近 2 个已结束小时内有行为、在线或上报诊断的项目，刷新这些小时报告并更新今天的 draft 日报；手动刷新只作为同一路径的补偿触发。Dashboard 选择“今天”时会单独延迟加载近 30 分钟在线人数卡片。该卡片只扫描最近半小时 presence 和 semantic event：总在线人数、5 分钟在线桶、地区分布 Top3 以去重 presence actor 为准，页面时长 Top3 使用窗口内严格 `activeDurationMs`，高频事件 Top3 使用同窗口 semantic event。
+Dashboard 日健康由小时级报告聚合得出。历史日期聚合完整 24 个小时并与前一天完整 24 小时对比；选择“今天”时只聚合已结束小时，并与昨天相同小时段对比，当前未结束小时不进入日报趋势。服务端每 5 分钟检查最近 2 个已结束小时内有行为、在线或上报诊断的项目，刷新这些小时报告并更新今天的 draft 日报；打开今天的 Dashboard 时，前端也会每 5 分钟复用同一个去重队列触发补偿刷新，不再提供手动刷新按钮。Dashboard 选择“今天”时会单独延迟加载近 30 分钟在线人数卡片，并在页面可见时每 60 秒刷新一次。该卡片只扫描最近半小时 presence 和 semantic event：总在线人数、5 分钟在线桶、地区分布 Top3 以去重 presence actor 为准，页面时长 Top3 使用窗口内严格 `activeDurationMs`，高频事件 Top3 使用同窗口 semantic event。
 
 健康概览里的「跳出页面 Top3」依赖同一套 session、presence 和 route/screen 边界：同一个 `sessionId` 在统计窗口内只有一个 `path` 或 `screen`、没有 `route_change`、且没有明确互动事件时才算跳出。旧数据缺少 `sessionId` 时只用 `presenceId` 兜底，平均跳出时长使用严格 `activeDurationMs`。
 

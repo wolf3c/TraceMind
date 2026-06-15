@@ -5,6 +5,7 @@
 ### Completed
 
 - Made capture-source block and unblock actions update the visible source row from the returned project state instead of waiting for a full `tracemind.project.summary` reload. The server-side block contract and capture rejection behavior are unchanged.
+- Replaced the selected-project health manual refresh button with an automatic update status. Today's Dashboard view now reuses the existing daily report refresh queue every 5 minutes while visible, and the recent-online card refreshes every 60 seconds without changing report or API contracts.
 
 ## 2026-06-11
 

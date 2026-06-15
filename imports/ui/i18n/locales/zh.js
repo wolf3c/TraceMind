@@ -402,6 +402,8 @@ export default {
   "Waiting for completed hour": "等待整点样本",
   "Current hour is excluded": "当前小时未纳入日报",
   "No data": "暂无数据",
+  "Auto update": "自动更新",
+  "Report snapshot": "日报快照",
   "Not refreshed yet": "尚未刷新",
   "Last refreshed just now": "上次刷新：刚刚",
   "Last refreshed {{count}} min ago": "上次刷新：{{count}} 分钟前",

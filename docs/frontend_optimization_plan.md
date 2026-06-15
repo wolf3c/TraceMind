@@ -229,10 +229,11 @@
 ### Target Behavior
 
 - Let project health render and refresh from daily report publication state without waiting for project summary samples.
-- Show the manual health refresh only for today's report; historical reports are read-only in the console and should not issue refresh requests.
+- Replace the manual health refresh with an automatic update status: today's report reuses the queued refresh path while the Dashboard is open and visible, while historical reports remain read-only snapshots.
 - Keep the detailed event stream lazy: load page data only when the user opens it.
 - Load capture source summaries when setup details are expanded, with a specific source loading/error state and parallelized summary reads.
 - 2026-06-15 partial progress: source block and unblock actions now merge the returned project `blockedSources` into the current source summary locally, so the row state updates without waiting for a full `tracemind.project.summary` reload. Dedicated source-summary loading remains a separate follow-up.
+- 2026-06-15 partial progress: the selected-project health header no longer exposes a manual refresh button. Today's health auto-refreshes through the existing daily report queue every 5 minutes while visible, and the recent-online card refreshes every 60 seconds.
 
 ### Runtime Matrix
 

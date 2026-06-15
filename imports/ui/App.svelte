@@ -33,7 +33,7 @@
     resolveSelectedProjectId,
     resolveInitialSetupDetailsState,
     shouldLoadProjectSummaryForSetup,
-    shouldShowProjectHealthRefresh,
+    shouldAutoRefreshProjectHealth,
     shouldApplyProjectSummaryResponse,
   } from "./project_console_state";
 
@@ -54,6 +54,8 @@
   const eventStreamPageSize = 20;
   const statusAutoDismissMs = 5200;
   const recentOnlineLazyLoadDelayMs = 0;
+  const recentOnlineAutoRefreshIntervalMs = 60 * 1000;
+  const projectHealthAutoRefreshIntervalMs = 5 * 60 * 1000;
 
   let email = $state("");
   let code = $state("");
@@ -157,7 +159,7 @@
   let yesterdayReportDate = $derived(addReportDays(todayReportDate, -1));
   let dayBeforeReportDate = $derived(addReportDays(todayReportDate, -2));
   let isSelectedReportToday = $derived(selectedReportDate === todayReportDate);
-  let canRefreshProjectHealth = $derived(shouldShowProjectHealthRefresh({ selectedReportDate, todayReportDate }));
+  let projectHealthRefreshStatus = $derived(`${translateNow(isSelectedReportToday ? "Auto update" : "Report snapshot")} · ${projectSummaryRefreshAge}`);
   let recentOnlineRefreshAge = $derived(formatRefreshAge(recentOnlineLastLoadedAt, refreshAgeTick, selectedLocale, true));
   let mcpUrl = $derived(primaryMcpToken ? `${currentOrigin()}/mcp?mcpToken=${primaryMcpToken.token}` : "");
   let agentSkillUrl = $derived(`${currentOrigin()}/agents/tracemind/SKILL.md`);
@@ -204,9 +206,13 @@
   }
 
   function requestDailyReportRefresh(projectId = selectedProjectId, reportDate = selectedReportDate) {
-    if (!shouldShowProjectHealthRefresh({ selectedReportDate: reportDate, todayReportDate })) return;
+    if (!shouldAutoRefreshProjectHealth({ selectedReportDate: reportDate, todayReportDate })) return;
     if (!Meteor.userId() || !projectId || !reportDate) return;
     callMethod("tracemind.project.dailyReports.refresh", projectId, reportDate).catch(() => {});
+  }
+
+  function documentIsVisible() {
+    return typeof document === "undefined" || document.visibilityState === "visible";
   }
 
   function errorMessage(error) {
@@ -672,23 +678,6 @@
       if (dashboard) {
         showStatus(errorMessage(error));
       }
-    }
-  }
-
-  async function retryProjectSummary() {
-    showStatus("");
-    if (!canRefreshProjectHealth) return;
-    try {
-      requestDailyReportRefresh();
-      if (isSelectedReportToday) {
-        resetRecentOnline();
-        loadRecentOnline().catch(() => {});
-      }
-      if (showSetupDetails) {
-        loadProjectSummaryIfNeeded().catch(() => {});
-      }
-    } catch (error) {
-      showStatus(errorMessage(error));
     }
   }
 
@@ -1285,6 +1274,16 @@
 
     requestDailyReportRefresh(projectId, reportDate);
 
+    const refreshTimer = shouldAutoRefreshProjectHealth({ selectedReportDate: reportDate, todayReportDate })
+      ? window.setInterval(() => {
+        untrack(() => {
+          if (documentIsVisible()) {
+            requestDailyReportRefresh(projectId, reportDate);
+          }
+        });
+      }, projectHealthAutoRefreshIntervalMs)
+      : null;
+
     const computation = Tracker.autorun(() => {
       const handle = Meteor.subscribe("tracemind.project.dailyReports", projectId, reportDates);
       const currentReport = ProjectDailyReports.findOne({ projectId, reportDate });
@@ -1304,7 +1303,10 @@
       });
     });
 
-    return () => computation.stop();
+    return () => {
+      computation.stop();
+      if (refreshTimer) window.clearInterval(refreshTimer);
+    };
   });
 
   $effect(() => {
@@ -1320,15 +1322,27 @@
       return;
     }
 
-    const timer = window.setTimeout(() => {
+    const loadRecentOnlineIfVisible = () => {
       untrack(() => {
-        if (!recentOnline && !recentOnlineLoading) {
+        if (documentIsVisible() && !recentOnlineLoading) {
           loadRecentOnline(projectId, reportDate).catch(() => {});
         }
       });
-    }, recentOnlineLazyLoadDelayMs);
+    };
 
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => {
+      untrack(() => {
+        if (!recentOnline && !recentOnlineLoading) {
+          loadRecentOnlineIfVisible();
+        }
+      });
+    }, recentOnlineLazyLoadDelayMs);
+    const refreshTimer = window.setInterval(loadRecentOnlineIfVisible, recentOnlineAutoRefreshIntervalMs);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(refreshTimer);
+    };
   });
 
   $effect(() => {
@@ -1518,7 +1532,7 @@
           {yesterdayReportDate}
           {dayBeforeReportDate}
           {projectSummaryRefreshAge}
-          {canRefreshProjectHealth}
+          {projectHealthRefreshStatus}
           {showActiveTimeTip}
           {recentOnline}
           {recentOnlineLoading}
@@ -1526,7 +1540,6 @@
           {recentOnlineRefreshAge}
           {selectReportDate}
           {changeReportDate}
-          {retryProjectSummary}
           {toggleActiveTimeTip}
           {formatNumber}
           {formatDecimal}

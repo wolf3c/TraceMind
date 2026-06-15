@@ -51,7 +51,7 @@ import {
 } from '../imports/ui/product_updates';
 import {
   shouldLoadProjectSummaryForSetup,
-  shouldShowProjectHealthRefresh,
+  shouldAutoRefreshProjectHealth,
   mergeBlockedSourcesIntoSourceSummary,
   mergeProjectIntoDashboard,
   resolveInitialProjectSummaryState,
@@ -4389,8 +4389,46 @@ projectKey: tm_proj_sensitive`,
 
       const appSource = await readFile(path.join(sourceRoot, 'imports/ui/App.svelte'), 'utf8');
       assert.match(appSource, /const recentOnlineLazyLoadDelayMs = 0;/);
+      assert.match(appSource, /const recentOnlineAutoRefreshIntervalMs = 60 \* 1000;/);
       assert.match(appSource, /window\.setTimeout\([\s\S]*recentOnlineLazyLoadDelayMs\)/);
+      assert.match(appSource, /window\.setInterval\([\s\S]*recentOnlineAutoRefreshIntervalMs\)/);
+      assert.match(appSource, /document\.visibilityState === "visible"/);
       assert.doesNotMatch(appSource, /window\.setTimeout\([\s\S]*,\s*700\)/);
+    });
+
+    it('queues project health auto-refresh every five minutes for today', async function () {
+      const { access, readFile } = await import('node:fs/promises');
+      const path = await import('node:path');
+      let sourceRoot = '';
+      const candidateRoots = [
+        process.env.TRACEMIND_SOURCE_ROOT,
+        process.env.INIT_CWD,
+        process.env.PWD,
+        process.cwd(),
+      ].filter(Boolean);
+
+      for (const candidateRoot of candidateRoots) {
+        let currentRoot = candidateRoot;
+        for (let depth = 0; depth < 8; depth += 1) {
+          try {
+            await access(path.join(currentRoot, 'imports/ui/App.svelte'));
+            sourceRoot = currentRoot;
+            break;
+          } catch {
+            const parent = path.dirname(currentRoot);
+            if (parent === currentRoot) break;
+            currentRoot = parent;
+          }
+        }
+        if (sourceRoot) break;
+      }
+      assert.ok(sourceRoot, 'Could not find TraceMind source root.');
+
+      const appSource = await readFile(path.join(sourceRoot, 'imports/ui/App.svelte'), 'utf8');
+      assert.match(appSource, /const projectHealthAutoRefreshIntervalMs = 5 \* 60 \* 1000;/);
+      assert.match(appSource, /window\.setInterval\([\s\S]*projectHealthAutoRefreshIntervalMs\)/);
+      assert.match(appSource, /shouldAutoRefreshProjectHealth/);
+      assert.doesNotMatch(appSource, /retryProjectSummary/);
     });
   });
 
@@ -4619,16 +4657,16 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(unblockedSummary.some((source) => source.sourceKey === '127.0.0.1'), false);
     });
 
-    it('shows project health refresh only for today', function () {
-      assert.strictEqual(shouldShowProjectHealthRefresh({
+    it('auto-refreshes project health only for today', function () {
+      assert.strictEqual(shouldAutoRefreshProjectHealth({
         selectedReportDate: '2026-05-26',
         todayReportDate: '2026-05-26',
       }), true);
-      assert.strictEqual(shouldShowProjectHealthRefresh({
+      assert.strictEqual(shouldAutoRefreshProjectHealth({
         selectedReportDate: '2026-05-25',
         todayReportDate: '2026-05-26',
       }), false);
-      assert.strictEqual(shouldShowProjectHealthRefresh({
+      assert.strictEqual(shouldAutoRefreshProjectHealth({
         selectedReportDate: '2026-05-24',
         todayReportDate: '2026-05-26',
       }), false);

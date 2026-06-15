@@ -99,7 +99,7 @@ export function shouldLoadProjectSummaryForSetup({
     || selectedProjectSummary?.summaryWindow?.reportDate !== reportDate;
 }
 
-export function shouldShowProjectHealthRefresh({
+export function shouldAutoRefreshProjectHealth({
   selectedReportDate,
   todayReportDate,
 } = {}) {
