@@ -81,11 +81,18 @@ test('sends sanitized app_error summaries through the native SDK', () => {
   });
   const error = new Error('Token expired for user@example.com');
   error.stack = 'raw stack';
+  error.cause = new TypeError('Gateway token=secret');
 
   client.captureError(error, {
     path: '/checkout?token=secret',
     component: 'CheckoutScreen',
     release: '2026.05.25',
+    operation: 'checkout.submit',
+    feature: 'checkout',
+    routeName: 'Checkout',
+    correlationId: 'corr_123',
+    requestId: 'req_456',
+    httpStatus: 402,
     handled: true,
     fatal: false,
     properties: {
@@ -109,10 +116,20 @@ test('sends sanitized app_error summaries through the native SDK', () => {
   assert.equal(calls[0][2].properties.handled, true);
   assert.equal(calls[0][2].properties.status, 'error');
   assert.match(calls[0][2].properties.messageFingerprint, /^tm_error_[a-f0-9]{24}$/);
+  assert.equal(calls[0][2].properties.messagePreview, 'Token expired for [email]');
+  assert.match(calls[0][2].properties.stackFingerprint, /^tm_stack_[a-f0-9]{24}$/);
+  assert.match(calls[0][2].properties.topFrameFingerprint, /^tm_frame_[a-f0-9]{24}$/);
+  assert.equal(calls[0][2].properties.causeType, 'TypeError');
+  assert.match(calls[0][2].properties.causeFingerprint, /^tm_cause_[a-f0-9]{24}$/);
+  assert.equal(calls[0][2].properties.operation, 'checkout.submit');
+  assert.equal(calls[0][2].properties.feature, 'checkout');
+  assert.equal(calls[0][2].properties.routeName, 'Checkout');
+  assert.equal(calls[0][2].properties.correlationId, 'corr_123');
+  assert.equal(calls[0][2].properties.requestId, 'req_456');
+  assert.equal(calls[0][2].properties.httpStatus, 402);
   assert.deepEqual(calls[0][2].context, { source: 'checkout' });
   assertReactNativeDeviceInfo(calls[0][2].deviceInfo);
   const serialized = JSON.stringify(calls[0][2]);
-  assert.equal(serialized.includes('Token expired'), false);
   assert.equal(serialized.includes('user@example.com'), false);
   assert.equal(serialized.includes('raw stack'), false);
   assert.equal(serialized.includes('Bearer secret'), false);

@@ -65,12 +65,60 @@ private fun sanitizeErrorMessageForHash(value: String?): String {
     .take(240)
 }
 
-private fun messageFingerprint(errorType: String, message: String?): String {
+private fun sanitizeErrorMessagePreview(value: String?): String {
+  val text = value.orEmpty()
+    .replace(Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE), "[email]")
+    .replace(Regex("https?://\\S+", RegexOption.IGNORE_CASE), "[url]")
+    .replace(Regex("(^|\\s)/[^\\s?]+\\?\\S+"), "$1[url]")
+    .replace(Regex("\\b(sk-[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|bearer\\s+\\S+|api[_-]?key\\s*[:=]\\s*\\S+|access[_-]?token\\s*[:=]\\s*\\S+|token\\s*[:=]\\s*\\S+|secret\\s*[:=]\\s*\\S+|password\\s*[:=]\\s*\\S+)\\b", RegexOption.IGNORE_CASE), "[redacted]")
+    .replace(Regex("\\b\\d{12,19}\\b"), "[number]")
+    .replace(Regex("\\s+"), " ")
+    .trim()
+    .take(160)
+  if (text.isBlank()) return ""
+  if (Regex("@|https?:|%40|bearer\\s+|api[_-]?key|access[_-]?token|sk-|pk_|secret|password", RegexOption.IGNORE_CASE).containsMatchIn(text)) return ""
+  if (Regex("\\b(raw\\s+prompt|raw\\s+user\\s+content|source\\s+diff|request\\s+body|response\\s+body|authorization\\s*:|set-cookie\\s*:)", RegexOption.IGNORE_CASE).containsMatchIn(text)) return ""
+  return text
+}
+
+private fun diagnosticFingerprint(prefix: String, value: String?): String {
   var hash = 5381UL
-  "$errorType:${sanitizeErrorMessageForHash(message)}".forEach { char ->
+  sanitizeErrorMessageForHash(value).forEach { char ->
     hash = ((hash shl 5) + hash) + char.code.toUInt()
   }
-  return "tm_error_${hash.toString(36)}"
+  return prefix + hash.toString(36)
+}
+
+private fun messageFingerprint(errorType: String, message: String?): String {
+  return diagnosticFingerprint("tm_error_", "$errorType:$message")
+}
+
+private fun stackText(error: Throwable?): String {
+  return error?.stackTrace?.joinToString("\n") { it.toString() }.orEmpty()
+}
+
+private fun firstStackFrame(stack: String): String {
+  val lines = stack.lines().map { it.trim().replace(Regex("\\s+"), " ") }.filter { it.isNotBlank() }
+  return lines.firstOrNull { Regex("^(at\\s+|.*@|.*:\\d+:\\d+)").containsMatchIn(it) && !Regex("^[a-z]*error\\b", RegexOption.IGNORE_CASE).containsMatchIn(it) }
+    ?: lines.getOrNull(1)
+    ?: lines.firstOrNull()
+    ?: ""
+}
+
+private fun safeDiagnosticField(properties: Map<String, Any?>, key: String, maxLength: Int = 120): String {
+  return cleanErrorField(properties[key] as? String, maxLength)
+}
+
+private fun httpStatus(properties: Map<String, Any?>): Int? {
+  val value = properties["httpStatus"] ?: properties["statusCode"]
+  val status = when (value) {
+    is Double -> value.takeIf { it.isFinite() && it % 1.0 == 0.0 }?.toInt()
+    is Float -> value.takeIf { it.isFinite() && it % 1f == 0f }?.toInt()
+    is Number -> value.toInt()
+    is String -> value.toIntOrNull()
+    else -> null
+  }
+  return status?.takeIf { it in 100..599 }
 }
 
 private fun sanitizeAppErrorContext(context: Map<String, Any?>): Map<String, Any?> {
@@ -276,6 +324,23 @@ class TraceMindClient(
     )
     cleanErrorField(release ?: properties["release"] as? String, 80).takeIf { it.isNotEmpty() }?.let { appErrorProperties["release"] = it }
     cleanErrorField(component ?: properties["component"] as? String, 120).takeIf { it.isNotEmpty() }?.let { appErrorProperties["component"] = it }
+    sanitizeErrorMessagePreview(properties["messagePreview"] as? String ?: message ?: error?.message ?: type).takeIf { it.isNotEmpty() }?.let { appErrorProperties["messagePreview"] = it }
+    val stack = (properties["stack"] as? String) ?: (properties["stackTrace"] as? String) ?: stackText(error)
+    if (stack.isNotBlank()) {
+      appErrorProperties["stackFingerprint"] = diagnosticFingerprint("tm_stack_", stack)
+      firstStackFrame(stack).takeIf { it.isNotEmpty() }?.let { appErrorProperties["topFrameFingerprint"] = diagnosticFingerprint("tm_frame_", it) }
+    }
+    val cause = error?.cause
+    cleanErrorField(properties["causeType"] as? String ?: cause?.javaClass?.simpleName, 80).takeIf { it.isNotEmpty() }?.let { appErrorProperties["causeType"] = it }
+    val causeMessage = properties["causeMessage"] as? String ?: cause?.message
+    if (appErrorProperties.containsKey("causeType") || !causeMessage.isNullOrBlank()) {
+      val causeTypeValue = appErrorProperties["causeType"] as? String ?: ""
+      appErrorProperties["causeFingerprint"] = diagnosticFingerprint("tm_cause_", "$causeTypeValue:$causeMessage")
+    }
+    listOf("operation", "feature", "routeName", "correlationId", "requestId").forEach { key ->
+      safeDiagnosticField(properties, key).takeIf { it.isNotEmpty() }?.let { appErrorProperties[key] = it }
+    }
+    httpStatus(properties)?.let { appErrorProperties["httpStatus"] = it }
     capture(
       type = "app_error",
       eventName = "app_error",

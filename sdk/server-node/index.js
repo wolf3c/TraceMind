@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 
 const SDK_VERSION = '0.1.0';
-const SDK_CONTENT_HASH = 'sha256:3589d33c9722a7460d4b4638b10d810c1700d7b4cb9fb6ba50570ff1c62f8e25';
+const SDK_CONTENT_HASH = 'sha256:177e03023f7f7fc1cb9636762cb5baff4a700ac52831c9dce2511c7a9e33785f';
 const DEFAULT_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/capture';
 const DEFAULT_FEEDBACK_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback';
 const FORBIDDEN_FIELD_PATTERN = /(rawprompt|rawusercontent|rawrequestbody|requestbody|rawresponsebody|responsebody|headers|cookies|authorization|token|secret|password|email|phone|input|enteredtext)/i;
@@ -89,8 +89,81 @@ function sanitizeErrorMessageForHash(value) {
     .slice(0, 240);
 }
 
+function sanitizeErrorMessagePreview(value) {
+  const text = safeString(value, 500)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig, '[email]')
+    .replace(/https?:\/\/\S+/ig, '[url]')
+    .replace(/(^|\s)\/[^\s?]+\?\S+/g, '$1[url]')
+    .replace(/\b(sk-[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|token\s*[:=]\s*\S+|secret\s*[:=]\s*\S+|password\s*[:=]\s*\S+)\b/ig, '[redacted]')
+    .replace(/\b\d{12,19}\b/g, '[number]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+  if (!text) return '';
+  if (/@|https?:|%40|bearer\s+|api[_-]?key|access[_-]?token|sk-|pk_|secret|password/i.test(text)) return '';
+  if (/\b(raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:)/i.test(text)) return '';
+  return text;
+}
+
 function messageFingerprint(errorType, message) {
   return `tm_error_${crypto.createHash('sha256').update(`${errorType}:${sanitizeErrorMessageForHash(message)}`).digest('hex').slice(0, 24)}`;
+}
+
+function diagnosticFingerprint(prefix, value) {
+  return `${prefix}${crypto.createHash('sha256').update(sanitizeErrorMessageForHash(value)).digest('hex').slice(0, 24)}`;
+}
+
+function firstStackFrame(stack) {
+  const lines = safeString(stack, 5000)
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  return lines.find((line) => /^(at\s+|.*@|.*:\d+:\d+)/.test(line) && !/^[a-z]*error\b/i.test(line))
+    || lines[1]
+    || lines[0]
+    || '';
+}
+
+function errorCause(error, merged) {
+  return merged.cause || error?.cause;
+}
+
+function causeTypeFor(cause, explicitType) {
+  if (explicitType) return explicitType;
+  if (!cause) return '';
+  if (cause.name) return cause.name;
+  if (cause.constructor?.name) return cause.constructor.name;
+  return typeof cause === 'string' ? 'Error' : '';
+}
+
+function causeMessageFor(cause, explicitMessage) {
+  if (explicitMessage) return explicitMessage;
+  if (!cause) return '';
+  return cause.message || (typeof cause === 'string' ? cause : '');
+}
+
+function addCleanDiagnostic(properties, merged, key, max = 120) {
+  const clean = cleanErrorField(merged[key] || merged.properties?.[key], max);
+  if (clean) properties[key] = clean;
+}
+
+function addSafeErrorDiagnostics(properties, merged, error, message) {
+  const messagePreview = sanitizeErrorMessagePreview(merged.messagePreview || merged.properties?.messagePreview || message);
+  if (messagePreview) properties.messagePreview = messagePreview;
+  const stack = merged.stack || merged.stackTrace || error?.stack;
+  if (stack) {
+    properties.stackFingerprint = diagnosticFingerprint('tm_stack_', stack);
+    const topFrame = firstStackFrame(stack);
+    if (topFrame) properties.topFrameFingerprint = diagnosticFingerprint('tm_frame_', topFrame);
+  }
+  const cause = errorCause(error, merged);
+  const causeType = cleanErrorField(causeTypeFor(cause, merged.causeType || merged.properties?.causeType), 80);
+  if (causeType) properties.causeType = causeType;
+  const causeMessage = causeMessageFor(cause, merged.causeMessage || merged.properties?.causeMessage);
+  if (causeType || causeMessage) properties.causeFingerprint = diagnosticFingerprint('tm_cause_', `${causeType}:${causeMessage}`);
+  ['operation', 'feature', 'routeName', 'correlationId', 'requestId'].forEach((key) => addCleanDiagnostic(properties, merged, key));
+  const httpStatus = Number(merged.httpStatus || merged.statusCode || merged.properties?.httpStatus || merged.properties?.statusCode);
+  if (Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599) properties.httpStatus = httpStatus;
 }
 
 function appErrorPayload(errorOrInfo, options = {}, defaultSource = 'server') {
@@ -112,6 +185,7 @@ function appErrorPayload(errorOrInfo, options = {}, defaultSource = 'server') {
   const component = cleanErrorField(merged.component || merged.properties?.component, 120);
   if (release) properties.release = release;
   if (component) properties.component = component;
+  addSafeErrorDiagnostics(properties, merged, error, message);
   const rawPath = merged.path || merged.screen;
   const path = rawPath ? stripQueryPath(rawPath) : '';
   return {

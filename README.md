@@ -117,7 +117,7 @@ Web 自动采集会先写入内存队列，并尽量同步持久化到 `localSto
 
 TraceMind 支持 `app_error` 事件，用于把产品错误放回用户行为、路径、来源、session、用户和健康趋势里分析。它不是 Sentry/Crashlytics 替代品；v1 只回答“用户在哪里遇到错误、之前做了什么、影响哪些路径/转化、是否集中爆发”。
 
-Web Auto Capture 会自动监听 `window.error` 和 `unhandledrejection`，只上报错误摘要：`errorKind`、`errorType`、`messageFingerprint`、`fatal`、`handled`、`source`、`path/screen`、`release`、`component`、`status` 和 `occurredAt`。不会上报 stack trace、源码、request/response body、headers、cookies、authorization、raw log、输入值、raw prompt、secret、带 query 的完整 URL、截图、录屏或 session replay。
+Web Auto Capture 会自动监听 `window.error` 和 `unhandledrejection`，只上报错误摘要：`errorKind`、`errorType`、`messageFingerprint`、`messagePreview`、`stackFingerprint`、`topFrameFingerprint`、`causeType`、`causeFingerprint`、`fatal`、`handled`、`source`、`path/screen`、`release`、`component`、`operation`、`feature`、`routeName`、`correlationId`、`requestId`、`httpStatus`、`status` 和 `occurredAt`。不会上报原始 stack trace、源码、request/response body、headers、cookies、authorization、raw log、输入值、raw prompt、raw user content、secret、带 query 的完整 URL、截图、录屏或 session replay。
 
 ```js
 window.TraceMind.captureError(error, {
@@ -496,7 +496,7 @@ window.TraceMind.capture("custom", {
 
 Native 手动埋点保持同样字段，iOS 和 macOS 都使用 Swift API，macOS 事件会携带 `platform: "macos"`。`properties` 和 `context` 只保留 string、number、boolean；SDK 会丢弃 null、嵌套对象、数组、PII-like 字段、credential values、raw prompt/content、input value 和带 query 的完整 URL。
 
-错误摘要使用 `captureError`，只保留错误类型、消息指纹、handled/fatal、component/release 和 path/screen 等上下文字段，不采集 stack 或 raw message。
+错误摘要使用 `captureError`，只保留错误类型、脱敏后的短消息预览、消息/stack/top-frame/cause 指纹、handled/fatal、component/release、operation/feature、correlation/request id、HTTP 状态和 path/screen 等上下文字段，不采集原始 stack 或 raw message。
 
 ```swift
 try? TraceMind.capture(
@@ -649,7 +649,7 @@ TraceMind 会先保存原始行为日志，再抽取为语义事件，方便 LLM
 | `submit` | 表单提交 | 用户提交表单或确认动作，用于分析注册、支付、创建、搜索等转化节点。 | `target`, `targetHash`, `targetText`, `targetTag`, `path` |
 | `route_change` | 页面跳转 | 用户在应用内发生路由变化，用于分析路径流转、漏斗顺序和页面间跳转。 | `path`, `referrer`, `attribution` |
 | `api_call` | 接口调用 | 客户端或服务端记录接口调用，用于分析接口失败、关键后端流程和服务端埋点。 | `method`, `status`, `path` |
-| `app_error` | 产品错误 | 产品或运行时记录隐私安全的错误摘要，用于分析错误发生路径、前序行为、影响范围和集中爆发。 | `errorKind`, `errorType`, `messageFingerprint`, `fatal`, `handled`, `source`, `path`, `screen`, `release`, `component`, `status`, `occurredAt` |
+| `app_error` | 产品错误 | 产品或运行时记录隐私安全的错误摘要，用于分析错误发生路径、前序行为、影响范围和集中爆发。 | `errorKind`, `errorType`, `messageFingerprint`, `messagePreview`, `stackFingerprint`, `topFrameFingerprint`, `causeType`, `causeFingerprint`, `fatal`, `handled`, `source`, `path`, `screen`, `release`, `component`, `operation`, `feature`, `routeName`, `correlationId`, `requestId`, `httpStatus`, `status`, `occurredAt` |
 | `tool_call` | MCP 工具调用 | MCP server 记录工具调用完成情况，用于分析工具使用量、失败率和耗时。 | `toolName`, `status`, `durationMs`, `errorType`, `resultSizeBucket` |
 | `resource_read` | MCP 资源读取 | MCP server 记录资源读取完成情况，用于分析资源访问、失败率和耗时。 | `resourceName`, `uriScheme`, `uriTemplateHash`, `status`, `durationMs` |
 | `prompt_request` | MCP Prompt 请求 | MCP server 记录 prompt 请求完成情况，用于分析 prompt 使用、失败率和耗时。 | `promptName`, `status`, `durationMs` |

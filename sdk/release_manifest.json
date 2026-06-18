@@ -1,13 +1,13 @@
 {
   "manifestVersion": 1,
-  "generatedAt": "2026-06-15T08:51:32.476Z",
+  "generatedAt": "2026-06-18T05:18:14.814Z",
   "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
   "sourceRef": "tracemind-release-2026.6.15-1",
   "sdks": [
     {
       "sdkName": "swift",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:1a0c7b852cf11e56591f227561d3299d023cca43d60e9200fd867efcd6c0acd1",
+      "contentHash": "sha256:a0b7368794d970496509c6ed53caf23be5832a425414c331fd4ed17969109960",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.6.15-1",
       "sdkSourcePath": "sdk/ios",
@@ -30,7 +30,7 @@
     {
       "sdkName": "android",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:ecf7664858b22db5b2f6d74131672ba19a5982e77f907e60bde066dd229eef3b",
+      "contentHash": "sha256:21fe8b87c469be9f897e1266529782fb803b44a3d3b324567f6a0fcb57c30f59",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.6.15-1",
       "sdkSourcePath": "sdk/android",
@@ -53,14 +53,14 @@
         "packageName": "io.github.wolf3c.tracemind:tracemind-android",
         "groupId": "io.github.wolf3c.tracemind",
         "artifactId": "tracemind-android",
-        "packageVersion": "2026.5.25-3",
-        "contentHash": "sha256:ecf7664858b22db5b2f6d74131672ba19a5982e77f907e60bde066dd229eef3b",
+        "packageVersion": "2026.6.15-1",
+        "contentHash": "sha256:21fe8b87c469be9f897e1266529782fb803b44a3d3b324567f6a0fcb57c30f59",
         "installCommands": [
           "Ensure mavenCentral() is present in dependencyResolutionManagement or repositories.",
-          "Add implementation(\"io.github.wolf3c.tracemind:tracemind-android:2026.5.25-3\") to the Android app module dependencies."
+          "Add implementation(\"io.github.wolf3c.tracemind:tracemind-android:2026.6.15-1\") to the Android app module dependencies."
         ],
         "verificationCommands": [
-          "Resolve io.github.wolf3c.tracemind:tracemind-android:2026.5.25-3 from mavenCentral()"
+          "Resolve io.github.wolf3c.tracemind:tracemind-android:2026.6.15-1 from mavenCentral()"
         ]
       },
       "localSourceFallback": {
@@ -73,7 +73,7 @@
     {
       "sdkName": "react_native",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:5c69e6c053570abf24b2eba6eebd44b7e149795d63f094b4d024b10554f297e6",
+      "contentHash": "sha256:a5bbbf32bb0946b2e735b042eb348378572a821473c7abdce0fa2148de2b6fe6",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.6.15-1",
       "sdkSourcePath": "sdk/react-native",
@@ -94,16 +94,16 @@
       "registry": {
         "type": "npm",
         "packageName": "@tracemind/react-native",
-        "packageVersion": "2026.5.25-3",
-        "contentHash": "sha256:5c69e6c053570abf24b2eba6eebd44b7e149795d63f094b4d024b10554f297e6",
+        "packageVersion": "2026.6.15-1",
+        "contentHash": "sha256:a5bbbf32bb0946b2e735b042eb348378572a821473c7abdce0fa2148de2b6fe6",
         "installCommands": [
-          "npm install @tracemind/react-native@2026.5.25-3",
-          "pnpm add @tracemind/react-native@2026.5.25-3",
-          "yarn add @tracemind/react-native@2026.5.25-3",
+          "npm install @tracemind/react-native@2026.6.15-1",
+          "pnpm add @tracemind/react-native@2026.6.15-1",
+          "yarn add @tracemind/react-native@2026.6.15-1",
           "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
         ],
         "verificationCommands": [
-          "npm view @tracemind/react-native@2026.5.25-3 version"
+          "npm view @tracemind/react-native@2026.6.15-1 version"
         ]
       },
       "localSourceFallback": {
@@ -116,7 +116,7 @@
     {
       "sdkName": "mini_program",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:305aa792043af13630cfb76d23ed4e90aeb89d69ce29a72f79a6d31f686a2f90",
+      "contentHash": "sha256:3942ad7653ab8f2e568b4f5b204a0414e4cfd899195be38f884aac5dfc14941c",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.6.15-1",
       "sdkSourcePath": "sdk/mini-program",
@@ -137,16 +137,16 @@
       "registry": {
         "type": "npm",
         "packageName": "@tracemind/mini-program",
-        "packageVersion": "2026.5.25-3",
-        "contentHash": "sha256:305aa792043af13630cfb76d23ed4e90aeb89d69ce29a72f79a6d31f686a2f90",
+        "packageVersion": "2026.6.15-1",
+        "contentHash": "sha256:3942ad7653ab8f2e568b4f5b204a0414e4cfd899195be38f884aac5dfc14941c",
         "installCommands": [
-          "npm install @tracemind/mini-program@2026.5.25-3",
-          "pnpm add @tracemind/mini-program@2026.5.25-3",
-          "yarn add @tracemind/mini-program@2026.5.25-3",
+          "npm install @tracemind/mini-program@2026.6.15-1",
+          "pnpm add @tracemind/mini-program@2026.6.15-1",
+          "yarn add @tracemind/mini-program@2026.6.15-1",
           "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
         ],
         "verificationCommands": [
-          "npm view @tracemind/mini-program@2026.5.25-3 version"
+          "npm view @tracemind/mini-program@2026.6.15-1 version"
         ]
       },
       "localSourceFallback": {
@@ -159,7 +159,7 @@
     {
       "sdkName": "browser_extension",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:08dddeaedb8fa4d6e1e1645f7954f5dc28ec9a1a39a23f2deb86e4a0b2d5daa0",
+      "contentHash": "sha256:acaf6fb029734b29e083db21f7c8eac3ccb4de8d55d10ea3940b932a212d90a7",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.6.15-1",
       "sdkSourcePath": "sdk/browser-extension",
@@ -180,16 +180,16 @@
       "registry": {
         "type": "npm",
         "packageName": "@tracemind/browser-extension",
-        "packageVersion": "2026.5.25-3",
-        "contentHash": "sha256:08dddeaedb8fa4d6e1e1645f7954f5dc28ec9a1a39a23f2deb86e4a0b2d5daa0",
+        "packageVersion": "2026.6.15-1",
+        "contentHash": "sha256:acaf6fb029734b29e083db21f7c8eac3ccb4de8d55d10ea3940b932a212d90a7",
         "installCommands": [
-          "npm install @tracemind/browser-extension@2026.5.25-3",
-          "pnpm add @tracemind/browser-extension@2026.5.25-3",
-          "yarn add @tracemind/browser-extension@2026.5.25-3",
+          "npm install @tracemind/browser-extension@2026.6.15-1",
+          "pnpm add @tracemind/browser-extension@2026.6.15-1",
+          "yarn add @tracemind/browser-extension@2026.6.15-1",
           "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
         ],
         "verificationCommands": [
-          "npm view @tracemind/browser-extension@2026.5.25-3 version"
+          "npm view @tracemind/browser-extension@2026.6.15-1 version"
         ]
       },
       "localSourceFallback": {
@@ -287,7 +287,7 @@
     {
       "sdkName": "server_node",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:3589d33c9722a7460d4b4638b10d810c1700d7b4cb9fb6ba50570ff1c62f8e25",
+      "contentHash": "sha256:177e03023f7f7fc1cb9636762cb5baff4a700ac52831c9dce2511c7a9e33785f",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.6.15-1",
       "sdkSourcePath": "sdk/server-node",
@@ -308,16 +308,16 @@
       "registry": {
         "type": "npm",
         "packageName": "@tracemind/server-node",
-        "packageVersion": "2026.5.25-3",
-        "contentHash": "sha256:3589d33c9722a7460d4b4638b10d810c1700d7b4cb9fb6ba50570ff1c62f8e25",
+        "packageVersion": "2026.6.15-1",
+        "contentHash": "sha256:177e03023f7f7fc1cb9636762cb5baff4a700ac52831c9dce2511c7a9e33785f",
         "installCommands": [
-          "npm install @tracemind/server-node@2026.5.25-3",
-          "pnpm add @tracemind/server-node@2026.5.25-3",
-          "yarn add @tracemind/server-node@2026.5.25-3",
+          "npm install @tracemind/server-node@2026.6.15-1",
+          "pnpm add @tracemind/server-node@2026.6.15-1",
+          "yarn add @tracemind/server-node@2026.6.15-1",
           "Run exactly one package-manager command above based on the project lockfile; do not run npm, pnpm, and yarn together."
         ],
         "verificationCommands": [
-          "npm view @tracemind/server-node@2026.5.25-3 version"
+          "npm view @tracemind/server-node@2026.6.15-1 version"
         ]
       },
       "localSourceFallback": {
@@ -330,7 +330,7 @@
     {
       "sdkName": "server_python",
       "displayVersion": "0.1.0",
-      "contentHash": "sha256:0a685a9dc9a80889cce6616c7b40a982e98fcc5c13f2a698d987afcfe39e36ba",
+      "contentHash": "sha256:54defeedc23289b61120a975fa583e4ed68cec7808943624cef10f670beda283",
       "sourceRepo": "https://github.com/wolf3c/TraceMind.git",
       "sourceRef": "tracemind-release-2026.6.15-1",
       "sdkSourcePath": "sdk/server-python",
@@ -351,14 +351,14 @@
       "registry": {
         "type": "pypi",
         "packageName": "tracemind-server",
-        "packageVersion": "2026.5.25.post3",
-        "contentHash": "sha256:0a685a9dc9a80889cce6616c7b40a982e98fcc5c13f2a698d987afcfe39e36ba",
+        "packageVersion": "2026.6.15.post1",
+        "contentHash": "sha256:54defeedc23289b61120a975fa583e4ed68cec7808943624cef10f670beda283",
         "installCommands": [
-          "pip install tracemind-server==2026.5.25.post3",
-          "python -m pip install tracemind-server==2026.5.25.post3"
+          "pip install tracemind-server==2026.6.15.post1",
+          "python -m pip install tracemind-server==2026.6.15.post1"
         ],
         "verificationCommands": [
-          "python -m pip install --dry-run --no-deps tracemind-server==2026.5.25.post3"
+          "python -m pip install --dry-run --no-deps tracemind-server==2026.6.15.post1"
         ]
       },
       "localSourceFallback": {

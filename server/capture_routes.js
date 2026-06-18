@@ -158,16 +158,35 @@ const FORBIDDEN_ANALYTICS_KEYS = [
   'cookies',
   'authorization',
 ];
+
+const SAFE_DERIVED_ANALYTICS_KEYS = new Set([
+  'messageFingerprint',
+  'stackFingerprint',
+  'topFrameFingerprint',
+  'causeFingerprint',
+]);
+
 const APP_ERROR_PROPERTY_KEYS = new Set([
   'errorKind',
   'errorType',
   'messageFingerprint',
+  'messagePreview',
+  'stackFingerprint',
+  'topFrameFingerprint',
+  'causeType',
+  'causeFingerprint',
   'fatal',
   'handled',
   'source',
   'screen',
   'release',
   'component',
+  'operation',
+  'feature',
+  'routeName',
+  'correlationId',
+  'requestId',
+  'httpStatus',
   'status',
   'occurredAt',
 ]);
@@ -1557,7 +1576,7 @@ const PRIVACY_CONSTRAINTS = [
   'Do not capture input values.',
   'Do not capture screenshots, DOM snapshots, native snapshots, or session replay.',
   'Do not capture secrets, tokens, raw prompts, raw user content, or full query URLs.',
-  'For app_error, capture only sanitized summary fields such as errorKind, errorType, messageFingerprint, fatal, handled, source, path/screen, release, component, status, and occurredAt; do not capture stacks, logs, source code, request/response bodies, headers, cookies, auth values, screenshots, recordings, or raw messages.',
+  'For app_error, capture only sanitized summary fields such as errorKind, errorType, messageFingerprint, messagePreview, stackFingerprint, topFrameFingerprint, causeType, causeFingerprint, fatal, handled, source, path/screen, release, component, operation, feature, routeName, correlationId, requestId, httpStatus, status, and occurredAt; do not capture raw stacks, logs, source code, request/response bodies, headers, cookies, auth values, screenshots, recordings, or raw messages.',
   'Use the returned public projectKey only for capture writes; never use an MCP token in app code.',
 ];
 
@@ -1569,7 +1588,7 @@ const MCP_PRIVACY_CONSTRAINTS = [
 
 const SERVER_PRIVACY_CONSTRAINTS = [
   'Do not capture request body, response body, headers, cookies, authorization values, secrets, tokens, raw prompts, raw user content, or full query URLs.',
-  'For app_error, capture only sanitized summary fields and messageFingerprint; do not capture stack traces, raw logs, request/response bodies, headers, cookies, auth values, or raw messages.',
+  'For app_error, capture only sanitized summary fields, sanitized messagePreview, and irreversible fingerprints; do not capture raw stack traces, raw logs, request/response bodies, headers, cookies, auth values, or raw messages.',
   'Capture only stable business outcomes with sanitized primitive properties and context.',
   'Use the returned public projectKey only for capture writes; never use an MCP token in server application code.',
 ];
@@ -1968,7 +1987,7 @@ function commonSetup(project, platform) {
     'Web Auto Capture records window error and unhandledrejection summaries automatically; call captureError manually for handled errors that affect product flow.',
     'Native, React Native, Mini Program, Browser Extension background/service worker, and server SDKs use manual captureError only in v1.',
     'Do not add native crash reporters, global request/log/database hooks, sourcemap upload, stack symbolication, crash dumps, screenshots, recordings, or session replay.',
-    'Only send sanitized summary fields: errorKind, errorType, messageFingerprint, fatal, handled, source, path/screen, release, component, status, and occurredAt.',
+    'Only send sanitized summary fields: errorKind, errorType, messageFingerprint, messagePreview, stackFingerprint, topFrameFingerprint, causeType, causeFingerprint, fatal, handled, source, path/screen, release, component, operation, feature, routeName, correlationId, requestId, httpStatus, status, and occurredAt.',
   ];
   return {
     platform,
@@ -1993,7 +2012,7 @@ function commonSetup(project, platform) {
       browser_extension: 'TraceMind.captureError(error, { path: "/popup.html", component: "Popup" })',
       server_node: 'TraceMindServer.captureError(error, { path: "/jobs", component: "InvoiceWorker" })',
       server_python: 'TraceMindServer.capture_error(error, path="/jobs", component="InvoiceWorker")',
-      server_http: `POST ${captureApiUrl} with type "app_error" and only sanitized summary fields`,
+      server_http: `POST ${captureApiUrl} with type "app_error" and only sanitized summary fields, sanitized messagePreview, and irreversible fingerprints`,
     },
     userFeedbackWorkflow,
     userFeedbackMethods: {
@@ -2802,7 +2821,7 @@ function platformSetup(project, platform, options = {}) {
       manualCaptureWarnings: SERVER_MANUAL_CAPTURE_WARNINGS,
       manualCaptureExamples: [
         `POST ${common.captureApiUrl} with the returned payloadTemplate after replacing eventName with an approved event name.`,
-        `POST ${common.captureApiUrl} with type "app_error" and properties containing messageFingerprint, errorType, handled/fatal, source, component, release, and status only.`,
+        `POST ${common.captureApiUrl} with type "app_error" and properties containing sanitized summary fields such as messageFingerprint, messagePreview, stackFingerprint, topFrameFingerprint, errorType, causeType, handled/fatal, source, component, release, correlationId, requestId, httpStatus, and status only.`,
       ],
       manualCaptureExample: `POST ${common.captureApiUrl} with the returned payloadTemplate after replacing eventName with an approved event name.`,
     };
@@ -3258,16 +3277,18 @@ function flattenFields(value, prefix = '') {
   });
 }
 
-function privacyFindings(fields = {}) {
+function privacyFindings(fields = {}, options = {}) {
   const findings = [];
+  const allowedDerivedKeys = options.allowedDerivedKeys || new Set();
   flattenFields(fields).forEach((field) => {
     const value = String(field.value || '');
+    const forbiddenKey = isForbiddenAnalyticsKey(field.key) && !allowedDerivedKeys.has(field.key);
     const looksLikeEmail = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(value);
     const looksLikeSecret = /(sk-|pk_|bearer\s+|api[_-]?key|access[_-]?token)/i.test(value);
     const looksLikeFullQueryUrl = /^https?:\/\/\S+\?\S+/.test(value);
     const looksLikeRawSensitiveContent = /\b(raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:)/i.test(value);
 
-    if (isForbiddenAnalyticsKey(field.key) || looksLikeEmail || looksLikeSecret || looksLikeFullQueryUrl || looksLikeRawSensitiveContent) {
+    if (forbiddenKey || looksLikeEmail || looksLikeSecret || looksLikeFullQueryUrl || looksLikeRawSensitiveContent) {
       addFinding(
         findings,
         'error',
@@ -3991,6 +4012,14 @@ function isForbiddenAnalyticsKey(key) {
   ));
 }
 
+function isSafeDerivedAnalyticsKey(key) {
+  return SAFE_DERIVED_ANALYTICS_KEYS.has(String(key || ''));
+}
+
+function isForbiddenAppErrorKey(key) {
+  return isForbiddenAnalyticsKey(key) && !isSafeDerivedAnalyticsKey(key);
+}
+
 function isSafeServerPrimitive(value) {
   return typeof value === 'string'
     || typeof value === 'boolean'
@@ -4036,12 +4065,69 @@ function sanitizePrimitiveFieldValue(value) {
   return value;
 }
 
+function sanitizeErrorMessagePreview(value) {
+  const text = safeString(value, 500)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig, '[email]')
+    .replace(/https?:\/\/\S+/ig, '[url]')
+    .replace(/(^|\s)\/[^\s?]+\?\S+/g, '$1[url]')
+    .replace(/\b(sk-[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|token\s*[:=]\s*\S+|secret\s*[:=]\s*\S+|password\s*[:=]\s*\S+)\b/ig, '[redacted]')
+    .replace(/\b\d{12,19}\b/g, '[number]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+  if (!text) return undefined;
+  if (/@|https?:|%40|bearer\s+|api[_-]?key|access[_-]?token|sk-|pk_|secret|password/i.test(text)) return undefined;
+  if (/\b(raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:)/i.test(text)) return undefined;
+  return text;
+}
+
+const APP_ERROR_FINGERPRINT_PREFIXES = {
+  messageFingerprint: 'tm_error_',
+  stackFingerprint: 'tm_stack_',
+  topFrameFingerprint: 'tm_frame_',
+  causeFingerprint: 'tm_cause_',
+};
+
+const APP_ERROR_SHORT_TEXT_MAX = {
+  errorKind: 40,
+  errorType: 80,
+  source: 40,
+  release: 80,
+  component: 120,
+  operation: 120,
+  feature: 120,
+  routeName: 120,
+  correlationId: 120,
+  requestId: 120,
+  status: 40,
+  occurredAt: 80,
+  causeType: 80,
+};
+
+function sanitizeAppErrorFieldValue(key, value) {
+  if (key === 'messagePreview') return sanitizeErrorMessagePreview(value);
+  if (key === 'httpStatus') {
+    const status = typeof value === 'string' ? Number(value) : value;
+    return Number.isInteger(status) && status >= 100 && status <= 599 ? status : undefined;
+  }
+  const fingerprintPrefix = APP_ERROR_FINGERPRINT_PREFIXES[key];
+  if (fingerprintPrefix) {
+    const fingerprint = safeString(value, 120).toLowerCase();
+    return new RegExp(`^${fingerprintPrefix}[a-z0-9]{6,64}$`).test(fingerprint) ? fingerprint : undefined;
+  }
+  const nextValue = sanitizePrimitiveFieldValue(value);
+  if (typeof nextValue === 'string') {
+    return safeString(nextValue, APP_ERROR_SHORT_TEXT_MAX[key] || 160);
+  }
+  return nextValue;
+}
+
 function sanitizeAppErrorFields(fields = {}, allowedKeys = APP_ERROR_PROPERTY_KEYS) {
   const input = safeObject(fields, 4096);
   return Object.fromEntries(
     Object.entries(input).flatMap(([key, value]) => {
-      if (!allowedKeys.has(key) || isForbiddenAnalyticsKey(key)) return [];
-      const nextValue = sanitizePrimitiveFieldValue(value);
+      if (!allowedKeys.has(key) || isForbiddenAppErrorKey(key)) return [];
+      const nextValue = sanitizeAppErrorFieldValue(key, value);
       return nextValue === undefined ? [] : [[key, nextValue]];
     }),
   );
@@ -4137,7 +4223,7 @@ function validateAppErrorFieldSet(fields, root, allowedKeys, findings) {
         findings,
         'error',
         'unsupported_app_error_field',
-        'app_error only accepts sanitized summary fields; omit stacks, logs, bodies, headers, cookies, auth values, input values, screenshots, recordings, and full query URLs.',
+        'app_error only accepts sanitized summary fields and irreversible fingerprints; omit raw stacks, logs, bodies, headers, cookies, auth values, input values, screenshots, recordings, and full query URLs.',
         path,
       );
       return;
@@ -4152,7 +4238,7 @@ function validateAppErrorFieldSet(fields, root, allowedKeys, findings) {
       );
       return;
     }
-    if (sanitizePrimitiveFieldValue(value) === undefined) {
+    if (sanitizeAppErrorFieldValue(key, value) === undefined) {
       addFinding(
         findings,
         'error',
@@ -4346,7 +4432,7 @@ function extractSensitiveKeysFromDiff(addedText) {
   keyPatterns.forEach((keyPattern) => {
     [...String(addedText || '').matchAll(keyPattern)].forEach((match) => {
       const key = match[1];
-      if (!key || seenKeys.has(key) || !isForbiddenAnalyticsKey(key)) return;
+      if (!key || seenKeys.has(key) || !isForbiddenAnalyticsKey(key) || isSafeDerivedAnalyticsKey(key)) return;
       seenKeys.add(key);
       addFinding(
         findings,
@@ -4521,9 +4607,12 @@ async function callMcpToolResult(project, name, args = {}, options = {}) {
   }
 
   if (name === 'tracemind.validate_event_payload') {
+    const privacyOptions = args.eventType === 'app_error'
+      ? { allowedDerivedKeys: SAFE_DERIVED_ANALYTICS_KEYS }
+      : {};
     const findings = [
       ...validateEventIdentity(args.eventType, args.eventName),
-      ...privacyFindings({ properties: args.properties || {}, context: args.context || {} }),
+      ...privacyFindings({ properties: args.properties || {}, context: args.context || {} }, privacyOptions),
     ];
     if (args.eventType === 'app_error') {
       validateAppErrorPayload(args, findings);
@@ -5534,6 +5623,90 @@ export function clientScript(host) {
       .slice(0, 240);
   }
 
+  function sanitizeMessagePreview(value) {
+    var text = String(value || '')
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/ig, '[email]')
+      .replace(/https?:\\/\\/\\S+/ig, '[url]')
+      .replace(/(^|\\s)\\/[^\\s?]+\\?\\S+/g, '$1[url]')
+      .replace(/\\b(sk-[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|bearer\\s+\\S+|api[_-]?key\\s*[:=]\\s*\\S+|access[_-]?token\\s*[:=]\\s*\\S+|token\\s*[:=]\\s*\\S+|secret\\s*[:=]\\s*\\S+|password\\s*[:=]\\s*\\S+)\\b/ig, '[redacted]')
+      .replace(/\\b\\d{12,19}\\b/g, '[number]')
+      .replace(/\\s+/g, ' ')
+      .trim()
+      .slice(0, 160);
+    if (!text) return '';
+    if (/@|https?:|%40|bearer\\s+|api[_-]?key|access[_-]?token|sk-|pk_|secret|password/i.test(text)) return '';
+    if (/\\b(raw\\s+prompt|raw\\s+user\\s+content|source\\s+diff|request\\s+body|response\\s+body|authorization\\s*:|set-cookie\\s*:)/i.test(text)) return '';
+    return text;
+  }
+
+  function firstStackFrame(stack) {
+    var lines = String(stack || '').split(/\\n+/).map(function (line) {
+      return line.replace(/\\s+/g, ' ').trim();
+    }).filter(Boolean);
+    for (var index = 0; index < lines.length; index += 1) {
+      if (/^(at\\s+|.*@|.*:\\d+:\\d+)/.test(lines[index]) && !/^[a-z]*error\\b/i.test(lines[index])) {
+        return lines[index];
+      }
+    }
+    return lines.length > 1 ? lines[1] : (lines[0] || '');
+  }
+
+  function errorCause(error, merged) {
+    return merged.cause || (error && error.cause);
+  }
+
+  function causeTypeFor(cause, explicitType) {
+    if (explicitType) return explicitType;
+    if (!cause) return '';
+    if (cause.name) return cause.name;
+    if (cause.constructor && cause.constructor.name) return cause.constructor.name;
+    return typeof cause === 'string' ? 'Error' : '';
+  }
+
+  function causeMessageFor(cause, explicitMessage) {
+    if (explicitMessage) return explicitMessage;
+    if (!cause) return '';
+    return cause.message || (typeof cause === 'string' ? cause : '');
+  }
+
+  function addErrorDiagnosticString(properties, merged, key, max) {
+    var raw = merged[key] || (merged.properties && merged.properties[key]);
+    var clean = cleanErrorString(raw, max || 120);
+    if (clean) properties[key] = clean;
+  }
+
+  function cleanDiagnosticFingerprint(value, prefix) {
+    var text = cleanErrorString(value, 120).toLowerCase();
+    return new RegExp('^' + prefix + '[a-z0-9]{6,64}$').test(text) ? text : '';
+  }
+
+  function addSafeErrorDiagnostics(properties, merged, error, message) {
+    var preview = sanitizeMessagePreview(merged.messagePreview || (merged.properties && merged.properties.messagePreview) || message);
+    if (preview) properties.messagePreview = preview;
+    var stack = merged.stack || merged.stackTrace || (error && error.stack);
+    var stackFingerprint = cleanDiagnosticFingerprint(merged.stackFingerprint || (merged.properties && merged.properties.stackFingerprint), 'tm_stack_');
+    if (!stackFingerprint && stack) stackFingerprint = hash(sanitizeMessageForFingerprint(stack).slice(0, 1000), 'tm_stack_');
+    if (stackFingerprint) properties.stackFingerprint = stackFingerprint;
+    var topFrame = firstStackFrame(stack);
+    var topFrameFingerprint = cleanDiagnosticFingerprint(merged.topFrameFingerprint || (merged.properties && merged.properties.topFrameFingerprint), 'tm_frame_');
+    if (!topFrameFingerprint && topFrame) topFrameFingerprint = hash(sanitizeMessageForFingerprint(topFrame), 'tm_frame_');
+    if (topFrameFingerprint) properties.topFrameFingerprint = topFrameFingerprint;
+    var cause = errorCause(error, merged);
+    var causeType = cleanErrorString(causeTypeFor(cause, merged.causeType || (merged.properties && merged.properties.causeType)), 80);
+    if (causeType) properties.causeType = causeType;
+    var causeFingerprint = cleanDiagnosticFingerprint(merged.causeFingerprint || (merged.properties && merged.properties.causeFingerprint), 'tm_cause_');
+    var causeMessage = causeMessageFor(cause, merged.causeMessage || (merged.properties && merged.properties.causeMessage));
+    if (!causeFingerprint && (causeType || causeMessage)) {
+      causeFingerprint = hash(causeType + ':' + sanitizeMessageForFingerprint(causeMessage), 'tm_cause_');
+    }
+    if (causeFingerprint) properties.causeFingerprint = causeFingerprint;
+    ['operation', 'feature', 'routeName', 'correlationId', 'requestId'].forEach(function (key) {
+      addErrorDiagnosticString(properties, merged, key, 120);
+    });
+    var status = Number(merged.httpStatus || merged.statusCode || (merged.properties && (merged.properties.httpStatus || merged.properties.statusCode)));
+    if (status >= 100 && status <= 599 && Math.floor(status) === status) properties.httpStatus = status;
+  }
+
   function errorInfo(errorOrInfo, options) {
     var info = (errorOrInfo && typeof errorOrInfo === 'object' && !(errorOrInfo instanceof Error)) ? errorOrInfo : {};
     var error = errorOrInfo instanceof Error ? errorOrInfo : info.error;
@@ -5553,6 +5726,7 @@ export function clientScript(host) {
     var component = cleanErrorString(merged.component || (merged.properties && merged.properties.component), 120);
     if (release) properties.release = release;
     if (component) properties.component = component;
+    addSafeErrorDiagnostics(properties, merged, error, message);
     return {
       path: safeCapturePath(merged.path || merged.screen),
       eventName: 'app_error',

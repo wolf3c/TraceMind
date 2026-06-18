@@ -56,6 +56,7 @@
 - Added Web automatic `window.error` / `unhandledrejection` summary capture plus `window.TraceMind.captureError(...)`; browser-extension owned pages get equivalent safe JS error summaries where the runtime exposes event listeners.
 - Added manual `captureError` helpers across Swift iOS/macOS, Android, React Native, Mini Program, Browser Extension, Node server, and Python server SDKs. Server SDKs remain manual only and do not install request hooks, log hooks, DB hooks, or crash reporters.
 - Added ingestion and MCP validation guards so `app_error` only accepts primitive summary fields and omits stack traces, raw logs, source code, request/response bodies, headers, cookies, authorization values, input values, raw prompts, secrets, screenshots, recordings, and full query URLs.
+- Expanded `app_error` summaries with sanitized message previews, stack/top-frame/cause fingerprints, operation/feature, route/correlation/request ids, and HTTP status while keeping raw stack traces, raw messages, bodies, headers, cookies, authorization values, prompts, input values, and full query URLs out of capture.
 - Updated setup responses, README, semantic docs, and coding-agent guidance so agents treat `app_error` as an approved but privacy-limited product error context signal.
 
 ## 2026-05-06

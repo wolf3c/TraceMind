@@ -248,7 +248,7 @@ TraceMind also supports terminal user feedback from the customer app. This is se
 
 Never send PII, secrets, raw user content, raw prompts, access tokens, API keys, passwords, phone numbers, emails, or full URLs with query strings.
 
-For `app_error`, only send summary fields such as `errorKind`, `errorType`, `messageFingerprint`, `fatal`, `handled`, `source`, `path/screen`, `release`, `component`, `status`, and `occurredAt`. Do not send stack traces, source code, request/response bodies, headers, cookies, authorization values, raw logs, raw input values, screenshots, recordings, crash dumps, session replay, or raw error messages.
+For `app_error`, only send summary fields such as `errorKind`, `errorType`, `messageFingerprint`, `messagePreview`, `stackFingerprint`, `topFrameFingerprint`, `causeType`, `causeFingerprint`, `fatal`, `handled`, `source`, `path/screen`, `release`, `component`, `operation`, `feature`, `routeName`, `correlationId`, `requestId`, `httpStatus`, `status`, and `occurredAt`. SDKs may derive sanitized previews and irreversible fingerprints locally, but do not send raw stack traces, source code, request/response bodies, headers, cookies, authorization values, raw logs, raw input values, screenshots, recordings, crash dumps, session replay, or raw error messages.
 
 Use `tracemind.privacy_check` when a field name or sample value might be sensitive.
 

@@ -3,12 +3,13 @@ import json
 import math
 import re
 import time
+import traceback
 import urllib.request
 import uuid
 
 
 SDK_VERSION = "0.1.0"
-SDK_CONTENT_HASH = "sha256:0a685a9dc9a80889cce6616c7b40a982e98fcc5c13f2a698d987afcfe39e36ba"
+SDK_CONTENT_HASH = "sha256:54defeedc23289b61120a975fa583e4ed68cec7808943624cef10f670beda283"
 DEFAULT_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/capture"
 DEFAULT_FEEDBACK_ENDPOINT = "https://tracemind.sandbox.galaxycloud.app/api/user-feedback"
 FORBIDDEN_FIELD_PATTERN = re.compile(
@@ -67,9 +68,82 @@ def _sanitize_error_message_for_hash(value):
     return re.sub(r"\s+", " ", text).strip()[:240]
 
 
+def _sanitize_error_message_preview(value):
+    text = _safe_string(value, 500)
+    text = re.sub(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", "[email]", text, flags=re.IGNORECASE)
+    text = re.sub(r"https?://\S+", "[url]", text, flags=re.IGNORECASE)
+    text = re.sub(r"(^|\s)/[^\s?]+\?\S+", r"\1[url]", text)
+    text = re.sub(
+        r"\b(sk-[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|token\s*[:=]\s*\S+|secret\s*[:=]\s*\S+|password\s*[:=]\s*\S+)\b",
+        "[redacted]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\b\d{12,19}\b", "[number]", text)
+    text = re.sub(r"\s+", " ", text).strip()[:160]
+    if not text:
+        return ""
+    if re.search(r"@|https?:|%40|bearer\s+|api[_-]?key|access[_-]?token|sk-|pk_|secret|password", text, re.IGNORECASE):
+        return ""
+    if re.search(r"\b(raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:)", text, re.IGNORECASE):
+        return ""
+    return text
+
+
 def _message_fingerprint(error_type, message):
     digest = hashlib.sha256(f"{error_type}:{_sanitize_error_message_for_hash(message)}".encode("utf-8")).hexdigest()
     return "tm_error_" + digest[:24]
+
+
+def _diagnostic_fingerprint(prefix, value):
+    digest = hashlib.sha256(_sanitize_error_message_for_hash(value).encode("utf-8")).hexdigest()
+    return prefix + digest[:24]
+
+
+def _stack_text(error):
+    if not error or not getattr(error, "__traceback__", None):
+        return ""
+    return "".join(traceback.format_exception(type(error), error, error.__traceback__))
+
+
+def _first_stack_frame(stack):
+    lines = [re.sub(r"\s+", " ", line).strip() for line in str(stack or "").splitlines()]
+    lines = [line for line in lines if line]
+    for line in lines:
+        if re.search(r"(^File\s+| at |@|:\d+:\d+)", line) and not re.match(r"^[a-z]*error\b", line, re.IGNORECASE):
+            return line
+    return lines[1] if len(lines) > 1 else (lines[0] if lines else "")
+
+
+def _safe_diagnostic_field(merged, key, max_length=120):
+    snake_key = re.sub(r"(?<!^)(?=[A-Z])", "_", key).lower()
+    nested_properties = merged.get("properties") if isinstance(merged.get("properties"), dict) else {}
+    return _clean_error_field(
+        merged.get(key) or merged.get(snake_key) or nested_properties.get(key) or nested_properties.get(snake_key),
+        max_length,
+    )
+
+
+def _error_cause(error, merged):
+    return merged.get("cause") or getattr(error, "__cause__", None) or getattr(error, "__context__", None)
+
+
+def _cause_type(cause, explicit_type=None):
+    if explicit_type:
+        return explicit_type
+    if not cause:
+        return ""
+    if isinstance(cause, BaseException):
+        return cause.__class__.__name__
+    return "Error" if isinstance(cause, str) else cause.__class__.__name__
+
+
+def _cause_message(cause, explicit_message=None):
+    if explicit_message:
+        return explicit_message
+    if not cause:
+        return ""
+    return str(cause)
 
 
 def _sanitize_app_error_context(fields):
@@ -115,6 +189,39 @@ def _app_error_payload(error_or_info=None, options=None, default_source="server"
         properties["release"] = release
     if component:
         properties["component"] = component
+    message_preview = _sanitize_error_message_preview(merged.get("messagePreview") or merged.get("message_preview") or nested_properties.get("messagePreview") or message)
+    if message_preview:
+        properties["messagePreview"] = message_preview
+    stack = merged.get("stack") or merged.get("stackTrace") or merged.get("stack_trace") or _stack_text(error)
+    if stack:
+        properties["stackFingerprint"] = _diagnostic_fingerprint("tm_stack_", stack)
+        top_frame = _first_stack_frame(stack)
+        if top_frame:
+            properties["topFrameFingerprint"] = _diagnostic_fingerprint("tm_frame_", top_frame)
+    cause = _error_cause(error, merged)
+    cause_type = _clean_error_field(_cause_type(cause, merged.get("causeType") or merged.get("cause_type") or nested_properties.get("causeType")), 80)
+    if cause_type:
+        properties["causeType"] = cause_type
+    cause_message = _cause_message(cause, merged.get("causeMessage") or merged.get("cause_message") or nested_properties.get("causeMessage"))
+    if cause_type or cause_message:
+        properties["causeFingerprint"] = _diagnostic_fingerprint("tm_cause_", f"{cause_type}:{cause_message}")
+    for key in ["operation", "feature", "routeName", "correlationId", "requestId"]:
+        value = _safe_diagnostic_field(merged, key)
+        if value:
+            properties[key] = value
+    http_status = merged.get("httpStatus") or merged.get("http_status") or merged.get("statusCode") or merged.get("status_code") or nested_properties.get("httpStatus") or nested_properties.get("statusCode")
+    if isinstance(http_status, bool):
+        http_status = None
+    elif isinstance(http_status, int):
+        pass
+    elif isinstance(http_status, float) and http_status.is_integer():
+        http_status = int(http_status)
+    elif isinstance(http_status, str) and re.fullmatch(r"\d+", http_status.strip()):
+        http_status = int(http_status.strip())
+    else:
+        http_status = None
+    if http_status and 100 <= http_status <= 599:
+        properties["httpStatus"] = http_status
     raw_path = merged.get("path") or merged.get("screen")
     path = _strip_query_path(raw_path) if raw_path else ""
     payload = {

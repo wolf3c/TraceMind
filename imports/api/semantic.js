@@ -110,11 +110,13 @@ export function buildSemanticEvent(behavior) {
   if (eventType === 'app_error') {
     const errorType = cleanText(behavior.properties?.errorType || behavior.properties?.errorKind, '错误');
     const fingerprint = cleanText(behavior.properties?.messageFingerprint);
+    const preview = cleanText(behavior.properties?.messagePreview);
     const component = cleanText(behavior.properties?.component || behavior.context?.component);
+    const httpStatus = cleanText(behavior.properties?.httpStatus);
     return {
       ...base,
       title: `产品错误 ${errorType}`,
-      meaning: `产品在 ${path}${component ? ` 的 ${component}` : ''} 记录了 ${errorType} 错误摘要${fingerprint ? `，指纹 ${fingerprint}` : ''}。`,
+      meaning: `产品在 ${path}${component ? ` 的 ${component}` : ''} 记录了 ${errorType} 错误摘要${preview ? `：${preview}` : ''}${fingerprint ? `，指纹 ${fingerprint}` : ''}${httpStatus ? `，HTTP ${httpStatus}` : ''}。`,
     };
   }
 

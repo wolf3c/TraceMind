@@ -211,7 +211,7 @@ describe('TraceMind', function () {
       assert.deepStrictEqual(localizedProductUpdateDetails(update.details, 'zh'), [
         '各终端报错会作为统一的 app_error 摘要进入行为路径、来源、session、用户和健康趋势分析。',
         '支持自动捕获或手动上报两种接入方式，让线上错误能和发生前后的用户行为一起排查。',
-        '隐私安全：只保留错误类型、消息指纹、handled/fatal、path/screen、component、release 等错误信息，不采集请求体、响应体、raw prompt、secret、截图或录屏。',
+        '隐私安全：保留错误类型、脱敏短消息预览、消息/stack/cause 指纹、handled/fatal、path/screen、component、release、correlation/request id 和 HTTP 状态，不采集原始 stack、请求体、响应体、headers、raw prompt、secret、截图或录屏。',
       ]);
     });
 
@@ -1864,6 +1864,12 @@ describe('TraceMind', function () {
         headers: { authorization: 'Bearer secret' },
         inputValue: '4111111111111111',
         component: 'CheckoutForm',
+        operation: 'checkout.submit',
+        feature: 'checkout',
+        routeName: 'Checkout',
+        correlationId: 'corr_123',
+        requestId: 'req_456',
+        httpStatus: 402,
         fatal: true,
         handled: true,
       });
@@ -1877,13 +1883,24 @@ describe('TraceMind', function () {
       assert.ok(errors.every((record) => record.payload.properties.status === 'error'));
       assert.strictEqual(errors[0].payload.properties.source, 'web');
       assert.strictEqual(errors[0].payload.properties.handled, false);
+      assert.strictEqual(errors[0].payload.properties.messagePreview, 'Card token expired for [email]');
+      assert.ok(errors[0].payload.properties.stackFingerprint.startsWith('tm_stack_'));
+      assert.ok(errors[0].payload.properties.topFrameFingerprint.startsWith('tm_frame_'));
       assert.strictEqual(errors[2].payload.properties.component, 'CheckoutForm');
+      assert.strictEqual(errors[2].payload.properties.messagePreview, 'Checkout failed with [redacted]');
+      assert.ok(errors[2].payload.properties.stackFingerprint.startsWith('tm_stack_'));
+      assert.ok(errors[2].payload.properties.topFrameFingerprint.startsWith('tm_frame_'));
+      assert.strictEqual(errors[2].payload.properties.operation, 'checkout.submit');
+      assert.strictEqual(errors[2].payload.properties.feature, 'checkout');
+      assert.strictEqual(errors[2].payload.properties.routeName, 'Checkout');
+      assert.strictEqual(errors[2].payload.properties.correlationId, 'corr_123');
+      assert.strictEqual(errors[2].payload.properties.requestId, 'req_456');
+      assert.strictEqual(errors[2].payload.properties.httpStatus, 402);
       assert.strictEqual(errors[2].payload.properties.fatal, true);
       assert.strictEqual(errors[2].payload.properties.handled, true);
       assert.strictEqual(errors[2].payload.path, '/checkout/manual');
       assert.deepStrictEqual(errors[2].payload.context, { source: 'checkout', release: '2026.05.25' });
       const serialized = JSON.stringify(errors);
-      assert.ok(!serialized.includes('Card token expired'));
       assert.ok(!serialized.includes('user@example.com'));
       assert.ok(!serialized.includes('stack must not be captured'));
       assert.ok(!serialized.includes('sk-secret'));
@@ -2687,6 +2704,17 @@ describe('TraceMind', function () {
       assert.strictEqual(dottedValidation.structuredContent.ok, false);
       assert.ok(dottedValidation.structuredContent.findings.some((finding) => finding.path === 'properties.request.body'));
       assert.ok(dottedValidation.structuredContent.findings.some((finding) => finding.path === 'context.headers.authorization'));
+
+      const customStackFingerprintValidation = await callMcpTool(project, 'tracemind.validate_event_payload', {
+        eventType: 'custom',
+        eventName: 'invoice_paid',
+        properties: {
+          stackFingerprint: 'tm_stack_abc123',
+          amount: 2900,
+        },
+      });
+      assert.strictEqual(customStackFingerprintValidation.structuredContent.ok, false);
+      assert.ok(customStackFingerprintValidation.structuredContent.findings.some((finding) => finding.path === 'properties.stackFingerprint'));
 
       const missingEventNameValidation = await callMcpTool(project, 'tracemind.validate_event_payload', {
         eventType: 'custom',
@@ -4054,6 +4082,8 @@ projectKey: tm_proj_sensitive`,
       assert.ok(byType.get('app_error').platforms.includes('web'));
       assert.ok(byType.get('app_error').platforms.includes('server'));
       assert.ok(byType.get('app_error').typicalProperties.includes('messageFingerprint'));
+      assert.ok(byType.get('app_error').typicalProperties.includes('messagePreview'));
+      assert.ok(byType.get('app_error').typicalProperties.includes('stackFingerprint'));
       assert.ok(byType.get('tool_call').platforms.includes('server'));
       assert.ok(byType.get('resource_read').typicalProperties.includes('uriScheme'));
       assert.ok(byType.get('prompt_request').typicalProperties.includes('promptName'));
@@ -4070,10 +4100,21 @@ projectKey: tm_proj_sensitive`,
           errorKind: 'runtime',
           errorType: 'TypeError',
           messageFingerprint: 'tm_error_abc123',
+          messagePreview: 'Checkout failed after payment authorization',
+          stackFingerprint: 'tm_stack_abc123',
+          topFrameFingerprint: 'tm_frame_abc123',
+          causeType: 'PaymentGatewayError',
+          causeFingerprint: 'tm_cause_abc123',
           fatal: false,
           handled: false,
           source: 'web',
           component: 'CheckoutForm',
+          operation: 'checkout.submit',
+          feature: 'checkout',
+          routeName: 'Checkout',
+          correlationId: 'corr_123',
+          requestId: 'req_456',
+          httpStatus: 402,
           status: 'error',
         },
         context: {
@@ -4087,6 +4128,9 @@ projectKey: tm_proj_sensitive`,
         eventType: 'app_error',
         properties: {
           messageFingerprint: 'tm_error_abc123',
+          messagePreview: 'user@example.com',
+          stackFingerprint: 'raw stack',
+          httpStatus: 999,
           errorType: 'user@example.com',
           stack: 'raw stack',
           headers: { authorization: 'Bearer secret' },
@@ -4097,6 +4141,9 @@ projectKey: tm_proj_sensitive`,
       });
       assert.strictEqual(invalid.structuredContent.ok, false);
       assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.stack'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.stackFingerprint'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.messagePreview'));
+      assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.httpStatus'));
       assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.errorType'));
       assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.headers'));
       assert.ok(invalid.structuredContent.findings.some((finding) => finding.path === 'properties.requestBody'));
@@ -4962,6 +5009,9 @@ projectKey: tm_proj_sensitive`,
         errorKind: 'runtime',
         errorType: 'TypeError',
         messageFingerprint: 'tm_error_checkout',
+        messagePreview: 'Checkout failed after payment authorization',
+        stackFingerprint: 'tm_stack_checkout',
+        httpStatus: 402,
         status: 'error',
       },
       occurredAt: new Date('2026-05-09T11:00:00.000Z'),
@@ -4970,7 +5020,9 @@ projectKey: tm_proj_sensitive`,
     assert.strictEqual(event.eventType, 'app_error');
     assert.strictEqual(event.title, '产品错误 TypeError');
     assert.ok(event.meaning.includes('/checkout'));
+    assert.ok(event.meaning.includes('Checkout failed after payment authorization'));
     assert.ok(event.meaning.includes('tm_error_checkout'));
+    assert.ok(event.meaning.includes('HTTP 402'));
   });
 
   it('sanitizes app_error properties before ingestion', async function () {
@@ -4993,10 +5045,21 @@ projectKey: tm_proj_sensitive`,
         errorKind: 'runtime',
         errorType: 'TypeError',
         messageFingerprint: 'tm_error_checkout',
+        messagePreview: 'Checkout failed for user@example.com with token=secret',
+        stackFingerprint: 'tm_stack_checkout',
+        topFrameFingerprint: 'tm_frame_checkout',
+        causeType: 'PaymentGatewayError',
+        causeFingerprint: 'tm_cause_checkout',
         fatal: true,
         handled: false,
         source: 'web',
         component: 'CheckoutForm',
+        operation: 'checkout.submit',
+        feature: 'checkout',
+        routeName: 'Checkout',
+        correlationId: 'corr_123',
+        requestId: 'req_456',
+        httpStatus: 402,
         release: 'user@example.com',
         occurredAt: 'https://example.com/error?token=secret',
         status: 'error',
@@ -5020,10 +5083,21 @@ projectKey: tm_proj_sensitive`,
         errorKind: 'runtime',
         errorType: 'TypeError',
         messageFingerprint: 'tm_error_checkout',
+        messagePreview: 'Checkout failed for [email] with [redacted]',
+        stackFingerprint: 'tm_stack_checkout',
+        topFrameFingerprint: 'tm_frame_checkout',
+        causeType: 'PaymentGatewayError',
+        causeFingerprint: 'tm_cause_checkout',
         fatal: true,
         handled: false,
         source: 'web',
         component: 'CheckoutForm',
+        operation: 'checkout.submit',
+        feature: 'checkout',
+        routeName: 'Checkout',
+        correlationId: 'corr_123',
+        requestId: 'req_456',
+        httpStatus: 402,
         status: 'error',
       });
     assert.deepStrictEqual(raw.context, { release: '2026.05.25' });
@@ -5033,6 +5107,7 @@ projectKey: tm_proj_sensitive`,
     assert.ok(!serialized.includes('Bearer secret'));
     assert.ok(!serialized.includes('raw request body'));
     assert.ok(!serialized.includes('private input'));
+    assert.ok(!serialized.includes('user@example.com'));
     assert.ok(!serialized.includes('token=secret'));
   });
 
@@ -8719,6 +8794,7 @@ projectKey: tm_proj_sensitive`,
             properties: {
               amount: 2900,
               success: true,
+              stackFingerprint: 'raw stack must not be sent',
               'request.body': 'do not store',
               'response.body': 'do not store',
             },
@@ -8752,6 +8828,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(behaviors[0].eventName, 'invoice_paid');
       assert.strictEqual(behaviors[0].properties.amount, 2900);
       assert.strictEqual(behaviors[0].properties.success, true);
+      assert.strictEqual(behaviors[0].properties.stackFingerprint, undefined);
       assert.strictEqual(behaviors[0].properties['request.body'], undefined);
       assert.strictEqual(behaviors[0].context.source, 'stripe_webhook');
       assert.strictEqual(behaviors[0].context['headers.authorization'], undefined);
@@ -8759,6 +8836,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(behaviors[0].sourceDetails.requestBody, undefined);
       assert.strictEqual(behaviors[0].sourceDetails.headers, undefined);
       assert.strictEqual(JSON.stringify(behaviors[0]).includes('do not store'), false);
+      assert.strictEqual(JSON.stringify(behaviors[0]).includes('raw stack'), false);
     });
 
     it('requires a Meteor Accounts session for the dashboard', async function () {

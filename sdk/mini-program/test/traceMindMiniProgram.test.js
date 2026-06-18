@@ -266,12 +266,19 @@ test('captures sanitized mini program app_error summaries manually', async () =>
   });
   const error = new Error('Payment failed for user@example.com');
   error.stack = 'raw stack';
+  error.cause = new TypeError('Gateway token=secret');
 
   client.start({ projectKey: 'tm_proj_mini', provider: 'wechat', appId: 'wx123' });
   client.captureError(error, {
     path: '/pages/checkout/index?token=secret',
     component: 'CheckoutPage',
     release: '2026.05.25',
+    operation: 'checkout.submit',
+    feature: 'checkout',
+    routeName: 'Checkout',
+    correlationId: 'corr_123',
+    requestId: 'req_456',
+    httpStatus: 402,
     handled: true,
     fatal: false,
     properties: {
@@ -297,9 +304,19 @@ test('captures sanitized mini program app_error summaries manually', async () =>
   assert.equal(event.properties.handled, true);
   assert.equal(event.properties.status, 'error');
   assert.match(event.properties.messageFingerprint, /^tm_error_[a-f0-9]{24}$/);
+  assert.equal(event.properties.messagePreview, 'Payment failed for [email]');
+  assert.match(event.properties.stackFingerprint, /^tm_stack_[a-f0-9]{24}$/);
+  assert.match(event.properties.topFrameFingerprint, /^tm_frame_[a-f0-9]{24}$/);
+  assert.equal(event.properties.causeType, 'TypeError');
+  assert.match(event.properties.causeFingerprint, /^tm_cause_[a-f0-9]{24}$/);
+  assert.equal(event.properties.operation, 'checkout.submit');
+  assert.equal(event.properties.feature, 'checkout');
+  assert.equal(event.properties.routeName, 'Checkout');
+  assert.equal(event.properties.correlationId, 'corr_123');
+  assert.equal(event.properties.requestId, 'req_456');
+  assert.equal(event.properties.httpStatus, 402);
   assert.deepEqual(event.context, { source: 'checkout' });
   const serialized = JSON.stringify(event);
-  assert.equal(serialized.includes('Payment failed'), false);
   assert.equal(serialized.includes('user@example.com'), false);
   assert.equal(serialized.includes('raw stack'), false);
   assert.equal(serialized.includes('Bearer secret'), false);

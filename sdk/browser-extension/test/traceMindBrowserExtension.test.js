@@ -203,6 +203,9 @@ test('captures extension-owned JavaScript error summaries automatically', async 
   assert.equal(errors[0].properties.handled, false);
   assert.equal(errors[0].properties.source, 'browser_extension');
   assert.match(errors[0].properties.messageFingerprint, /^tm_error_/);
+  assert.equal(errors[0].properties.messagePreview, 'Checkout failed for [redacted] at [url]');
+  assert.match(errors[0].properties.stackFingerprint, /^tm_stack_/);
+  assert.match(errors[0].properties.topFrameFingerprint, /^tm_frame_/);
   assert.equal(errors[1].properties.errorKind, 'unhandledrejection');
 
   const serialized = JSON.stringify(errors);
@@ -302,12 +305,19 @@ test('captures sanitized extension app_error summaries manually', async () => {
   });
   const error = new Error('Popup failed for user@example.com');
   error.stack = 'raw stack';
+  error.cause = new TypeError('Gateway token=secret');
 
   client.start({ projectKey: 'tm_proj_extension', extensionName: 'Error Extension' });
   client.captureError(error, {
     path: '/popup.html?token=secret',
     component: 'Popup',
     release: '2026.05.25',
+    operation: 'popup.submit',
+    feature: 'popup',
+    routeName: 'Popup',
+    correlationId: 'corr_123',
+    requestId: 'req_456',
+    httpStatus: 402,
     handled: true,
     fatal: false,
     properties: {
@@ -333,9 +343,19 @@ test('captures sanitized extension app_error summaries manually', async () => {
   assert.equal(event.properties.handled, true);
   assert.equal(event.properties.status, 'error');
   assert.match(event.properties.messageFingerprint, /^tm_error_[a-f0-9]{24}$/);
+  assert.equal(event.properties.messagePreview, 'Popup failed for [email]');
+  assert.match(event.properties.stackFingerprint, /^tm_stack_[a-f0-9]{24}$/);
+  assert.match(event.properties.topFrameFingerprint, /^tm_frame_[a-f0-9]{24}$/);
+  assert.equal(event.properties.causeType, 'TypeError');
+  assert.match(event.properties.causeFingerprint, /^tm_cause_[a-f0-9]{24}$/);
+  assert.equal(event.properties.operation, 'popup.submit');
+  assert.equal(event.properties.feature, 'popup');
+  assert.equal(event.properties.routeName, 'Popup');
+  assert.equal(event.properties.correlationId, 'corr_123');
+  assert.equal(event.properties.requestId, 'req_456');
+  assert.equal(event.properties.httpStatus, 402);
   assert.deepEqual(event.context, { source: 'popup' });
   const serialized = JSON.stringify(event);
-  assert.equal(serialized.includes('Popup failed'), false);
   assert.equal(serialized.includes('user@example.com'), false);
   assert.equal(serialized.includes('raw stack'), false);
   assert.equal(serialized.includes('Bearer secret'), false);

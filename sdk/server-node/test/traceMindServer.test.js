@@ -119,11 +119,18 @@ test('captures sanitized app_error summaries without stacks or raw fields', asyn
   });
   const error = new Error('Database timeout for user@example.com');
   error.stack = 'raw stack must not be sent';
+  error.cause = new TypeError('Pool exhausted with token=secret');
 
   client.captureError(error, {
     path: '/jobs?token=secret',
     component: 'InvoiceWorker',
     release: '2026.05.25',
+    operation: 'invoice.sync',
+    feature: 'billing',
+    routeName: 'InvoiceJob',
+    correlationId: 'corr_123',
+    requestId: 'req_456',
+    httpStatus: 503,
     handled: true,
     fatal: false,
     properties: {
@@ -150,9 +157,19 @@ test('captures sanitized app_error summaries without stacks or raw fields', asyn
   assert.equal(event.properties.fatal, false);
   assert.equal(event.properties.status, 'error');
   assert.match(event.properties.messageFingerprint, /^tm_error_[a-f0-9]{24}$/);
+  assert.equal(event.properties.messagePreview, 'Database timeout for [email]');
+  assert.match(event.properties.stackFingerprint, /^tm_stack_[a-f0-9]{24}$/);
+  assert.match(event.properties.topFrameFingerprint, /^tm_frame_[a-f0-9]{24}$/);
+  assert.equal(event.properties.causeType, 'TypeError');
+  assert.match(event.properties.causeFingerprint, /^tm_cause_[a-f0-9]{24}$/);
+  assert.equal(event.properties.operation, 'invoice.sync');
+  assert.equal(event.properties.feature, 'billing');
+  assert.equal(event.properties.routeName, 'InvoiceJob');
+  assert.equal(event.properties.correlationId, 'corr_123');
+  assert.equal(event.properties.requestId, 'req_456');
+  assert.equal(event.properties.httpStatus, 503);
   assert.deepEqual(event.context, { source: 'job_runner' });
   const serialized = JSON.stringify(event);
-  assert.equal(serialized.includes('Database timeout'), false);
   assert.equal(serialized.includes('user@example.com'), false);
   assert.equal(serialized.includes('raw stack'), false);
   assert.equal(serialized.includes('Bearer secret'), false);

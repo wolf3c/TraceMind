@@ -117,12 +117,20 @@ class TraceMindServerTest(unittest.TestCase):
             transport=lambda body: batches.append(body),
         )
         error = RuntimeError("Database timeout for user@example.com")
+        error.__cause__ = TypeError("Pool exhausted with token=secret")
 
         client.capture_error(
             error,
             path="/jobs?token=secret",
             component="InvoiceWorker",
             release="2026.05.25",
+            operation="invoice.sync",
+            feature="billing",
+            route_name="InvoiceJob",
+            correlation_id="corr_123",
+            request_id="req_456",
+            http_status=503,
+            stack="raw stack must not be sent",
             handled=True,
             fatal=False,
             properties={
@@ -149,10 +157,21 @@ class TraceMindServerTest(unittest.TestCase):
         self.assertEqual(event["properties"]["fatal"], False)
         self.assertEqual(event["properties"]["status"], "error")
         self.assertRegex(event["properties"]["messageFingerprint"], r"^tm_error_[a-f0-9]{24}$")
+        self.assertEqual(event["properties"]["messagePreview"], "Database timeout for [email]")
+        self.assertRegex(event["properties"]["stackFingerprint"], r"^tm_stack_[a-f0-9]{24}$")
+        self.assertRegex(event["properties"]["topFrameFingerprint"], r"^tm_frame_[a-f0-9]{24}$")
+        self.assertEqual(event["properties"]["causeType"], "TypeError")
+        self.assertRegex(event["properties"]["causeFingerprint"], r"^tm_cause_[a-f0-9]{24}$")
+        self.assertEqual(event["properties"]["operation"], "invoice.sync")
+        self.assertEqual(event["properties"]["feature"], "billing")
+        self.assertEqual(event["properties"]["routeName"], "InvoiceJob")
+        self.assertEqual(event["properties"]["correlationId"], "corr_123")
+        self.assertEqual(event["properties"]["requestId"], "req_456")
+        self.assertEqual(event["properties"]["httpStatus"], 503)
         self.assertEqual(event["context"], {"source": "job_runner"})
         serialized = str(event)
-        self.assertNotIn("Database timeout", serialized)
         self.assertNotIn("user@example.com", serialized)
+        self.assertNotIn("raw stack", serialized)
         self.assertNotIn("Bearer secret", serialized)
         self.assertNotIn("token=secret", serialized)
 

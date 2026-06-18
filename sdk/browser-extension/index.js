@@ -1,5 +1,5 @@
 const SDK_VERSION = '0.1.0';
-const SDK_CONTENT_HASH = 'sha256:08dddeaedb8fa4d6e1e1645f7954f5dc28ec9a1a39a23f2deb86e4a0b2d5daa0';
+const SDK_CONTENT_HASH = 'sha256:acaf6fb029734b29e083db21f7c8eac3ccb4de8d55d10ea3940b932a212d90a7';
 const DEFAULT_CAPTURE_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/capture';
 const DEFAULT_PRESENCE_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/presence';
 const DEFAULT_FEEDBACK_ENDPOINT = 'https://tracemind.sandbox.galaxycloud.app/api/user-feedback';
@@ -184,15 +184,88 @@ function sanitizeErrorMessageForHash(value) {
     .slice(0, 240);
 }
 
-function stableErrorFingerprint(errorType, message) {
+function sanitizeErrorMessagePreview(value) {
+  const text = safeString(value, 500)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig, '[email]')
+    .replace(/https?:\/\/\S+/ig, '[url]')
+    .replace(/(^|\s)\/[^\s?]+\?\S+/g, '$1[url]')
+    .replace(/\b(sk-[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|token\s*[:=]\s*\S+|secret\s*[:=]\s*\S+|password\s*[:=]\s*\S+)\b/ig, '[redacted]')
+    .replace(/\b\d{12,19}\b/g, '[number]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+  if (!text) return '';
+  if (/@|https?:|%40|bearer\s+|api[_-]?key|access[_-]?token|sk-|pk_|secret|password/i.test(text)) return '';
+  if (/\b(raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:)/i.test(text)) return '';
+  return text;
+}
+
+function stableFingerprint(prefix, value) {
   let hash = 2166136261;
-  const text = `${errorType}:${sanitizeErrorMessageForHash(message)}`;
+  const text = sanitizeErrorMessageForHash(value);
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
   const hex = (hash >>> 0).toString(16).padStart(8, '0');
-  return `tm_error_${(hex + hex + hex).slice(0, 24)}`;
+  return `${prefix}${(hex + hex + hex).slice(0, 24)}`;
+}
+
+function stableErrorFingerprint(errorType, message) {
+  return stableFingerprint('tm_error_', `${errorType}:${message}`);
+}
+
+function firstStackFrame(stack) {
+  const lines = safeString(stack, 5000)
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  return lines.find((line) => /^(at\s+|.*@|.*:\d+:\d+)/.test(line) && !/^[a-z]*error\b/i.test(line))
+    || lines[1]
+    || lines[0]
+    || '';
+}
+
+function errorCause(error, merged) {
+  return merged.cause || error?.cause;
+}
+
+function causeTypeFor(cause, explicitType) {
+  if (explicitType) return explicitType;
+  if (!cause) return '';
+  if (cause.name) return cause.name;
+  if (cause.constructor?.name) return cause.constructor.name;
+  return typeof cause === 'string' ? 'Error' : '';
+}
+
+function causeMessageFor(cause, explicitMessage) {
+  if (explicitMessage) return explicitMessage;
+  if (!cause) return '';
+  return cause.message || (typeof cause === 'string' ? cause : '');
+}
+
+function addCleanDiagnostic(properties, merged, key, max = 120) {
+  const clean = cleanErrorField(merged[key] || merged.properties?.[key], max);
+  if (clean) properties[key] = clean;
+}
+
+function addSafeErrorDiagnostics(properties, merged, error, message) {
+  const messagePreview = sanitizeErrorMessagePreview(merged.messagePreview || merged.properties?.messagePreview || message);
+  if (messagePreview) properties.messagePreview = messagePreview;
+  const stack = merged.stack || merged.stackTrace || error?.stack;
+  if (stack) {
+    properties.stackFingerprint = stableFingerprint('tm_stack_', stack);
+    const topFrame = firstStackFrame(stack);
+    if (topFrame) properties.topFrameFingerprint = stableFingerprint('tm_frame_', topFrame);
+  }
+  const cause = errorCause(error, merged);
+  const causeType = cleanErrorField(causeTypeFor(cause, merged.causeType || merged.properties?.causeType), 80);
+  if (causeType) properties.causeType = causeType;
+  const causeMessage = causeMessageFor(cause, merged.causeMessage || merged.properties?.causeMessage);
+  if (causeType || causeMessage) properties.causeFingerprint = stableFingerprint('tm_cause_', `${causeType}:${causeMessage}`);
+  ['operation', 'feature', 'routeName', 'correlationId', 'requestId'].forEach((key) => addCleanDiagnostic(properties, merged, key));
+  const httpStatus = Number(merged.httpStatus || merged.statusCode || merged.properties?.httpStatus || merged.properties?.statusCode);
+  if (Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599) properties.httpStatus = httpStatus;
 }
 
 function appErrorPayload(errorOrInfo, options = {}, defaultSource = 'browser_extension') {
@@ -214,6 +287,7 @@ function appErrorPayload(errorOrInfo, options = {}, defaultSource = 'browser_ext
   const component = cleanErrorField(merged.component || merged.properties?.component, 120);
   if (release) properties.release = release;
   if (component) properties.component = component;
+  addSafeErrorDiagnostics(properties, merged, error, message);
   const rawPath = merged.path || merged.screen;
   const path = rawPath ? stripQueryPath(rawPath) : '';
   return {

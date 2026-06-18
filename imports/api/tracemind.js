@@ -116,7 +116,7 @@ export const EVENT_DEFINITIONS = [
     eventType: 'app_error',
     name: '产品错误',
     meaning: '产品或运行时记录了一次隐私安全的错误摘要，用于分析用户在哪里遇到错误、之前做了什么、影响哪些路径和是否集中爆发。',
-    typicalProperties: ['errorKind', 'errorType', 'messageFingerprint', 'fatal', 'handled', 'source', 'path', 'screen', 'release', 'component', 'status', 'occurredAt'],
+    typicalProperties: ['errorKind', 'errorType', 'messageFingerprint', 'messagePreview', 'stackFingerprint', 'topFrameFingerprint', 'causeType', 'causeFingerprint', 'fatal', 'handled', 'source', 'path', 'screen', 'release', 'component', 'operation', 'feature', 'routeName', 'correlationId', 'requestId', 'httpStatus', 'status', 'occurredAt'],
     platforms: ['web', 'ios', 'android', 'macos', 'mini_program', 'browser_extension', 'server'],
   },
   {

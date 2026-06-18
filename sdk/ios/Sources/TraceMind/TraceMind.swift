@@ -2,7 +2,7 @@ import Foundation
 
 public enum TraceMindSDK {
   public static let version = "0.1.0"
-  public static let contentHash = "sha256:1a0c7b852cf11e56591f227561d3299d023cca43d60e9200fd867efcd6c0acd1"
+  public static let contentHash = "sha256:a0b7368794d970496509c6ed53caf23be5832a425414c331fd4ed17969109960"
 }
 
 public struct TraceMindConfiguration {
@@ -785,6 +785,30 @@ public final class TraceMindClient {
     } else if let component = properties["component"]?.safeStringValue.flatMap({ Self.nonEmpty(Self.cleanErrorField($0, max: 120)) }) {
       appErrorProperties["component"] = .string(component)
     }
+    if let preview = Self.nonEmpty(Self.sanitizeErrorMessagePreview(
+      properties["messagePreview"]?.safeStringValue ?? message ?? nsError?.localizedDescription ?? type
+    )) {
+      appErrorProperties["messagePreview"] = .string(preview)
+    }
+    let stack = properties["stack"]?.safeStringValue ?? properties["stackTrace"]?.safeStringValue ?? Thread.callStackSymbols.joined(separator: "\n")
+    if !stack.isEmpty {
+      appErrorProperties["stackFingerprint"] = .string(Self.diagnosticFingerprint(prefix: "tm_stack_", value: stack))
+      if let topFrame = Self.nonEmpty(Self.firstStackFrame(stack)) {
+        appErrorProperties["topFrameFingerprint"] = .string(Self.diagnosticFingerprint(prefix: "tm_frame_", value: topFrame))
+      }
+    }
+    if let causeType = properties["causeType"]?.safeStringValue.flatMap({ Self.nonEmpty(Self.cleanErrorField($0, max: 80)) }) {
+      appErrorProperties["causeType"] = .string(causeType)
+      appErrorProperties["causeFingerprint"] = .string(Self.diagnosticFingerprint(prefix: "tm_cause_", value: "\(causeType):\(properties["causeMessage"]?.safeStringValue ?? "")"))
+    }
+    for key in ["operation", "feature", "routeName", "correlationId", "requestId"] {
+      if let value = Self.safeDiagnosticField(properties, key: key) {
+        appErrorProperties[key] = .string(value)
+      }
+    }
+    if let httpStatus = Self.safeHttpStatus(properties) {
+      appErrorProperties["httpStatus"] = .number(Double(httpStatus))
+    }
     try capture(
       type: "app_error",
       eventName: "app_error",
@@ -1028,8 +1052,65 @@ public final class TraceMindClient {
       .prefix(240))
   }
 
+  static func sanitizeErrorMessagePreview(_ value: String?) -> String {
+    let text = String((value ?? "")
+      .replacingOccurrences(of: #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#, with: "[email]", options: [.regularExpression, .caseInsensitive])
+      .replacingOccurrences(of: #"https?://\S+"#, with: "[url]", options: [.regularExpression, .caseInsensitive])
+      .replacingOccurrences(of: #"(^|\s)/[^\s?]+\?\S+"#, with: "$1[url]", options: .regularExpression)
+      .replacingOccurrences(of: #"\b(sk-[A-Za-z0-9_-]+|pk_[A-Za-z0-9_-]+|bearer\s+\S+|api[_-]?key\s*[:=]\s*\S+|access[_-]?token\s*[:=]\s*\S+|token\s*[:=]\s*\S+|secret\s*[:=]\s*\S+|password\s*[:=]\s*\S+)\b"#, with: "[redacted]", options: [.regularExpression, .caseInsensitive])
+      .replacingOccurrences(of: #"\b\d{12,19}\b"#, with: "[number]", options: .regularExpression)
+      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .prefix(160))
+    if text.isEmpty { return "" }
+    if text.range(of: #"@|https?:|%40|bearer\s+|api[_-]?key|access[_-]?token|sk-|pk_|secret|password"#, options: [.regularExpression, .caseInsensitive]) != nil {
+      return ""
+    }
+    if text.range(of: #"\b(raw\s+prompt|raw\s+user\s+content|source\s+diff|request\s+body|response\s+body|authorization\s*:|set-cookie\s*:)"#, options: [.regularExpression, .caseInsensitive]) != nil {
+      return ""
+    }
+    return text
+  }
+
   static func messageFingerprint(errorType: String, message: String?) -> String {
     hash("\(errorType):\(sanitizeErrorMessageForHash(message))", prefix: "tm_error_")
+  }
+
+  static func diagnosticFingerprint(prefix: String, value: String?) -> String {
+    hash(sanitizeErrorMessageForHash(value), prefix: prefix)
+  }
+
+  static func firstStackFrame(_ stack: String) -> String {
+    let lines = stack
+      .split(separator: "\n")
+      .map { String($0).replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    if let frame = lines.first(where: { line in
+      line.range(of: #"^(at\s+|.*@|.*:\d+:\d+)"#, options: .regularExpression) != nil
+        && line.range(of: #"^[a-z]*error\b"#, options: [.regularExpression, .caseInsensitive]) == nil
+    }) {
+      return frame
+    }
+    return lines.dropFirst().first ?? lines.first ?? ""
+  }
+
+  static func safeDiagnosticField(_ fields: TraceMindFields, key: String, max: Int = 120) -> String? {
+    fields[key]?.safeStringValue.flatMap { nonEmpty(cleanErrorField($0, max: max)) }
+  }
+
+  static func safeHttpStatus(_ fields: TraceMindFields) -> Int? {
+    let value = fields["httpStatus"] ?? fields["statusCode"]
+    let status: Int?
+    switch value {
+    case .number(let number):
+      status = number.isFinite && number.rounded(.towardZero) == number ? Int(number) : nil
+    case .string(let string):
+      status = Int(string)
+    default:
+      status = nil
+    }
+    guard let unwrappedStatus = status, (100...599).contains(unwrappedStatus) else { return nil }
+    return unwrappedStatus
   }
 
   private static func normalizeFieldKey(_ key: String) -> String {

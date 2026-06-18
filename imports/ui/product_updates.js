@@ -119,8 +119,8 @@ export const PRODUCT_UPDATES = [
         zh: "支持自动捕获或手动上报两种接入方式，让线上错误能和发生前后的用户行为一起排查。",
       },
       {
-        en: "Privacy-safe: TraceMind keeps error type, message fingerprint, handled/fatal, path/screen, component, release, and related error metadata, without collecting request bodies, response bodies, raw prompts, secrets, screenshots, or recordings.",
-        zh: "隐私安全：只保留错误类型、消息指纹、handled/fatal、path/screen、component、release 等错误信息，不采集请求体、响应体、raw prompt、secret、截图或录屏。",
+        en: "Privacy-safe: TraceMind keeps error type, sanitized message preview, message/stack/cause fingerprints, handled/fatal, path/screen, component, release, correlation/request ids, and HTTP status, without collecting raw stacks, request bodies, response bodies, headers, raw prompts, secrets, screenshots, or recordings.",
+        zh: "隐私安全：保留错误类型、脱敏短消息预览、消息/stack/cause 指纹、handled/fatal、path/screen、component、release、correlation/request id 和 HTTP 状态，不采集原始 stack、请求体、响应体、headers、raw prompt、secret、截图或录屏。",
       },
     ],
   },

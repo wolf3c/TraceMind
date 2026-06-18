@@ -265,6 +265,14 @@ final class TraceMindTests: XCTestCase {
       handled: true,
       fatal: false,
       properties: [
+        "operation": "checkout.submit",
+        "feature": "checkout",
+        "routeName": "Checkout",
+        "correlationId": "corr_123",
+        "requestId": "req_456",
+        "httpStatus": 402,
+        "causeType": "PaymentGatewayError",
+        "causeMessage": "Gateway token=secret",
         "requestBody": "do not send",
         "headers": "do not send",
         "inputValue": "do not send",
@@ -292,9 +300,31 @@ final class TraceMindTests: XCTestCase {
       return
     }
     XCTAssertTrue(fingerprint.hasPrefix("tm_error_"))
+    XCTAssertEqual(event.properties["messagePreview"], .string("Payment failed for [email]"))
+    guard case .string(let stackFingerprint)? = event.properties["stackFingerprint"] else {
+      XCTFail("Expected stackFingerprint string")
+      return
+    }
+    XCTAssertTrue(stackFingerprint.hasPrefix("tm_stack_"))
+    guard case .string(let topFrameFingerprint)? = event.properties["topFrameFingerprint"] else {
+      XCTFail("Expected topFrameFingerprint string")
+      return
+    }
+    XCTAssertTrue(topFrameFingerprint.hasPrefix("tm_frame_"))
+    XCTAssertEqual(event.properties["causeType"], .string("PaymentGatewayError"))
+    guard case .string(let causeFingerprint)? = event.properties["causeFingerprint"] else {
+      XCTFail("Expected causeFingerprint string")
+      return
+    }
+    XCTAssertTrue(causeFingerprint.hasPrefix("tm_cause_"))
+    XCTAssertEqual(event.properties["operation"], .string("checkout.submit"))
+    XCTAssertEqual(event.properties["feature"], .string("checkout"))
+    XCTAssertEqual(event.properties["routeName"], .string("Checkout"))
+    XCTAssertEqual(event.properties["correlationId"], .string("corr_123"))
+    XCTAssertEqual(event.properties["requestId"], .string("req_456"))
+    XCTAssertEqual(event.properties["httpStatus"], .number(402))
     XCTAssertEqual(event.context["source"], .string("checkout"))
     let json = String(data: try JSONEncoder().encode(event), encoding: .utf8) ?? ""
-    XCTAssertFalse(json.contains("Payment failed"))
     XCTAssertFalse(json.contains("user@example.com"))
     XCTAssertFalse(json.contains("Bearer secret"))
     XCTAssertFalse(json.contains("token=secret"))

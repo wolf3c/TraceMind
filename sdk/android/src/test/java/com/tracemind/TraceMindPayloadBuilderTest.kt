@@ -206,13 +206,19 @@ class TraceMindPayloadBuilderTest {
     )
 
     client.captureError(
-      error = IllegalStateException("Payment failed for user@example.com"),
+      error = IllegalStateException("Payment failed for user@example.com", IllegalArgumentException("Gateway token=secret")),
       path = "https://app.example.com/CheckoutActivity?token=secret#pay",
       handled = true,
       fatal = false,
       properties = mapOf(
         "component" to "CheckoutActivity",
         "release" to "2026.05.25",
+        "operation" to "checkout.submit",
+        "feature" to "checkout",
+        "routeName" to "Checkout",
+        "correlationId" to "corr_123",
+        "requestId" to "req_456",
+        "httpStatus" to 402,
         "requestBody" to "do not send",
         "headers" to "do not send",
         "inputValue" to "do not send"
@@ -238,8 +244,18 @@ class TraceMindPayloadBuilderTest {
     assertEquals(false, event.properties["fatal"])
     assertEquals("error", event.properties["status"])
     assertTrue((event.properties["messageFingerprint"] as String).startsWith("tm_error_"))
+    assertEquals("Payment failed for [email]", event.properties["messagePreview"])
+    assertTrue((event.properties["stackFingerprint"] as String).startsWith("tm_stack_"))
+    assertTrue((event.properties["topFrameFingerprint"] as String).startsWith("tm_frame_"))
+    assertEquals("IllegalArgumentException", event.properties["causeType"])
+    assertTrue((event.properties["causeFingerprint"] as String).startsWith("tm_cause_"))
+    assertEquals("checkout.submit", event.properties["operation"])
+    assertEquals("checkout", event.properties["feature"])
+    assertEquals("Checkout", event.properties["routeName"])
+    assertEquals("corr_123", event.properties["correlationId"])
+    assertEquals("req_456", event.properties["requestId"])
+    assertEquals(402, event.properties["httpStatus"])
     assertEquals("checkout", event.context["source"])
-    assertFalse(json.contains("Payment failed"))
     assertFalse(json.contains("user@example.com"))
     assertFalse(json.contains("Bearer secret"))
     assertFalse(json.contains("token=secret"))
