@@ -67,9 +67,9 @@ Agent 分析产品行为时应先按只读路径使用 MCP：
 数据保留窗口：
 
 - 上报投递诊断明细保留 7 天。
-- Presence 在线会话明细和 raw behavior 原始行为明细保留 10 天。
-- Semantic events、hourly reports 和 daily reports 当前长期保留，不设置 TTL。
-- 如果超过明细窗口后查不到 raw/presence/delivery 记录，应优先使用 `tracemind.query_events`、`tracemind.summary` 和 `tracemind.project_health`，不要先判断为数据丢失或埋点异常。
+- Presence 在线会话明细、raw behavior 原始行为明细和 semantic events 语义事件明细保留 10 天。
+- Hourly reports 和 daily reports 当前长期保留，不设置 TTL。
+- 如果超过明细窗口后查不到 raw/presence/delivery/semantic 记录，应优先使用 `tracemind.project_health` 和日/小时报告，不要先判断为数据丢失或埋点异常。
 
 Agent 后续修改 TraceMind 埋点时应按顺序使用 MCP：
 

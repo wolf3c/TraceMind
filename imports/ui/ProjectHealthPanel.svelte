@@ -487,14 +487,15 @@
     <summary>
       <span>{$t("Data retention")}</span>
       <strong>{detailRetention} {$t("days")}</strong>
-      <small>{$t("raw behavior and presence detail")}</small>
+      <small>{$t("event, raw behavior, and presence detail")}</small>
       <em>{$t("delivery diagnostics keep {{days}} days", { days: deliveryRetention })}</em>
     </summary>
     <dl class="health-detail-list">
       <div><dt>{$t("Delivery diagnostics")}</dt><dd>{$t("Detailed upload diagnostics are retained for {{days}} days.", { days: deliveryRetention })}</dd></div>
       <div><dt>{$t("Presence sessions")}</dt><dd>{$t("Session-level online detail is retained for {{days}} days.", { days: detailRetention })}</dd></div>
       <div><dt>{$t("Raw behaviors")}</dt><dd>{$t("Raw behavior logs are retained for {{days}} days.", { days: detailRetention })}</dd></div>
-      <div><dt>{$t("Long-term reports")}</dt><dd>{$t("Semantic events and daily/hourly health reports remain the source for older analysis.")}</dd></div>
+      <div><dt>{$t("Semantic events")}</dt><dd>{$t("Semantic event detail is retained for {{days}} days.", { days: detailRetention })}</dd></div>
+      <div><dt>{$t("Long-term reports")}</dt><dd>{$t("Daily/hourly health reports remain the source for older analysis.")}</dd></div>
     </dl>
   </details>
 </div>

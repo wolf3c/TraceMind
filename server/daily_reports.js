@@ -33,6 +33,7 @@ const HOURLY_DRAFT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const RECENT_COMPLETED_HOUR_COUNT = 2;
 const RAW_BEHAVIOR_RETENTION_SECONDS = detailRetentionSeconds('raw_behaviors');
 const PRESENCE_SESSION_RETENTION_SECONDS = detailRetentionSeconds('presence_sessions');
+const SEMANTIC_EVENT_RETENTION_SECONDS = detailRetentionSeconds('semantic_events');
 
 const dailyDraftRefreshTasks = new Map();
 let hourlyDraftRefreshInProgress = false;
@@ -666,6 +667,7 @@ export async function ensureTraceMindIndexes() {
   await Promise.all([
     ensureTtlIndex(PresenceSessions, { lastSeenAt: 1 }, { name: 'presence_last_seen_ttl', expireAfterSeconds: PRESENCE_SESSION_RETENTION_SECONDS }),
     ensureTtlIndex(RawBehaviors, { occurredAt: 1 }, { name: 'raw_behaviors_occurred_ttl', expireAfterSeconds: RAW_BEHAVIOR_RETENTION_SECONDS }),
+    ensureTtlIndex(SemanticEvents, { occurredAt: 1 }, { name: 'semantic_events_occurred_ttl', expireAfterSeconds: SEMANTIC_EVENT_RETENTION_SECONDS }),
   ]);
 }
 

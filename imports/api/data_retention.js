@@ -24,15 +24,16 @@ export const DATA_RETENTION_POLICY = Object.freeze({
       dateField: 'occurredAt',
       usage: 'Recent raw capture facts for verifying semantic event evidence.',
     },
-  ],
-  retainedSummaries: [
     {
       dataSet: 'semantic_events',
       collectionName: 'tracemind_semantic_events',
       label: 'Semantic events',
-      retentionDays: null,
-      usage: 'Primary MCP evidence for older product behavior analysis.',
+      retentionDays: 10,
+      dateField: 'occurredAt',
+      usage: 'Recent AI-readable behavior evidence for MCP drilldown.',
     },
+  ],
+  retainedSummaries: [
     {
       dataSet: 'project_hourly_reports',
       collectionName: 'tracemind_project_hourly_reports',
@@ -48,5 +49,5 @@ export const DATA_RETENTION_POLICY = Object.freeze({
       usage: 'Long-term daily health trends.',
     },
   ],
-  note: 'If detail outside these windows is unavailable, use semantic events, summary, project_health, and hourly/daily reports before assuming data loss.',
+  note: 'If detail outside these windows is unavailable, use project_health and hourly/daily reports before assuming data loss.',
 });

@@ -904,7 +904,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('## Operational Data Menu'));
       assert.ok(skill.includes('## Data Retention Windows'));
       assert.ok(skill.includes('Capture delivery diagnostics are retained for 7 days'));
-      assert.ok(skill.includes('Raw behavior logs are retained for 10 days'));
+      assert.ok(skill.includes('Raw behavior logs and semantic events are retained for 10 days'));
       assert.ok(skill.includes('Dashboard-aligned'));
       assert.ok(skill.includes('project_health.health.current'));
       assert.ok(skill.includes('hourlyComparison.metrics'));
@@ -962,7 +962,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('Dashboard-aligned operations review'));
       assert.ok(snippet.includes('project_health.health.current'));
       assert.ok(snippet.includes('capture delivery diagnostics keep 7 days'));
-      assert.ok(snippet.includes('raw behavior logs keep 10 days'));
+      assert.ok(snippet.includes('raw behavior logs, and semantic events keep 10 days'));
       assert.ok(snippet.includes('recent_online'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
       assert.ok(snippet.includes('installCommands'));
@@ -1016,7 +1016,7 @@ describe('TraceMind', function () {
       assert.ok(manifest.platforms.includes('macos'));
       assert.ok(manifest.platforms.includes('hybrid'));
       assert.ok(manifest.updatePolicy.includes('data retention windows'));
-      assert.ok(manifest.updatePolicy.includes('presence sessions and raw behaviors keep 10 days'));
+      assert.ok(manifest.updatePolicy.includes('presence sessions, raw behaviors, and semantic events keep 10 days'));
       assert.ok(manifest.platforms.includes('mini_program'));
       assert.ok(manifest.platforms.includes('browser_extension'));
       assert.ok(manifest.platforms.includes('mcp_node'));
@@ -2645,7 +2645,8 @@ describe('TraceMind', function () {
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'presence_sessions').retentionDays, 10);
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'presence_sessions').collectionName, 'tracemind_presence_sessions');
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 10);
-      assert.ok(guidance.structuredContent.dataRetention.retainedSummaries.some((item) => item.dataSet === 'semantic_events' && item.retentionDays === null));
+      assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'semantic_events').retentionDays, 10);
+      assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'semantic_events').collectionName, 'tracemind_semantic_events');
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
       assert.ok(guidance.structuredContent.workflow.includes('For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.'));
@@ -3029,6 +3030,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 10);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
+      assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'semantic_events').retentionDays, 10);
       assert.strictEqual(structured.health.current.eventCount, 6);
       assert.strictEqual(structured.health.captureScriptFindings[0].sourceKey, 'app.example.com');
       assert.strictEqual(structured.health.current.captureScriptFindings[0].latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
@@ -6016,6 +6018,10 @@ projectKey: tm_proj_sensitive`,
         { lastSeenAt: 1 },
         { name: 'presence_last_seen_ttl', expireAfterSeconds: 30 * 24 * 60 * 60 },
       );
+      await SemanticEvents.rawCollection().createIndex(
+        { occurredAt: 1 },
+        { name: 'semantic_events_occurred_ttl', expireAfterSeconds: 30 * 24 * 60 * 60 },
+      );
       await ensureTraceMindIndexes();
 
       const indexesFor = async (collection) => collection.rawCollection().indexes();
@@ -6056,6 +6062,7 @@ projectKey: tm_proj_sensitive`,
       ].forEach((name) => assert.ok(rawIndexes.has(name), `missing ${name}`));
       [
         'projectId_1_occurredAt_-1',
+        'semantic_events_occurred_ttl',
         'semantic_time_project',
         'semantic_raw_behavior',
         'semantic_project_event_name_time',
@@ -6074,10 +6081,13 @@ projectKey: tm_proj_sensitive`,
       ].forEach((name) => assert.ok(presenceIndexes.has(name), `missing ${name}`));
       const rawBehaviorTtlIndex = (await indexesFor(RawBehaviors)).find((index) => index.name === 'raw_behaviors_occurred_ttl');
       const presenceTtlIndex = (await indexesFor(PresenceSessions)).find((index) => index.name === 'presence_last_seen_ttl');
+      const semanticTtlIndex = (await indexesFor(SemanticEvents)).find((index) => index.name === 'semantic_events_occurred_ttl');
       assert.deepStrictEqual(rawBehaviorTtlIndex.key, { occurredAt: 1 });
       assert.strictEqual(rawBehaviorTtlIndex.expireAfterSeconds, 10 * 24 * 60 * 60);
       assert.deepStrictEqual(presenceTtlIndex.key, { lastSeenAt: 1 });
       assert.strictEqual(presenceTtlIndex.expireAfterSeconds, 10 * 24 * 60 * 60);
+      assert.deepStrictEqual(semanticTtlIndex.key, { occurredAt: 1 });
+      assert.strictEqual(semanticTtlIndex.expireAfterSeconds, 10 * 24 * 60 * 60);
       assert.ok(deliveryIndexes.has('projectId_1_createdAt_-1'));
       assert.ok(deliveryIndexes.has('delivery_time_project'));
       [
