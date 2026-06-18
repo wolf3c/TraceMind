@@ -16,7 +16,7 @@ For Dashboard-aligned operations review, use `tracemind.project_health` to read 
 
 If the current active tool list does not show `tracemind.project_health`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`, do not conclude that TraceMind lacks those tools. Read MCP `tools/list` or retry discovery with the exact tool name first. If they are still missing, refresh the connector/session/MCP config/token and call `tracemind.project_info` again. Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`; use the documented fallback source and mark the data gap until discovery is repaired. If `tracemind.summary` is used as fallback evidence, state that the values come from the `summarySample` window.
 
-TraceMind retains recent drilldown detail separately from long-term summaries: capture delivery diagnostics keep 7 days; presence sessions and raw behavior logs keep 30 days; semantic events plus hourly/daily health reports currently have no TTL. If raw detail is unavailable outside those windows, use `tracemind.query_events`, `tracemind.summary`, and `tracemind.project_health` before assuming data loss or changing instrumentation.
+TraceMind retains recent drilldown detail separately from long-term summaries: capture delivery diagnostics keep 7 days; presence sessions and raw behavior logs keep 10 days; semantic events plus hourly/daily health reports currently have no TTL. If raw detail is unavailable outside those windows, use `tracemind.query_events`, `tracemind.summary`, and `tracemind.project_health` before assuming data loss or changing instrumentation.
 
 When adding or modifying TraceMind analytics instrumentation in this project:
 

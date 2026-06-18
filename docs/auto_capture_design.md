@@ -119,8 +119,8 @@ Presence 也进入同一可靠队列。为了避免离线 heartbeat 挤占关键
 TraceMind 的明细数据用于近期下钻排查，聚合数据用于长期趋势：
 
 - `tracemind_capture_delivery_reports` 保留 7 天，用于近期上报失败、重试、丢弃、队列深度和 presence 合并排查。更早的上报健康以 `project_health.delivery`、小时报告和日报为准。
-- `tracemind_presence_sessions` 保留 30 天，用于近期在线区间、实时在线和活跃时长下钻。更早的在线和活跃趋势以小时报告和日报为准。
-- `tracemind_raw_behaviors` 保留 30 天，用于复核语义事件背后的原始采集事实。超过窗口时，`tracemind.query_raw_behaviors` 没有结果不代表数据丢失。
+- `tracemind_presence_sessions` 保留 10 天，用于近期在线区间、实时在线和活跃时长下钻。更早的在线和活跃趋势以小时报告和日报为准。
+- `tracemind_raw_behaviors` 保留 10 天，用于复核语义事件背后的原始采集事实。超过窗口时，`tracemind.query_raw_behaviors` 没有结果不代表数据丢失。
 - `tracemind_semantic_events`、`tracemind_project_hourly_reports` 和 `tracemind_project_daily_reports` 当前长期保留，是历史分析的主要数据来源。
 
 错误上下文使用 `app_error` 进入普通行为队列，Web 自动监听 `window.error` 和 `unhandledrejection`，手动场景使用 `window.TraceMind.captureError(...)`。该事件只保存错误类型、消息指纹、handled/fatal、component/release 和 path/screen 等摘要字段；stack trace、raw log、raw message、源码、请求/响应 body、headers、cookies、authorization、输入值、prompt、secret、截图、录屏、crash dump 和 session replay 都不进入 v1。

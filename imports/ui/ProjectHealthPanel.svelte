@@ -65,7 +65,7 @@
   }
 
   const deliveryRetention = DATA_RETENTION_POLICY.detailWindows.find((item) => item.dataSet === "capture_delivery_reports")?.retentionDays || 7;
-  const detailRetention = DATA_RETENTION_POLICY.detailWindows.find((item) => item.dataSet === "raw_behaviors")?.retentionDays || 30;
+  const detailRetention = DATA_RETENTION_POLICY.detailWindows.find((item) => item.dataSet === "raw_behaviors")?.retentionDays || 10;
 </script>
 
 <div class="events-header">

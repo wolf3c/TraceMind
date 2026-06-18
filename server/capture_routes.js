@@ -630,7 +630,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.query_raw_behaviors',
       title: projectScopedTitle('TraceMind Query Raw Behaviors', project),
-      description: projectScopedDescription('必要时查询原始行为日志，用于复核语义事件背后的原始采集数据；raw behavior 明细保留 30 天，超出窗口应优先查看语义事件和日报/小时健康报告。', project),
+      description: projectScopedDescription('必要时查询原始行为日志，用于复核语义事件背后的原始采集数据；raw behavior 明细保留 10 天，超出窗口应优先查看语义事件和日报/小时健康报告。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -1221,7 +1221,7 @@ function guidanceResult(extra = {}) {
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
       'Treat tracemind.summary results as sampled evidence: summary.totalEvents, topActions, and dailyActiveUsers are derived from the returned semantic-event sample, not full-day totals. Prefer topIntentActions for user-intent interpretation; use topFieldInteractions to explain high-frequency input or editable-field noise.',
       'For traffic source analysis, use project_health traffic source summaries first, then drill down with attributionSource, attributionMedium, attributionCampaign, and landingPath filters in tracemind.summary, tracemind.query_events, or tracemind.query_raw_behaviors.',
-      'Respect data retention windows: capture delivery diagnostics are retained for 7 days; presence sessions and raw behaviors are retained for 30 days. If raw detail is unavailable outside those windows, use semantic events, summary, and daily/hourly project_health reports before assuming data loss.',
+      'Respect data retention windows: capture delivery diagnostics are retained for 7 days; presence sessions and raw behaviors are retained for 10 days. If raw detail is unavailable outside those windows, use semantic events, summary, and daily/hourly project_health reports before assuming data loss.',
       'Call tracemind.capture_setup with platform web, ios, macos, android, react_native, hybrid, mini_program, browser_extension, mcp_node, mcp_python, agent_skill, server_node, server_python, or server_http before installing Auto Capture or adding manual events.',
       'Use capture_setup installCommands, filesToEdit, initLocation, idempotencyChecks, and initSnippet for platform setup.',
       'For server_node, server_python, and server_http setup, use capture_setup projectKeyUsage, configurationModes, preDeployChecks, postDeployVerification, and expectedCaptureQuery before judging deployment success or inactivity.',

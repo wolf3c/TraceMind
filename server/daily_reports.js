@@ -4,6 +4,7 @@ import {
   CaptureDeliveryReports,
   DAILY_REPORT_DRAFT_MIN_REFRESH_MS,
   DAILY_REPORT_TIMEZONE,
+  DATA_RETENTION_POLICY,
   Developers,
   FeedbackReports,
   HEALTH_RETENTION_DAYS,
@@ -30,6 +31,8 @@ const ACTOR_SET_VERSION = 1;
 const FINAL_REPORT_INTERVAL_MS = 60 * 60 * 1000;
 const HOURLY_DRAFT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const RECENT_COMPLETED_HOUR_COUNT = 2;
+const RAW_BEHAVIOR_RETENTION_SECONDS = detailRetentionSeconds('raw_behaviors');
+const PRESENCE_SESSION_RETENTION_SECONDS = detailRetentionSeconds('presence_sessions');
 
 const dailyDraftRefreshTasks = new Map();
 let hourlyDraftRefreshInProgress = false;
@@ -63,6 +66,41 @@ export function reportDateBounds(reportDate) {
 function addReportDays(reportDate, days) {
   const { startAt } = reportDateBounds(reportDate);
   return reportDateForDate(new Date(startAt.getTime() + days * DAY_MS));
+}
+
+function detailRetentionSeconds(dataSet) {
+  const retentionDays = DATA_RETENTION_POLICY.detailWindows.find((item) => item.dataSet === dataSet)?.retentionDays;
+  if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+    throw new Error(`Missing positive retentionDays for ${dataSet}.`);
+  }
+  return retentionDays * 24 * 60 * 60;
+}
+
+function sameIndexKey(left = {}, right = {}) {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  return leftEntries.length === rightEntries.length
+    && leftEntries.every(([field, direction], index) => rightEntries[index]?.[0] === field && rightEntries[index]?.[1] === direction);
+}
+
+async function ensureTtlIndex(collection, key, { name, expireAfterSeconds }) {
+  const rawCollection = collection.rawCollection();
+  const existing = (await rawCollection.indexes()).find((index) => index.name === name);
+  if (!existing) {
+    await rawCollection.createIndex(key, { name, expireAfterSeconds });
+    return;
+  }
+
+  if (!sameIndexKey(existing.key, key)) {
+    throw new Error(`TTL index ${name} exists with a different key.`);
+  }
+
+  if (existing.expireAfterSeconds !== expireAfterSeconds) {
+    await collection.rawDatabase().command({
+      collMod: rawCollection.collectionName,
+      index: { name, expireAfterSeconds },
+    });
+  }
 }
 
 function actorIdForEvent(event = {}) {
@@ -623,6 +661,11 @@ export async function ensureTraceMindIndexes() {
       { projectId: 1, reportDate: 1 },
       { unique: true, name: 'product_usage_project_day_unique' },
     ),
+  ]);
+
+  await Promise.all([
+    ensureTtlIndex(PresenceSessions, { lastSeenAt: 1 }, { name: 'presence_last_seen_ttl', expireAfterSeconds: PRESENCE_SESSION_RETENTION_SECONDS }),
+    ensureTtlIndex(RawBehaviors, { occurredAt: 1 }, { name: 'raw_behaviors_occurred_ttl', expireAfterSeconds: RAW_BEHAVIOR_RETENTION_SECONDS }),
   ]);
 }
 
