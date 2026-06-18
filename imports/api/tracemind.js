@@ -19,6 +19,7 @@ export {
   SemanticEvents,
   PresenceSessions,
   CaptureDeliveryReports,
+  CaptureDeliveryHourlyRollups,
   FeedbackReports,
   UserFeedbackReports,
   ProjectDailyReports,
@@ -552,9 +553,23 @@ export function summarizeBehaviorSources(behaviors = [], blockedSources = []) {
   });
 }
 
+function laterDate(left, right) {
+  const rightDate = validDate(right);
+  if (!rightDate) return left || null;
+  if (!left || rightDate > new Date(left)) return rightDate;
+  return left;
+}
+
+function deliveryReportIndicatesFailure(report = {}) {
+  return Boolean(report.lastError)
+    || Number(report.retryCount) > 0
+    || Number(report.droppedOldest) > 0
+    || Number(report.droppedStorage) > 0;
+}
+
 export function summarizeCaptureDelivery(reports = []) {
   const summary = {
-    reportCount: reports.length,
+    reportCount: 0,
     sent: 0,
     accepted: 0,
     ignored: 0,
@@ -569,6 +584,10 @@ export function summarizeCaptureDelivery(reports = []) {
   };
 
   reports.forEach((report) => {
+    const reportCount = Number(report.reportCount);
+    summary.reportCount += Object.prototype.hasOwnProperty.call(report, 'reportCount')
+      ? Math.max(0, Number.isFinite(reportCount) ? reportCount : 0)
+      : 1;
     summary.sent += Number(report.sent) || 0;
     summary.accepted += Number(report.accepted) || 0;
     summary.ignored += Number(report.ignored) || 0;
@@ -578,15 +597,20 @@ export function summarizeCaptureDelivery(reports = []) {
     summary.coalescedPresence += Number(report.coalescedPresence) || 0;
     summary.maxQueueDepth = Math.max(summary.maxQueueDepth, Number(report.maxQueueDepth) || 0);
 
-    const createdAt = report.createdAt || null;
-    if (report.lastError) {
-      summary.failedFlushes += 1;
-      if (createdAt && (!summary.lastFailedFlushAt || new Date(createdAt) > new Date(summary.lastFailedFlushAt))) {
-        summary.lastFailedFlushAt = createdAt;
-      }
-    } else if (createdAt && (!summary.lastSuccessfulFlushAt || new Date(createdAt) > new Date(summary.lastSuccessfulFlushAt))) {
-      summary.lastSuccessfulFlushAt = createdAt;
-    }
+    const hasFailedFlushes = Object.prototype.hasOwnProperty.call(report, 'failedFlushes');
+    const failedFlushes = Number(report.failedFlushes);
+    const reportFailed = deliveryReportIndicatesFailure(report);
+    if (hasFailedFlushes) summary.failedFlushes += Math.max(0, Number.isFinite(failedFlushes) ? failedFlushes : 0);
+    else if (reportFailed) summary.failedFlushes += 1;
+
+    summary.lastFailedFlushAt = laterDate(
+      summary.lastFailedFlushAt,
+      report.lastFailedFlushAt || (!hasFailedFlushes && reportFailed ? report.createdAt : null),
+    );
+    summary.lastSuccessfulFlushAt = laterDate(
+      summary.lastSuccessfulFlushAt,
+      report.lastSuccessfulFlushAt || (!hasFailedFlushes && !reportFailed ? report.createdAt : null),
+    );
   });
 
   return summary;
@@ -1499,6 +1523,7 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
   const bouncePages = new Map();
   const captureScriptFindings = [];
   const sdkUpgradeFindings = [];
+  const deliverySummaries = [];
   let eventCount = 0;
   let failureEventCount = 0;
   let lastEventAt = null;
@@ -1528,6 +1553,7 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
     mergeBouncePageEntries(bouncePages, rollup.topBouncePages || current.topBouncePages);
     captureScriptFindings.push(...(current.captureScriptFindings || []));
     sdkUpgradeFindings.push(...(current.sdkUpgradeFindings || []));
+    if (report.delivery) deliverySummaries.push(report.delivery);
   });
 
   const totalDurationMs = [...durationUsers.values()].reduce((sum, item) => sum + item.durationMs, 0);
@@ -1564,6 +1590,7 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
       newUsers: Number.isFinite(newUsers) ? Math.max(0, newUsers) : 0,
       retention: retention || emptyHealthWindow().retention,
     },
+    delivery: summarizeCaptureDelivery(deliverySummaries),
   };
 }
 

@@ -2,6 +2,7 @@ import { Meteor } from 'meteor/meteor';
 import { Random } from 'meteor/random';
 import { Accounts } from 'meteor/accounts-base';
 import {
+  CaptureDeliveryHourlyRollups,
   CaptureDeliveryReports,
   DATA_RETENTION_POLICY,
   Developers,
@@ -393,6 +394,7 @@ Meteor.methods({
     await SemanticEvents.removeAsync({ projectId: project._id });
     await PresenceSessions.removeAsync({ projectId: project._id });
     await CaptureDeliveryReports.removeAsync({ projectId: project._id });
+    await CaptureDeliveryHourlyRollups.removeAsync({ projectId: project._id });
     await FeedbackReports.removeAsync({ projectId: project._id });
     await UserFeedbackReports.removeAsync({ projectId: project._id });
     await ProjectDailyReports.removeAsync({ projectId: project._id });

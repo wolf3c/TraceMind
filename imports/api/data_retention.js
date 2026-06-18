@@ -6,7 +6,7 @@ export const DATA_RETENTION_POLICY = Object.freeze({
       label: 'Capture delivery diagnostics',
       retentionDays: 7,
       dateField: 'createdAt',
-      usage: 'Recent upload health diagnostics including accepted, ignored, retry, drop, queue-depth, and flush status.',
+      usage: 'Recent failed, retried, or dropped upload diagnostics; successful delivery is kept as hourly health rollups.',
     },
     {
       dataSet: 'presence_sessions',

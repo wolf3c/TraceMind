@@ -5,6 +5,7 @@ import { Meteor } from 'meteor/meteor';
 import { TraceMindServer } from '@tracemind/server-node';
 import { minify } from 'terser';
 import {
+  CaptureDeliveryHourlyRollups,
   CaptureDeliveryReports,
   ACTIVE_IDLE_TIMEOUT_MS,
   CURRENT_AGENT_GUIDANCE_VERSION,
@@ -4157,12 +4158,26 @@ function deliverySourcePayload(payload = {}) {
   };
 }
 
-async function recordDeliveryReport(project, payload = {}, req = {}, endpoint, result = {}) {
+const DELIVERY_ROLLUP_HOUR_MS = 60 * 60 * 1000;
+
+function deliveryHourStart(date) {
+  const value = date instanceof Date ? date : new Date(date);
+  return new Date(Math.floor(value.getTime() / DELIVERY_ROLLUP_HOUR_MS) * DELIVERY_ROLLUP_HOUR_MS);
+}
+
+function deliveryIsDiagnostic(report) {
+  return Boolean(report.lastError)
+    || Number(report.retryCount) > 0
+    || Number(report.droppedOldest) > 0
+    || Number(report.droppedStorage) > 0;
+}
+
+function deliveryReportDocument(project, payload = {}, req = {}, endpoint, result = {}) {
   const stats = safeObject(payload.deliveryStats, 4096);
-  if (Object.keys(stats).length === 0) return;
+  if (Object.keys(stats).length === 0) return null;
 
   const source = normalizeCaptureSource(deliverySourcePayload(payload), req.headers || {});
-  await CaptureDeliveryReports.insertAsync({
+  return {
     projectId: project._id,
     projectKey: project.projectKey,
     endpoint: safeString(endpoint, 40),
@@ -4185,6 +4200,73 @@ async function recordDeliveryReport(project, payload = {}, req = {}, endpoint, r
     maxQueueDepth: safeCount(stats.maxQueueDepth),
     lastError: safeString(stats.lastError, 160),
     createdAt: new Date(),
+  };
+}
+
+async function upsertDeliveryHourlyRollup(report) {
+  const hourStartAt = deliveryHourStart(report.createdAt);
+  const hourKey = hourStartAt.toISOString();
+  const failedFlush = deliveryIsDiagnostic(report);
+  const now = new Date();
+  const maxFields = {
+    maxQueueDepth: report.maxQueueDepth,
+    lastSeenAt: report.createdAt,
+  };
+  if (failedFlush) maxFields.lastFailedFlushAt = report.createdAt;
+  else maxFields.lastSuccessfulFlushAt = report.createdAt;
+
+  await CaptureDeliveryHourlyRollups.rawCollection().updateOne(
+    {
+      projectId: report.projectId,
+      hourKey,
+      endpoint: report.endpoint,
+      sourceType: report.sourceType,
+      sourceKey: report.sourceKey,
+    },
+    {
+      $setOnInsert: {
+        projectId: report.projectId,
+        projectKey: report.projectKey,
+        hourKey,
+        hourStartAt,
+        hourEndAt: new Date(hourStartAt.getTime() + DELIVERY_ROLLUP_HOUR_MS),
+        endpoint: report.endpoint,
+        sourceType: report.sourceType,
+        sourceKey: report.sourceKey,
+        createdAt: now,
+      },
+      $set: {
+        sourceLabel: report.sourceLabel,
+        sourceDetails: report.sourceDetails,
+        updatedAt: now,
+      },
+      $inc: {
+        reportCount: 1,
+        sent: report.sent,
+        accepted: report.accepted,
+        ignored: report.ignored,
+        droppedOldest: report.droppedOldest,
+        droppedStorage: report.droppedStorage,
+        retryCount: report.retryCount,
+        coalescedPresence: report.coalescedPresence,
+        failedFlushes: failedFlush ? 1 : 0,
+      },
+      $max: maxFields,
+    },
+    { upsert: true },
+  );
+}
+
+async function recordDeliveryReport(project, payload = {}, req = {}, endpoint, result = {}) {
+  const report = deliveryReportDocument(project, payload, req, endpoint, result);
+  if (!report) return;
+
+  await upsertDeliveryHourlyRollup(report);
+  if (!deliveryIsDiagnostic(report)) return;
+
+  await CaptureDeliveryReports.insertAsync({
+    ...report,
+    aggregateStored: true,
   });
 }
 

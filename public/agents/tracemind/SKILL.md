@@ -37,7 +37,7 @@ Agents can answer these Dashboard-aligned operations questions directly from exi
 
 TraceMind separates recent drilldown detail from long-term analysis summaries:
 
-- Capture delivery diagnostics are retained for 7 days. For older upload health, use `project_health.delivery`, hourly reports, and daily reports.
+- Capture delivery diagnostics for failed, retried, or dropped flushes are retained for 7 days. Successful flushes are kept as hourly health rollups; for older upload health, use `project_health.delivery`, hourly reports, and daily reports.
 - Presence sessions are retained for 10 days. For older online users, active-time, and page-duration trends, use hourly reports and daily reports.
 - Raw behavior logs and semantic events are retained for 10 days. If `tracemind.query_raw_behaviors` or `tracemind.query_events` returns no detail outside that window, do not assume data loss; use `tracemind.project_health`, hourly reports, and daily reports first.
 - Hourly health reports and daily health reports currently have no TTL and are the primary source for older product behavior analysis.

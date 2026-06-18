@@ -632,7 +632,7 @@ Dashboard 健康概览里的活跃时长使用更严格的 `activeDurationMs`：
 
 TraceMind 会区分“可下钻明细”和“长期分析口径”：
 
-- `tracemind_capture_delivery_reports` 是上报投递诊断明细，保留 7 天。更早的上报健康请看 `project_health.delivery`、小时报告和日报。
+- `tracemind_capture_delivery_reports` 是上报投递异常诊断明细，保留 7 天。成功 flush 只写入小时级上报健康聚合；更早的上报健康请看 `project_health.delivery`、小时报告和日报。
 - `tracemind_presence_sessions` 是在线区间和会话级在线明细，按 `lastSeenAt` 保留 10 天。更早的在线人数、活跃时长和页面停留趋势请看小时报告和日报。
 - `tracemind_raw_behaviors` 是原始行为日志，按 `occurredAt` 保留 10 天。超过窗口后，`tracemind.query_raw_behaviors` 查不到明细不代表数据丢失，应先用 `tracemind.project_health`、小时报告和日报排查。
 - `tracemind_semantic_events` 是语义事件明细，按 `occurredAt` 保留 10 天，用于近期 MCP/LLM 证据下钻。

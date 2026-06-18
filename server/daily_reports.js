@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { Meteor } from 'meteor/meteor';
 import {
+  CaptureDeliveryHourlyRollups,
   CaptureDeliveryReports,
   DAILY_REPORT_DRAFT_MIN_REFRESH_MS,
   DAILY_REPORT_TIMEZONE,
@@ -34,6 +35,7 @@ const RECENT_COMPLETED_HOUR_COUNT = 2;
 const RAW_BEHAVIOR_RETENTION_SECONDS = detailRetentionSeconds('raw_behaviors');
 const PRESENCE_SESSION_RETENTION_SECONDS = detailRetentionSeconds('presence_sessions');
 const SEMANTIC_EVENT_RETENTION_SECONDS = detailRetentionSeconds('semantic_events');
+const DELIVERY_REPORT_RETENTION_SECONDS = detailRetentionSeconds('capture_delivery_reports');
 
 const dailyDraftRefreshTasks = new Map();
 let hourlyDraftRefreshInProgress = false;
@@ -228,8 +230,15 @@ async function loadDayPresenceSessions(projectId, startAt, endAt) {
 
 async function loadDayDeliveryReports(projectId, startAt, endAt) {
   return CaptureDeliveryReports.find(
-    { projectId, createdAt: { $gte: startAt, $lt: endAt } },
+    { projectId, aggregateStored: { $ne: true }, createdAt: { $gte: startAt, $lt: endAt } },
     { sort: { createdAt: -1 } },
+  ).fetchAsync();
+}
+
+async function loadDayDeliveryRollups(projectId, startAt, endAt) {
+  return CaptureDeliveryHourlyRollups.find(
+    { projectId, hourStartAt: { $gte: startAt, $lt: endAt } },
+    { sort: { hourStartAt: -1 } },
   ).fetchAsync();
 }
 
@@ -262,9 +271,12 @@ export async function computeProjectHourlyReport(projectId, hourStartInput, { fo
   if (existing && !force) return existing;
 
   const computedAt = new Date(now);
-  const events = await loadDayEvents(projectId, hourStartAt, hourEndAt);
-  const presenceSessions = await loadDayPresenceSessions(projectId, hourStartAt, hourEndAt);
-  const deliveryReports = await loadDayDeliveryReports(projectId, hourStartAt, hourEndAt);
+  const [events, presenceSessions, deliveryRollups, legacyDeliveryReports] = await Promise.all([
+    loadDayEvents(projectId, hourStartAt, hourEndAt),
+    loadDayPresenceSessions(projectId, hourStartAt, hourEndAt),
+    loadDayDeliveryRollups(projectId, hourStartAt, hourEndAt),
+    loadDayDeliveryReports(projectId, hourStartAt, hourEndAt),
+  ]);
   const activeActorKeys = activeActorKeysFor(projectId, events, presenceSessions);
   const sessionKeys = sessionKeysFor(projectId, presenceSessions);
   const summary = summarizeProjectHealthRollupForWindow({
@@ -295,7 +307,7 @@ export async function computeProjectHourlyReport(projectId, hourStartInput, { fo
     sessionKeys,
     current,
     rollup,
-    delivery: summarizeCaptureDelivery(deliveryReports),
+    delivery: summarizeCaptureDelivery([...deliveryRollups, ...legacyDeliveryReports]),
     updatedAt: computedAt,
   };
 
@@ -336,10 +348,9 @@ export async function computeProjectDailyReport(projectId, reportDateInput, {
   const comparisonDurationMs = Math.max(0, sourceEndAt.getTime() - startAt.getTime());
   const previousStartAt = new Date(startAt.getTime() - DAY_MS);
   const previousEndAt = new Date(previousStartAt.getTime() + comparisonDurationMs);
-  const [currentHourlyReports, previousHourlyReports, deliveryReports] = await Promise.all([
+  const [currentHourlyReports, previousHourlyReports] = await Promise.all([
     ensureHourlyReports(projectId, startAt, sourceEndAt, { force: forceCurrentHourlyReports, now: computedAt }),
     ensureHourlyReports(projectId, previousStartAt, previousEndAt, { force, now: computedAt }),
-    loadDayDeliveryReports(projectId, startAt, sourceEndAt),
   ]);
   const currentAggregate = aggregateProjectHealthHourlyReports(currentHourlyReports);
   const previousAggregate = aggregateProjectHealthHourlyReports(previousHourlyReports);
@@ -390,7 +401,7 @@ export async function computeProjectDailyReport(projectId, reportDateInput, {
     hourlyComparison: buildProjectHealthHourlyComparison(currentHourlyReports, previousHourlyReports, {
       comparisonMode,
     }),
-    delivery: summarizeCaptureDelivery(deliveryReports),
+    delivery: currentAggregate.delivery,
     updatedAt: computedAt,
   };
 
@@ -460,7 +471,7 @@ async function distinctProjectIds(collection, query) {
 }
 
 async function recentActivityProjectIds(recentStartAt, sourceEndAt) {
-  const [rawProjectIds, semanticProjectIds, presenceProjectIds, deliveryProjectIds] = await Promise.all([
+  const [rawProjectIds, semanticProjectIds, presenceProjectIds, deliveryProjectIds, deliveryRollupProjectIds] = await Promise.all([
     distinctProjectIds(RawBehaviors, {
       occurredAt: { $gte: recentStartAt, $lt: sourceEndAt },
     }),
@@ -478,12 +489,16 @@ async function recentActivityProjectIds(recentStartAt, sourceEndAt) {
     distinctProjectIds(CaptureDeliveryReports, {
       createdAt: { $gte: recentStartAt, $lt: sourceEndAt },
     }),
+    distinctProjectIds(CaptureDeliveryHourlyRollups, {
+      hourStartAt: { $gte: recentStartAt, $lt: sourceEndAt },
+    }),
   ]);
   const candidateIds = [...new Set([
     ...rawProjectIds,
     ...semanticProjectIds,
     ...presenceProjectIds,
     ...deliveryProjectIds,
+    ...deliveryRollupProjectIds,
   ])];
   if (!candidateIds.length) return [];
   const projects = await Projects.find(
@@ -583,6 +598,14 @@ export async function ensureTraceMindIndexes() {
     ProjectDailyReports.rawCollection().createIndex({ projectId: 1, reportDate: 1 }, { unique: true }),
     ProjectHourlyReports.rawCollection().createIndex({ projectId: 1, hourKey: 1 }, { unique: true, name: 'project_hour_unique' }),
     ProjectHourlyReports.rawCollection().createIndex({ projectId: 1, hourStartAt: 1 }),
+    CaptureDeliveryHourlyRollups.rawCollection().createIndex(
+      { projectId: 1, hourKey: 1, endpoint: 1, sourceType: 1, sourceKey: 1 },
+      { unique: true, name: 'delivery_rollup_project_hour_source_unique' },
+    ),
+    CaptureDeliveryHourlyRollups.rawCollection().createIndex(
+      { projectId: 1, hourStartAt: 1 },
+      { name: 'delivery_rollup_project_hour' },
+    ),
     Projects.rawCollection().createIndex({ projectKey: 1 }, { unique: true, name: 'project_key_unique' }),
     Projects.rawCollection().createIndex(
       { 'mcpTokens.token': 1 },
@@ -668,6 +691,7 @@ export async function ensureTraceMindIndexes() {
     ensureTtlIndex(PresenceSessions, { lastSeenAt: 1 }, { name: 'presence_last_seen_ttl', expireAfterSeconds: PRESENCE_SESSION_RETENTION_SECONDS }),
     ensureTtlIndex(RawBehaviors, { occurredAt: 1 }, { name: 'raw_behaviors_occurred_ttl', expireAfterSeconds: RAW_BEHAVIOR_RETENTION_SECONDS }),
     ensureTtlIndex(SemanticEvents, { occurredAt: 1 }, { name: 'semantic_events_occurred_ttl', expireAfterSeconds: SEMANTIC_EVENT_RETENTION_SECONDS }),
+    ensureTtlIndex(CaptureDeliveryReports, { createdAt: 1 }, { name: 'delivery_created_ttl', expireAfterSeconds: DELIVERY_REPORT_RETENTION_SECONDS }),
   ]);
 }
 

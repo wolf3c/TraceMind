@@ -903,7 +903,8 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('## Daily Operations First'));
       assert.ok(skill.includes('## Operational Data Menu'));
       assert.ok(skill.includes('## Data Retention Windows'));
-      assert.ok(skill.includes('Capture delivery diagnostics are retained for 7 days'));
+      assert.ok(skill.includes('failed, retried, or dropped flushes are retained for 7 days'));
+      assert.ok(skill.includes('Successful flushes are kept as hourly health rollups'));
       assert.ok(skill.includes('Raw behavior logs and semantic events are retained for 10 days'));
       assert.ok(skill.includes('Dashboard-aligned'));
       assert.ok(skill.includes('project_health.health.current'));
@@ -962,6 +963,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('Dashboard-aligned operations review'));
       assert.ok(snippet.includes('project_health.health.current'));
       assert.ok(snippet.includes('capture delivery diagnostics keep 7 days'));
+      assert.ok(snippet.includes('successful flushes are kept as hourly health rollups'));
       assert.ok(snippet.includes('raw behavior logs, and semantic events keep 10 days'));
       assert.ok(snippet.includes('recent_online'));
       assert.ok(snippet.includes('Auto Capture before manual custom events'));
@@ -5933,9 +5935,51 @@ projectKey: tm_proj_sensitive`,
       retryCount: 4,
       coalescedPresence: 4,
       maxQueueDepth: 20,
-      failedFlushes: 1,
-      lastSuccessfulFlushAt: new Date('2026-05-09T10:00:00.000Z'),
+      failedFlushes: 2,
+      lastSuccessfulFlushAt: null,
       lastFailedFlushAt: new Date('2026-05-09T10:05:00.000Z'),
+    });
+  });
+
+  it('summarizes hourly delivery rollups with report counts and timestamps', function () {
+    const records = [
+      {
+        reportCount: 3,
+        sent: 12,
+        accepted: 10,
+        ignored: 2,
+        retryCount: 0,
+        coalescedPresence: 5,
+        maxQueueDepth: 18,
+        failedFlushes: 0,
+        lastSuccessfulFlushAt: new Date('2026-05-09T10:50:00.000Z'),
+      },
+      {
+        reportCount: 2,
+        sent: 2,
+        accepted: 1,
+        ignored: 1,
+        retryCount: 1,
+        droppedStorage: 4,
+        failedFlushes: 1,
+        maxQueueDepth: 30,
+        lastFailedFlushAt: new Date('2026-05-09T10:55:00.000Z'),
+      },
+    ];
+
+    assert.deepStrictEqual(summarizeCaptureDelivery(records), {
+      reportCount: 5,
+      sent: 14,
+      accepted: 11,
+      ignored: 3,
+      droppedOldest: 0,
+      droppedStorage: 4,
+      retryCount: 1,
+      coalescedPresence: 5,
+      maxQueueDepth: 30,
+      failedFlushes: 1,
+      lastSuccessfulFlushAt: new Date('2026-05-09T10:50:00.000Z'),
+      lastFailedFlushAt: new Date('2026-05-09T10:55:00.000Z'),
     });
   });
 
@@ -5985,6 +6029,11 @@ projectKey: tm_proj_sensitive`,
       resetProductUsageInstrumentationForTest?.();
     });
 
+    function captureDeliveryHourlyRollups() {
+      assert.ok(TraceMindApi.CaptureDeliveryHourlyRollups, 'missing CaptureDeliveryHourlyRollups collection export');
+      return TraceMindApi.CaptureDeliveryHourlyRollups;
+    }
+
     async function createDashboardAccount(prefix) {
       const email = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
       const userId = await Meteor.users.insertAsync({
@@ -6022,6 +6071,10 @@ projectKey: tm_proj_sensitive`,
         { occurredAt: 1 },
         { name: 'semantic_events_occurred_ttl', expireAfterSeconds: 30 * 24 * 60 * 60 },
       );
+      await CaptureDeliveryReports.rawCollection().createIndex(
+        { createdAt: 1 },
+        { name: 'delivery_created_ttl', expireAfterSeconds: 30 * 24 * 60 * 60 },
+      );
       await ensureTraceMindIndexes();
 
       const indexesFor = async (collection) => collection.rawCollection().indexes();
@@ -6033,6 +6086,7 @@ projectKey: tm_proj_sensitive`,
       const semanticIndexes = await indexNames(SemanticEvents);
       const presenceIndexes = await indexNames(PresenceSessions);
       const deliveryIndexes = await indexNames(CaptureDeliveryReports);
+      const deliveryRollupIndexes = await indexNames(captureDeliveryHourlyRollups());
       const feedbackIndexes = await indexNames(FeedbackReports);
       const userFeedbackIndexes = await indexNames(TraceMindApi.UserFeedbackReports);
       const setupAttemptIndexes = await indexNames(SetupAttempts);
@@ -6090,6 +6144,11 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(semanticTtlIndex.expireAfterSeconds, 10 * 24 * 60 * 60);
       assert.ok(deliveryIndexes.has('projectId_1_createdAt_-1'));
       assert.ok(deliveryIndexes.has('delivery_time_project'));
+      const deliveryTtlIndex = (await indexesFor(CaptureDeliveryReports)).find((index) => index.name === 'delivery_created_ttl');
+      assert.deepStrictEqual(deliveryTtlIndex.key, { createdAt: 1 });
+      assert.strictEqual(deliveryTtlIndex.expireAfterSeconds, 7 * 24 * 60 * 60);
+      assert.ok(deliveryRollupIndexes.has('delivery_rollup_project_hour_source_unique'));
+      assert.ok(deliveryRollupIndexes.has('delivery_rollup_project_hour'));
       [
         'feedback_project_token_fingerprint_time',
         'feedback_project_token_time',
@@ -7303,6 +7362,99 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(savedReports.length, 1);
     });
 
+    it('builds daily delivery from hourly rollups without recounting aggregate-backed details', async function () {
+      const projectId = `project-delivery-hourly-health-${Date.now()}`;
+      await ProjectDailyReports.removeAsync({ projectId });
+      await ProjectHourlyReports.removeAsync({ projectId });
+      await CaptureDeliveryReports.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Delivery Hourly Health App',
+        projectKey: `tm_proj_delivery_hourly_${Date.now()}`,
+        authToken: `tm_auth_delivery_hourly_${Date.now()}`,
+        createdAt: new Date(),
+      });
+
+      await ProjectHourlyReports.insertAsync({
+        projectId,
+        hourKey: '2026-05-12T16:00:00.000Z',
+        hourStartAt: new Date('2026-05-12T16:00:00.000Z'),
+        hourEndAt: new Date('2026-05-12T17:00:00.000Z'),
+        status: 'final',
+        current: { eventCount: 0, activeUsers: 0, sessionCount: 0 },
+        delivery: {
+          reportCount: 2,
+          sent: 5,
+          accepted: 4,
+          ignored: 1,
+          retryCount: 0,
+          droppedOldest: 0,
+          droppedStorage: 0,
+          coalescedPresence: 2,
+          maxQueueDepth: 12,
+          failedFlushes: 0,
+          lastSuccessfulFlushAt: new Date('2026-05-12T16:50:00.000Z'),
+          lastFailedFlushAt: null,
+        },
+      });
+      await ProjectHourlyReports.insertAsync({
+        projectId,
+        hourKey: '2026-05-12T17:00:00.000Z',
+        hourStartAt: new Date('2026-05-12T17:00:00.000Z'),
+        hourEndAt: new Date('2026-05-12T18:00:00.000Z'),
+        status: 'final',
+        current: { eventCount: 0, activeUsers: 0, sessionCount: 0 },
+        delivery: {
+          reportCount: 1,
+          sent: 3,
+          accepted: 3,
+          ignored: 0,
+          retryCount: 1,
+          droppedOldest: 1,
+          droppedStorage: 0,
+          coalescedPresence: 0,
+          maxQueueDepth: 20,
+          failedFlushes: 1,
+          lastSuccessfulFlushAt: null,
+          lastFailedFlushAt: new Date('2026-05-12T17:10:00.000Z'),
+        },
+      });
+      await CaptureDeliveryReports.insertAsync({
+        projectId,
+        projectKey: `tm_proj_delivery_hourly_${Date.now()}`,
+        endpoint: 'capture',
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        aggregateStored: true,
+        sent: 999,
+        accepted: 999,
+        ignored: 999,
+        retryCount: 999,
+        droppedOldest: 999,
+        droppedStorage: 999,
+        maxQueueDepth: 999,
+        lastError: 'network_error',
+        createdAt: new Date('2026-05-12T17:15:00.000Z'),
+      });
+
+      const report = await computeProjectDailyReport(projectId, '2026-05-13', {
+        final: false,
+        now: new Date('2026-05-12T18:20:00.000Z'),
+      });
+
+      assert.strictEqual(report.delivery.reportCount, 3);
+      assert.strictEqual(report.delivery.sent, 8);
+      assert.strictEqual(report.delivery.accepted, 7);
+      assert.strictEqual(report.delivery.ignored, 1);
+      assert.strictEqual(report.delivery.retryCount, 1);
+      assert.strictEqual(report.delivery.droppedOldest, 1);
+      assert.strictEqual(report.delivery.maxQueueDepth, 20);
+      assert.strictEqual(report.delivery.failedFlushes, 1);
+      assert.strictEqual(report.delivery.lastSuccessfulFlushAt.getTime(), new Date('2026-05-12T16:50:00.000Z').getTime());
+      assert.strictEqual(report.delivery.lastFailedFlushAt.getTime(), new Date('2026-05-12T17:10:00.000Z').getTime());
+    });
+
     it('builds today daily health from completed hourly reports and matching previous hours', async function () {
       this.timeout(5000);
       const projectId = `project-hourly-health-${Date.now()}`;
@@ -7990,6 +8142,36 @@ projectKey: tm_proj_sensitive`,
         current: { eventCount: 1 },
         createdAt: new Date(),
       });
+      await CaptureDeliveryReports.insertAsync({
+        projectId: removedProjectId,
+        endpoint: 'capture',
+        createdAt: new Date(),
+      });
+      await CaptureDeliveryReports.insertAsync({
+        projectId: siblingProject._id,
+        endpoint: 'capture',
+        createdAt: new Date(),
+      });
+      await captureDeliveryHourlyRollups().insertAsync({
+        projectId: removedProjectId,
+        hourKey: '2026-05-12T10:00:00.000Z',
+        hourStartAt: new Date('2026-05-12T10:00:00.000Z'),
+        endpoint: 'capture',
+        sourceType: 'web',
+        sourceKey: 'removed.example.com',
+        reportCount: 1,
+        createdAt: new Date(),
+      });
+      await captureDeliveryHourlyRollups().insertAsync({
+        projectId: siblingProject._id,
+        hourKey: '2026-05-12T10:00:00.000Z',
+        hourStartAt: new Date('2026-05-12T10:00:00.000Z'),
+        endpoint: 'capture',
+        sourceType: 'web',
+        sourceKey: 'sibling.example.com',
+        reportCount: 1,
+        createdAt: new Date(),
+      });
 
       const result = await removeMethod.apply({ userId }, [removedProjectId]);
 
@@ -7998,6 +8180,8 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(await RawBehaviors.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await SemanticEvents.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await PresenceSessions.find({ projectId: removedProjectId }).countAsync(), 0);
+      assert.strictEqual(await CaptureDeliveryReports.find({ projectId: removedProjectId }).countAsync(), 0);
+      assert.strictEqual(await captureDeliveryHourlyRollups().find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await FeedbackReports.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await TraceMindApi.UserFeedbackReports.find({ projectId: removedProjectId }).countAsync(), 0);
       assert.strictEqual(await ProjectDailyReports.find({ projectId: removedProjectId }).countAsync(), 0);
@@ -8005,6 +8189,8 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(await RawBehaviors.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await SemanticEvents.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await PresenceSessions.find({ projectId: siblingProject._id }).countAsync(), 1);
+      assert.strictEqual(await CaptureDeliveryReports.find({ projectId: siblingProject._id }).countAsync(), 1);
+      assert.strictEqual(await captureDeliveryHourlyRollups().find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await FeedbackReports.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await TraceMindApi.UserFeedbackReports.find({ projectId: siblingProject._id }).countAsync(), 1);
       assert.strictEqual(await ProjectDailyReports.find({ projectId: siblingProject._id }).countAsync(), 1);
@@ -8177,6 +8363,63 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(processedRaw.semanticEventId, existingEventId);
     });
 
+    it('stores successful capture delivery only as an hourly rollup', async function () {
+      const projectId = `project-capture-delivery-success-${Date.now()}`;
+      const projectKey = `tm_proj_delivery_success_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-capture-delivery-success',
+        name: 'Capture Delivery Success Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        sessionId: 'tm_sess_delivery_success',
+        deviceId: 'tm_dev_delivery_success',
+        deliveryStats: {
+          batchId: 'tm_batch_capture_success',
+          reason: 'scheduled',
+          queued: 2,
+          sent: 2,
+          droppedOldest: 0,
+          droppedStorage: 0,
+          retryCount: 0,
+          coalescedPresence: 0,
+          maxQueueDepth: 2,
+        },
+        events: [
+          { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
+          { type: 'submit', source: { type: 'web', url: 'https://app.example.com/signup' } },
+        ],
+      }, { headers: {}, socket: {} });
+
+      const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+      const rollups = await captureDeliveryHourlyRollups().find({ projectId }).fetchAsync();
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 2);
+      assert.strictEqual(result.ignored, 0);
+      assert.strictEqual(reports.length, 0);
+      assert.strictEqual(rollups.length, 1);
+      assert.strictEqual(rollups[0].endpoint, 'capture');
+      assert.strictEqual(rollups[0].sourceType, 'web');
+      assert.strictEqual(rollups[0].sourceKey, 'app.example.com');
+      assert.strictEqual(rollups[0].reportCount, 1);
+      assert.strictEqual(rollups[0].sent, 2);
+      assert.strictEqual(rollups[0].accepted, 2);
+      assert.strictEqual(rollups[0].ignored, 0);
+      assert.strictEqual(rollups[0].retryCount, 0);
+      assert.strictEqual(rollups[0].droppedOldest, 0);
+      assert.strictEqual(rollups[0].droppedStorage, 0);
+      assert.strictEqual(rollups[0].failedFlushes, 0);
+      assert.ok(rollups[0].lastSuccessfulFlushAt instanceof Date);
+      assert.strictEqual(rollups[0].lastFailedFlushAt, undefined);
+    });
+
     it('records capture delivery stats separately from raw behavior', async function () {
       const projectId = `project-capture-delivery-${Date.now()}`;
       const projectKey = `tm_proj_delivery_${Date.now()}`;
@@ -8214,19 +8457,127 @@ projectKey: tm_proj_sensitive`,
 
       const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
       const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+      const rollups = await captureDeliveryHourlyRollups().find({ projectId }).fetchAsync();
 
       assert.strictEqual(result.ok, true);
       assert.strictEqual(result.accepted, 2);
       assert.strictEqual(result.ignored, 1);
       assert.strictEqual(behaviors.length, 2);
       assert.strictEqual(reports.length, 1);
+      assert.strictEqual(rollups.length, 1);
+      assert.strictEqual(rollups[0].sent, 3);
+      assert.strictEqual(rollups[0].accepted, 2);
+      assert.strictEqual(rollups[0].ignored, 1);
+      assert.strictEqual(rollups[0].retryCount, 4);
+      assert.strictEqual(rollups[0].droppedOldest, 2);
+      assert.strictEqual(rollups[0].droppedStorage, 1);
+      assert.strictEqual(rollups[0].failedFlushes, 1);
+      assert.ok(rollups[0].lastFailedFlushAt instanceof Date);
+      assert.strictEqual(rollups[0].lastSuccessfulFlushAt, undefined);
       assert.strictEqual(reports[0].endpoint, 'capture');
       assert.strictEqual(reports[0].batchId, 'tm_batch_capture');
+      assert.strictEqual(reports[0].aggregateStored, true);
       assert.strictEqual(reports[0].accepted, 2);
       assert.strictEqual(reports[0].ignored, 1);
       assert.strictEqual(reports[0].droppedOldest, 2);
       assert.strictEqual(reports[0].droppedStorage, 1);
       assert.strictEqual(await SemanticEvents.find({ projectId }).countAsync(), 0);
+    });
+
+    it('keeps ignored-only delivery in hourly rollups without diagnostic detail', async function () {
+      const projectId = `project-capture-delivery-ignored-${Date.now()}`;
+      const projectKey = `tm_proj_delivery_ignored_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-capture-delivery-ignored',
+        name: 'Capture Delivery Ignored Project',
+        projectKey,
+        blockedSources: [{ sourceType: 'web', sourceKey: 'blocked.example', blockedAt: new Date() }],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        sessionId: 'tm_sess_delivery_ignored',
+        deviceId: 'tm_dev_delivery_ignored',
+        deliveryStats: {
+          batchId: 'tm_batch_capture_ignored',
+          reason: 'scheduled',
+          queued: 1,
+          sent: 1,
+          droppedOldest: 0,
+          droppedStorage: 0,
+          retryCount: 0,
+          coalescedPresence: 0,
+          maxQueueDepth: 1,
+        },
+        events: [
+          { type: 'click', source: { type: 'web', url: 'https://blocked.example/' } },
+        ],
+      }, { headers: {}, socket: {} });
+
+      const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+      const rollups = await captureDeliveryHourlyRollups().find({ projectId }).fetchAsync();
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 0);
+      assert.strictEqual(result.ignored, 1);
+      assert.strictEqual(reports.length, 0);
+      assert.strictEqual(rollups.length, 1);
+      assert.strictEqual(rollups[0].sent, 1);
+      assert.strictEqual(rollups[0].accepted, 0);
+      assert.strictEqual(rollups[0].ignored, 1);
+      assert.strictEqual(rollups[0].failedFlushes, 0);
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 0);
+    });
+
+    it('stores failed delivery flushes as rollups and diagnostic detail', async function () {
+      const projectId = `project-capture-delivery-failed-${Date.now()}`;
+      const projectKey = `tm_proj_delivery_failed_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-capture-delivery-failed',
+        name: 'Capture Delivery Failed Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        sessionId: 'tm_sess_delivery_failed',
+        deviceId: 'tm_dev_delivery_failed',
+        deliveryStats: {
+          batchId: 'tm_batch_capture_failed',
+          reason: 'retry',
+          queued: 1,
+          sent: 1,
+          droppedOldest: 0,
+          droppedStorage: 0,
+          retryCount: 0,
+          coalescedPresence: 0,
+          maxQueueDepth: 1,
+          lastError: 'network_error',
+        },
+        events: [
+          { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
+        ],
+      }, { headers: {}, socket: {} });
+
+      const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+      const rollups = await captureDeliveryHourlyRollups().find({ projectId }).fetchAsync();
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 1);
+      assert.strictEqual(reports.length, 1);
+      assert.strictEqual(reports[0].aggregateStored, true);
+      assert.strictEqual(reports[0].lastError, 'network_error');
+      assert.strictEqual(rollups.length, 1);
+      assert.strictEqual(rollups[0].failedFlushes, 1);
+      assert.ok(rollups[0].lastFailedFlushAt instanceof Date);
+      assert.strictEqual(rollups[0].lastSuccessfulFlushAt, undefined);
     });
 
     it('accepts batched presence payloads and records delivery stats', async function () {
@@ -8277,6 +8628,7 @@ projectKey: tm_proj_sensitive`,
 
       const sessions = await PresenceSessions.find({ projectId }, { sort: { presenceId: 1 } }).fetchAsync();
       const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+      const rollups = await captureDeliveryHourlyRollups().find({ projectId }).fetchAsync();
 
       assert.strictEqual(result.ok, true);
       assert.strictEqual(result.accepted, 2);
@@ -8285,8 +8637,17 @@ projectKey: tm_proj_sensitive`,
       assert.deepStrictEqual(sessions.map((session) => session.path), ['/docs', '/pricing']);
       assert.deepStrictEqual(sessions.map((session) => session.activeDurationMs), [0, 0]);
       assert.strictEqual(reports.length, 1);
+      assert.strictEqual(rollups.length, 1);
+      assert.strictEqual(rollups[0].sent, 2);
+      assert.strictEqual(rollups[0].accepted, 2);
+      assert.strictEqual(rollups[0].retryCount, 1);
+      assert.strictEqual(rollups[0].coalescedPresence, 3);
+      assert.strictEqual(rollups[0].failedFlushes, 1);
+      assert.ok(rollups[0].lastFailedFlushAt instanceof Date);
+      assert.strictEqual(rollups[0].lastSuccessfulFlushAt, undefined);
       assert.strictEqual(reports[0].endpoint, 'presence');
       assert.strictEqual(reports[0].batchId, 'tm_batch_presence');
+      assert.strictEqual(reports[0].aggregateStored, true);
       assert.strictEqual(reports[0].coalescedPresence, 3);
       assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 0);
     });
