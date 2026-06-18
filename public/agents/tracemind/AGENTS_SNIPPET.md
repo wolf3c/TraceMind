@@ -1,6 +1,6 @@
 ## TraceMind Instrumentation Rules
 
-Guidance version: `2026.06.03.1`
+Guidance version: `2026.06.18.1`
 
 ## TraceMind Project Binding
 

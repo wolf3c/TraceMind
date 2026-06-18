@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.06.03.1
+version: 2026.06.18.1
 description: Use when reviewing TraceMind product operations, online health, or analytics instrumentation with the TraceMind MCP.
 ---
 

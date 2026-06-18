@@ -88,7 +88,9 @@ function sameIndexKey(left = {}, right = {}) {
 
 async function ensureTtlIndex(collection, key, { name, expireAfterSeconds }) {
   const rawCollection = collection.rawCollection();
-  const existing = (await rawCollection.indexes()).find((index) => index.name === name);
+  const indexes = await rawCollection.indexes();
+  const existing = indexes.find((index) => index.name === name)
+    || indexes.find((index) => Object.prototype.hasOwnProperty.call(index, 'expireAfterSeconds') && sameIndexKey(index.key, key));
   if (!existing) {
     await rawCollection.createIndex(key, { name, expireAfterSeconds });
     return;
@@ -101,7 +103,7 @@ async function ensureTtlIndex(collection, key, { name, expireAfterSeconds }) {
   if (existing.expireAfterSeconds !== expireAfterSeconds) {
     await collection.rawDatabase().command({
       collMod: rawCollection.collectionName,
-      index: { name, expireAfterSeconds },
+      index: { name: existing.name, expireAfterSeconds },
     });
   }
 }

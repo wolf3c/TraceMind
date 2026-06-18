@@ -886,7 +886,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.06.03.1'));
+      assert.ok(skill.includes('version: 2026.06.18.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -956,7 +956,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.check_agent_setup'));
       assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.ok(snippet.includes('Guidance version: `2026.06.03.1`'));
+      assert.ok(snippet.includes('Guidance version: `2026.06.18.1`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -1003,7 +1003,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.ok(snippet.includes('tracemind.check_agent_setup'));
       assert.ok(snippet.includes('agentSetupNotice'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.06.03.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.06.18.1');
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -2636,10 +2636,10 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.03.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.18.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
-      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.03.1');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.18.1');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
@@ -2800,7 +2800,7 @@ describe('TraceMind', function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
       const currentRules = `---
-version: 2026.06.03.1
+version: 2026.06.18.1
 ---
 TraceMind Project Binding
 Project ID: project-agent-setup-check
@@ -2826,14 +2826,14 @@ If reporting tools such as tracemind.project_health, tracemind.recent_online, tr
       const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules,
         agentInstructionContent: currentRules,
-        manifestContent: JSON.stringify({ guidanceVersion: '2026.06.03.1' }),
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.06.18.1' }),
       });
       assert.strictEqual(current.structuredContent.status, 'current');
       assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
 
       const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('version: 2026.06.03.1', 'version: 2026.05.17.7'),
+        skillContent: currentRules.replace('version: 2026.06.18.1', 'version: 2026.05.17.7'),
         agentInstructionContent: currentRules,
       });
       assert.strictEqual(outdated.structuredContent.status, 'outdated');
@@ -3028,7 +3028,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
       assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.06.03.1');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.06.18.1');
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 10);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
@@ -3604,7 +3604,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
       assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.03.1');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.18.1');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
       assert.strictEqual(setup.structuredContent.webCaptureScript.latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.ok(setup.structuredContent.webCaptureScript.upgradePrompt.includes('window.TraceMind.status()'));
@@ -6073,7 +6073,7 @@ projectKey: tm_proj_sensitive`,
       );
       await CaptureDeliveryReports.rawCollection().createIndex(
         { createdAt: 1 },
-        { name: 'delivery_created_ttl', expireAfterSeconds: 30 * 24 * 60 * 60 },
+        { name: 'capture_delivery_created_ttl', expireAfterSeconds: 30 * 24 * 60 * 60 },
       );
       await ensureTraceMindIndexes();
 
@@ -6144,7 +6144,10 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(semanticTtlIndex.expireAfterSeconds, 10 * 24 * 60 * 60);
       assert.ok(deliveryIndexes.has('projectId_1_createdAt_-1'));
       assert.ok(deliveryIndexes.has('delivery_time_project'));
-      const deliveryTtlIndex = (await indexesFor(CaptureDeliveryReports)).find((index) => index.name === 'delivery_created_ttl');
+      const deliveryTtlIndexes = (await indexesFor(CaptureDeliveryReports))
+        .filter((index) => Object.prototype.hasOwnProperty.call(index, 'expireAfterSeconds') && index.key.createdAt === 1);
+      assert.strictEqual(deliveryTtlIndexes.length, 1);
+      const deliveryTtlIndex = deliveryTtlIndexes[0];
       assert.deepStrictEqual(deliveryTtlIndex.key, { createdAt: 1 });
       assert.strictEqual(deliveryTtlIndex.expireAfterSeconds, 7 * 24 * 60 * 60);
       assert.ok(deliveryRollupIndexes.has('delivery_rollup_project_hour_source_unique'));
