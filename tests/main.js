@@ -735,9 +735,9 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('功能使用分析'));
       assert.ok(prompt.includes('异常或下降原因分析'));
       assert.ok(prompt.includes('必须按 `summarySample` 把 `tracemind.summary` 的 totals 视为样本口径'));
-      assert.ok(prompt.includes('如果当前 active tool list 看不到 `tracemind.project_health`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback`'));
+      assert.ok(prompt.includes('如果当前 active tool list 看不到 `tracemind.project_health`、`tracemind.recent_online`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback`'));
       assert.ok(prompt.includes('先读取 MCP `tools/list` 或按精确工具名重新 discovery'));
-      assert.ok(prompt.includes('不要通过增大 `tracemind.summary.limit` 来代偿缺失的 reporting tools'));
+      assert.ok(prompt.includes('不要通过增大 `tracemind.summary.limit` 来代偿缺失的 current online 或 project health 能力'));
       assert.ok(prompt.includes('先调用 `tracemind.agent_guidance` 确认当前权威版本'));
       assert.ok(prompt.includes('调用 `tracemind.check_agent_setup` 并传入本地文件内容'));
       assert.ok(prompt.includes('不要把 MCP URL、mcpToken 或 Bearer token 写入 AGENTS.md'));
@@ -794,9 +794,9 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('feature usage analysis'));
       assert.ok(prompt.includes('anomaly or drop investigation'));
       assert.ok(prompt.includes('Treat `tracemind.summary` totals as sample-derived according to `summarySample`'));
-      assert.ok(prompt.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
+      assert.ok(prompt.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.recent_online`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
       assert.ok(prompt.includes('read MCP `tools/list` or retry discovery with the exact tool name'));
-      assert.ok(prompt.includes('Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`'));
+      assert.ok(prompt.includes('Do not compensate for missing current online or project health capabilities by increasing `tracemind.summary.limit`'));
       assert.ok(prompt.includes('call `tracemind.agent_guidance` to confirm the current authority version'));
       assert.ok(prompt.includes('call `tracemind.check_agent_setup` with the local file contents'));
       assert.ok(prompt.includes('Do not write the MCP URL, mcpToken, or Bearer token into AGENTS.md'));
@@ -917,7 +917,8 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('sample-derived evidence'));
       assert.ok(skill.includes('MCP Tool Discovery Recovery'));
       assert.ok(skill.includes('read MCP `tools/list` or retry discovery with the exact tool name'));
-      assert.ok(skill.includes('Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`'));
+      assert.ok(skill.includes('availableCapabilities.currentOnline'));
+      assert.ok(skill.includes('Do not compensate for missing current online or project health capabilities by increasing `tracemind.summary.limit`'));
       assert.ok(skill.includes('Daily health check'));
       assert.ok(skill.includes('Recent online status'));
       assert.ok(skill.includes('Feature usage analysis'));
@@ -994,8 +995,9 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.recent_online'));
       assert.ok(snippet.includes('summarySample'));
       assert.ok(snippet.includes('sample-derived evidence'));
-      assert.ok(snippet.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
-      assert.ok(snippet.includes('Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`'));
+      assert.ok(snippet.includes('availableCapabilities.currentOnline.tool'));
+      assert.ok(snippet.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.recent_online`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
+      assert.ok(snippet.includes('Do not compensate for missing current online or project health capabilities by increasing `tracemind.summary.limit`'));
       assert.ok(snippet.includes('tracemind.submit_feedback'));
       assert.ok(snippet.includes('submitFeedback'));
       assert.ok(snippet.includes('tracemind.query_user_feedback'));
@@ -1031,7 +1033,8 @@ describe('TraceMind', function () {
       assert.ok(manifest.updatePolicy.includes('tracemind.project_health'));
       assert.ok(manifest.updatePolicy.includes('Treat tracemind.summary totals as sample-derived according to summarySample'));
       assert.ok(manifest.updatePolicy.includes('read MCP tools/list or retry discovery with the exact tool name'));
-      assert.ok(manifest.updatePolicy.includes('Do not compensate for missing reporting tools by increasing tracemind.summary.limit'));
+      assert.ok(manifest.updatePolicy.includes('availableCapabilities'));
+      assert.ok(manifest.updatePolicy.includes('Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit'));
       assert.ok(manifest.updatePolicy.includes('operations review uses dashboard-aligned project_health/recent_online before instrumentation setup'));
       assert.ok(manifest.updatePolicy.includes('tracemind.check_agent_setup'));
       assert.ok(manifest.updatePolicy.includes('captureScriptFindings'));
@@ -2587,12 +2590,17 @@ describe('TraceMind', function () {
         && tool.title.includes('Agent Guidance Project')
         && tool.description.includes('Agent Guidance Project')
         && tool.description.includes('Dashboard')
+        && tool.description.includes('today health')
+        && tool.description.includes('change verification')
       )));
       assert.ok(projectTools.some((tool) => (
         tool.name === 'tracemind.recent_online'
         && tool.title.includes('Agent Guidance Project')
         && tool.description.includes('Agent Guidance Project')
         && tool.description.includes('Dashboard')
+        && tool.description.includes('current online users')
+        && tool.description.includes('last 30 minutes')
+        && tool.description.includes('不使用 tracemind.summary')
       )));
       assert.ok(projectTools.some((tool) => (
         tool.name === 'tracemind.summary'
@@ -2627,6 +2635,13 @@ describe('TraceMind', function () {
       assert.strictEqual(projectInfo.structuredContent.projectId, projectId);
       assert.strictEqual(projectInfo.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(projectInfo.structuredContent.mcpServerName, mcpServerNameForProject(project));
+      assert.strictEqual(projectInfo.structuredContent.availableCapabilities.currentOnline.tool, 'tracemind.recent_online');
+      assert.strictEqual(projectInfo.structuredContent.availableCapabilities.currentOnline.source, 'tracemind_presence_sessions');
+      assert.ok(projectInfo.structuredContent.availableCapabilities.currentOnline.canonicalUse.includes('active now'));
+      assert.ok(projectInfo.structuredContent.availableCapabilities.currentOnline.notReplacedBy.includes('tracemind.summary'));
+      assert.strictEqual(projectInfo.structuredContent.availableCapabilities.projectHealth.tool, 'tracemind.project_health');
+      assert.ok(projectInfo.structuredContent.availableCapabilities.projectHealth.canonicalUse.includes('delivery health'));
+      assert.ok(projectInfo.structuredContent.availableCapabilities.projectHealth.notReplacedBy.includes('tracemind.query_events'));
       assert.notStrictEqual(
         otherProjectInfo.structuredContent.mcpServerName,
         projectInfo.structuredContent.mcpServerName,
@@ -2639,6 +2654,8 @@ describe('TraceMind', function () {
       assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.18.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
+      assert.strictEqual(guidance.structuredContent.availableCapabilities.currentOnline.tool, 'tracemind.recent_online');
+      assert.strictEqual(guidance.structuredContent.availableCapabilities.projectHealth.tool, 'tracemind.project_health');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.18.1');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
@@ -2650,6 +2667,8 @@ describe('TraceMind', function () {
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'semantic_events').retentionDays, 10);
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'semantic_events').collectionName, 'tracemind_semantic_events');
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Use availableCapabilities.currentOnline for current online users, real-time users, active now, active pages, and last 30 minutes activity; its canonical tool is tracemind.recent_online and it is not replaced by tracemind.summary.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Use availableCapabilities.projectHealth for product health, today health, daily health, delivery health, trend changes, attention items, and change verification; its canonical tool is tracemind.project_health and it is not replaced by tracemind.summary or tracemind.query_events.'));
       assert.ok(guidance.structuredContent.workflow.includes('For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.'));
       assert.ok(guidance.structuredContent.workflow.includes('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.'));
@@ -2660,7 +2679,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.some((item) => item.includes('Respect data retention windows')));
       assert.ok(guidance.structuredContent.workflow.includes('If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again.'));
-      assert.ok(guidance.structuredContent.workflow.includes('Do not compensate for missing reporting tools by increasing tracemind.summary.limit; use the documented fallback source and mark the data gap until discovery is repaired.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit; use the documented fallback source and mark the data gap until discovery is repaired.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('If the developer asks whether you can directly feedback to TraceMind, look for and use tracemind.submit_feedback instead of concluding from a partial active tool list that no feedback tool exists.'));
       assert.ok(guidance.structuredContent.workflow.includes('Before calling tracemind.submit_feedback, collect a short sanitized summary plus TraceMind evidence references such as event ids, raw behavior ids, paths, actionKeys, targetHashes, and time window.'));
@@ -2815,7 +2834,7 @@ For server_node, server_python, and server_http setup, run returned preDeployChe
 Use the returned public projectKey only for capture writes; never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.
 When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.
 Treat tracemind.summary totals as sample-derived according to summarySample; do not use summary.totalEvents, topActions, or dailyActiveUsers as full-day totals.
-If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing reporting tools by increasing tracemind.summary.limit.`;
+If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit.`;
 
       const empty = await callMcpTool(project, 'tracemind.check_agent_setup', {});
       assert.strictEqual(empty.structuredContent.ok, true);
@@ -2870,7 +2889,7 @@ If reporting tools such as tracemind.project_health, tracemind.recent_online, tr
       assert.ok(missingWebScriptUpdate.structuredContent.findings.some((finding) => finding.code === 'missing_web_script_update_guidance'));
 
       const missingToolDiscoveryRecovery = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing reporting tools by increasing tracemind.summary.limit.', 'If tools are missing, use another query.'),
+        skillContent: currentRules.replace('If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit.', 'If tools are missing, use another query.'),
       });
       assert.strictEqual(missingToolDiscoveryRecovery.structuredContent.status, 'incomplete');
       assert.ok(missingToolDiscoveryRecovery.structuredContent.findings.some((finding) => finding.code === 'missing_mcp_tool_discovery_recovery_guidance'));

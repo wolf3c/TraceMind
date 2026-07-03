@@ -29,6 +29,11 @@ Authorization: Bearer MCP_TOKEN
 - `tools/list` 的每个 tool `title` / `description` 都包含当前项目显示名。
 - `tracemind.project_info` 返回当前 MCP 绑定的 `{ projectId, projectName, mcpServerName }`，不返回 MCP token 或项目 key。
 
+`tracemind.project_info` 同时返回 `availableCapabilities`，作为 Agent 的通用能力目录，而不是第二套工具注册表。核心能力包括：
+
+- `currentOnline`：当前在线用户、实时用户、近 30 分钟活跃页面/地区/高频事件，权威入口是 `tracemind.recent_online`，数据源是 `tracemind_presence_sessions`，不能用 `tracemind.summary` 的样本 DAU 替代。
+- `projectHealth`：今日/日报/小时健康、delivery health、趋势、attention items 和上线前后 change verification，权威入口是 `tracemind.project_health`，数据源是日报/小时健康报告，不能用 `tracemind.summary` 或 `tracemind.query_events` 替代。
+
 安装到用户项目时，动态 install prompt 会把非敏感绑定信息写入项目级 `AGENTS.md`、`CLAUDE.md` 或 rules 文件：项目显示名、`projectId` 和 expected MCP server name。Agent 写入前必须先确认当前工作目录或仓库就是用户要接入 TraceMind 的目标项目；如果项目级规则里已有不同 Project ID 的 `TraceMind project binding`，必须停止并询问用户是否切换该仓库的 TraceMind 项目，不能直接追加第二个绑定。Agent 看到多个 `tracemind-*` TraceMind MCP server 时，必须先使用 expected server 调用 `tracemind.project_info`，并只在返回的 `projectId` 与项目级规则匹配时继续；不匹配时停止并要求用户配置正确 MCP，不要只凭 server name 猜。
 
 ## 接入漏斗可观测性
@@ -53,9 +58,9 @@ Authorization: Bearer MCP_TOKEN
 
 ## Tool Discovery Recovery
 
-客户 coding agent 的当前 active tool list 可能因为懒加载、缓存或宽泛 discovery 召回限制而只显示部分 TraceMind tools。看到 `tracemind.project_health`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback` 缺失时，agent 不能直接判断服务端不支持这些工具。
+客户 coding agent 的当前 active tool list 可能因为懒加载、缓存或宽泛 discovery 召回限制而只显示部分 TraceMind tools。看到 `tracemind.project_health`、`tracemind.recent_online`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback` 缺失时，agent 不能直接判断服务端不支持这些工具。先用 `project_info.availableCapabilities` 确认当前项目是否声明了 `currentOnline` / `projectHealth` 能力，再读取或发现对应工具。
 
-恢复路径固定为：先读取 MCP `tools/list` 或按精确工具名重新 discovery；如果仍缺失，刷新 connector/session/MCP 配置/token，再调用 `tracemind.project_info` 复核项目绑定。不要通过增大 `tracemind.summary.limit` 来代偿缺失的 reporting tools；只能使用已文档化的 fallback 来源并在结论中标注数据缺口。
+恢复路径固定为：先读取 MCP `tools/list` 或按精确工具名重新 discovery；如果仍缺失，刷新 connector/session/MCP 配置/token，再调用 `tracemind.project_info` 复核项目绑定。不要通过增大 `tracemind.summary.limit` 来代偿缺失的 current online 或 project health 能力；只能使用已文档化的 fallback 来源并在结论中标注数据缺口。
 
 ## Tools
 
@@ -148,7 +153,7 @@ Input:
 
 ### `tracemind.project_info`
 
-返回当前 MCP server 绑定的 TraceMind 项目身份，供多项目场景下确认项目归属。
+返回当前 MCP server 绑定的 TraceMind 项目身份和通用能力目录，供多项目场景下确认项目归属和能力入口。
 
 Input:
 
@@ -162,13 +167,27 @@ Output:
 {
   "projectId": "abc123",
   "projectName": "我的 Web App",
-  "mcpServerName": "tracemind-abc123"
+  "mcpServerName": "tracemind-abc123",
+  "availableCapabilities": {
+    "currentOnline": {
+      "tool": "tracemind.recent_online",
+      "source": "tracemind_presence_sessions",
+      "canonicalUse": "current online users, real-time users, active now, active pages, regions, high-frequency events, and last 30 minutes activity",
+      "notReplacedBy": ["tracemind.summary"]
+    },
+    "projectHealth": {
+      "tool": "tracemind.project_health",
+      "source": "tracemind_project_daily_reports and tracemind_project_hourly_reports",
+      "canonicalUse": "product health, today health, daily health, delivery health, trend changes, attention items, and change verification",
+      "notReplacedBy": ["tracemind.summary", "tracemind.query_events"]
+    }
+  }
 }
 ```
 
 ### `tracemind.project_health`
 
-读取当前 MCP token 绑定项目的健康报告，帮助 Agent 先回答“今天产品是否正常、哪里需要关注、较前一天发生了什么变化”，再决定是否下钻到语义事件或原始行为。报告由小时级健康数据聚合而来：历史日期按完整自然日对比，今天只使用已结束小时并与昨天同一小时段对比。工具返回项目级健康、趋势、关注项、上报健康、Web 采集脚本更新 findings 和数据保留规则，不返回内部 actor/session hash 字段。
+读取当前 MCP token 绑定项目的健康报告，帮助 Agent 先回答“今天产品是否正常、哪里需要关注、较前一天发生了什么变化、上线前后健康是否可接受”，再决定是否下钻到语义事件或原始行为。它是 `availableCapabilities.projectHealth` 的权威工具。报告由小时级健康数据聚合而来：历史日期按完整自然日对比，今天只使用已结束小时并与昨天同一小时段对比。工具返回项目级健康、趋势、关注项、上报健康、Web 采集脚本更新 findings 和数据保留规则，不返回内部 actor/session hash 字段，也不替代 `tracemind.recent_online` 的实时在线人数。
 
 Input:
 
@@ -291,7 +310,7 @@ Output:
 
 ### `tracemind.recent_online`
 
-读取当前 MCP token 绑定项目最近 30 分钟的实时在线态势，帮助 Agent 回答“现在是否有人在用、用户集中在哪些页面或地区、最近高频事件是什么”。它是实时窗口工具，不并入自然日日报，也不替代 `tracemind.project_health`。
+读取当前 MCP token 绑定项目最近 30 分钟的实时在线态势，帮助 Agent 回答“现在是否有人在用、当前在线人数是多少、用户集中在哪些页面或地区、最近高频事件是什么”。它是 `availableCapabilities.currentOnline` 的权威工具，是实时窗口工具，不并入自然日日报，也不能用 `tracemind.summary` 的样本 DAU 替代。
 
 Input:
 

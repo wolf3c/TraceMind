@@ -15,6 +15,7 @@ When a customer asks about product operations, such as "how was today", "yesterd
 - `tracemind.project_health` is the project health dashboard source for natural-day and completed-hour reporting. Prefer `project_health.health.current`, `project_health.health.trends`, `project_health.health.hourlyComparison`, `project_health.delivery`, `attentionSummary`, and `attentionItems` when answering daily operations questions.
 - `tracemind.recent_online` is the same source as the dashboard's last-30-minutes online card. Use it for current online users, 5-minute buckets, active pages, regions, and high-frequency events.
 - `tracemind.summary` and `tracemind.query_events` are drilldown tools for non-natural-day windows, paths, events, users, sessions, devices, actions, target hashes, and traffic attribution. `tracemind.summary` returns a capped recent semantic-event sample; read `summarySample` and treat `summary.totalEvents`, `topActions`, and `dailyActiveUsers` as sample-derived evidence, not full-day totals. They support evidence review but do not replace the dashboard daily report.
+- `tracemind.project_info` returns `availableCapabilities`: use `currentOnline.tool` for current online users, real-time users, active now, active pages, and last 30 minutes activity; use `projectHealth.tool` for product health, today health, daily health, delivery health, attention items, and change verification. Do not replace either capability with sampled `tracemind.summary`.
 - A project-bound MCP server answers only the currently bound TraceMind project. Do not infer account-wide or multi-project active project counts from a single project's UI selector text or unrelated events.
 
 Only call `tracemind.capture_setup`, `tracemind.search_event_names`, `tracemind.suggest_instrumentation`, or validation tools when the user wants to install, upgrade, fix, add, review, or validate TraceMind capture code.
@@ -44,7 +45,7 @@ TraceMind separates recent drilldown detail from long-term analysis summaries:
 
 ## Required Workflow
 
-1. If the project instruction file contains a TraceMind Project Binding, use the expected MCP server and call `tracemind.project_info`; continue only if the returned `projectId` matches the bound Project ID.
+1. If the project instruction file contains a TraceMind Project Binding, use the expected MCP server and call `tracemind.project_info`; continue only if the returned `projectId` matches the bound Project ID. Read `availableCapabilities.currentOnline` and `availableCapabilities.projectHealth` before choosing online or health tools.
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
 3. For operations review or product behavior analysis, use Dashboard-aligned `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown. Treat `tracemind.summary` totals as sample-derived according to `summarySample`, not as full-day totals.
 4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
@@ -63,9 +64,9 @@ TraceMind separates recent drilldown detail from long-term analysis summaries:
 
 ## MCP Tool Discovery Recovery
 
-If the current active tool list does not show `tracemind.project_health`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`, do not conclude that TraceMind lacks those tools. First read MCP `tools/list` or retry discovery with the exact tool name before deciding the tool is unavailable.
+If the current active tool list does not show `tracemind.project_health`, `tracemind.recent_online`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`, do not conclude that TraceMind lacks those tools. First read MCP `tools/list` or retry discovery with the exact tool name before deciding the tool is unavailable.
 
-If the tools are still missing, refresh the connector, session, MCP config, or token, then call `tracemind.project_info` again to confirm the project binding. Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`; use the documented fallback source and mark the data gap until discovery is repaired. If `tracemind.summary` is used as fallback evidence, state that the values come from the `summarySample` window.
+If the tools are still missing, refresh the connector, session, MCP config, or token, then call `tracemind.project_info` again to confirm the project binding and `availableCapabilities`. Do not compensate for missing current online or project health capabilities by increasing `tracemind.summary.limit`; use the documented fallback source and mark the data gap until discovery is repaired. If `tracemind.summary` is used as fallback evidence, state that the values come from the `summarySample` window.
 
 ## Product Behavior Analysis Workflows
 

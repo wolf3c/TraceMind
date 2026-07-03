@@ -45,7 +45,7 @@ Meteor 静态资源放在 `public/`，通过根路径访问：
 
 Agent 分析产品行为时应先按只读路径使用 MCP：
 
-1. `tracemind.project_info`：先确认当前 MCP 对应的 TraceMind 项目，并与项目级 instruction 中的 expected `projectId` 比对；不匹配时停止。
+1. `tracemind.project_info`：先确认当前 MCP 对应的 TraceMind 项目，并与项目级 instruction 中的 expected `projectId` 比对；不匹配时停止。读取 `availableCapabilities.currentOnline` 和 `availableCapabilities.projectHealth`，确认当前项目的实时在线和项目健康能力入口。
 2. `tracemind.project_health`：读取项目日报，回答今天是否正常、较前一日变化、需关注项和上报健康。今天的日报使用已结束小时聚合，并与昨天同一小时段对比。
 3. `tracemind.recent_online`：读取近 30 分钟实时在线态势，回答现在是否有人在线、用户集中在哪些页面/地区和最近高频事件。
 4. `tracemind.summary`：在日报或实时态势指向的时间窗口内看最近语义事件样本概览、DAU/设备数线索、presence 在线时长和流量来源分布。读取 `summarySample`；`summary.totalEvents`、`topActions`、`dailyActiveUsers` 是样本口径，不是自然日全量指标。`topActions` 是原始 actionKey 排行；判断用户意图时优先使用 `topIntentActions`，把 `topFieldInteractions` 作为输入框、表单字段等高频编辑/聚焦噪声或弱信号单独说明。
@@ -54,7 +54,7 @@ Agent 分析产品行为时应先按只读路径使用 MCP：
 7. `tracemind.submit_feedback`：只有开发者明确确认上报后，才提交脱敏摘要和证据引用。
 8. `tracemind.query_user_feedback` / `tracemind.update_user_feedback`：处理终端用户反馈时使用，前者查询反馈和证据引用，后者只更新状态、备注、解决说明、关联 issue 或重复关系，不修改用户原始 message。
 
-如果当前 active tool list 看不到 `tracemind.project_health`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback`，不要直接判断这些工具不可用。先读取 MCP `tools/list` 或按精确工具名重新 discovery；如果仍缺失，刷新 connector/session/MCP 配置/token，再调用 `tracemind.project_info` 复核项目绑定。不要通过增大 `tracemind.summary.limit` 来代偿缺失的 reporting tools；使用已文档化的 fallback 来源并明确标注数据缺口。即使用 `summary` 作为 fallback，也必须说明指标来自 `summarySample` 描述的样本。
+如果当前 active tool list 看不到 `tracemind.project_health`、`tracemind.recent_online`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback`，不要直接判断这些工具不可用。先读取 MCP `tools/list` 或按精确工具名重新 discovery；如果仍缺失，刷新 connector/session/MCP 配置/token，再调用 `tracemind.project_info` 复核项目绑定和 `availableCapabilities`。不要通过增大 `tracemind.summary.limit` 来代偿缺失的 current online 或 project health 能力；使用已文档化的 fallback 来源并明确标注数据缺口。即使用 `summary` 作为 fallback，也必须说明指标来自 `summarySample` 描述的样本。
 
 固定分析任务：
 

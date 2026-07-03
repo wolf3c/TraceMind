@@ -121,7 +121,7 @@ const AGENT_SETUP_SAFE_UPDATE_INSTRUCTIONS = [
   'After updating, call tracemind.check_agent_setup again and report the new status.',
 ];
 const MCP_TOOL_DISCOVERY_RECOVERY_GUIDANCE = 'If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again.';
-const MCP_TOOL_DISCOVERY_FALLBACK_GUIDANCE = 'Do not compensate for missing reporting tools by increasing tracemind.summary.limit; use the documented fallback source and mark the data gap until discovery is repaired.';
+const MCP_TOOL_DISCOVERY_FALLBACK_GUIDANCE = 'Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit; use the documented fallback source and mark the data gap until discovery is repaired.';
 const MCP_TOOL_DISCOVERY_RECOVERY_STEP = 'MCP tools/list or exact tool discovery if reporting tools are missing';
 const SUMMARY_DEFAULT_LIMIT = 200;
 const SUMMARY_MAX_LIMIT = 500;
@@ -328,11 +328,29 @@ function projectScopedDescription(description, project = {}) {
   return `${description} This MCP server is bound to TraceMind project "${projectDisplayName(project)}" only.`;
 }
 
+function availableCapabilitiesResult() {
+  return {
+    currentOnline: {
+      tool: 'tracemind.recent_online',
+      source: 'tracemind_presence_sessions',
+      canonicalUse: 'current online users, real-time users, active now, active pages, regions, high-frequency events, and last 30 minutes activity',
+      notReplacedBy: ['tracemind.summary'],
+    },
+    projectHealth: {
+      tool: 'tracemind.project_health',
+      source: 'tracemind_project_daily_reports and tracemind_project_hourly_reports',
+      canonicalUse: 'product health, today health, daily health, delivery health, trend changes, attention items, and change verification',
+      notReplacedBy: ['tracemind.summary', 'tracemind.query_events'],
+    },
+  };
+}
+
 function projectInfoResult(project = {}) {
   return {
     projectId: project._id,
     projectName: projectDisplayName(project),
     mcpServerName: mcpServerNameForProject(project),
+    availableCapabilities: availableCapabilitiesResult(),
   };
 }
 
@@ -401,7 +419,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.project_health',
       title: projectScopedTitle('TraceMind Project Health', project),
-      description: projectScopedDescription('读取 Dashboard 同源的日报/小时项目健康结构、数据保留规则、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断今天是否正常、哪里需要关注，再下钻语义事件证据。', project),
+      description: projectScopedDescription('读取 Dashboard 同源的日报/小时项目健康结构、数据保留规则、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断产品健康、today health、daily health、delivery health、trend changes、change verification、今天是否正常、上线前/发布后是否需要关注，再下钻语义事件证据；不用于实时在线人数，实时用户请用 tracemind.recent_online。', project),
       inputSchema: {
         type: 'object',
         properties: {
@@ -415,7 +433,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.recent_online',
       title: projectScopedTitle('TraceMind Recent Online', project),
-      description: projectScopedDescription('读取 Dashboard 同源的近 30 分钟实时在线结构，帮助 agent 判断现在是否有人在线、用户集中在哪些页面或地区，以及最近高频事件。', project),
+      description: projectScopedDescription('读取 Dashboard 同源的近 30 分钟实时在线结构，帮助 agent 判断 current online users、real-time users、active now、currently using product、last 30 minutes、现在是否有人在线、当前在线人数、用户集中在哪些页面或地区，以及最近高频事件；不使用 tracemind.summary 的样本 DAU 替代在线人数。', project),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -1201,6 +1219,7 @@ function guidanceResult(extra = {}) {
     resources: AGENT_GUIDANCE_RESOURCES,
     agentSetupNotice: agentSetupNotice(),
     dataRetention: dataRetentionPolicyResult(),
+    availableCapabilities: availableCapabilitiesResult(),
     analysisWorkflows: [
       {
         name: 'Daily operations review',
@@ -1236,6 +1255,8 @@ function guidanceResult(extra = {}) {
     workflow: [
       'Call tracemind.agent_guidance before TraceMind instrumentation work.',
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
+      'Use availableCapabilities.currentOnline for current online users, real-time users, active now, active pages, and last 30 minutes activity; its canonical tool is tracemind.recent_online and it is not replaced by tracemind.summary.',
+      'Use availableCapabilities.projectHealth for product health, today health, daily health, delivery health, trend changes, attention items, and change verification; its canonical tool is tracemind.project_health and it is not replaced by tracemind.summary or tracemind.query_events.',
       'For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.',
       'Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
@@ -1463,9 +1484,9 @@ function checkAgentSetupResult(args = {}) {
       code: 'missing_mcp_tool_discovery_recovery_guidance',
       message: 'Local rules should tell agents to recover from partial MCP tool discovery by reading tools/list or retrying exact tool discovery before concluding reporting tools are unavailable.',
       patterns: [
-        /active tool list[\s\S]{0,220}(project_health|query_raw_behaviors|submit_feedback)[\s\S]{0,260}tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,260}summary\.limit/i,
-        /reporting tools[\s\S]{0,180}(project_health|query_raw_behaviors|submit_feedback)[\s\S]{0,260}active tool list[\s\S]{0,180}tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,260}summary\.limit/i,
-        /tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,260}(project_health|query_raw_behaviors|submit_feedback)[\s\S]{0,260}summary\.limit/i,
+        /active tool list[\s\S]{0,220}project_health[\s\S]{0,160}recent_online[\s\S]{0,220}(query_raw_behaviors|submit_feedback)[\s\S]{0,260}tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,320}summary\.limit/i,
+        /reporting tools[\s\S]{0,180}project_health[\s\S]{0,160}recent_online[\s\S]{0,220}(query_raw_behaviors|submit_feedback)[\s\S]{0,260}active tool list[\s\S]{0,180}tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,320}summary\.limit/i,
+        /tools\/list[\s\S]{0,180}exact tool name[\s\S]{0,260}project_health[\s\S]{0,160}recent_online[\s\S]{0,220}(query_raw_behaviors|submit_feedback)[\s\S]{0,320}summary\.limit/i,
       ],
     },
     {
@@ -1532,7 +1553,7 @@ function checkAgentSetupResult(args = {}) {
     recommendedActions.push('Add Web Auto Capture update guidance for captureScriptFindings, returned stable captureScriptUrl, CDN/service worker/WebView cache checks, and window.TraceMind.status().scriptReleaseId verification.');
   }
   if (findingCodes.has('missing_mcp_tool_discovery_recovery_guidance')) {
-    recommendedActions.push('Add MCP tool discovery recovery guidance for missing reporting tools: read tools/list or retry exact tool discovery, refresh connector/session/MCP config/token if needed, and do not increase summary.limit as a substitute.');
+    recommendedActions.push('Add MCP tool discovery recovery guidance for missing reporting tools including project_health and recent_online: read tools/list or retry exact tool discovery, refresh connector/session/MCP config/token if needed, and do not increase summary.limit as a substitute for current online or project health.');
   }
   if (findingCodes.has('missing_summary_sample_guidance')) {
     recommendedActions.push('Add summarySample guidance: tracemind.summary totals are sample-derived and full-day metrics should come from tracemind.project_health.');
