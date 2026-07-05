@@ -7,6 +7,8 @@ import {
   DATA_RETENTION_POLICY,
   Developers,
   FeedbackReports,
+  IngestionGuardRollups,
+  IngestionGuardStates,
   PresenceSessions,
   ProjectDailyReports,
   ProjectHourlyReports,
@@ -33,6 +35,7 @@ const LOGIN_EMAIL_FROM = 'TraceMind <postmaster@email.super-tree.com>';
 const PROJECT_SUMMARY_RAW_BEHAVIOR_LIMIT = 500;
 const PROJECT_SUMMARY_PRESENCE_LIMIT = 500;
 const PROJECT_SUMMARY_DELIVERY_REPORT_LIMIT = 500;
+const PROJECT_SUMMARY_INGESTION_GUARD_LIMIT = 20;
 const PROJECT_EVENTS_PAGE_SIZE = 20;
 const PROJECT_EVENTS_MAX_PAGE_SIZE = 50;
 
@@ -145,6 +148,64 @@ async function findOwnedProjectWithMcpTokens(projectId, userId) {
   return ensureProjectMcpTokens(project);
 }
 
+function publicIngestionGuardState(state = {}) {
+  return {
+    sourceType: state.sourceType,
+    sourceKey: state.sourceKey,
+    sourceLabel: state.sourceLabel || state.sourceKey,
+    eventName: state.eventName,
+    eventType: state.eventType,
+    mode: state.mode || 'open',
+    reason: state.reason || 'none',
+    sampleRate: Number(state.sampleRate || 0),
+    duplicateScore: Number(state.duplicateScore || 0),
+    activeWindowStartAt: state.activeWindowStartAt || null,
+    updatedAt: state.updatedAt || null,
+  };
+}
+
+function publicIngestionGuardRollup(rollup = {}) {
+  return {
+    sourceType: rollup.sourceType,
+    sourceKey: rollup.sourceKey,
+    sourceLabel: rollup.sourceLabel || rollup.sourceKey,
+    eventName: rollup.eventName,
+    eventType: rollup.eventType,
+    windowStartAt: rollup.windowStartAt,
+    windowEndAt: rollup.windowEndAt,
+    mode: rollup.mode || 'open',
+    reason: rollup.reason || 'none',
+    acceptedCount: Number(rollup.acceptedCount || 0),
+    sampledCount: Number(rollup.sampledCount || 0),
+    droppedCount: Number(rollup.droppedCount || 0),
+    wouldSampleCount: Number(rollup.wouldSampleCount || 0),
+    wouldDropCount: Number(rollup.wouldDropCount || 0),
+    topFingerprintCount: Number(rollup.topFingerprintCount || 0),
+    uniqueFingerprintCount: Number(rollup.uniqueFingerprintCount || 0),
+    duplicateScore: Number(rollup.duplicateScore || 0),
+    updatedAt: rollup.updatedAt || null,
+  };
+}
+
+async function buildProjectIngestionGuardSummary(projectId) {
+  const recentWindowStartAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [states, rollups] = await Promise.all([
+    IngestionGuardStates.find(
+      { projectId, mode: { $in: ['watch', 'sampled', 'fused'] } },
+      { sort: { updatedAt: -1 }, limit: PROJECT_SUMMARY_INGESTION_GUARD_LIMIT },
+    ).fetchAsync(),
+    IngestionGuardRollups.find(
+      { projectId, windowStartAt: { $gte: recentWindowStartAt } },
+      { sort: { windowStartAt: -1, updatedAt: -1 }, limit: PROJECT_SUMMARY_INGESTION_GUARD_LIMIT },
+    ).fetchAsync(),
+  ]);
+
+  return {
+    states: states.map(publicIngestionGuardState),
+    recentRollups: rollups.map(publicIngestionGuardRollup),
+  };
+}
+
 async function buildProjectSummary(project, selectedDateInput) {
   const now = new Date();
   const today = reportDateForDate(now);
@@ -156,6 +217,7 @@ async function buildProjectSummary(project, selectedDateInput) {
     rawBehaviors,
     presenceSessions,
     { report, health },
+    ingestionGuard,
   ] = await Promise.all([
     RawBehaviors.find({ projectId: project._id }).countAsync(),
     SemanticEvents.find({ projectId: project._id }).countAsync(),
@@ -168,6 +230,7 @@ async function buildProjectSummary(project, selectedDateInput) {
       { sort: { lastSeenAt: -1 }, limit: PROJECT_SUMMARY_PRESENCE_LIMIT },
     ).fetchAsync(),
     resolveProjectDailyHealth(project._id, selectedDate, { now }),
+    buildProjectIngestionGuardSummary(project._id),
   ]);
 
   return {
@@ -192,6 +255,7 @@ async function buildProjectSummary(project, selectedDateInput) {
     summary: summaryFromHealth(health),
     presence: summarizePresenceSessions(presenceSessions),
     delivery: report?.delivery || {},
+    ingestionGuard,
     dataRetention: {
       detailWindows: DATA_RETENTION_POLICY.detailWindows.map((item) => ({ ...item })),
       retainedSummaries: DATA_RETENTION_POLICY.retainedSummaries.map((item) => ({ ...item })),

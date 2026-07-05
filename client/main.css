@@ -2534,6 +2534,72 @@ code {
   overflow-wrap: anywhere;
 }
 
+.guard-summary {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #d9e3de;
+}
+
+.guard-summary-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.guard-summary-header strong {
+  color: #17231f;
+}
+
+.guard-summary-header span {
+  color: #708179;
+  font-size: 0.85rem;
+}
+
+.guard-list {
+  display: grid;
+  gap: 8px;
+}
+
+.guard-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.24fr) minmax(0, 0.36fr) minmax(0, 0.24fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #d9e3de;
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.guard-row.watch,
+.guard-row.shadow {
+  border-color: #ead49a;
+  background: #fff9e7;
+}
+
+.guard-row.sampled {
+  border-color: #91d7c0;
+  background: #effaf5;
+}
+
+.guard-row.fused {
+  border-color: #d9b6a8;
+  background: #fff3ee;
+}
+
+.guard-row span {
+  display: block;
+  color: #708179;
+  font-size: 0.8rem;
+}
+
+.guard-row strong {
+  overflow-wrap: anywhere;
+}
+
 .mcp-token-header {
   display: grid;
   grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
@@ -3518,6 +3584,7 @@ code {
   .event-row,
   .mcp-token-header,
   .mcp-token-row,
+  .guard-row,
   .source-row,
   .setup-docs-row {
     grid-template-columns: 1fr;

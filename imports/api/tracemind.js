@@ -26,6 +26,9 @@ export {
   ProjectHourlyReports,
   ProductUsageMarkers,
   SetupAttempts,
+  IngestionGuardRollups,
+  IngestionGuardStates,
+  IngestionGuardBaselines,
 } from './collections';
 export { DATA_RETENTION_POLICY } from './data_retention';
 export { mcpServerNameForProject } from './project_identity';

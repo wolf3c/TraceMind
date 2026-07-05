@@ -13,3 +13,6 @@ export const ProjectDailyReports = new Mongo.Collection('tracemind_project_daily
 export const ProjectHourlyReports = new Mongo.Collection('tracemind_project_hourly_reports');
 export const ProductUsageMarkers = new Mongo.Collection('tracemind_product_usage_markers');
 export const SetupAttempts = new Mongo.Collection('tracemind_setup_attempts');
+export const IngestionGuardRollups = new Mongo.Collection('tracemind_ingestion_guard_rollups');
+export const IngestionGuardStates = new Mongo.Collection('tracemind_ingestion_guard_states');
+export const IngestionGuardBaselines = new Mongo.Collection('tracemind_ingestion_guard_baselines');

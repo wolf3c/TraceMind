@@ -145,6 +145,7 @@
   );
   let primaryMcpToken = $derived(primaryProject?.mcpTokens?.[0]);
   let sourceSummary = $derived(selectedProjectSummary?.sources || []);
+  let ingestionGuardSummary = $derived(selectedProjectSummary?.ingestionGuard || { states: [], recentRollups: [] });
   let summary = $derived(summaryFromHealth(publishedProjectHealth || selectedMethodProjectHealth()) || selectedProjectSummary?.summary);
   let health = $derived(publishedProjectHealth || selectedMethodProjectHealth());
   let healthCurrent = $derived(health?.current || {});
@@ -1493,6 +1494,7 @@
           {copiedTarget}
           {agentInstallPrompt}
           {sourceSummary}
+          {ingestionGuardSummary}
           {currentOrigin}
           {copiedLabel}
           {changeSelectedProject}

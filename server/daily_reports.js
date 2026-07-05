@@ -10,6 +10,9 @@ import {
   FeedbackReports,
   HEALTH_RETENTION_DAYS,
   HEALTH_ROLLUP_HOUR_MS,
+  IngestionGuardBaselines,
+  IngestionGuardRollups,
+  IngestionGuardStates,
   PresenceSessions,
   ProjectDailyReports,
   ProjectHourlyReports,
@@ -686,6 +689,26 @@ export async function ensureTraceMindIndexes() {
     ProductUsageMarkers.rawCollection().createIndex(
       { projectId: 1, reportDate: 1 },
       { unique: true, name: 'product_usage_project_day_unique' },
+    ),
+    IngestionGuardRollups.rawCollection().createIndex(
+      { projectId: 1, sourceType: 1, sourceKey: 1, eventName: 1, windowStartAt: 1 },
+      { unique: true, name: 'ingestion_guard_rollup_event_window_unique' },
+    ),
+    IngestionGuardRollups.rawCollection().createIndex(
+      { projectId: 1, windowStartAt: -1 },
+      { name: 'ingestion_guard_rollup_project_window' },
+    ),
+    IngestionGuardRollups.rawCollection().createIndex(
+      { windowStartAt: -1 },
+      { name: 'ingestion_guard_rollup_window' },
+    ),
+    IngestionGuardStates.rawCollection().createIndex(
+      { projectId: 1, sourceType: 1, sourceKey: 1, eventName: 1 },
+      { unique: true, name: 'ingestion_guard_state_event_unique' },
+    ),
+    IngestionGuardBaselines.rawCollection().createIndex(
+      { projectId: 1, sourceType: 1, sourceKey: 1, eventName: 1 },
+      { unique: true, name: 'ingestion_guard_baseline_event_unique' },
     ),
   ]);
 

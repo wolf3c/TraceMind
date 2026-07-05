@@ -6019,6 +6019,11 @@ projectKey: tm_proj_sensitive`,
     let drainProductUsageInstrumentationForTest;
     let resetProductUsageInstrumentationForTest;
     let productUsageInstrumentationHealthForTest;
+    let configureIngestionGuardForTest;
+    let resetIngestionGuardForTest;
+    let drainIngestionGuardForTest;
+    let refreshIngestionGuardBaselines;
+    let hydrateIngestionGuardForTest;
 
     before(async function () {
       const captureRoutes = await import('../server/capture_routes');
@@ -6042,15 +6047,64 @@ projectKey: tm_proj_sensitive`,
       drainProductUsageInstrumentationForTest = captureRoutes.drainProductUsageInstrumentationForTest;
       resetProductUsageInstrumentationForTest = captureRoutes.resetProductUsageInstrumentationForTest;
       productUsageInstrumentationHealthForTest = captureRoutes.productUsageInstrumentationHealthForTest;
+      configureIngestionGuardForTest = captureRoutes.configureIngestionGuardForTest;
+      resetIngestionGuardForTest = captureRoutes.resetIngestionGuardForTest;
+      drainIngestionGuardForTest = captureRoutes.drainIngestionGuardForTest;
+      ({ refreshIngestionGuardBaselines, hydrateIngestionGuardForTest } = await import('../server/ingestion_guard'));
     });
 
     afterEach(async function () {
       resetProductUsageInstrumentationForTest?.();
+      resetIngestionGuardForTest?.();
     });
 
     function captureDeliveryHourlyRollups() {
       assert.ok(TraceMindApi.CaptureDeliveryHourlyRollups, 'missing CaptureDeliveryHourlyRollups collection export');
       return TraceMindApi.CaptureDeliveryHourlyRollups;
+    }
+
+    function ingestionGuardRollups() {
+      assert.ok(TraceMindApi.IngestionGuardRollups, 'missing IngestionGuardRollups collection export');
+      return TraceMindApi.IngestionGuardRollups;
+    }
+
+    function ingestionGuardStates() {
+      assert.ok(TraceMindApi.IngestionGuardStates, 'missing IngestionGuardStates collection export');
+      return TraceMindApi.IngestionGuardStates;
+    }
+
+    function ingestionGuardBaselines() {
+      assert.ok(TraceMindApi.IngestionGuardBaselines, 'missing IngestionGuardBaselines collection export');
+      return TraceMindApi.IngestionGuardBaselines;
+    }
+
+    function expectedSingleCaptureResult({ ignored = false, accepted = ignored ? 0 : 1 } = {}) {
+      return {
+        ok: true,
+        ignored,
+        accepted,
+        limited: false,
+        sampled: 0,
+        dropped: 0,
+        guardMode: 'open',
+        guardReason: 'none',
+      };
+    }
+
+    async function createGuardProject(prefix, fields = {}) {
+      const projectId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const projectKey = `tm_${prefix.replace(/[^a-z0-9_]/gi, '_')}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `${prefix}-developer`,
+        name: `${prefix} project`,
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+        ...fields,
+      });
+      return { projectId, projectKey };
     }
 
     async function createDashboardAccount(prefix) {
@@ -6415,8 +6469,8 @@ projectKey: tm_proj_sensitive`,
       const markers = await ProductUsageMarkers.find({ projectId }).fetchAsync();
       const event = batches[0].events[0];
 
-      assert.deepStrictEqual(first, { ok: true, ignored: false });
-      assert.deepStrictEqual(duplicate, { ok: true, ignored: false });
+      assert.deepStrictEqual(first, expectedSingleCaptureResult());
+      assert.deepStrictEqual(duplicate, expectedSingleCaptureResult());
       assert.strictEqual(markers.length, 1);
       assert.strictEqual(markers[0].reportDate, '2026-05-21');
       assert.strictEqual(markers[0].activitySource, 'capture');
@@ -6477,7 +6531,7 @@ projectKey: tm_proj_sensitive`,
       const serialized = JSON.stringify(health);
 
       assert.strictEqual(enabled, false);
-      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.deepStrictEqual(result, expectedSingleCaptureResult());
       assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 1);
       assert.strictEqual(await ProductUsageMarkers.find({ projectId }).countAsync(), 0);
       assert.strictEqual(health.enabled, false);
@@ -6754,7 +6808,7 @@ projectKey: tm_proj_sensitive`,
       }, { headers: {}, socket: {} });
       await drainProductUsageInstrumentationForTest();
 
-      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.deepStrictEqual(result, expectedSingleCaptureResult());
       assert.strictEqual(await ProductUsageMarkers.find({ projectId: selfProjectId }).countAsync(), 0);
       assert.strictEqual(batches.length, 0);
     });
@@ -6800,7 +6854,7 @@ projectKey: tm_proj_sensitive`,
       const failedMarker = await ProductUsageMarkers.findOneAsync({ projectId });
       const healthAfterFailure = productUsageInstrumentationHealthForTest();
 
-      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.deepStrictEqual(result, expectedSingleCaptureResult());
       assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 1);
       assert.strictEqual(failedMarker.status, 'failed');
       assert.strictEqual(failedMarker.attemptCount, 1);
@@ -8293,7 +8347,7 @@ projectKey: tm_proj_sensitive`,
       );
       const count = await RawBehaviors.find({ projectId }).countAsync();
 
-      assert.deepStrictEqual(result, { ok: true, ignored: true });
+      assert.deepStrictEqual(result, expectedSingleCaptureResult({ ignored: true }));
       assert.strictEqual(count, 0);
     });
 
@@ -8878,7 +8932,7 @@ projectKey: tm_proj_sensitive`,
       );
       const behavior = await RawBehaviors.findOneAsync({ projectId });
 
-      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.deepStrictEqual(result, expectedSingleCaptureResult());
       assert.strictEqual(behavior.sourceType, 'web');
       assert.strictEqual(behavior.sourceKey, 'app.example.com');
       assert.strictEqual(behavior.sourceLabel, 'app.example.com');
@@ -8928,7 +8982,7 @@ projectKey: tm_proj_sensitive`,
       const behavior = await RawBehaviors.findOneAsync({ projectId });
       const semanticEvent = buildSemanticEvent(behavior);
 
-      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.deepStrictEqual(result, expectedSingleCaptureResult());
       assert.deepStrictEqual(behavior.attribution, {
         source: 'github',
         medium: 'social',
@@ -8982,7 +9036,7 @@ projectKey: tm_proj_sensitive`,
       }, { headers: {} });
       const behavior = await RawBehaviors.findOneAsync({ projectId });
 
-      assert.deepStrictEqual(result, { ok: true, ignored: false });
+      assert.deepStrictEqual(result, expectedSingleCaptureResult());
       assert.strictEqual(behavior.properties.plan, 'pro');
       assert.strictEqual(behavior.properties.amount, 29);
       assert.strictEqual(behavior.properties.trial, false);
@@ -9230,6 +9284,638 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(behaviors[0].sourceDetails.headers, undefined);
       assert.strictEqual(JSON.stringify(behaviors[0]).includes('do not store'), false);
       assert.strictEqual(JSON.stringify(behaviors[0]).includes('raw stack'), false);
+    });
+
+    it('records shadow ingestion guard decisions without limiting duplicate storm captures', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-shadow');
+      configureIngestionGuardForTest({
+        mode: 'shadow',
+        thresholds: {
+          watchCount: 3,
+          sampledCount: 4,
+          fusedCount: 20,
+          duplicateMinCount: 4,
+          duplicateTopCount: 4,
+          duplicateTopRatio: 0.75,
+        },
+      });
+
+      const events = Array.from({ length: 6 }, (_, index) => ({
+        type: 'custom',
+        eventName: 'server_slack_message_delivery',
+        platform: 'server',
+        source: { type: 'server_app', key: 'yezi2-server' },
+        properties: {
+          status: 'failed',
+          message: `Slack delivery failed for requestId req-${index}`,
+        },
+      }));
+
+      const result = await ingestCapturePayload({ projectKey, events }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
+      const rollup = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'server_slack_message_delivery' });
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 6);
+      assert.strictEqual(result.dropped, 0);
+      assert.strictEqual(result.limited, false);
+      assert.strictEqual(result.guardMode, 'shadow');
+      assert.strictEqual(behaviors.length, 6);
+      assert.ok(rollup);
+      assert.strictEqual(rollup.acceptedCount, 6);
+      assert.ok(rollup.wouldDropCount > 0);
+      assert.strictEqual(rollup.droppedCount, 0);
+      assert.strictEqual(rollup.topFingerprintHash.includes('Slack delivery failed'), false);
+    });
+
+    it('keeps high-volume diverse business events in ingestion guard watch mode without sampling', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-diverse');
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 3,
+          sampledCount: 4,
+          fusedCount: 10,
+          duplicateMinCount: 4,
+          duplicateTopCount: 4,
+          duplicateTopRatio: 0.75,
+        },
+      });
+
+      const variants = ['red', 'blue', 'green', 'amber', 'teal', 'slate', 'rose', 'lime'];
+      const events = variants.map((variant) => ({
+        type: 'custom',
+        eventName: 'checkout_line_item_changed',
+        platform: 'server',
+        source: { type: 'server_app', key: 'checkout-api' },
+        path: `/checkout/${variant}`,
+        properties: {
+          skuFamily: variant,
+          action: 'quantity_changed',
+          success: true,
+        },
+      }));
+
+      const result = await ingestCapturePayload({ projectKey, events }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
+      const rollup = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'checkout_line_item_changed' });
+
+      assert.strictEqual(result.accepted, events.length);
+      assert.strictEqual(result.dropped, 0);
+      assert.strictEqual(result.limited, false);
+      assert.strictEqual(behaviors.length, events.length);
+      assert.ok(rollup);
+      assert.strictEqual(rollup.mode, 'watch');
+      assert.strictEqual(rollup.reason, 'volume_watch');
+      assert.strictEqual(rollup.droppedCount, 0);
+      assert.ok(rollup.uniqueFingerprintCount > 1);
+    });
+
+    it('keeps ingestion guard historical baseline spikes in watch mode when content stays diverse', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-baseline');
+      const now = new Date('2026-07-05T00:00:00.000Z');
+      await Promise.all(Array.from({ length: 24 }, (_, index) => {
+        const windowStartAt = new Date(now.getTime() - (index + 1) * 10 * 60 * 1000);
+        return ingestionGuardRollups().insertAsync({
+          projectId,
+          projectKey,
+          sourceType: 'server_app',
+          sourceKey: 'billing-api',
+          eventName: 'invoice_state_changed',
+          eventType: 'custom',
+          windowStartAt,
+          windowEndAt: new Date(windowStartAt.getTime() + 10 * 60 * 1000),
+          mode: 'open',
+          reason: 'none',
+          acceptedCount: 1,
+          sampledCount: 0,
+          droppedCount: 0,
+          acceptedBytes: 100,
+          droppedBytes: 0,
+          wouldSampleCount: 0,
+          wouldDropCount: 0,
+          topFingerprintHash: `hash-${index}`,
+          topFingerprintCount: 1,
+          uniqueFingerprintCount: 1,
+          duplicateScore: 0.1,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }));
+      await refreshIngestionGuardBaselines({ now });
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 1000,
+          sampledCount: 1000,
+          fusedCount: 2000,
+          duplicateMinCount: 20,
+          duplicateTopCount: 20,
+          duplicateTopRatio: 0.75,
+        },
+      });
+
+      const variants = ['created', 'approved', 'voided', 'paid', 'settled', 'refunded', 'disputed', 'credited', 'pending', 'posted', 'reconciled', 'archived'];
+      const events = variants.map((variant) => ({
+        type: 'custom',
+        eventName: 'invoice_state_changed',
+        platform: 'server',
+        source: { type: 'server_app', key: 'billing-api' },
+        path: `/invoice/${variant}`,
+        properties: {
+          invoiceState: variant,
+          success: true,
+        },
+      }));
+
+      const result = await ingestCapturePayload({ projectKey, events }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
+      const rollup = await ingestionGuardRollups().findOneAsync({
+        projectId,
+        eventName: 'invoice_state_changed',
+      }, { sort: { acceptedCount: -1 } });
+
+      assert.strictEqual(result.accepted, events.length);
+      assert.strictEqual(result.dropped, 0);
+      assert.strictEqual(result.limited, false);
+      assert.strictEqual(behaviors.length, events.length);
+      assert.ok(rollup);
+      assert.ok(rollup.acceptedCount >= events.length);
+      assert.strictEqual(rollup.mode, 'watch');
+      assert.strictEqual(rollup.reason, 'baseline_watch');
+      assert.ok(rollup.uniqueFingerprintCount > 1);
+    });
+
+    it('samples repeated ingestion guard duplicate storm events only after both volume and similarity thresholds are met', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-sampled');
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 3,
+          sampledCount: 5,
+          fusedCount: 50,
+          duplicateMinCount: 5,
+          duplicateTopCount: 5,
+          duplicateTopRatio: 0.75,
+        },
+        sampleRate: 0,
+      });
+
+      const events = Array.from({ length: 9 }, (_, index) => ({
+        type: 'custom',
+        eventName: 'server_slack_message_delivery',
+        platform: 'server',
+        source: { type: 'server_app', key: 'yezi2-server' },
+        properties: {
+          status: 'failed',
+          message: `Slack delivery timeout for requestId ${index}`,
+        },
+      }));
+
+      const result = await ingestCapturePayload({ projectKey, events }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      const rawCount = await RawBehaviors.find({ projectId }).countAsync();
+      const rollup = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'server_slack_message_delivery' });
+
+      assert.ok(rawCount > 0);
+      assert.ok(rawCount < events.length);
+      assert.strictEqual(result.limited, true);
+      assert.strictEqual(result.sampled, 0);
+      assert.strictEqual(result.dropped > 0, true);
+      assert.strictEqual(rollup.mode, 'sampled');
+      assert.strictEqual(rollup.reason, 'duplicate_storm');
+      assert.ok(rollup.droppedCount > 0);
+      assert.ok(rollup.duplicateScore >= 0.75);
+    });
+
+    it('persists ingestion guard dropped rollups before returning capture success', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-durable-drop');
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 2,
+          sampledCount: 4,
+          fusedCount: 50,
+          duplicateMinCount: 4,
+          duplicateTopCount: 4,
+          duplicateTopRatio: 0.75,
+        },
+        sampleRate: 0,
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        events: Array.from({ length: 7 }, (_, index) => ({
+          type: 'custom',
+          eventName: 'server_slack_message_delivery',
+          platform: 'server',
+          source: { type: 'server_app', key: 'yezi2-server' },
+          properties: {
+            status: 'failed',
+            message: `Slack delivery timeout for requestId ${index}`,
+          },
+        })),
+      }, { headers: {} });
+
+      const rollup = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'server_slack_message_delivery' });
+
+      assert.strictEqual(result.ok, true);
+      assert.ok(result.dropped > 0);
+      assert.ok(rollup);
+      assert.ok(rollup.droppedCount > 0);
+    });
+
+    it('hydrates persisted ingestion guard fused state before accepting new captures', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-hydrate-state');
+      const activeWindowStartAt = new Date(Date.now() - 10 * 60 * 1000);
+      await ingestionGuardStates().insertAsync({
+        projectId,
+        projectKey,
+        sourceType: 'server_app',
+        sourceKey: 'yezi2-server',
+        sourceLabel: 'yezi2-server',
+        eventName: 'server_slack_message_delivery',
+        eventType: 'custom',
+        mode: 'fused',
+        reason: 'duplicate_storm',
+        sampleRate: 0,
+        activeWindowStartAt,
+        lastWindowStartAt: activeWindowStartAt,
+        recoveryStreak: 0,
+        duplicateScore: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 100,
+          sampledCount: 200,
+          fusedCount: 300,
+          duplicateMinCount: 200,
+          duplicateTopCount: 200,
+          duplicateTopRatio: 0.9,
+        },
+        sampleRate: 0,
+      });
+      resetIngestionGuardForTest();
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 100,
+          sampledCount: 200,
+          fusedCount: 300,
+          duplicateMinCount: 200,
+          duplicateTopCount: 200,
+          duplicateTopRatio: 0.9,
+        },
+        sampleRate: 0,
+      });
+      await hydrateIngestionGuardForTest();
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        type: 'custom',
+        eventName: 'server_slack_message_delivery',
+        platform: 'server',
+        source: { type: 'server_app', key: 'yezi2-server' },
+        properties: { status: 'failed', message: 'one more timeout' },
+      }, { headers: {} });
+
+      assert.strictEqual(result.accepted, 0);
+      assert.strictEqual(result.dropped, 1);
+      assert.strictEqual(result.guardMode, 'fused');
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 0);
+    });
+
+    it('hydrates ingestion guard baselines before evaluating baseline watch spikes', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-hydrate-baseline');
+      await ingestionGuardBaselines().insertAsync({
+        projectId,
+        projectKey,
+        sourceType: 'server_app',
+        sourceKey: 'billing-api',
+        eventName: 'invoice_state_changed',
+        eventType: 'custom',
+        windowCount: 24,
+        p95CountPerWindow: 1,
+        p99CountPerWindow: 1,
+        p95BytesPerWindow: 100,
+        p99BytesPerWindow: 100,
+        p95DuplicateScore: 0.1,
+        p99DuplicateScore: 0.1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 1000,
+          sampledCount: 1000,
+          fusedCount: 2000,
+          duplicateMinCount: 200,
+          duplicateTopCount: 200,
+          duplicateTopRatio: 0.9,
+        },
+      });
+      resetIngestionGuardForTest();
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 1000,
+          sampledCount: 1000,
+          fusedCount: 2000,
+          duplicateMinCount: 200,
+          duplicateTopCount: 200,
+          duplicateTopRatio: 0.9,
+        },
+      });
+      await hydrateIngestionGuardForTest();
+
+      const events = ['created', 'approved', 'paid', 'settled', 'refunded', 'posted', 'archived', 'credited', 'voided', 'pending', 'reconciled', 'disputed'].map((variant) => ({
+        type: 'custom',
+        eventName: 'invoice_state_changed',
+        platform: 'server',
+        source: { type: 'server_app', key: 'billing-api' },
+        path: `/invoice/${variant}`,
+        properties: { invoiceState: variant },
+      }));
+      const result = await ingestCapturePayload({ projectKey, events }, { headers: {} });
+      await drainIngestionGuardForTest();
+      const rollup = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'invoice_state_changed' });
+
+      assert.strictEqual(result.accepted, events.length);
+      assert.strictEqual(result.limited, false);
+      assert.strictEqual(rollup.mode, 'watch');
+      assert.strictEqual(rollup.reason, 'baseline_watch');
+    });
+
+    it('continues ingestion guard fusing for a repeated duplicate storm once the event key enters fused mode', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-fused');
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 2,
+          sampledCount: 4,
+          fusedCount: 6,
+          duplicateMinCount: 4,
+          duplicateTopCount: 4,
+          duplicateTopRatio: 0.75,
+        },
+        sampleRate: 0,
+      });
+
+      const eventPayload = (index) => ({
+        type: 'custom',
+        eventName: 'server_slack_message_delivery',
+        platform: 'server',
+        source: { type: 'server_app', key: 'yezi2-server' },
+        properties: {
+          status: 'failed',
+          message: `Slack delivery timeout for requestId ${index}`,
+        },
+      });
+
+      await ingestCapturePayload({
+        projectKey,
+        events: Array.from({ length: 7 }, (_, index) => eventPayload(index)),
+      }, { headers: {} });
+      const beforeSecondBatch = await RawBehaviors.find({ projectId }).countAsync();
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        events: Array.from({ length: 3 }, (_, index) => eventPayload(index + 100)),
+      }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      const afterSecondBatch = await RawBehaviors.find({ projectId }).countAsync();
+      const state = await ingestionGuardStates().findOneAsync({ projectId, eventName: 'server_slack_message_delivery' });
+      const rollup = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'server_slack_message_delivery' });
+
+      assert.strictEqual(result.accepted, 0);
+      assert.strictEqual(result.dropped, 3);
+      assert.strictEqual(result.guardMode, 'fused');
+      assert.strictEqual(afterSecondBatch, beforeSecondBatch);
+      assert.strictEqual(state.mode, 'fused');
+      assert.strictEqual(rollup.mode, 'fused');
+    });
+
+    it('uses ingestion guard storage emergency only for low-priority events and keeps critical app errors', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-storage');
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        storageWatermarkRatio: 0.96,
+        thresholds: {
+          watchCount: 100,
+          sampledCount: 200,
+          fusedCount: 300,
+          duplicateMinCount: 200,
+          duplicateTopCount: 200,
+          duplicateTopRatio: 0.9,
+        },
+      });
+
+      const lowPriority = await ingestCapturePayload({
+        projectKey,
+        events: [
+          {
+            type: 'custom',
+            eventName: 'server_slack_message_delivery',
+            platform: 'server',
+            source: { type: 'server_app', key: 'yezi2-server' },
+            properties: { status: 'failed', message: 'queue full' },
+          },
+        ],
+      }, { headers: {} });
+      const critical = await ingestCapturePayload({
+        projectKey,
+        type: 'app_error',
+        eventName: 'checkout_crashed',
+        platform: 'server',
+        source: { type: 'server_app', key: 'checkout-api' },
+        properties: { message: 'checkout failed', errorFingerprint: 'checkout-crash' },
+      }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      const behaviors = await RawBehaviors.find({ projectId }, { sort: { eventName: 1 } }).fetchAsync();
+      const lowPriorityRollup = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'server_slack_message_delivery' });
+
+      assert.strictEqual(lowPriority.accepted, 0);
+      assert.strictEqual(lowPriority.dropped, 1);
+      assert.strictEqual(lowPriority.guardReason, 'storage_emergency');
+      assert.strictEqual(critical.accepted, 1);
+      assert.deepStrictEqual(behaviors.map((behavior) => behavior.eventName), ['checkout_crashed']);
+      assert.strictEqual(lowPriorityRollup.mode, 'fused');
+      assert.strictEqual(lowPriorityRollup.reason, 'storage_emergency');
+    });
+
+    it('requires duplicate concentration before ingestion guard storage pressure limits writes below emergency', async function () {
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        storageWatermarkRatio: 0.92,
+        thresholds: {
+          watchCount: 3,
+          sampledCount: 100,
+          fusedCount: 200,
+          duplicateMinCount: 8,
+          duplicateTopCount: 8,
+          duplicateTopRatio: 0.75,
+        },
+        sampleRate: 0,
+      });
+
+      const diverseProject = await createGuardProject('project-guard-pressure-diverse');
+      const variants = ['red', 'blue', 'green', 'amber', 'teal', 'slate', 'rose', 'lime'];
+      const diverseResult = await ingestCapturePayload({
+        projectKey: diverseProject.projectKey,
+        events: variants.map((variant) => ({
+          type: 'custom',
+          eventName: 'checkout_line_item_changed',
+          platform: 'server',
+          source: { type: 'server_app', key: 'checkout-api' },
+          path: `/checkout/${variant}`,
+          properties: { skuFamily: variant, action: 'quantity_changed' },
+        })),
+      }, { headers: {} });
+
+      const repeatedProject = await createGuardProject('project-guard-pressure-repeat');
+      const repeatedResult = await ingestCapturePayload({
+        projectKey: repeatedProject.projectKey,
+        events: Array.from({ length: 8 }, (_, index) => ({
+          type: 'custom',
+          eventName: 'server_slack_message_delivery',
+          platform: 'server',
+          source: { type: 'server_app', key: 'yezi2-server' },
+          properties: {
+            status: 'failed',
+            message: `Slack delivery timeout for requestId ${index}`,
+          },
+        })),
+      }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      const diverseRawCount = await RawBehaviors.find({ projectId: diverseProject.projectId }).countAsync();
+      const repeatedRawCount = await RawBehaviors.find({ projectId: repeatedProject.projectId }).countAsync();
+      const diverseRollup = await ingestionGuardRollups().findOneAsync({ projectId: diverseProject.projectId });
+      const repeatedRollup = await ingestionGuardRollups().findOneAsync({ projectId: repeatedProject.projectId });
+
+      assert.strictEqual(diverseResult.accepted, variants.length);
+      assert.strictEqual(diverseResult.dropped, 0);
+      assert.strictEqual(diverseRawCount, variants.length);
+      assert.strictEqual(diverseRollup.mode, 'watch');
+      assert.strictEqual(diverseRollup.reason, 'storage_pressure');
+      assert.strictEqual(repeatedResult.guardMode, 'fused');
+      assert.strictEqual(repeatedResult.guardReason, 'storage_pressure');
+      assert.ok(repeatedResult.dropped > 0);
+      assert.ok(repeatedRawCount < 8);
+      assert.strictEqual(repeatedRollup.mode, 'fused');
+    });
+
+    it('does not record ingestion guard rollups for blocked sources', async function () {
+      const { projectId, projectKey } = await createGuardProject('project-guard-blocked', {
+        blockedSources: [{ sourceType: 'server_app', sourceKey: 'blocked-api', blockedAt: new Date() }],
+      });
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 1,
+          sampledCount: 2,
+          fusedCount: 3,
+          duplicateMinCount: 2,
+          duplicateTopCount: 2,
+          duplicateTopRatio: 0.5,
+        },
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        events: Array.from({ length: 4 }, () => ({
+          type: 'custom',
+          eventName: 'server_slack_message_delivery',
+          platform: 'server',
+          source: { type: 'server_app', key: 'blocked-api' },
+          properties: { status: 'failed', message: 'same' },
+        })),
+      }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      assert.strictEqual(result.accepted, 0);
+      assert.strictEqual(result.ignored, 4);
+      assert.strictEqual(await ingestionGuardRollups().find({ projectId }).countAsync(), 0);
+      assert.strictEqual(await ingestionGuardStates().find({ projectId }).countAsync(), 0);
+    });
+
+    it('creates ingestion guard indexes', async function () {
+      await ensureTraceMindIndexes();
+
+      const indexNames = async (collection) => new Set((await collection.rawCollection().indexes()).map((index) => index.name));
+      const rollupIndexes = await indexNames(ingestionGuardRollups());
+      const stateIndexes = await indexNames(ingestionGuardStates());
+      const baselineIndexes = await indexNames(ingestionGuardBaselines());
+
+      assert.ok(rollupIndexes.has('ingestion_guard_rollup_event_window_unique'));
+      assert.ok(rollupIndexes.has('ingestion_guard_rollup_project_window'));
+      assert.ok(rollupIndexes.has('ingestion_guard_rollup_window'));
+      assert.ok(stateIndexes.has('ingestion_guard_state_event_unique'));
+      assert.ok(baselineIndexes.has('ingestion_guard_baseline_event_unique'));
+    });
+
+    it('returns ingestion guard summary without fingerprint hashes in project summary', async function () {
+      const email = `guard-summary-${Date.now()}@example.com`;
+      const userId = await Meteor.users.insertAsync({
+        emails: [{ address: email, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const projectSummaryMethod = Meteor.server.method_handlers['tracemind.project.summary'];
+      const dashboard = await dashboardMethod.apply({ userId }, []);
+      const project = dashboard.projects[0];
+      configureIngestionGuardForTest({
+        mode: 'shadow',
+        thresholds: {
+          watchCount: 2,
+          sampledCount: 3,
+          fusedCount: 20,
+          duplicateMinCount: 3,
+          duplicateTopCount: 3,
+          duplicateTopRatio: 0.75,
+        },
+      });
+
+      await ingestCapturePayload({
+        projectKey: project.projectKey,
+        events: Array.from({ length: 4 }, (_, index) => ({
+          type: 'custom',
+          eventName: 'server_slack_message_delivery',
+          platform: 'server',
+          source: { type: 'server_app', key: 'yezi2-server' },
+          properties: {
+            status: 'failed',
+            message: `Slack delivery failed for requestId ${index}`,
+          },
+        })),
+      }, { headers: {} });
+      await drainIngestionGuardForTest();
+
+      const summary = await projectSummaryMethod.apply({ userId }, [project._id]);
+      const serialized = JSON.stringify(summary.ingestionGuard);
+
+      assert.ok(summary.ingestionGuard);
+      assert.ok(summary.ingestionGuard.states.some((state) => state.eventName === 'server_slack_message_delivery'));
+      assert.ok(summary.ingestionGuard.recentRollups.some((rollup) => (
+        rollup.eventName === 'server_slack_message_delivery'
+        && rollup.wouldDropCount > 0
+        && rollup.duplicateScore >= 0.75
+      )));
+      assert.strictEqual(serialized.includes('topFingerprintHash'), false);
+      assert.strictEqual(serialized.includes('Slack delivery failed'), false);
     });
 
     it('requires a Meteor Accounts session for the dashboard', async function () {

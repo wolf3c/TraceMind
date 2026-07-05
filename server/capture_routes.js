@@ -37,7 +37,20 @@ import {
   recordSetupAttemptMcpConnection,
   recordSetupAttemptMcpTool,
 } from './setup_attempts';
+import {
+  configureIngestionGuardForTest,
+  drainIngestionGuardForTest,
+  evaluateIngestionGuard,
+  flushIngestionGuardRollups,
+  resetIngestionGuardForTest,
+} from './ingestion_guard';
 import { buildProjectRecentOnline, resolveProjectByKey, resolveProjectByMcpToken } from './tracemind_methods';
+
+export {
+  configureIngestionGuardForTest,
+  drainIngestionGuardForTest,
+  resetIngestionGuardForTest,
+};
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_MCP_PROTOCOLS = new Set(['2025-06-18', '2025-03-26']);
@@ -6393,7 +6406,7 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     return { ok: true, ignored: true };
   }
 
-  await RawBehaviors.insertAsync({
+  const behaviorDoc = {
     projectId: project._id,
     projectKey: project.projectKey,
     sessionId: safeString(payload.sessionId, 120),
@@ -6432,11 +6445,74 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     occurredAt: payload.occurredAt ? new Date(payload.occurredAt) : new Date(),
     semanticStatus: 'pending',
     createdAt: new Date(),
+  };
+  const guard = await evaluateIngestionGuard({
+    ...behaviorDoc,
+    eventType,
   });
+  if (guard.decision === 'drop_to_rollup') {
+    return {
+      ok: true,
+      ignored: false,
+      limited: true,
+      sampled: 0,
+      dropped: 1,
+      guardMode: guard.mode,
+      guardReason: guard.reason,
+    };
+  }
+
+  await RawBehaviors.insertAsync(behaviorDoc);
   queueProductUsageActivity(project, 'capture', payload);
   await recordSetupAttemptSafely(() => recordSetupAttemptFirstCapture(project._id, { eventType }));
 
-  return { ok: true, ignored: false };
+  return {
+    ok: true,
+    ignored: false,
+    limited: guard.mode === 'sampled' || guard.mode === 'fused',
+    sampled: guard.decision === 'sample_accept' ? 1 : 0,
+    dropped: 0,
+    guardMode: guard.mode,
+    guardReason: guard.reason,
+  };
+}
+
+const CAPTURE_GUARD_MODE_PRIORITY = { open: 0, shadow: 1, watch: 2, sampled: 3, fused: 4 };
+const CAPTURE_GUARD_REASON_PRIORITY = {
+  none: 0,
+  volume_watch: 1,
+  baseline_watch: 2,
+  duplicate_storm: 3,
+  storage_pressure: 4,
+  storage_emergency: 5,
+};
+
+function strongerCaptureGuardValue(left, right, priority) {
+  return (priority[right] || 0) > (priority[left] || 0) ? right : left;
+}
+
+function emptyCaptureIngestSummary() {
+  return {
+    accepted: 0,
+    ignored: 0,
+    limited: false,
+    sampled: 0,
+    dropped: 0,
+    guardMode: 'open',
+    guardReason: 'none',
+  };
+}
+
+function addCaptureIngestResult(summary, result = {}) {
+  if (result.ignored) summary.ignored += 1;
+  else if (!result.dropped) summary.accepted += 1;
+
+  summary.limited = summary.limited || Boolean(result.limited);
+  summary.sampled += Number(result.sampled || 0);
+  summary.dropped += Number(result.dropped || 0);
+  summary.guardMode = strongerCaptureGuardValue(summary.guardMode, result.guardMode || 'open', CAPTURE_GUARD_MODE_PRIORITY);
+  summary.guardReason = strongerCaptureGuardValue(summary.guardReason, result.guardReason || 'none', CAPTURE_GUARD_REASON_PRIORITY);
+  return summary;
 }
 
 export async function ingestCapturePayload(payload = {}, req = {}) {
@@ -6447,8 +6523,7 @@ export async function ingestCapturePayload(payload = {}, req = {}) {
   }
 
   if (Array.isArray(payload.events)) {
-    let accepted = 0;
-    let ignored = 0;
+    const summary = emptyCaptureIngestSummary();
     const sharedPayload = { ...payload };
     delete sharedPayload.events;
 
@@ -6458,21 +6533,32 @@ export async function ingestCapturePayload(payload = {}, req = {}) {
         ...safeObject(eventPayload),
         projectKey: project.projectKey,
       }, req);
-      if (result.ignored) ignored += 1;
-      else accepted += 1;
+      addCaptureIngestResult(summary, result);
     }
 
-    const result = { ok: true, accepted, ignored };
+    if (summary.dropped > 0) {
+      await flushIngestionGuardRollups();
+    }
+    const result = { ok: true, ...summary };
     await recordDeliveryReport(project, payload, req, 'capture', result);
     return result;
   }
 
   const result = await insertCaptureEvent(project, payload, req);
-  await recordDeliveryReport(project, payload, req, 'capture', {
-    accepted: result.ignored ? 0 : 1,
-    ignored: result.ignored ? 1 : 0,
-  });
-  return result;
+  const summary = addCaptureIngestResult(emptyCaptureIngestSummary(), result);
+  if (summary.dropped > 0) {
+    await flushIngestionGuardRollups();
+  }
+  await recordDeliveryReport(project, payload, req, 'capture', summary);
+  return {
+    ...result,
+    accepted: summary.accepted,
+    limited: summary.limited,
+    sampled: summary.sampled,
+    dropped: summary.dropped,
+    guardMode: summary.guardMode,
+    guardReason: summary.guardReason,
+  };
 }
 
 function normalizePresenceState(value) {

@@ -1,5 +1,12 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-07-05
+
+### Completed
+
+- Added the server-side ingestion guard for 10-minute content-aware capture protection. The guard records rollups and current states, defaults to shadow mode, requires both abnormal volume and duplicate or similar content before sampling or fusing raw writes, and exposes recent guard activity in the project setup source panel.
+- Added storage-watermark protection, rollup-derived historical baselines, normalized HMAC fingerprints without persisted raw content, source-block precedence, durable dropped-rollup flushing before capture success, startup hydration for persisted guard state and baselines, and focused Meteor coverage for diverse high-volume events, duplicate storms, storage pressure, storage emergency, batch response counts, privacy, summaries, and indexes.
+
 ## 2026-06-15
 
 ### Completed

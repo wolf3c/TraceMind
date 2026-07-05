@@ -5,6 +5,7 @@ import './tracemind_publications';
 import { registerTraceMindRoutes, startProductUsageInstrumentation } from './capture_routes';
 import { ensureTraceMindIndexes, startDailyReportJob, startHourlyDraftReportJob, computeFinalReportsForYesterday } from './daily_reports';
 import { startSemanticExtractionJob, extractSemanticEventsOnce } from './semantic_jobs';
+import { startIngestionGuardJobs } from './ingestion_guard';
 
 registerTraceMindRoutes();
 
@@ -14,6 +15,7 @@ Meteor.startup(() => {
     console.error('[TraceMind] index initialization failed', error);
   });
   startSemanticExtractionJob();
+  startIngestionGuardJobs();
   startDailyReportJob();
   startHourlyDraftReportJob();
   extractSemanticEventsOnce().catch((error) => {

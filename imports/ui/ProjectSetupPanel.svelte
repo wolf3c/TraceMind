@@ -20,6 +20,7 @@
     copiedTarget,
     agentInstallPrompt,
     sourceSummary,
+    ingestionGuardSummary,
     currentOrigin,
     copiedLabel,
     changeSelectedProject,
@@ -53,6 +54,26 @@
     }
     changeSelectedProject(event);
   }
+
+  function percent(value) {
+    const number = Number(value || 0);
+    if (!Number.isFinite(number)) return "0%";
+    return `${Math.round(number * 100)}%`;
+  }
+
+  function guardReasonLabel(reason) {
+    const labels = {
+      volume_watch: "Volume watch",
+      baseline_watch: "Baseline watch",
+      duplicate_storm: "Duplicate storm",
+      storage_pressure: "Storage pressure",
+      storage_emergency: "Storage emergency",
+    };
+    return labels[reason] || reason || "None";
+  }
+
+  let guardStates = $derived(ingestionGuardSummary?.states || []);
+  let guardRollups = $derived(ingestionGuardSummary?.recentRollups || []);
 </script>
 
 <div class="setup-panel card-panel">
@@ -258,6 +279,62 @@
             </div>
           {:else}
             <p class="empty">{$t("No capture source data yet. Capture sources will appear after events are captured.")}</p>
+          {/if}
+          {#if guardStates.length || guardRollups.length}
+            <div class="guard-summary">
+              <div class="guard-summary-header">
+                <strong>{$t("Ingestion guard")}</strong>
+                <span>{$t("10-minute windows")}</span>
+              </div>
+              {#if guardStates.length}
+                <div class="guard-list">
+                  {#each guardStates as state (`${state.sourceType}:${state.sourceKey}:${state.eventName}`)}
+                    <div class={`guard-row ${state.mode}`}>
+                      <div>
+                        <strong>{state.eventName}</strong>
+                        <span>{state.sourceType} / {state.sourceKey}</span>
+                      </div>
+                      <div>
+                        <span>{$t("Mode")}</span>
+                        <strong>{state.mode}</strong>
+                      </div>
+                      <div>
+                        <span>{$t("Reason")}</span>
+                        <strong>{guardReasonLabel(state.reason)}</strong>
+                      </div>
+                      <div>
+                        <span>{$t("Duplicate")}</span>
+                        <strong>{percent(state.duplicateScore)}</strong>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+              {#if guardRollups.length}
+                <div class="guard-list recent">
+                  {#each guardRollups as rollup (`${rollup.sourceType}:${rollup.sourceKey}:${rollup.eventName}:${rollup.windowStartAt}`)}
+                    <div class={`guard-row ${rollup.mode}`}>
+                      <div>
+                        <strong>{rollup.eventName}</strong>
+                        <span>{formatDate(rollup.windowStartAt)}</span>
+                      </div>
+                      <div>
+                        <span>{$t("Accepted")}</span>
+                        <strong>{rollup.acceptedCount}</strong>
+                      </div>
+                      <div>
+                        <span>{$t("Dropped")}</span>
+                        <strong>{rollup.droppedCount || rollup.wouldDropCount}</strong>
+                      </div>
+                      <div>
+                        <span>{$t("Duplicate")}</span>
+                        <strong>{percent(rollup.duplicateScore)}</strong>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
           {/if}
         </div>
       </details>
