@@ -1,5 +1,11 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-07-11
+
+### Completed
+
+- Moved the optional PWA install action out of the Web console content and into the global header. Desktop keeps a compact secondary action, mobile uses a shorter label with a 44px target, and iOS/iPadOS Add to Home Screen guidance appears only after the user chooses the install action.
+
 ## 2026-07-05
 
 ### Completed

@@ -121,7 +121,7 @@ button:disabled {
 
 .nav {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -752,50 +752,77 @@ button:disabled {
   background: rgba(255, 255, 255, 0.14);
 }
 
-.pwa-install-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  max-width: 1180px;
-  margin: -12px auto 18px;
-  border: 1px solid rgba(15, 47, 42, 0.14);
-  border-radius: 8px;
-  padding: 14px clamp(18px, 4vw, 24px);
-  color: var(--deep);
-  background: rgba(255, 253, 248, 0.82);
-  box-shadow: 0 10px 24px rgba(15, 47, 42, 0.08);
+.pwa-install-control {
+  position: relative;
+  flex: 0 0 auto;
 }
 
-.pwa-install-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
+.pwa-install-button {
+  min-height: 44px;
+  padding: 0 14px;
+  white-space: nowrap;
 }
 
-.pwa-install-copy span {
-  font-size: 0.88rem;
-  font-weight: 780;
+.pwa-install-label-compact {
+  display: none;
 }
 
-.pwa-install-copy p,
+.pwa-install-guidance,
 .pwa-install-status {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(320px, calc(100vw - 36px));
   margin: 0;
+  border: 1px solid rgba(186, 203, 196, 0.9);
+  border-radius: 8px;
+  padding: 14px 44px 14px 16px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 16px 34px rgba(7, 27, 24, 0.22);
+}
+
+.pwa-install-guidance strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--deep);
+  font-size: 0.9rem;
+}
+
+.pwa-install-guidance p,
+.pwa-install-status {
   color: var(--muted);
   font-size: 0.86rem;
   line-height: 1.45;
 }
 
-.pwa-install-button {
-  min-height: 36px;
-  padding: 0 14px;
-  white-space: nowrap;
+.pwa-install-guidance p {
+  margin: 0;
+}
+
+.pwa-install-guidance-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  height: 32px;
+  border: 1px solid rgba(15, 47, 42, 0.18);
+  padding: 0;
+  color: var(--deep);
+  background: transparent;
+  box-shadow: none;
+  font-size: 1.1rem;
 }
 
 .pwa-install-status {
-  max-width: 1180px;
-  margin: -8px auto 18px;
-  padding: 0 clamp(18px, 4vw, 24px);
+  width: max-content;
+  max-width: min(320px, calc(100vw - 36px));
+  padding: 12px 14px;
+  color: var(--deep);
+  font-weight: 700;
 }
 
 .product-updates-page {
@@ -3804,6 +3831,7 @@ code {
   }
 
   .nav-actions {
+    gap: 6px;
     justify-content: flex-start;
     width: 100%;
   }
@@ -3884,20 +3912,38 @@ code {
     right: 10px;
   }
 
-  .pwa-install-panel {
-    align-items: stretch;
-    flex-direction: column;
-    margin: -8px clamp(18px, 5vw, 32px) 16px;
-    padding: 14px 16px;
-  }
-
   .pwa-install-button {
-    width: 100%;
+    min-height: 44px;
+    padding: 0 10px;
   }
 
+  .pwa-install-label-wide {
+    display: none;
+  }
+
+  .pwa-install-label-compact {
+    display: inline;
+  }
+
+  .pwa-install-guidance,
   .pwa-install-status {
-    margin: -4px 0 16px;
-    padding: 0 clamp(18px, 5vw, 32px);
+    right: auto;
+    left: -50px;
+    width: calc(100vw - 36px);
+    max-width: none;
+  }
+
+  .pwa-install-guidance {
+    padding-right: 60px;
+  }
+
+  .pwa-install-guidance-close {
+    top: 6px;
+    right: 6px;
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    height: 44px;
   }
 
   .product-updates-page {

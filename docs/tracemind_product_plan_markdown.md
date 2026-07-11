@@ -194,6 +194,8 @@ TraceMind 自动采集：
 
 包安装、Gradle/Swift Package 配置属于平台依赖接入；进入业务代码的 TraceMind 初始化保持一行。
 
+Web 控制台的 PWA 安装属于可选的设备级操作。支持安装时，桌面和移动端只在全局顶部操作区提供低权重入口，不占用控制台正文；iOS/iPadOS 的“添加到主屏幕”指引仅在用户主动点击后显示。
+
 ---
 
 # 4.2 行为语义理解（Semantic Understanding）

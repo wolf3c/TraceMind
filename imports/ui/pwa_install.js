@@ -14,6 +14,17 @@ export function isIosInstallGuidanceTarget(navigatorRef = globalThis.navigator) 
     || (/Mac/.test(platform) && touchPoints > 1 && /Safari|AppleWebKit/.test(userAgent));
 }
 
+export function pwaInstallEntryMode({
+  isInstalled = false,
+  hasInstallPrompt = false,
+  isIosGuidanceTarget = false,
+} = {}) {
+  if (isInstalled) return "hidden";
+  if (hasInstallPrompt) return "browser";
+  if (isIosGuidanceTarget) return "ios";
+  return "hidden";
+}
+
 export function registerTraceMindPwa({
   windowRef = globalThis,
   documentRef = globalThis.document,

@@ -244,7 +244,7 @@ describe('TraceMind', function () {
       );
       assert.deepStrictEqual(localizedProductUpdateDetails(update.details, 'zh'), [
         'Web 控制台新增 PWA manifest、应用图标和独立窗口模式，支持桌面和移动端浏览器安装。',
-        '安装入口会在支持浏览器提示安装；iOS/iPadOS 会显示通过分享菜单添加到主屏幕的简短指引。',
+        '安装入口收纳在桌面和移动端顶部操作区，不再占用控制台正文；iOS/iPadOS 只会在点击后显示通过分享菜单添加到主屏幕的简短指引。',
         '隐私安全：PWA 不缓存项目数据、MCP 响应、采集接口或登录态内容，控制台数据仍按在线请求加载。',
       ]);
     });
@@ -691,6 +691,31 @@ describe('TraceMind', function () {
         platform: 'MacIntel',
         maxTouchPoints: 0,
       }), false);
+    });
+
+    it('shows a passive install entry only when the current browser can install TraceMind', async function () {
+      const { pwaInstallEntryMode } = await import('../imports/ui/pwa_install');
+
+      assert.strictEqual(pwaInstallEntryMode({
+        isInstalled: true,
+        hasInstallPrompt: true,
+        isIosGuidanceTarget: false,
+      }), 'hidden');
+      assert.strictEqual(pwaInstallEntryMode({
+        isInstalled: false,
+        hasInstallPrompt: true,
+        isIosGuidanceTarget: false,
+      }), 'browser');
+      assert.strictEqual(pwaInstallEntryMode({
+        isInstalled: false,
+        hasInstallPrompt: false,
+        isIosGuidanceTarget: true,
+      }), 'ios');
+      assert.strictEqual(pwaInstallEntryMode({
+        isInstalled: false,
+        hasInstallPrompt: false,
+        isIosGuidanceTarget: false,
+      }), 'hidden');
     });
   });
 

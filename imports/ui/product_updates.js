@@ -55,8 +55,8 @@ export const PRODUCT_UPDATES = [
         zh: "Web 控制台新增 PWA manifest、应用图标和独立窗口模式，支持桌面和移动端浏览器安装。",
       },
       {
-        en: "The install entry opens the browser install prompt where supported; iOS and iPadOS show short Add to Home Screen guidance through the share menu.",
-        zh: "安装入口会在支持浏览器提示安装；iOS/iPadOS 会显示通过分享菜单添加到主屏幕的简短指引。",
+        en: "The install entry now stays in the desktop and mobile header instead of occupying console content; iOS and iPadOS show short Add to Home Screen guidance only after a click.",
+        zh: "安装入口收纳在桌面和移动端顶部操作区，不再占用控制台正文；iOS/iPadOS 只会在点击后显示通过分享菜单添加到主屏幕的简短指引。",
       },
       {
         en: "Privacy-safe: the PWA does not cache project data, MCP responses, capture APIs, or login-state content. Console data still loads through online requests.",
