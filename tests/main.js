@@ -62,6 +62,7 @@ import * as ProjectConsoleState from '../imports/ui/project_console_state';
 import enMessages from '../imports/ui/i18n/locales/en';
 import zhMessages from '../imports/ui/i18n/locales/zh';
 import { normalizeLocaleValue, translateMessage } from '../imports/ui/i18n/i18n';
+import { installSocketErrorDiagnostics } from '../imports/api/socket_error_diagnostics';
 import {
   FEEDBACK_ERRORS,
   buildFeedbackMessage,
@@ -180,6 +181,94 @@ function assertServerDeployVerificationSetup(setup, expectedPlatform) {
 }
 
 describe('TraceMind', function () {
+  describe('Socket error diagnostics', function () {
+    if (!Meteor.isServer) return;
+
+    it('logs sanitized socket metadata without swallowing an unhandled error', function () {
+      const { EventEmitter } = require('node:events');
+      class TestSocket extends EventEmitter {}
+      const entries = [];
+      const uninstall = installSocketErrorDiagnostics({
+        SocketClass: TestSocket,
+        log: (...args) => entries.push(args),
+        env: {
+          PORT: '3000',
+          METEOR_SHELL_DIR: '/secret/shell/path',
+          GALAXY_LOGGER: 'secret-logger-value',
+          APM_SECRET_TOKEN: 'secret-apm-value',
+        },
+      });
+      const socket = new TestSocket();
+      Object.assign(socket, {
+        localAddress: '127.0.0.1',
+        localPort: 3000,
+        remoteAddress: '203.0.113.42',
+        remotePort: 27017,
+        connecting: false,
+        destroyed: false,
+        readable: true,
+        writable: true,
+      });
+      const error = Object.assign(new Error('read ECONNRESET'), {
+        code: 'ECONNRESET',
+        syscall: 'read',
+      });
+
+      try {
+        assert.throws(() => socket.emit('error', error), error);
+      } finally {
+        uninstall();
+      }
+
+      assert.strictEqual(entries.length, 1);
+      assert.strictEqual(entries[0][0], '[TraceMind] unhandled socket error diagnostic');
+      assert.deepStrictEqual(entries[0][1], {
+        code: 'ECONNRESET',
+        syscall: 'read',
+        socketType: 'TestSocket',
+        localAddressClass: 'loopback',
+        remoteAddressClass: 'public',
+        localPort: 3000,
+        remotePort: 27017,
+        matchesAppPort: true,
+        encrypted: false,
+        connecting: false,
+        destroyed: false,
+        readable: true,
+        writable: true,
+        meteorShellEnabled: true,
+        galaxyLoggerConfigured: true,
+        apmConfigured: true,
+      });
+      const serialized = JSON.stringify(entries);
+      assert.ok(!serialized.includes('127.0.0.1'));
+      assert.ok(!serialized.includes('203.0.113.42'));
+      assert.ok(!serialized.includes('/secret/shell/path'));
+      assert.ok(!serialized.includes('secret-logger-value'));
+      assert.ok(!serialized.includes('secret-apm-value'));
+    });
+
+    it('does not log socket errors that already have a handler', function () {
+      const { EventEmitter } = require('node:events');
+      class TestSocket extends EventEmitter {}
+      const entries = [];
+      const uninstall = installSocketErrorDiagnostics({
+        SocketClass: TestSocket,
+        log: (...args) => entries.push(args),
+      });
+      const socket = new TestSocket();
+      socket.on('error', () => {});
+
+      try {
+        assert.strictEqual(socket.emit('error', new Error('handled')), true);
+      } finally {
+        uninstall();
+      }
+
+      assert.deepStrictEqual(entries, []);
+    });
+  });
+
   describe('Product update notices', function () {
     it('keeps product update content localized inside the update record', function () {
       const update = PRODUCT_UPDATES.find((item) => item.id === '2026-05-22-hourly-health');

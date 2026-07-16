@@ -1,4 +1,6 @@
 import { Meteor } from 'meteor/meteor';
+import { Socket } from 'node:net';
+import { installSocketErrorDiagnostics } from '../imports/api/socket_error_diagnostics';
 import './oauth_accounts';
 import './tracemind_methods';
 import './tracemind_publications';
@@ -7,6 +9,7 @@ import { ensureTraceMindIndexes, startDailyReportJob, startHourlyDraftReportJob,
 import { startSemanticExtractionJob, extractSemanticEventsOnce } from './semantic_jobs';
 import { startIngestionGuardJobs } from './ingestion_guard';
 
+installSocketErrorDiagnostics({ SocketClass: Socket });
 registerTraceMindRoutes();
 
 Meteor.startup(() => {
