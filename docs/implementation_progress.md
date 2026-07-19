@@ -1,5 +1,12 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-07-19
+
+### Completed
+
+- Added read-only `tracemind.query_delivery_diagnostics` for privacy-safe 7-day delivery failure, retry, drop, queue-depth, HTTP-class, and recovery-duration drilldown, with platform/source filters applied before counting and the 5,000-report analysis cap. It does not expose raw errors, bodies, URLs, logs, user content, or session/device/batch identifiers.
+- Added Web `lastFailedFlushAt` delivery metadata for forward-only recovery-duration aggregation, bumped the Web capture release and agent guidance markers to `2026.07.19.1`, and synchronized MCP discovery, public Skill/AGENTS guidance, README, and technical documentation. Queue limits, batching, retry backoff, drop policy, and successful hourly rollups remain unchanged.
+
 ## 2026-07-11
 
 ### Completed

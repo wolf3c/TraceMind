@@ -842,14 +842,14 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('优先读取 MCP tools/list 的描述或调用 `tracemind.project_info`'));
       assert.ok(prompt.includes('必须使用 MCP server `tracemind-abc123`'));
       assert.ok(prompt.includes('返回的 `projectId` 等于 `project-中文-ABC123`'));
-      assert.ok(prompt.includes('安装完成后，可直接让 agent 查看产品健康、实时在线、过去 24 小时表现和流量来源'));
+      assert.ok(prompt.includes('安装完成后，可直接让 agent 查看产品健康、实时在线、过去 24 小时表现、流量来源和近期上报失败'));
       assert.ok(prompt.includes('运营查询优先使用 Dashboard 同源口径'));
       assert.ok(prompt.includes('安装完成后，优先调用 `tracemind.project_health` 做今日健康检查'));
       assert.ok(prompt.includes('`tracemind.recent_online` 查看实时在线态势'));
       assert.ok(prompt.includes('功能使用分析'));
       assert.ok(prompt.includes('异常或下降原因分析'));
       assert.ok(prompt.includes('必须按 `summarySample` 把 `tracemind.summary` 的 totals 视为样本口径'));
-      assert.ok(prompt.includes('如果当前 active tool list 看不到 `tracemind.project_health`、`tracemind.recent_online`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback`'));
+      assert.ok(prompt.includes('如果当前 active tool list 看不到 `tracemind.project_health`、`tracemind.query_delivery_diagnostics`、`tracemind.recent_online`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback`'));
       assert.ok(prompt.includes('先读取 MCP `tools/list` 或按精确工具名重新 discovery'));
       assert.ok(prompt.includes('不要通过增大 `tracemind.summary.limit` 来代偿缺失的 current online 或 project health 能力'));
       assert.ok(prompt.includes('先调用 `tracemind.agent_guidance` 确认当前权威版本'));
@@ -901,14 +901,14 @@ describe('TraceMind', function () {
       assert.ok(prompt.includes('Prefer MCP tools/list descriptions or call `tracemind.project_info`'));
       assert.ok(prompt.includes('use MCP server `tracemind-xyz789`'));
       assert.ok(prompt.includes('returned `projectId` is `project-XYZ789`'));
-      assert.ok(prompt.includes('After installation, you can ask the agent to review product health, real-time online status, last 24 hours performance, and traffic sources'));
+      assert.ok(prompt.includes('After installation, you can ask the agent to review product health, real-time online status, last 24 hours performance, traffic sources, and recent delivery failures'));
       assert.ok(prompt.includes('Operations questions should use Dashboard-aligned metrics first'));
       assert.ok(prompt.includes('After installation, call `tracemind.project_health` first for a daily health check'));
       assert.ok(prompt.includes('`tracemind.recent_online` for real-time online status'));
       assert.ok(prompt.includes('feature usage analysis'));
       assert.ok(prompt.includes('anomaly or drop investigation'));
       assert.ok(prompt.includes('Treat `tracemind.summary` totals as sample-derived according to `summarySample`'));
-      assert.ok(prompt.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.recent_online`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
+      assert.ok(prompt.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.query_delivery_diagnostics`, `tracemind.recent_online`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
       assert.ok(prompt.includes('read MCP `tools/list` or retry discovery with the exact tool name'));
       assert.ok(prompt.includes('Do not compensate for missing current online or project health capabilities by increasing `tracemind.summary.limit`'));
       assert.ok(prompt.includes('call `tracemind.agent_guidance` to confirm the current authority version'));
@@ -1000,7 +1000,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.06.18.1'));
+      assert.ok(skill.includes('version: 2026.07.19.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -1071,7 +1071,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.check_agent_setup'));
       assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.ok(snippet.includes('Guidance version: `2026.06.18.1`'));
+      assert.ok(snippet.includes('Guidance version: `2026.07.19.1`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -1110,7 +1110,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('summarySample'));
       assert.ok(snippet.includes('sample-derived evidence'));
       assert.ok(snippet.includes('availableCapabilities.currentOnline.tool'));
-      assert.ok(snippet.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.recent_online`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
+      assert.ok(snippet.includes('If the current active tool list does not show `tracemind.project_health`, `tracemind.query_delivery_diagnostics`, `tracemind.recent_online`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`'));
       assert.ok(snippet.includes('Do not compensate for missing current online or project health capabilities by increasing `tracemind.summary.limit`'));
       assert.ok(snippet.includes('tracemind.submit_feedback'));
       assert.ok(snippet.includes('submitFeedback'));
@@ -1119,7 +1119,8 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.ok(snippet.includes('tracemind.check_agent_setup'));
       assert.ok(snippet.includes('agentSetupNotice'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.06.18.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.07.19.1');
+      assert.ok(manifest.mcp.tools.includes('tracemind.query_delivery_diagnostics'));
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
       assert.strictEqual(manifest.mcp.serverName, undefined);
@@ -1247,6 +1248,7 @@ describe('TraceMind', function () {
       assert.ok(script.includes('openFeedback: openFeedback'));
       assert.ok(script.includes('submitFeedback: submitFeedback'));
       assert.ok(script.includes('deliveryStats'));
+      assert.ok(script.includes('lastFailedFlushAt: deliveryStats.lastFailedFlushAt'));
       assert.ok(script.includes('flush: function ()'));
       assert.ok(script.includes('status: queueStatus'));
       assert.ok(!script.includes('navigator.sendBeacon && navigator.sendBeacon(endpoint'));
@@ -2687,6 +2689,7 @@ describe('TraceMind', function () {
       assert.ok(toolNames.includes('tracemind.check_agent_setup'));
       assert.ok(toolNames.includes('tracemind.project_info'));
       assert.ok(toolNames.includes('tracemind.project_health'));
+      assert.ok(toolNames.includes('tracemind.query_delivery_diagnostics'));
       assert.ok(toolNames.includes('tracemind.recent_online'));
       assert.ok(toolNames.includes('tracemind.capture_setup'));
       assert.ok(toolNames.includes('tracemind.validate_event_payload'));
@@ -2728,6 +2731,16 @@ describe('TraceMind', function () {
         && tool.description.includes('证据事件下钻')
         && tool.description.includes('不替代 project_health/recent_online')
       )));
+      const deliveryDiagnosticsTool = projectTools.find((tool) => tool.name === 'tracemind.query_delivery_diagnostics');
+      assert.ok(deliveryDiagnosticsTool.description.includes('7 天'));
+      assert.ok(deliveryDiagnosticsTool.description.includes('脱敏聚合'));
+      assert.deepStrictEqual(Object.keys(deliveryDiagnosticsTool.inputSchema.properties).sort(), [
+        'endAt',
+        'platform',
+        'sourceKey',
+        'sourceType',
+        'startAt',
+      ]);
       const checkSetupTool = projectTools.find((tool) => tool.name === 'tracemind.check_agent_setup');
       const captureSetupTool = projectTools.find((tool) => tool.name === 'tracemind.capture_setup');
       const healthTool = projectTools.find((tool) => tool.name === 'tracemind.project_health');
@@ -2756,6 +2769,9 @@ describe('TraceMind', function () {
       assert.strictEqual(projectInfo.structuredContent.availableCapabilities.projectHealth.tool, 'tracemind.project_health');
       assert.ok(projectInfo.structuredContent.availableCapabilities.projectHealth.canonicalUse.includes('delivery health'));
       assert.ok(projectInfo.structuredContent.availableCapabilities.projectHealth.notReplacedBy.includes('tracemind.query_events'));
+      assert.strictEqual(projectInfo.structuredContent.availableCapabilities.deliveryDiagnostics.tool, 'tracemind.query_delivery_diagnostics');
+      assert.strictEqual(projectInfo.structuredContent.availableCapabilities.deliveryDiagnostics.source, 'tracemind_capture_delivery_reports');
+      assert.ok(projectInfo.structuredContent.availableCapabilities.deliveryDiagnostics.canonicalUse.includes('privacy-safe'));
       assert.notStrictEqual(
         otherProjectInfo.structuredContent.mcpServerName,
         projectInfo.structuredContent.mcpServerName,
@@ -2765,12 +2781,13 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.06.18.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.07.19.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.strictEqual(guidance.structuredContent.availableCapabilities.currentOnline.tool, 'tracemind.recent_online');
       assert.strictEqual(guidance.structuredContent.availableCapabilities.projectHealth.tool, 'tracemind.project_health');
-      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.18.1');
+      assert.strictEqual(guidance.structuredContent.availableCapabilities.deliveryDiagnostics.tool, 'tracemind.query_delivery_diagnostics');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.07.19.1');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
@@ -2783,6 +2800,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use availableCapabilities.currentOnline for current online users, real-time users, active now, active pages, and last 30 minutes activity; its canonical tool is tracemind.recent_online and it is not replaced by tracemind.summary.'));
       assert.ok(guidance.structuredContent.workflow.includes('Use availableCapabilities.projectHealth for product health, today health, daily health, delivery health, trend changes, attention items, and change verification; its canonical tool is tracemind.project_health and it is not replaced by tracemind.summary or tracemind.query_events.'));
+      assert.ok(guidance.structuredContent.workflow.includes('Use tracemind.query_delivery_diagnostics for privacy-safe hourly source/platform, reason class, HTTP status class, queue depth, and recovery-duration drilldown within the 7-day delivery-detail window; do not expose raw errors, request/response bodies, URLs, logs, or user content.'));
       assert.ok(guidance.structuredContent.workflow.includes('For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.'));
       assert.ok(guidance.structuredContent.workflow.includes('When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.'));
@@ -2792,7 +2810,7 @@ describe('TraceMind', function () {
       assert.ok(guidance.structuredContent.workflow.includes('If local TraceMind Skill or AGENTS rules may be stale, call tracemind.check_agent_setup with the local file content before editing instrumentation or SDK setup.'));
       assert.ok(guidance.structuredContent.workflow.includes('If setup succeeds but no data appears, check platform loading and network restrictions such as Web CSP, iOS/macOS ATS, Android network security, React Native native linking, Hybrid WebView bridge/storage rules, Mini Program request domain allowlists, Browser Extension host permissions/CSP/service worker context, and server egress/proxy/TLS policy.'));
       assert.ok(guidance.structuredContent.workflow.some((item) => item.includes('Respect data retention windows')));
-      assert.ok(guidance.structuredContent.workflow.includes('If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again.'));
+      assert.ok(guidance.structuredContent.workflow.includes('If reporting tools such as tracemind.project_health, tracemind.query_delivery_diagnostics, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again.'));
       assert.ok(guidance.structuredContent.workflow.includes('Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit; use the documented fallback source and mark the data gap until discovery is repaired.'));
       assert.ok(guidance.structuredContent.workflow.includes('When the developer reports a product issue or idea, ask whether they want to submit feedback unless they explicitly asked you to submit it.'));
       assert.ok(guidance.structuredContent.workflow.includes('If the developer asks whether you can directly feedback to TraceMind, look for and use tracemind.submit_feedback instead of concluding from a partial active tool list that no feedback tool exists.'));
@@ -2933,7 +2951,7 @@ describe('TraceMind', function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
       const currentRules = `---
-version: 2026.06.18.1
+version: 2026.07.19.1
 ---
 TraceMind Project Binding
 Project ID: project-agent-setup-check
@@ -2948,7 +2966,8 @@ For server_node, server_python, and server_http setup, run returned preDeployChe
 Use the returned public projectKey only for capture writes; never use an MCP token, Bearer token, or TraceMind internal product usage dogfood variables as the server capture key.
 When project_health returns captureScriptFindings, call tracemind.capture_setup({ platform: "web" }), replace fixed or self-hosted Web scripts with the returned stable captureScriptUrl snippet, check CDN/service worker/WebView caches, verify window.TraceMind.status().scriptReleaseId, then re-check project_health.
 Treat tracemind.summary totals as sample-derived according to summarySample; do not use summary.totalEvents, topActions, or dailyActiveUsers as full-day totals.
-If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit.`;
+Use tracemind.query_delivery_diagnostics for privacy-safe delivery drilldown within 7 days; return only hourly source/platform, reason class, HTTP status class, queue depth, and recovery duration, never raw errors or request/response bodies.
+If reporting tools such as tracemind.project_health, tracemind.query_delivery_diagnostics, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit.`;
 
       const empty = await callMcpTool(project, 'tracemind.check_agent_setup', {});
       assert.strictEqual(empty.structuredContent.ok, true);
@@ -2959,14 +2978,14 @@ If reporting tools such as tracemind.project_health, tracemind.recent_online, tr
       const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules,
         agentInstructionContent: currentRules,
-        manifestContent: JSON.stringify({ guidanceVersion: '2026.06.18.1' }),
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.07.19.1' }),
       });
       assert.strictEqual(current.structuredContent.status, 'current');
       assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
 
       const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('version: 2026.06.18.1', 'version: 2026.05.17.7'),
+        skillContent: currentRules.replace('version: 2026.07.19.1', 'version: 2026.05.17.7'),
         agentInstructionContent: currentRules,
       });
       assert.strictEqual(outdated.structuredContent.status, 'outdated');
@@ -3003,11 +3022,18 @@ If reporting tools such as tracemind.project_health, tracemind.recent_online, tr
       assert.ok(missingWebScriptUpdate.structuredContent.findings.some((finding) => finding.code === 'missing_web_script_update_guidance'));
 
       const missingToolDiscoveryRecovery = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit.', 'If tools are missing, use another query.'),
+        skillContent: currentRules.replace('If reporting tools such as tracemind.project_health, tracemind.query_delivery_diagnostics, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again. Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit.', 'If tools are missing, use another query.'),
       });
       assert.strictEqual(missingToolDiscoveryRecovery.structuredContent.status, 'incomplete');
       assert.ok(missingToolDiscoveryRecovery.structuredContent.findings.some((finding) => finding.code === 'missing_mcp_tool_discovery_recovery_guidance'));
       assert.ok(missingToolDiscoveryRecovery.structuredContent.recommendedActions.some((action) => action.includes('tool discovery recovery')));
+
+      const missingDeliveryDiagnosticsGuidance = await callMcpTool(project, 'tracemind.check_agent_setup', {
+        skillContent: currentRules.replace('Use tracemind.query_delivery_diagnostics for privacy-safe delivery drilldown within 7 days; return only hourly source/platform, reason class, HTTP status class, queue depth, and recovery duration, never raw errors or request/response bodies.', 'Use project health for delivery.'),
+      });
+      assert.strictEqual(missingDeliveryDiagnosticsGuidance.structuredContent.status, 'incomplete');
+      assert.ok(missingDeliveryDiagnosticsGuidance.structuredContent.findings.some((finding) => finding.code === 'missing_delivery_diagnostics_guidance'));
+      assert.ok(missingDeliveryDiagnosticsGuidance.structuredContent.recommendedActions.some((action) => action.includes('query_delivery_diagnostics')));
 
       const missingSummarySampleGuidance = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules.replace('Treat tracemind.summary totals as sample-derived according to summarySample; do not use summary.totalEvents, topActions, or dailyActiveUsers as full-day totals.', 'Use summary for totals.'),
@@ -3161,7 +3187,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
       assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.06.18.1');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.07.19.1');
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 10);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
@@ -3203,6 +3229,209 @@ projectKey: tm_proj_sensitive`,
       assert.ok(!JSON.stringify(structured).includes('activeActorKeys'));
       assert.ok(!JSON.stringify(structured).includes('newActorKeys'));
       assert.ok(!JSON.stringify(structured).includes('firstSeenActorKeys'));
+    });
+
+    it('returns privacy-safe aggregated delivery diagnostics through MCP', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const now = new Date();
+      const projectId = `project-mcp-delivery-diagnostics-${Date.now()}`;
+      const otherProjectId = `${projectId}-other`;
+      const project = { _id: projectId, name: 'MCP Delivery Diagnostics Project' };
+      const createdAt = new Date(now.getTime() - 2 * 60 * 1000);
+
+      await CaptureDeliveryReports.removeAsync({ projectId: { $in: [projectId, otherProjectId] } });
+      await CaptureDeliveryReports.insertAsync({
+        projectId,
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        platform: 'web',
+        sessionId: 'tm_sess_delivery_should_not_leak',
+        deviceId: 'tm_dev_delivery_should_not_leak',
+        batchId: 'tm_batch_delivery_should_not_leak',
+        lastError: 'Failed to fetch https://secret.example/path?token=hidden',
+        retryCount: 2,
+        droppedOldest: 0,
+        droppedStorage: 0,
+        maxQueueDepth: 8,
+        lastFailedFlushAt: new Date(createdAt.getTime() - 60 * 1000),
+        createdAt,
+      });
+      await CaptureDeliveryReports.insertAsync({
+        projectId,
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        lastError: 'TraceMind capture failed with HTTP 503',
+        retryCount: 1,
+        droppedOldest: 0,
+        droppedStorage: 0,
+        maxQueueDepth: 5,
+        lastFailedFlushAt: new Date(createdAt.getTime() - 30 * 1000),
+        createdAt: new Date(createdAt.getTime() + 1000),
+      });
+      await CaptureDeliveryReports.insertAsync({
+        projectId,
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        lastError: 'storage_quota',
+        retryCount: 0,
+        droppedOldest: 0,
+        droppedStorage: 1,
+        maxQueueDepth: 4,
+        createdAt: new Date(createdAt.getTime() + 2000),
+      });
+      await CaptureDeliveryReports.insertAsync({
+        projectId: otherProjectId,
+        sourceType: 'web',
+        sourceKey: 'other.example.com',
+        lastError: 'HTTP 500 sibling should not leak',
+        retryCount: 99,
+        maxQueueDepth: 99,
+        createdAt,
+      });
+
+      const result = await callMcpTool(project, 'tracemind.query_delivery_diagnostics', {
+        startAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+        endAt: now.toISOString(),
+      });
+      const structured = result.structuredContent;
+      const serialized = JSON.stringify(structured);
+
+      assert.strictEqual(structured.ok, true);
+      assert.strictEqual(structured.project._id, projectId);
+      assert.strictEqual(structured.window.retentionDays, 7);
+      assert.strictEqual(structured.window.bucket, 'hour');
+      assert.strictEqual(structured.summary.diagnosticReportCount, 3);
+      assert.strictEqual(structured.summary.retryCount, 3);
+      assert.strictEqual(structured.summary.droppedStorage, 1);
+      assert.strictEqual(structured.summary.maxQueueDepth, 8);
+      assert.deepStrictEqual(structured.summary.recoveryDurationMs, {
+        sampleCount: 2,
+        min: 31000,
+        average: 45500,
+        max: 60000,
+      });
+      assert.strictEqual(structured.buckets.length, 3);
+      assert.ok(structured.buckets.some((bucket) => (
+        bucket.source.platform === 'web'
+        && bucket.source.sourceType === 'web'
+        && bucket.source.sourceKey === 'app.example.com'
+        && bucket.reasonClass === 'network'
+        && bucket.httpStatusClass === 'none'
+      )));
+      assert.ok(structured.buckets.some((bucket) => (
+        bucket.reasonClass === 'http'
+        && bucket.httpStatusClass === '5xx'
+      )));
+      assert.ok(structured.buckets.some((bucket) => bucket.reasonClass === 'storage'));
+      assert.ok(!serialized.includes('lastError'));
+      assert.ok(!serialized.includes('Failed to fetch'));
+      assert.ok(!serialized.includes('secret.example'));
+      assert.ok(!serialized.includes('sessionId'));
+      assert.ok(!serialized.includes('deviceId'));
+      assert.ok(!serialized.includes('batchId'));
+      assert.ok(!serialized.includes('other.example.com'));
+
+      await CaptureDeliveryReports.removeAsync({ projectId: { $in: [projectId, otherProjectId] } });
+    });
+
+    it('applies the platform filter before limiting delivery diagnostics results', async function () {
+      this.timeout(15000);
+      const { callMcpTool } = await import('../server/capture_routes');
+      const now = new Date();
+      const projectId = `project-mcp-delivery-platform-limit-${Date.now()}`;
+      const project = { _id: projectId, name: 'MCP Delivery Platform Limit Project' };
+      const requestedReportCreatedAt = new Date(now.getTime() - 10 * 60 * 1000);
+      const newerReportCreatedAt = new Date(now.getTime() - 5 * 60 * 1000);
+
+      await CaptureDeliveryReports.rawCollection().insertMany([
+        {
+          projectId,
+          sourceType: 'web',
+          sourceKey: 'app.example.com',
+          lastError: 'Failed to fetch',
+          retryCount: 1,
+          maxQueueDepth: 3,
+          createdAt: requestedReportCreatedAt,
+        },
+        ...Array.from({ length: 5000 }, (_, index) => ({
+          projectId,
+          sourceType: 'android',
+          sourceKey: 'com.example.app',
+          platform: 'android',
+          lastError: 'Failed to fetch',
+          retryCount: 1,
+          maxQueueDepth: 2,
+          createdAt: new Date(newerReportCreatedAt.getTime() + index),
+        })),
+      ]);
+
+      try {
+        const result = await callMcpTool(project, 'tracemind.query_delivery_diagnostics', {
+          startAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+          endAt: now.toISOString(),
+          platform: 'web',
+        });
+        const structured = result.structuredContent;
+
+        assert.strictEqual(structured.summary.diagnosticReportCount, 1);
+        assert.strictEqual(structured.summary.retryCount, 1);
+        assert.strictEqual(structured.dataLimit.matchedReportCount, 1);
+        assert.strictEqual(structured.dataLimit.analyzedReportCount, 1);
+        assert.strictEqual(structured.dataLimit.truncated, false);
+        assert.strictEqual(structured.buckets[0].source.platform, 'web');
+      } finally {
+        await CaptureDeliveryReports.removeAsync({ projectId });
+      }
+    });
+
+    it('clamps delivery diagnostics to retention and ignores implausible recovery durations', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const now = new Date();
+      const projectId = `project-mcp-delivery-retention-${Date.now()}`;
+      const project = { _id: projectId, name: 'MCP Delivery Retention Project' };
+
+      await CaptureDeliveryReports.insertAsync({
+        projectId,
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        platform: 'web',
+        lastError: 'Failed to fetch',
+        retryCount: 1,
+        maxQueueDepth: 2,
+        lastFailedFlushAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
+        createdAt: new Date(now.getTime() - 5 * 60 * 1000),
+      });
+      await CaptureDeliveryReports.insertAsync({
+        projectId,
+        sourceType: 'web',
+        sourceKey: 'expired.example.com',
+        platform: 'web',
+        lastError: 'HTTP 503',
+        retryCount: 1,
+        maxQueueDepth: 9,
+        createdAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
+      });
+
+      try {
+        const result = await callMcpTool(project, 'tracemind.query_delivery_diagnostics', {
+          startAt: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+          endAt: now.toISOString(),
+        });
+        const structured = result.structuredContent;
+
+        assert.strictEqual(structured.window.truncatedByRetention, true);
+        assert.strictEqual(structured.window.outsideRetention, false);
+        assert.strictEqual(structured.summary.diagnosticReportCount, 1);
+        assert.deepStrictEqual(structured.summary.recoveryDurationMs, {
+          sampleCount: 0,
+          min: null,
+          average: null,
+          max: null,
+        });
+        assert.ok(!JSON.stringify(structured).includes('expired.example.com'));
+      } finally {
+        await CaptureDeliveryReports.removeAsync({ projectId });
+      }
     });
 
     it('returns recent online activity through MCP without internal identifiers', async function () {
@@ -3737,7 +3966,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
       assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.06.18.1');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.07.19.1');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
       assert.strictEqual(setup.structuredContent.webCaptureScript.latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.ok(setup.structuredContent.webCaptureScript.upgradePrompt.includes('window.TraceMind.status()'));
@@ -8750,6 +8979,7 @@ projectKey: tm_proj_sensitive`,
           coalescedPresence: 0,
           maxQueueDepth: 1,
           lastError: 'network_error',
+          lastFailedFlushAt: '2026-05-08T01:00:00.000Z',
         },
         events: [
           { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
@@ -8764,6 +8994,8 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(reports.length, 1);
       assert.strictEqual(reports[0].aggregateStored, true);
       assert.strictEqual(reports[0].lastError, 'network_error');
+      assert.strictEqual(reports[0].platform, 'web');
+      assert.strictEqual(reports[0].lastFailedFlushAt.toISOString(), '2026-05-08T01:00:00.000Z');
       assert.strictEqual(rollups.length, 1);
       assert.strictEqual(rollups[0].failedFlushes, 1);
       assert.ok(rollups[0].lastFailedFlushAt instanceof Date);

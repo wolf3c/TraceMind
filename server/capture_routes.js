@@ -133,11 +133,23 @@ const AGENT_SETUP_SAFE_UPDATE_INSTRUCTIONS = [
   'Keep MCP URLs, Bearer tokens, mcpToken values, projectKey values, and secrets out of committed instruction files.',
   'After updating, call tracemind.check_agent_setup again and report the new status.',
 ];
-const MCP_TOOL_DISCOVERY_RECOVERY_GUIDANCE = 'If reporting tools such as tracemind.project_health, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again.';
+const MCP_TOOL_DISCOVERY_RECOVERY_GUIDANCE = 'If reporting tools such as tracemind.project_health, tracemind.query_delivery_diagnostics, tracemind.recent_online, tracemind.query_raw_behaviors, or tracemind.submit_feedback are missing from the current active tool list, read MCP tools/list or retry discovery with the exact tool name before concluding they are unavailable; if they are still missing, refresh the connector/session/MCP config/token and call tracemind.project_info again.';
 const MCP_TOOL_DISCOVERY_FALLBACK_GUIDANCE = 'Do not compensate for missing current online or project health capabilities by increasing tracemind.summary.limit; use the documented fallback source and mark the data gap until discovery is repaired.';
 const MCP_TOOL_DISCOVERY_RECOVERY_STEP = 'MCP tools/list or exact tool discovery if reporting tools are missing';
 const SUMMARY_DEFAULT_LIMIT = 200;
 const SUMMARY_MAX_LIMIT = 500;
+const DELIVERY_DIAGNOSTICS_DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DELIVERY_DIAGNOSTICS_BUCKET_MS = 60 * 60 * 1000;
+const DELIVERY_DIAGNOSTICS_MAX_REPORTS = 5000;
+const DELIVERY_DIAGNOSTICS_PLATFORMS = new Set([
+  'web',
+  'ios',
+  'macos',
+  'android',
+  'mini_program',
+  'browser_extension',
+  'server',
+]);
 const SERVER_PROJECT_KEY_ENV_VAR = 'TRACEMIND_PROJECT_KEY';
 const SERVER_DEFAULT_SOURCE_KEY = 'billing-api';
 const FORBIDDEN_ANALYTICS_KEYS = [
@@ -355,6 +367,12 @@ function availableCapabilitiesResult() {
       canonicalUse: 'product health, today health, daily health, delivery health, trend changes, attention items, and change verification',
       notReplacedBy: ['tracemind.summary', 'tracemind.query_events'],
     },
+    deliveryDiagnostics: {
+      tool: 'tracemind.query_delivery_diagnostics',
+      source: 'tracemind_capture_delivery_reports',
+      canonicalUse: 'privacy-safe recent delivery failure, retry, drop, queue-depth, and recovery-duration drilldown',
+      notReplacedBy: ['tracemind.summary', 'tracemind.query_events', 'tracemind.query_raw_behaviors'],
+    },
   };
 }
 
@@ -440,6 +458,21 @@ export function mcpTools(project) {
             type: 'string',
             description: 'YYYY-MM-DD，自然日报告日期；省略时使用今天。',
           },
+        },
+      },
+    },
+    {
+      name: 'tracemind.query_delivery_diagnostics',
+      title: projectScopedTitle('TraceMind Query Delivery Diagnostics', project),
+      description: projectScopedDescription('查询最近 7 天失败、重试或丢弃上报的脱敏聚合；按小时、source/platform、reason 类别和 HTTP 状态类别返回诊断报告数、重试/丢弃计数、队列峰值和可用的恢复耗时，不返回原始错误、请求/响应体、URL、日志、用户内容或 session/device/batch 标识。', project),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          startAt: { type: 'string', description: 'ISO 时间，查询起点；默认最近 24 小时，最多保留最近 7 天。' },
+          endAt: { type: 'string', description: 'ISO 时间，查询终点；默认当前时间。' },
+          platform: { type: 'string', description: '可选平台过滤，例如 web、ios、android、server。' },
+          sourceType: { type: 'string', description: '可选来源类型过滤，例如 web、server_app、mcp_server。' },
+          sourceKey: { type: 'string', description: '可选稳定来源 key 过滤，例如 hostname、bundle id 或服务名。' },
         },
       },
     },
@@ -1120,6 +1153,267 @@ async function queryProjectRawBehaviors(project, args = {}) {
   ).fetchAsync();
 }
 
+function deliveryDiagnosticsRetentionDays() {
+  return DATA_RETENTION_POLICY.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports')?.retentionDays || 7;
+}
+
+function deliveryDiagnosticsDate(value, fieldName, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Meteor.Error('invalid-delivery-diagnostics-date', `${fieldName} must be a valid ISO timestamp.`);
+  }
+  return date;
+}
+
+function deliveryDiagnosticsWindow(args = {}, now = new Date()) {
+  const retentionDays = deliveryDiagnosticsRetentionDays();
+  const retentionStartAt = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+  const requestedEndAt = deliveryDiagnosticsDate(args.endAt, 'endAt', now);
+  const endAt = requestedEndAt > now ? now : requestedEndAt;
+  const requestedStartAt = deliveryDiagnosticsDate(
+    args.startAt,
+    'startAt',
+    new Date(endAt.getTime() - DELIVERY_DIAGNOSTICS_DEFAULT_WINDOW_MS),
+  );
+  const outsideRetention = endAt <= retentionStartAt;
+  const startAt = outsideRetention
+    ? endAt
+    : new Date(Math.max(requestedStartAt.getTime(), retentionStartAt.getTime()));
+
+  if (!outsideRetention && startAt >= endAt) {
+    throw new Meteor.Error('invalid-delivery-diagnostics-window', 'startAt must be earlier than endAt.');
+  }
+
+  return {
+    startAt,
+    endAt,
+    retentionStartAt,
+    retentionDays,
+    bucket: 'hour',
+    truncatedByRetention: requestedStartAt < retentionStartAt,
+    outsideRetention,
+  };
+}
+
+function deliveryDiagnosticsPlatform(report = {}) {
+  const explicit = safeString(report.platform, 40).toLowerCase();
+  if (DELIVERY_DIAGNOSTICS_PLATFORMS.has(explicit)) return explicit;
+  const sourceType = safeString(report.sourceType, 80, 'unknown').toLowerCase();
+  if (['web', 'ios', 'macos', 'android', 'mini_program', 'browser_extension'].includes(sourceType)) {
+    return sourceType;
+  }
+  if (['server_app', 'mcp_server', 'agent_skill', 'server'].includes(sourceType)) return 'server';
+  return 'unknown';
+}
+
+function deliveryDiagnosticsPlatformQuery(platform) {
+  const legacySourceTypes = platform === 'server'
+    ? ['server_app', 'mcp_server', 'agent_skill', 'server']
+    : [platform];
+  return [
+    { platform },
+    { platform: { $exists: false }, sourceType: { $in: legacySourceTypes } },
+  ];
+}
+
+function deliveryDiagnosticsHttpStatusClass(lastError) {
+  const match = String(lastError || '').match(/(?:http(?:\s+status)?|status)\D{0,12}([1-5]\d{2})/i);
+  if (!match) return 'none';
+  return `${match[1][0]}xx`;
+}
+
+function deliveryDiagnosticsReasonClass(report = {}) {
+  const lastError = String(report.lastError || '').toLowerCase();
+  if (Number(report.droppedStorage) > 0 || /(storage|quota|queue_load)/.test(lastError)) return 'storage';
+  if (Number(report.droppedOldest) > 0) return 'queue_overflow';
+  if (deliveryDiagnosticsHttpStatusClass(lastError) !== 'none') return 'http';
+  if (/(dns|enotfound|eai_again|name not resolved)/.test(lastError)) return 'dns';
+  if (/(tls|ssl|certificate|cert_|handshake|unable to verify)/.test(lastError)) return 'tls';
+  if (/(timeout|timed out|aborterror|aborted)/.test(lastError)) return 'timeout';
+  if (/(network|failed to fetch|load failed|connection|econnreset|econnrefused|socket)/.test(lastError)) return 'network';
+  if (Number(report.retryCount) > 0) return 'retry';
+  return 'unknown';
+}
+
+function deliveryDiagnosticsRecoveryDuration(report, reasonClass) {
+  if (!['http', 'dns', 'tls', 'timeout', 'network'].includes(reasonClass)) return null;
+  const failedAt = safeDate(report.lastFailedFlushAt);
+  const recoveredAt = safeDate(report.createdAt);
+  if (!failedAt || !recoveredAt || failedAt > recoveredAt) return null;
+  const duration = recoveredAt.getTime() - failedAt.getTime();
+  const maxDuration = deliveryDiagnosticsRetentionDays() * 24 * 60 * 60 * 1000;
+  return duration <= maxDuration ? duration : null;
+}
+
+function emptyRecoveryDurationSummary() {
+  return {
+    sampleCount: 0,
+    total: 0,
+    min: null,
+    max: null,
+  };
+}
+
+function addRecoveryDuration(summary, duration) {
+  if (!Number.isFinite(duration) || duration < 0) return;
+  summary.sampleCount += 1;
+  summary.total += duration;
+  summary.min = summary.min === null ? duration : Math.min(summary.min, duration);
+  summary.max = summary.max === null ? duration : Math.max(summary.max, duration);
+}
+
+function publicRecoveryDurationSummary(summary) {
+  return {
+    sampleCount: summary.sampleCount,
+    min: summary.min,
+    average: summary.sampleCount ? Math.round(summary.total / summary.sampleCount) : null,
+    max: summary.max,
+  };
+}
+
+function deliveryDiagnosticsBucketStart(createdAt) {
+  return new Date(Math.floor(createdAt.getTime() / DELIVERY_DIAGNOSTICS_BUCKET_MS) * DELIVERY_DIAGNOSTICS_BUCKET_MS);
+}
+
+function summarizeDeliveryDiagnostics(reports = []) {
+  const groups = new Map();
+  const summary = {
+    diagnosticReportCount: 0,
+    retryCount: 0,
+    droppedOldest: 0,
+    droppedStorage: 0,
+    maxQueueDepth: 0,
+    recoveryDurationMs: emptyRecoveryDurationSummary(),
+  };
+
+  reports.forEach((report) => {
+    const createdAt = safeDate(report.createdAt);
+    if (!createdAt) return;
+    const platform = deliveryDiagnosticsPlatform(report);
+    const sourceType = safeString(report.sourceType, 80, 'unknown');
+    const sourceKey = safeString(report.sourceKey, 200, 'unknown');
+    const reasonClass = deliveryDiagnosticsReasonClass(report);
+    const httpStatusClass = deliveryDiagnosticsHttpStatusClass(report.lastError);
+    const bucketStartAt = deliveryDiagnosticsBucketStart(createdAt);
+    const bucketEndAt = new Date(bucketStartAt.getTime() + DELIVERY_DIAGNOSTICS_BUCKET_MS);
+    const key = JSON.stringify([
+      bucketStartAt.toISOString(),
+      platform,
+      sourceType,
+      sourceKey,
+      reasonClass,
+      httpStatusClass,
+    ]);
+    const group = groups.get(key) || {
+      startAt: bucketStartAt,
+      endAt: bucketEndAt,
+      source: { platform, sourceType, sourceKey },
+      reasonClass,
+      httpStatusClass,
+      diagnosticReportCount: 0,
+      retryCount: 0,
+      droppedOldest: 0,
+      droppedStorage: 0,
+      maxQueueDepth: 0,
+      recoveryDurationMs: emptyRecoveryDurationSummary(),
+    };
+    const recoveryDuration = deliveryDiagnosticsRecoveryDuration(report, reasonClass);
+
+    group.diagnosticReportCount += 1;
+    group.retryCount += safeCount(report.retryCount);
+    group.droppedOldest += safeCount(report.droppedOldest);
+    group.droppedStorage += safeCount(report.droppedStorage);
+    group.maxQueueDepth = Math.max(group.maxQueueDepth, safeCount(report.maxQueueDepth));
+    addRecoveryDuration(group.recoveryDurationMs, recoveryDuration);
+    groups.set(key, group);
+
+    summary.diagnosticReportCount += 1;
+    summary.retryCount += safeCount(report.retryCount);
+    summary.droppedOldest += safeCount(report.droppedOldest);
+    summary.droppedStorage += safeCount(report.droppedStorage);
+    summary.maxQueueDepth = Math.max(summary.maxQueueDepth, safeCount(report.maxQueueDepth));
+    addRecoveryDuration(summary.recoveryDurationMs, recoveryDuration);
+  });
+
+  return {
+    summary: {
+      ...summary,
+      recoveryDurationMs: publicRecoveryDurationSummary(summary.recoveryDurationMs),
+    },
+    buckets: [...groups.values()]
+      .map((group) => ({
+        ...group,
+        recoveryDurationMs: publicRecoveryDurationSummary(group.recoveryDurationMs),
+      }))
+      .sort((left, right) => (
+        left.startAt - right.startAt
+        || left.source.platform.localeCompare(right.source.platform)
+        || left.source.sourceType.localeCompare(right.source.sourceType)
+        || left.source.sourceKey.localeCompare(right.source.sourceKey)
+        || left.reasonClass.localeCompare(right.reasonClass)
+        || left.httpStatusClass.localeCompare(right.httpStatusClass)
+      )),
+  };
+}
+
+async function readDeliveryDiagnostics(project, args = {}) {
+  const now = new Date();
+  const window = deliveryDiagnosticsWindow(args, now);
+  const query = {
+    projectId: project._id,
+    createdAt: { $gte: window.startAt, $lt: window.endAt },
+  };
+  const sourceType = safeString(args.sourceType, 80).trim();
+  const sourceKey = safeString(args.sourceKey, 200).trim();
+  const requestedPlatform = safeString(args.platform, 40).toLowerCase().trim();
+  if (sourceType) query.sourceType = sourceType;
+  if (sourceKey) query.sourceKey = sourceKey;
+  if (requestedPlatform && !DELIVERY_DIAGNOSTICS_PLATFORMS.has(requestedPlatform)) {
+    throw new Meteor.Error('invalid-delivery-diagnostics-platform', 'platform is not supported.');
+  }
+  if (requestedPlatform) query.$or = deliveryDiagnosticsPlatformQuery(requestedPlatform);
+
+  const cursor = CaptureDeliveryReports.find(
+    query,
+    {
+      sort: { createdAt: -1 },
+      limit: DELIVERY_DIAGNOSTICS_MAX_REPORTS,
+      fields: {
+        platform: 1,
+        sourceType: 1,
+        sourceKey: 1,
+        retryCount: 1,
+        droppedOldest: 1,
+        droppedStorage: 1,
+        maxQueueDepth: 1,
+        lastError: 1,
+        lastFailedFlushAt: 1,
+        createdAt: 1,
+      },
+    },
+  );
+  const [matchedReportCount, reports] = await Promise.all([
+    CaptureDeliveryReports.find(query).countAsync(),
+    cursor.fetchAsync(),
+  ]);
+  const diagnostics = summarizeDeliveryDiagnostics(reports);
+
+  return {
+    ok: true,
+    project: { _id: project._id, name: project.name },
+    window,
+    summary: diagnostics.summary,
+    buckets: diagnostics.buckets,
+    dataLimit: {
+      matchedReportCount,
+      analyzedReportCount: reports.length,
+      maxReports: DELIVERY_DIAGNOSTICS_MAX_REPORTS,
+      truncated: matchedReportCount > reports.length,
+    },
+  };
+}
+
 async function loadProjectPresenceSessions(project, limit = 500) {
   return PresenceSessions.find(
     { projectId: project._id },
@@ -1262,7 +1556,7 @@ function guidanceResult(extra = {}) {
       {
         name: 'Anomaly or drop investigation',
         prompt: 'Investigate why active users, sessions, events, conversion intent, or upload health dropped for a selected day.',
-        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.query_events for affected window', 'tracemind.query_raw_behaviors only when semantic evidence is insufficient'],
+        steps: ['tracemind.project_info', 'tracemind.project_health', 'tracemind.query_delivery_diagnostics for recent delivery retry/drop/root-cause drilldown', 'tracemind.query_events for affected window', 'tracemind.query_raw_behaviors only when semantic evidence is insufficient'],
       },
     ],
     workflow: [
@@ -1270,6 +1564,7 @@ function guidanceResult(extra = {}) {
       'If multiple TraceMind MCP servers exist or the project is unclear, call tracemind.project_info first.',
       'Use availableCapabilities.currentOnline for current online users, real-time users, active now, active pages, and last 30 minutes activity; its canonical tool is tracemind.recent_online and it is not replaced by tracemind.summary.',
       'Use availableCapabilities.projectHealth for product health, today health, daily health, delivery health, trend changes, attention items, and change verification; its canonical tool is tracemind.project_health and it is not replaced by tracemind.summary or tracemind.query_events.',
+      'Use tracemind.query_delivery_diagnostics for privacy-safe hourly source/platform, reason class, HTTP status class, queue depth, and recovery-duration drilldown within the 7-day delivery-detail window; do not expose raw errors, request/response bodies, URLs, logs, or user content.',
       'For operations review, use Dashboard-aligned tracemind.project_health and tracemind.recent_online before instrumentation setup.',
       'Only call tracemind.capture_setup when installing, upgrading, or changing TraceMind capture code.',
       'For product behavior analysis, use tracemind.project_health for daily health and tracemind.recent_online for real-time online status, then use tracemind.summary and tracemind.query_events for evidence drilldown.',
@@ -1503,6 +1798,14 @@ function checkAgentSetupResult(args = {}) {
       ],
     },
     {
+      code: 'missing_delivery_diagnostics_guidance',
+      message: 'Local rules should use tracemind.query_delivery_diagnostics for privacy-safe recent delivery drilldown and preserve its 7-day and no-raw-content boundaries.',
+      patterns: [
+        /query_delivery_diagnostics[\s\S]{0,360}(7 days|7-day|7 天)[\s\S]{0,420}(raw errors|raw error|原始错误)[\s\S]{0,420}(request\/response bodies|request or response bodies|请求\/响应体)/i,
+        /query_delivery_diagnostics[\s\S]{0,360}(privacy-safe|脱敏|隐私安全)[\s\S]{0,420}(7 days|7-day|7 天)[\s\S]{0,420}(raw errors|raw error|原始错误)/i,
+      ],
+    },
+    {
       code: 'missing_summary_sample_guidance',
       message: 'Local rules should tell agents that tracemind.summary totals are sample-derived and should be interpreted through summarySample.',
       patterns: [
@@ -1567,6 +1870,9 @@ function checkAgentSetupResult(args = {}) {
   }
   if (findingCodes.has('missing_mcp_tool_discovery_recovery_guidance')) {
     recommendedActions.push('Add MCP tool discovery recovery guidance for missing reporting tools including project_health and recent_online: read tools/list or retry exact tool discovery, refresh connector/session/MCP config/token if needed, and do not increase summary.limit as a substitute for current online or project health.');
+  }
+  if (findingCodes.has('missing_delivery_diagnostics_guidance')) {
+    recommendedActions.push('Add tracemind.query_delivery_diagnostics guidance for privacy-safe 7-day hourly source/platform, reason, HTTP status, queue-depth, and recovery-duration drilldown without raw errors, bodies, URLs, logs, or user content.');
   }
   if (findingCodes.has('missing_summary_sample_guidance')) {
     recommendedActions.push('Add summarySample guidance: tracemind.summary totals are sample-derived and full-day metrics should come from tracemind.project_health.');
@@ -4210,11 +4516,14 @@ function deliveryReportDocument(project, payload = {}, req = {}, endpoint, resul
   const stats = safeObject(payload.deliveryStats, 4096);
   if (Object.keys(stats).length === 0) return null;
 
-  const source = normalizeCaptureSource(deliverySourcePayload(payload), req.headers || {});
+  const sourcePayload = deliverySourcePayload(payload);
+  const source = normalizeCaptureSource(sourcePayload, req.headers || {});
+  const lastFailedFlushAt = safeDate(stats.lastFailedFlushAt);
   return {
     projectId: project._id,
     projectKey: project.projectKey,
     endpoint: safeString(endpoint, 40),
+    platform: deliveryDiagnosticsPlatform({ platform: sourcePayload.platform, sourceType: source.sourceType }),
     sourceType: source.sourceType,
     sourceKey: source.sourceKey,
     sourceLabel: source.sourceLabel,
@@ -4233,6 +4542,7 @@ function deliveryReportDocument(project, payload = {}, req = {}, endpoint, resul
     coalescedPresence: safeCount(stats.coalescedPresence),
     maxQueueDepth: safeCount(stats.maxQueueDepth),
     lastError: safeString(stats.lastError, 160),
+    ...(lastFailedFlushAt ? { lastFailedFlushAt } : {}),
     createdAt: new Date(),
   };
 }
@@ -4780,6 +5090,14 @@ async function callMcpToolResult(project, name, args = {}, options = {}) {
     );
   }
 
+  if (name === 'tracemind.query_delivery_diagnostics') {
+    const diagnostics = await readDeliveryDiagnostics(project, args);
+    return textResult(
+      `TraceMind 找到 ${diagnostics.summary.diagnosticReportCount} 份脱敏上报诊断，聚合为 ${diagnostics.buckets.length} 个小时/source/reason 组。`,
+      diagnostics,
+    );
+  }
+
   if (name === 'tracemind.recent_online') {
     const recentOnline = await readRecentOnline(project);
     return textResult(
@@ -5324,7 +5642,8 @@ export function clientScript(host) {
       retryCount: retryCount,
       coalescedPresence: deliveryStats.coalescedPresence,
       maxQueueDepth: deliveryStats.maxQueueDepth,
-      lastError: deliveryStats.lastError
+      lastError: deliveryStats.lastError,
+      lastFailedFlushAt: deliveryStats.lastFailedFlushAt
     };
   }
 

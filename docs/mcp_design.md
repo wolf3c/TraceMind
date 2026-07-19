@@ -33,6 +33,7 @@ Authorization: Bearer MCP_TOKEN
 
 - `currentOnline`：当前在线用户、实时用户、近 30 分钟活跃页面/地区/高频事件，权威入口是 `tracemind.recent_online`，数据源是 `tracemind_presence_sessions`，不能用 `tracemind.summary` 的样本 DAU 替代。
 - `projectHealth`：今日/日报/小时健康、delivery health、趋势、attention items 和上线前后 change verification，权威入口是 `tracemind.project_health`，数据源是日报/小时健康报告，不能用 `tracemind.summary` 或 `tracemind.query_events` 替代。
+- `deliveryDiagnostics`：最近 7 天失败、重试或丢弃上报的脱敏根因下钻，权威入口是 `tracemind.query_delivery_diagnostics`，数据源是 `tracemind_capture_delivery_reports`，不能用行为事件或原始行为查询替代。
 
 安装到用户项目时，动态 install prompt 会把非敏感绑定信息写入项目级 `AGENTS.md`、`CLAUDE.md` 或 rules 文件：项目显示名、`projectId` 和 expected MCP server name。Agent 写入前必须先确认当前工作目录或仓库就是用户要接入 TraceMind 的目标项目；如果项目级规则里已有不同 Project ID 的 `TraceMind project binding`，必须停止并询问用户是否切换该仓库的 TraceMind 项目，不能直接追加第二个绑定。Agent 看到多个 `tracemind-*` TraceMind MCP server 时，必须先使用 expected server 调用 `tracemind.project_info`，并只在返回的 `projectId` 与项目级规则匹配时继续；不匹配时停止并要求用户配置正确 MCP，不要只凭 server name 猜。
 
@@ -58,7 +59,7 @@ Authorization: Bearer MCP_TOKEN
 
 ## Tool Discovery Recovery
 
-客户 coding agent 的当前 active tool list 可能因为懒加载、缓存或宽泛 discovery 召回限制而只显示部分 TraceMind tools。看到 `tracemind.project_health`、`tracemind.recent_online`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback` 缺失时，agent 不能直接判断服务端不支持这些工具。先用 `project_info.availableCapabilities` 确认当前项目是否声明了 `currentOnline` / `projectHealth` 能力，再读取或发现对应工具。
+客户 coding agent 的当前 active tool list 可能因为懒加载、缓存或宽泛 discovery 召回限制而只显示部分 TraceMind tools。看到 `tracemind.project_health`、`tracemind.query_delivery_diagnostics`、`tracemind.recent_online`、`tracemind.query_raw_behaviors` 或 `tracemind.submit_feedback` 缺失时，agent 不能直接判断服务端不支持这些工具。先用 `project_info.availableCapabilities` 确认当前项目是否声明了 `currentOnline`、`projectHealth` 或 `deliveryDiagnostics` 能力，再读取或发现对应工具。
 
 恢复路径固定为：先读取 MCP `tools/list` 或按精确工具名重新 discovery；如果仍缺失，刷新 connector/session/MCP 配置/token，再调用 `tracemind.project_info` 复核项目绑定。不要通过增大 `tracemind.summary.limit` 来代偿缺失的 current online 或 project health 能力；只能使用已文档化的 fallback 来源并在结论中标注数据缺口。
 
@@ -180,6 +181,12 @@ Output:
       "source": "tracemind_project_daily_reports and tracemind_project_hourly_reports",
       "canonicalUse": "product health, today health, daily health, delivery health, trend changes, attention items, and change verification",
       "notReplacedBy": ["tracemind.summary", "tracemind.query_events"]
+    },
+    "deliveryDiagnostics": {
+      "tool": "tracemind.query_delivery_diagnostics",
+      "source": "tracemind_capture_delivery_reports",
+      "canonicalUse": "privacy-safe recent delivery failure, retry, drop, queue-depth, and recovery-duration drilldown",
+      "notReplacedBy": ["tracemind.summary", "tracemind.query_events", "tracemind.query_raw_behaviors"]
     }
   }
 }
@@ -278,7 +285,7 @@ Output:
         "sourceType": "web",
         "sourceKey": "app.example.com",
         "observedReleaseId": "legacy",
-        "latestReleaseId": "2026.06.01.3",
+        "latestReleaseId": "2026.07.19.1",
         "message": "检测到旧 Web Auto Capture 脚本仍在运行。"
       }
     ]
@@ -307,6 +314,72 @@ Output:
 `health.hourlyComparison` 面向 Dashboard 和 Agent 的结构化解释：它只包含可展示的小时标签、当前窗口值、前一日同小时值和窗口边界，不包含内部 actor/session 去重键。Dashboard 使用它在活跃用户、活跃会话、人均活跃时长和总事件卡片内展示小时折线；Agent 可用同一字段解释下降发生在哪些小时。
 
 `health.captureScriptFindings` 表示 TraceMind 观察到旧 Web Auto Capture 脚本仍在运行并上报。它不证明某个缓存里存在未运行的旧脚本；只有收到缺失或过期 `sourceDetails.scriptReleaseId` 的 Web 上报时才会出现。客户 agent 应调用 `tracemind.capture_setup({ platform: "web" })` 获取最新 snippet、`captureScriptUrl` 和升级 prompt，排查固定 `capture.<hash>.js`、自托管脚本、service worker、CDN/反向代理和 WebView bundle 缓存，部署后用 `window.TraceMind.status().scriptReleaseId` 和再次 `project_health` 验证。
+
+### `tracemind.query_delivery_diagnostics`
+
+查询当前 MCP token 绑定项目最近 7 天的投递失败、重试或丢弃诊断，并只返回脱敏聚合。默认窗口为最近 24 小时；可用 `startAt` / `endAt` 指定 ISO 时间，超出保留窗口的起点会被截断。`platform`、`sourceType` 和 `sourceKey` 在数据库计数与 5000 条上限之前过滤，使 `matchedReportCount`、`analyzedReportCount` 和 `truncated` 始终描述同一筛选集合。结果固定按小时、`platform`、`sourceType`、`sourceKey`、`reasonClass` 和 `httpStatusClass` 分组，并通过 `dataLimit.truncated` 明确是否达到上限。
+
+Input:
+
+```json
+{
+  "startAt": "2026-07-18T14:29:50.000Z",
+  "endAt": "2026-07-18T16:00:00.000Z",
+  "platform": "web",
+  "sourceType": "web",
+  "sourceKey": "app.example.com"
+}
+```
+
+Output:
+
+```json
+{
+  "ok": true,
+  "window": {
+    "bucket": "hour",
+    "retentionDays": 7,
+    "truncatedByRetention": false
+  },
+  "summary": {
+    "diagnosticReportCount": 3,
+    "retryCount": 4,
+    "droppedOldest": 0,
+    "droppedStorage": 0,
+    "maxQueueDepth": 41,
+    "recoveryDurationMs": {
+      "sampleCount": 2,
+      "min": 31000,
+      "average": 45500,
+      "max": 60000
+    }
+  },
+  "buckets": [
+    {
+      "source": {
+        "platform": "web",
+        "sourceType": "web",
+        "sourceKey": "app.example.com"
+      },
+      "reasonClass": "network",
+      "httpStatusClass": "none",
+      "diagnosticReportCount": 2,
+      "retryCount": 4,
+      "maxQueueDepth": 41,
+      "recoveryDurationMs": {
+        "sampleCount": 2,
+        "min": 31000,
+        "average": 45500,
+        "max": 60000
+      }
+    }
+  ]
+}
+```
+
+`reasonClass` 只使用 `storage`、`queue_overflow`、`http`、`dns`、`tls`、`timeout`、`network`、`retry` 和 `unknown`；`httpStatusClass` 只使用 `1xx` 到 `5xx` 或 `none`。实现可在服务端读取受限 `lastError` 以完成分类，但 MCP 输出绝不回显原始错误，也不返回请求体、响应体、URL、日志、用户内容、`sessionId`、`deviceId` 或 `batchId`。
+
+`recoveryDurationMs` 只统计能把安全 `lastFailedFlushAt` 与后续恢复诊断接收时间配对的 transport failure 样本；旧 Web runtime 没有该字段时 `sampleCount` 为 0，不做推算。异常客户端时钟、负值或超过 7 天的样本会被忽略。这个字段从 Web script release `2026.07.19.1` 开始可用，因此上线前后分析必须按实际 runtime release 边界解释。
 
 ### `tracemind.recent_online`
 
@@ -354,6 +427,7 @@ Output:
 Dashboard 是视觉入口，MCP 是同口径的 agent 查询入口，不维护第二套运营解释。客户问“今天怎么样、昨天数据、过去一天表现、线上是否有人、推广效果、哪里下降”时：
 
 - `tracemind.project_health` 对应项目健康看板，返回 `health.current`、`health.trends`、`health.hourlyComparison`、`delivery`、`attentionSummary` 和 `attentionItems`。它覆盖活跃用户、新用户、留存、活跃会话、事件/会话、流量来源、活跃时长、跳出页、总事件、上报健康和日报/小时趋势。
+- `tracemind.query_delivery_diagnostics` 对应最近 7 天的上报异常脱敏下钻，返回小时/source/platform、reason 类别、HTTP 状态类别、队列峰值、重试/丢弃计数和可用恢复耗时，不返回原始诊断内容或用户标识。
 - `tracemind.recent_online` 对应近 30 分钟在线卡片，返回在线用户、5 分钟桶、Top 地区、Top 活跃页面和 Top 高频事件。
 - `tracemind.summary` / `tracemind.query_events` 用于 10 天内的非自然日时间窗、功能路径、事件名、actionKey、targetHash、用户、session、设备和流量来源归因下钻。`summary` 只汇总最近语义事件样本，`summarySample` 会返回默认/实际/最大 limit 和 `totalsAreSampled`；它们提供证据聚合，不替代 Dashboard 日报口径。
 - `tracemind.query_raw_behaviors` 只用于 10 天内复核原始行为明细；上报投递异常诊断明细保留 7 天，成功 flush 只保留小时级上报健康聚合，presence 会话明细和语义事件明细保留 10 天，日/小时健康报告当前长期保留。
@@ -392,12 +466,12 @@ Output:
   "captureSnippet": "<script src=\"https://tracemind-capture.pages.dev/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
   "initSnippet": "<script src=\"https://tracemind-capture.pages.dev/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
   "webCaptureScript": {
-    "latestReleaseId": "2026.06.01.3",
+    "latestReleaseId": "2026.07.19.1",
     "versionSource": "sourceDetails.scriptReleaseId",
     "updateFindingCode": "web_capture_script_update_required",
     "upgradePrompt": "TraceMind 检测到旧 Web Auto Capture 脚本仍在运行。请执行：...",
     "verificationSteps": [
-      "Open the customer app and confirm window.TraceMind.status().scriptReleaseId === \"2026.06.01.3\".",
+      "Open the customer app and confirm window.TraceMind.status().scriptReleaseId === \"2026.07.19.1\".",
       "Trigger a real page load, click, input, or submit event.",
       "Call tracemind.project_health and confirm health.captureScriptFindings is empty or no longer includes the Web source."
     ]
@@ -860,7 +934,7 @@ Input:
 ## 推荐 LLM 查询顺序
 
 1. 调用 `tracemind.project_info` 确认当前 MCP 绑定项目。
-2. 调用 `tracemind.project_health` 获取日报健康、当前报告窗口的对比变化、需关注项和上报健康；需要实时态势时并列调用 `tracemind.recent_online`。
+2. 调用 `tracemind.project_health` 获取日报健康、当前报告窗口的对比变化、需关注项和上报健康；需要实时态势时并列调用 `tracemind.recent_online`；发现上报失败、重试、丢弃或队列异常时调用 `tracemind.query_delivery_diagnostics` 下钻最近 7 天的脱敏聚合。
 3. 调用 `tracemind.summary` 获取相关时间窗口内的样本概览、DAU/设备数线索和 presence 在线时长；读取 `summarySample`，并把 `summary.totalEvents`、`topActions`、`dailyActiveUsers` 标注为样本口径。解释用户意图时优先看 `topIntentActions`，把 `topFieldInteractions` 作为输入框/表单字段交互噪声或弱信号单独说明。
 4. 调用 `tracemind.query_events` 按 `eventName`、`eventType`、`userId`、`path`、`actionKey`、`targetHash` 等维度下钻。
 5. 只有当语义事件含义不够或需要排查 10 天内采集问题时，调用 `tracemind.query_raw_behaviors`；超过明细窗口时继续使用 `project_health`、日报和小时报告。
@@ -869,7 +943,7 @@ Input:
 
 固定产品分析任务：
 
-- 今日健康检查：先读 `project_health`，总结 `attentionItems`、`trends` 和 `delivery`，再用 `summary` 或 `query_events` 解释变化来源。
+- 今日健康检查：先读 `project_health`，总结 `attentionItems`、`trends` 和 `delivery`；delivery 异常时先用 `query_delivery_diagnostics` 定位小时/source/platform/reason，再用 `summary` 或 `query_events` 解释业务变化来源。
 - 实时在线态势：读 `recent_online`，总结在线用户、5 分钟桶、地区、活跃页面和高频事件，再用 `query_events` 复核具体行为。
 - 功能使用分析：先用 `project_health` 判断大盘是否正常，再用 `summary` 和 `query_events` 按路径、事件名、设备来源或用户分组分析功能使用。
 - 异常或下降原因分析：先确认日报中的下降指标和时间窗口，再下钻相关路径、事件和 session；只有语义证据不足时才查询原始行为。
@@ -894,6 +968,7 @@ Input:
   "tools": [
     { "name": "tracemind.event_definitions" },
     { "name": "tracemind.project_health" },
+    { "name": "tracemind.query_delivery_diagnostics" },
     { "name": "tracemind.recent_online" },
     { "name": "tracemind.summary" },
     { "name": "tracemind.query_events" },

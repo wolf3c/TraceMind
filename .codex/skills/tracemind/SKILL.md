@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.06.18.1
+version: 2026.07.19.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -12,7 +12,7 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 1. If the project instruction file contains a TraceMind Project Binding, use the expected MCP server and call `tracemind.project_info`; continue only if the returned `projectId` matches the bound Project ID.
 2. If multiple TraceMind MCP servers exist or the project is unclear, call `tracemind.project_info` before choosing a server.
-3. For product behavior analysis, use `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status, then use `tracemind.summary` and `tracemind.query_events` for evidence drilldown. Treat `tracemind.summary` totals as sample-derived according to `summarySample`, not as full-day totals.
+3. For product behavior analysis, use `tracemind.project_health` for daily health and `tracemind.recent_online` for real-time online status. For recent delivery failures, retries, drops, queue depth, or recovery duration, use `tracemind.query_delivery_diagnostics` before event/raw-behavior drilldown. Then use `tracemind.summary` and `tracemind.query_events` for behavior evidence. Treat `tracemind.summary` totals as sample-derived according to `summarySample`, not as full-day totals.
 4. Before writing analytics code, call `tracemind.agent_guidance` and check that this skill version is current.
 5. If `tracemind.project_health` returns `captureScriptFindings`, call `tracemind.capture_setup({ platform: "web" })`, replace fixed `capture.<hash>.js` or self-hosted Web scripts with the returned stable `captureScriptUrl` snippet, check CDN/service worker/WebView caches, verify `window.TraceMind.status().scriptReleaseId`, trigger a real event, and re-check `project_health`.
 6. Identify the target platform: `web`, `ios`, `macos`, `android`, `react_native`, `hybrid`, `mini_program`, `browser_extension`, `mcp_node`, `mcp_python`, `agent_skill`, `server_node`, `server_python`, or `server_http`.
@@ -28,9 +28,11 @@ Use this skill whenever you add, change, review, or validate TraceMind analytics
 
 ## MCP Tool Discovery Recovery
 
-If the current active tool list does not show `tracemind.project_health`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`, do not conclude that TraceMind lacks those tools. First read MCP `tools/list` or retry discovery with the exact tool name before deciding the tool is unavailable.
+If the current active tool list does not show `tracemind.project_health`, `tracemind.query_delivery_diagnostics`, `tracemind.recent_online`, `tracemind.query_raw_behaviors`, or `tracemind.submit_feedback`, do not conclude that TraceMind lacks those tools. First read MCP `tools/list` or retry discovery with the exact tool name before deciding the tool is unavailable.
 
 If the tools are still missing, refresh the connector, session, MCP config, or token, then call `tracemind.project_info` again to confirm the project binding. Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`; use the documented fallback source and mark the data gap until discovery is repaired. If `tracemind.summary` is used as fallback evidence, state that the values come from the `summarySample` window.
+
+Capture delivery diagnostics keep 7 days of failed, retried, or dropped reports. `tracemind.query_delivery_diagnostics` returns only privacy-safe hourly source/platform, reason class, HTTP status class, queue depth, retry/drop counts, and available recovery duration; never expose raw errors, request/response bodies, URLs, logs, user content, or session/device/batch identifiers. Older delivery health comes from `tracemind.project_health`, hourly reports, and daily reports.
 
 ## Product Behavior Analysis Workflows
 
@@ -39,7 +41,7 @@ Use these workflows when a developer asks what is happening in their product:
 - Daily health check: call `tracemind.project_info`, then `tracemind.project_health` for the selected day. Report whether the project is normal, what changed versus the previous day, and the first attention item to inspect.
 - Recent online status: call `tracemind.project_info`, then `tracemind.recent_online` to inspect the last 30 minutes. Report online users, 5-minute buckets, top regions, active pages, and high-frequency events.
 - Feature usage analysis: call `tracemind.project_health`, then `tracemind.summary` with relevant time, path, event, `actionKey`, `targetHash`, or traffic attribution filters. Read `summarySample`, label sampled totals clearly, and use `tracemind.query_events` to show reviewable evidence.
-- Anomaly or drop investigation: start with `tracemind.project_health`, identify the dropped metric or upload-health issue, then query affected events and paths. Use `tracemind.query_raw_behaviors` only when semantic evidence is not enough.
+- Anomaly or drop investigation: start with `tracemind.project_health`, identify the dropped metric or upload-health issue, then call `tracemind.query_delivery_diagnostics` for the recent privacy-safe delivery breakdown. Query affected events and paths next; use `tracemind.query_raw_behaviors` only when semantic evidence is not enough.
 - Traffic source analysis: start with `tracemind.project_health`, then drill down with `tracemind.summary`, `tracemind.query_events`, or `tracemind.query_raw_behaviors` using `attributionSource`, `attributionMedium`, `attributionCampaign`, and `landingPath`.
 
 Only call `tracemind.submit_feedback` after the developer confirms they want to submit an issue or idea.
