@@ -14,7 +14,7 @@
     "check:capture-static-publication": "node scripts/check-capture-static-publication.js",
     "update:sdk-manifest": "node scripts/check-sdk-release-manifest.js --write",
     "test:sdk-release": "node scripts/check-sdk-release-manifest.js --check",
-    "test:deploy-gates": "node --test scripts/deploy-git-publication.test.js scripts/sdk-registry-publication.test.js scripts/release-metadata.test.js scripts/capture-static-assets.test.js scripts/cloudflare-capture-workflow.test.js",
+    "test:deploy-gates": "node --test scripts/deploy-git-publication.test.js scripts/sdk-registry-publication.test.js scripts/release-metadata.test.js scripts/capture-static-assets.test.js scripts/cloudflare-capture-workflow.test.js scripts/deploy-runtime-logs.test.js",
     "test:sdk:android": "sh sdk/android/test.sh",
     "test:sdk:ios": "CLANG_MODULE_CACHE_PATH=.swiftpm-cache/clang swift test --disable-sandbox --package-path sdk/ios",
     "test:sdk:mcp-node": "npm test --prefix sdk/mcp-node",
@@ -27,7 +27,7 @@
     "test-app": "TEST_WATCH=1 meteor test --full-app --driver-package meteortesting:mocha",
     "visualize": "meteor --production --extra-packages bundle-visualizer",
     "deploy": "meteor deploy tracemind.sandbox.galaxycloud.app --settings .deploy/settings.json",
-    "deploy:logs": "meteor logs tracemind.sandbox.galaxycloud.app",
+    "deploy:logs": "node scripts/show-galaxy-runtime-logs.js",
     "deploy:selfhost:setup": "mup setup --config .deploy/mup.js",
     "deploy:selfhost": "mup deploy --config .deploy/mup.js --settings .deploy/settings.json",
     "deploy:selfhost:logs": "mup logs --config .deploy/mup.js -f"

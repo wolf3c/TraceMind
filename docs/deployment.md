@@ -112,13 +112,15 @@ gh workflow run cloudflare-capture-publish.yml \
 
 Do not add a tag or push trigger to the Cloudflare capture workflow. Release tags are pushed before Galaxy deploy so the SDK publish workflow can run, and an automatic Cloudflare upload at that point could snapshot the previous Galaxy script. If GitHub Actions is unavailable, run a local Wrangler Direct Upload from `.codex/scratch/capture-static/<version>/` with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` loaded from a private, ignored environment file.
 
-Tail production logs:
+Locate production runtime logs:
 
 ```bash
 npm run deploy:logs
 ```
 
-Use the Galaxy deployment page to inspect deployment progress when a deploy is active.
+This command prints the TraceMind Runtime Logs URL in the authenticated Galaxy Dashboard: [TraceMind Runtime Logs](https://my.galaxycloud.app/wolf3c/us-east-1/apps/9e6d8a40-b9bf-4857-ad8c-e7687b41c6fd/logs). It does not fetch or tail logs in the terminal; open the printed URL in an authenticated browser to use Galaxy's live view, time ranges, and filters. See the [Galaxy Runtime Logs documentation](https://help.galaxycloud.app/docs/dashboard/apps/logs) for the current dashboard behavior.
+
+Use the Galaxy deployment page to inspect deployment progress and build/deploy logs when a deploy is active.
 
 ## Verification
 

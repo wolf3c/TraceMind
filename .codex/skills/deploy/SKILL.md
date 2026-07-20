@@ -87,7 +87,7 @@ The deploy workflow must verify these markers are consistent everywhere they are
    - Confirm the Galaxy runtime environment includes `TRACEMIND_CAPTURE_SCRIPT_ORIGIN=https://tracemind-capture.pages.dev` before deploying a release whose production `capture_setup` should return Cloudflare script URLs.
    - If the user explicitly specifies another Meteor app target, run that exact command form, for example `meteor deploy TraceMind --settings .deploy/settings.json`.
    - Do not print or commit `.deploy/settings.json`; it is intentionally private.
-   - If deploy fails because of missing Galaxy/runtime environment, inspect or request logs and report the exact missing variable. `MONGO_URL` must be available in the Galaxy runtime environment before the app can start.
+   - If deploy fails because of missing Galaxy/runtime environment, run `npm run deploy:logs` to locate the authenticated Galaxy Dashboard Runtime Logs page, inspect it in an authenticated browser, and report the exact missing variable. `MONGO_URL` must be available in the Galaxy runtime environment before the app can start.
    - Do not deploy from GitHub Actions. `$deploy` is the only release path that may run the Meteor deploy command, so a tag push cannot cause a duplicate deploy.
 12. Publish the Web Auto Capture static script to Cloudflare Pages after a successful Galaxy deploy:
    - Run `npm run build:capture-static`. The default source is `https://tracemind.sandbox.galaxycloud.app/capture.js`, and the default output is `.codex/scratch/capture-static/${version}/`.
@@ -101,7 +101,7 @@ The deploy workflow must verify these markers are consistent everywhere they are
    - Fallback command shape: `npx -y wrangler@latest pages deploy .codex/scratch/capture-static/${version}/ --project-name=tracemind-capture --branch=main --commit-hash=$(git rev-parse HEAD) --commit-message="Deploy TraceMind ${version} capture static script"`.
    - Run `npm run check:capture-static-publication` after Cloudflare deploy, even if the workflow already ran it. The local check must verify the Cloudflare `/capture.js` status, JavaScript content type, `ETag`, CORS `*`, `Cache-Control: public, max-age=60, must-revalidate`, no `Set-Cookie`, non-empty body, current `scriptReleaseId`, and matching immutable `capture.<sha256>.js`.
 13. Verify the deployed app after a successful deploy:
-   - `npm run deploy:logs` when logs are needed to confirm startup health.
+   - Run `npm run deploy:logs` to print the authenticated Galaxy Dashboard Runtime Logs URL when logs are needed to confirm startup health. This helper does not fetch or tail logs in the terminal; inspect the printed URL in an authenticated browser.
    - `curl -I https://tracemind.sandbox.galaxycloud.app/`
    - `curl -I https://tracemind-capture.pages.dev/capture.js`
    - `curl -I https://tracemind.sandbox.galaxycloud.app/capture.js`
