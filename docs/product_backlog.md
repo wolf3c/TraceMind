@@ -24,7 +24,7 @@
 
 | ID | Priority | Status | Item | Evidence / Dependency | Next Review |
 | --- | --- | --- | --- | --- | --- |
-| TM-REL-001 | P2 | 待发布 | Release and verify runtime-context delivery recovery attribution | Feedback `Mfnoo3g4ayyLxyD9w`; local commit `549a7f0`; release/deploy pending | Release + 24 hours |
+| TM-REL-001 | P2 | 待验证 | Release and verify runtime-context delivery recovery attribution | Release `2026.7.23-1` deployed from `88f3e81`; first live `new_runtime_recovery` evidence received; 24-hour observation pending | 2026-07-24 after the observation window |
 | TM-SRC-001 | P1 | 待方案 | Align blocked-source policy across Web and `server_app` ingestion and analysis | Feedback `SrvgpyG4bbPkGyHzR`; historical event-query semantics need a product decision | Before next feature work |
 | TM-ALERT-001 | P2 | 待方案 | Add proactive important-incident and recovery notifications | Feedback `oSYMbGhavJYRp6KLp`; depends on incident lifecycle, thresholds, channels, and dedupe policy | After TM-SRC-001 |
 | TM-RUNTIME-002 | P2 | 待实施 | Extend runtime context to applicable native/client SDKs | Shared contract exists; Web/Hybrid WebView is the reference implementation | After TM-REL-001 evidence review |
@@ -37,6 +37,8 @@
 - Problem evidence: legacy recovery duration is an unattributed wall-clock interval and cannot distinguish foreground, background, offline, unknown, or a new runtime.
 - Target user and scenario: a customer or coding agent diagnosing why captured product behavior arrived late.
 - Expected result: production diagnostics explain recovery using evidence-backed duration composition without exposing runtime or episode identifiers.
+- Release evidence (2026-07-23): Galaxy and Cloudflare published release `2026.7.23-1` / Web guidance `2026.07.23.1`; production diagnostics returned one high-quality `new_runtime_recovery` sample with 1,125 ms attributed as 502 ms foreground-online plus 623 ms runtime-absent, without runtime or episode identifiers.
+- Remaining validation: controlled foreground, background, offline, and Hybrid checks; clearance of pre-release Web/SDK health snapshots; and 24 hours of normal-traffic observation.
 - Success criteria:
   - commit `549a7f0` and its release state are pushed through the guarded TraceMind release workflow;
   - Galaxy and the published Web capture script/guidance report release `2026.07.23.1`;
