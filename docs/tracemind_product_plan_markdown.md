@@ -449,6 +449,8 @@ analytics 能力弱
 
 # 9. 产品发展路径
 
+当前可执行优先级、反馈关联和闭环标准统一维护在 [`product_backlog.md`](./product_backlog.md)，避免长期方向与短期待办混在一起或在聊天中遗失。
+
 ---
 
 # Phase 1

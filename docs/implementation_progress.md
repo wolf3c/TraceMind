@@ -1,5 +1,7 @@
 # TraceMind MVP Implementation Progress
 
+> Active release and product follow-up work is tracked in [`product_backlog.md`](./product_backlog.md).
+
 ## 2026-07-23
 
 ### Completed
