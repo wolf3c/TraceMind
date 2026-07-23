@@ -69,6 +69,15 @@ import {
   feedbackContainsForbiddenContent,
   normalizeFeedbackKind,
 } from '../imports/ui/feedback_payload';
+import {
+  classifyDeliveryRecoveryEpisode,
+  deliveryRecoveryEvidenceQuality,
+  mergeRuntimeContextSummaries,
+  publicRuntimeContext,
+  sanitizeDeliveryRecoveryEpisode,
+  sanitizeRuntimeContext,
+  summarizeRuntimeContexts,
+} from '../imports/api/runtime_context';
 
 function assertLocalSourceSetup(setup, vendorPath) {
   assert.strictEqual(setup.structuredContent.distributionMode, 'local_source');
@@ -1000,7 +1009,7 @@ describe('TraceMind', function () {
       ]);
       const manifest = manifestResponse;
 
-      assert.ok(skill.includes('version: 2026.07.19.1'));
+      assert.ok(skill.includes('version: 2026.07.23.1'));
       assert.ok(skill.includes('## Auto Capture Setup'));
       assert.ok(skill.includes('## Native SDK Setup Details'));
       assert.ok(skill.includes('## Traffic Attribution'));
@@ -1071,7 +1080,7 @@ describe('TraceMind', function () {
       assert.ok(skill.includes('tracemind.check_agent_setup'));
       assert.ok(skill.includes('Do not silently overwrite user-edited files'));
       assert.ok(snippet.includes('TraceMind Instrumentation Rules'));
-      assert.ok(snippet.includes('Guidance version: `2026.07.19.1`'));
+      assert.ok(snippet.includes('Guidance version: `2026.07.23.1`'));
       assert.ok(snippet.includes('TraceMind Project Binding'));
       assert.ok(snippet.includes('Expected MCP server'));
       assert.ok(snippet.includes('returned `projectId` matches the Project ID'));
@@ -1119,7 +1128,7 @@ describe('TraceMind', function () {
       assert.ok(snippet.includes('tracemind.project_info'));
       assert.ok(snippet.includes('tracemind.check_agent_setup'));
       assert.ok(snippet.includes('agentSetupNotice'));
-      assert.strictEqual(manifest.guidanceVersion, '2026.07.19.1');
+      assert.strictEqual(manifest.guidanceVersion, '2026.07.23.1');
       assert.ok(manifest.mcp.tools.includes('tracemind.query_delivery_diagnostics'));
       assert.strictEqual(manifest.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(manifest.mcp.serverNamePattern, 'tracemind-<project-code>');
@@ -1492,6 +1501,142 @@ describe('TraceMind', function () {
       assert.strictEqual(presenceBody.events[0].source.details.scriptReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.strictEqual(captureBody.deliveryStats.sent, 1);
       assert.strictEqual(presenceBody.deliveryStats.sent, 1);
+    });
+
+    it('attaches evidence-based web runtime context without exposing runtime identity in status', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+      const storage = new Map();
+      const fetchCalls = [];
+      const documentListeners = {};
+      const windowListeners = {};
+      const document = {
+        title: 'TraceMind runtime context page',
+        referrer: '',
+        visibilityState: 'visible',
+        currentScript: {
+          getAttribute(name) {
+            if (name === 'data-tracemind-token') return 'tm_proj_runtime_context';
+            return null;
+          },
+        },
+        addEventListener(type, handler) {
+          documentListeners[type] = handler;
+        },
+        hasFocus() { return true; },
+      };
+      const navigator = {
+        userAgent: 'test-agent',
+        language: 'en',
+        platform: 'test',
+        onLine: true,
+      };
+      const sandbox = {
+        window: {},
+        document,
+        navigator,
+        screen: { width: 1280, height: 720, colorDepth: 24 },
+        location: { origin: 'https://app.example.com', href: 'https://app.example.com/runtime', pathname: '/runtime', hash: '' },
+        history: { pushState() {}, replaceState() {} },
+        URL,
+        Intl,
+        Promise,
+        Blob,
+        Date,
+        Math,
+        JSON,
+        Object,
+        String,
+        Array,
+        Number,
+        setTimeout() { return 1; },
+        clearTimeout() {},
+        setInterval() { return 1; },
+        clearInterval() {},
+        fetch(endpoint, options) {
+          fetchCalls.push({ endpoint, body: options.body });
+          return Promise.resolve({ ok: true, status: 202 });
+        },
+      };
+      sandbox.window = {
+        localStorage: {
+          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+          setItem(key, value) { storage.set(key, value); },
+        },
+        innerWidth: 1280,
+        innerHeight: 720,
+        addEventListener(type, handler) {
+          windowListeners[type] = handler;
+        },
+      };
+      sandbox.localStorage = sandbox.window.localStorage;
+
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+      const initialQueue = JSON.parse(storage.get(queueKey));
+      const initialContexts = initialQueue.map((record) => record.payload.runtimeContext);
+
+      assert.ok(initialContexts.every(Boolean));
+      assert.ok(initialContexts.every((context) => context.lifecycleState === 'foreground'));
+      assert.ok(initialContexts.every((context) => context.lifecycleEvidence === 'document_visibility'));
+      assert.ok(initialContexts.every((context) => context.lifecycleConfidence === 'high'));
+      assert.ok(initialContexts.every((context) => context.connectivityState === 'online'));
+      assert.ok(initialContexts.every((context) => context.connectivityEvidence === 'platform_connectivity'));
+      assert.ok(initialContexts.every((context) => context.connectivityConfidence === 'low'));
+      assert.strictEqual(new Set(initialContexts.map((context) => context.runtimeInstanceId)).size, 1);
+      assert.deepStrictEqual(initialContexts.map((context) => context.sequence), [1, 2]);
+      assert.ok(!JSON.stringify(sandbox.window.TraceMind.status()).includes('runtimeInstanceId'));
+
+      documentListeners.freeze();
+      sandbox.window.TraceMind.capture('custom', { eventName: 'freeze_visible_action' });
+      const freezeVisibleEvent = JSON.parse(storage.get(queueKey))
+        .find((record) => record.payload.eventName === 'freeze_visible_action')
+        .payload;
+      assert.strictEqual(freezeVisibleEvent.runtimeContext.lifecycleState, 'foreground');
+      assert.strictEqual(freezeVisibleEvent.runtimeContext.lifecycleEvidence, 'document_visibility');
+      assert.strictEqual(freezeVisibleEvent.runtimeContext.lifecycleConfidence, 'high');
+      documentListeners.resume();
+
+      document.visibilityState = 'hidden';
+      documentListeners.visibilitychange();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const hiddenPresence = fetchCalls
+        .filter((call) => call.endpoint.endsWith('/api/presence'))
+        .flatMap((call) => JSON.parse(call.body).events)
+        .find((event) => event.state === 'background');
+      assert.strictEqual(hiddenPresence.runtimeContext.lifecycleState, 'background');
+      assert.strictEqual(hiddenPresence.runtimeContext.lifecycleConfidence, 'high');
+
+      navigator.onLine = false;
+      windowListeners.offline();
+      sandbox.window.TraceMind.capture('custom', { eventName: 'offline_action' });
+      const offlineEvent = JSON.parse(storage.get(queueKey))
+        .find((record) => record.payload.eventName === 'offline_action')
+        .payload;
+      assert.strictEqual(offlineEvent.runtimeContext.connectivityState, 'offline');
+      assert.strictEqual(offlineEvent.runtimeContext.connectivityEvidence, 'platform_connectivity');
+      assert.strictEqual(offlineEvent.runtimeContext.connectivityConfidence, 'medium');
+
+      navigator.onLine = true;
+      windowListeners.online();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await sandbox.window.TraceMind.flush();
+      sandbox.window.TraceMind.capture('custom', { eventName: 'recovered_action' });
+      const recoveredEvent = JSON.parse(storage.get(queueKey))
+        .find((record) => record.payload.eventName === 'recovered_action')
+        .payload;
+      assert.strictEqual(recoveredEvent.runtimeContext.connectivityState, 'online');
+      assert.strictEqual(recoveredEvent.runtimeContext.connectivityEvidence, 'transport_success');
+      assert.strictEqual(recoveredEvent.runtimeContext.connectivityConfidence, 'high');
+
+      const runtimeInstanceId = recoveredEvent.runtimeContext.runtimeInstanceId;
+      windowListeners.pageshow({ persisted: true });
+      sandbox.window.TraceMind.capture('custom', { eventName: 'bfcache_action' });
+      const bfcacheEvent = JSON.parse(storage.get(queueKey))
+        .find((record) => record.payload.eventName === 'bfcache_action')
+        .payload;
+      assert.strictEqual(bfcacheEvent.runtimeContext.runtimeInstanceId, runtimeInstanceId);
+      assert.ok(bfcacheEvent.runtimeContext.sequence > recoveredEvent.runtimeContext.sequence);
     });
 
     it('returns a Web Auto Capture script update instruction for legacy or stale script releases', async function () {
@@ -2402,7 +2547,7 @@ describe('TraceMind', function () {
       assert.strictEqual(heartbeat.payload.activeState, 'idle');
     });
 
-    it('keeps failed queue records with retry metadata and coalesces presence heartbeats', async function () {
+    it('persists a web delivery recovery episode while keeping failed queue records', async function () {
       const { Script, createContext } = await import('vm');
       const { clientScript } = await import('../server/capture_routes');
       const storage = new Map();
@@ -2481,10 +2626,33 @@ describe('TraceMind', function () {
 
       await sandbox.window.TraceMind.flush();
       queued = JSON.parse(storage.get(queueKey));
+      const statsKey = [...storage.keys()].find((key) => key.startsWith('tracemind_delivery_stats_'));
+      const deliveryStats = JSON.parse(storage.get(statsKey));
+      const captureEpisode = deliveryStats.recoveryEpisodes.capture;
 
       assert.strictEqual(queued.length, 300);
       assert.ok(queued.some((record) => record.kind === 'capture' && record.attempts === 1 && record.nextAttemptAt > Date.now()));
       assert.strictEqual(sandbox.window.TraceMind.status().lastError, 'network_error');
+      assert.ok(captureEpisode.episodeId.startsWith('tm_episode_'));
+      assert.strictEqual(captureEpisode.failureTrigger, 'transport_failure');
+      assert.strictEqual(
+        captureEpisode.totalDurationMs,
+        captureEpisode.foregroundOnlineMs
+          + captureEpisode.foregroundOfflineMs
+          + captureEpisode.backgroundOnlineMs
+          + captureEpisode.backgroundOfflineMs
+          + captureEpisode.runtimeAbsentMs
+          + captureEpisode.unknownMs,
+      );
+      assert.ok(!JSON.stringify(sandbox.window.TraceMind.status()).includes('tm_episode_'));
+
+      captureEpisode.recoveredInNewRuntime = true;
+      storage.set(statsKey, JSON.stringify(deliveryStats));
+      sandbox.window.__TraceMindRuntime.disable();
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      const reloadedDeliveryStats = JSON.parse(storage.get(statsKey));
+
+      assert.strictEqual(reloadedDeliveryStats.recoveryEpisodes.capture, undefined);
     });
 
     it('drops oldest records and reports storage pressure when localStorage quota is tight', async function () {
@@ -2736,6 +2904,7 @@ describe('TraceMind', function () {
       assert.ok(deliveryDiagnosticsTool.description.includes('脱敏聚合'));
       assert.deepStrictEqual(Object.keys(deliveryDiagnosticsTool.inputSchema.properties).sort(), [
         'endAt',
+        'endpoint',
         'platform',
         'sourceKey',
         'sourceType',
@@ -2781,13 +2950,13 @@ describe('TraceMind', function () {
 
       const guidance = await callMcpTool(project, 'tracemind.agent_guidance', {});
       assert.strictEqual(guidance.structuredContent.ok, true);
-      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.07.19.1');
+      assert.strictEqual(guidance.structuredContent.guidanceVersion, '2026.07.23.1');
       assert.strictEqual(guidance.structuredContent.projectName, 'Agent Guidance Project');
       assert.strictEqual(guidance.structuredContent.mcpServerName, mcpServerNameForProject(project));
       assert.strictEqual(guidance.structuredContent.availableCapabilities.currentOnline.tool, 'tracemind.recent_online');
       assert.strictEqual(guidance.structuredContent.availableCapabilities.projectHealth.tool, 'tracemind.project_health');
       assert.strictEqual(guidance.structuredContent.availableCapabilities.deliveryDiagnostics.tool, 'tracemind.query_delivery_diagnostics');
-      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.07.19.1');
+      assert.strictEqual(guidance.structuredContent.agentSetupNotice.guidanceVersion, '2026.07.23.1');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(guidance.structuredContent.agentSetupNotice.resources.skill, '/agents/tracemind/SKILL.md');
       assert.strictEqual(guidance.structuredContent.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
@@ -2951,7 +3120,7 @@ describe('TraceMind', function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const project = { _id: `project-agent-setup-check-${Date.now()}`, name: 'Agent Setup Check Project' };
       const currentRules = `---
-version: 2026.07.19.1
+version: 2026.07.23.1
 ---
 TraceMind Project Binding
 Project ID: project-agent-setup-check
@@ -2978,14 +3147,14 @@ If reporting tools such as tracemind.project_health, tracemind.query_delivery_di
       const current = await callMcpTool(project, 'tracemind.check_agent_setup', {
         skillContent: currentRules,
         agentInstructionContent: currentRules,
-        manifestContent: JSON.stringify({ guidanceVersion: '2026.07.19.1' }),
+        manifestContent: JSON.stringify({ guidanceVersion: '2026.07.23.1' }),
       });
       assert.strictEqual(current.structuredContent.status, 'current');
       assert.strictEqual(current.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
       assert.strictEqual(current.structuredContent.resources.agentSnippet, '/agents/tracemind/AGENTS_SNIPPET.md');
 
       const outdated = await callMcpTool(project, 'tracemind.check_agent_setup', {
-        skillContent: currentRules.replace('version: 2026.07.19.1', 'version: 2026.05.17.7'),
+        skillContent: currentRules.replace('version: 2026.07.23.1', 'version: 2026.05.17.7'),
         agentInstructionContent: currentRules,
       });
       assert.strictEqual(outdated.structuredContent.status, 'outdated');
@@ -3187,7 +3356,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.timezone, 'Asia/Shanghai');
       assert.strictEqual(structured.status, 'final');
       assert.strictEqual(structured.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.07.19.1');
+      assert.strictEqual(structured.agentSetupNotice.guidanceVersion, '2026.07.23.1');
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'capture_delivery_reports').retentionDays, 7);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').retentionDays, 10);
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
@@ -3305,6 +3474,13 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.summary.droppedStorage, 1);
       assert.strictEqual(structured.summary.maxQueueDepth, 8);
       assert.deepStrictEqual(structured.summary.recoveryDurationMs, {
+        sampleCount: 0,
+        min: null,
+        average: null,
+        max: null,
+      });
+      assert.deepStrictEqual(structured.summary.legacyElapsedDurationMs, {
+        semantics: 'unattributed_wall_clock_elapsed',
         sampleCount: 2,
         min: 31000,
         average: 45500,
@@ -3382,6 +3558,94 @@ projectKey: tm_proj_sensitive`,
       } finally {
         await CaptureDeliveryReports.removeAsync({ projectId });
       }
+    });
+
+    it('returns attributed recovery evidence through MCP without runtime or episode identifiers', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const now = new Date();
+      const projectId = `project-mcp-attributed-recovery-${Date.now()}`;
+      const project = { _id: projectId, name: 'MCP Attributed Recovery Project' };
+      const lastObservedAt = new Date(now.getTime() - 60 * 1000);
+      const startedAt = new Date(lastObservedAt.getTime() - 120 * 1000);
+      const recoveryEpisode = {
+        schemaVersion: 1,
+        episodeId: 'tm_episode_mcp_private',
+        originRuntimeInstanceId: 'tm_runtime_origin_private',
+        currentRuntimeInstanceId: 'tm_runtime_current_private',
+        startedAt: startedAt.toISOString(),
+        lastObservedAt: lastObservedAt.toISOString(),
+        totalDurationMs: 120000,
+        foregroundOnlineMs: 60000,
+        foregroundOfflineMs: 0,
+        backgroundOnlineMs: 0,
+        backgroundOfflineMs: 0,
+        runtimeAbsentMs: 60000,
+        unknownMs: 0,
+        recoveredInNewRuntime: true,
+        failureTrigger: 'transport_failure',
+        evidenceFlags: ['new_runtime', 'transport_failed', 'transport_succeeded', 'visibility_observed'],
+      };
+
+      await CaptureDeliveryReports.insertAsync({
+        projectId,
+        endpoint: 'capture',
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        platform: 'web',
+        deliveryEpisodeId: recoveryEpisode.episodeId,
+        recoveryEpisode,
+        retryCount: 1,
+        droppedOldest: 0,
+        droppedStorage: 0,
+        maxQueueDepth: 4,
+        createdAt: lastObservedAt,
+      });
+
+      try {
+        const result = await callMcpTool(project, 'tracemind.query_delivery_diagnostics', {
+          startAt: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+          endAt: now.toISOString(),
+          endpoint: 'capture',
+        });
+        const structured = result.structuredContent;
+        const serialized = JSON.stringify(structured);
+
+        assert.strictEqual(structured.summary.diagnosticReportCount, 1);
+        assert.strictEqual(structured.summary.attributedEpisodeCount, 1);
+        assert.strictEqual(structured.summary.recoveredInNewRuntimeCount, 1);
+        assert.deepStrictEqual(structured.summary.recoveryDurationMs, {
+          sampleCount: 1,
+          min: 120000,
+          average: 120000,
+          max: 120000,
+        });
+        assert.strictEqual(structured.summary.durationCompositionMs.foregroundOnline, 60000);
+        assert.strictEqual(structured.summary.durationCompositionMs.runtimeAbsent, 60000);
+        assert.strictEqual(structured.buckets[0].recoveryClassification, 'new_runtime_recovery');
+        assert.strictEqual(structured.buckets[0].recoveryEvidenceQuality, 'high');
+        assert.ok(!serialized.includes('deliveryEpisodeId'));
+        assert.ok(!serialized.includes('runtimeInstanceId'));
+        assert.ok(!serialized.includes('tm_episode_mcp_private'));
+        assert.ok(!serialized.includes('tm_runtime_origin_private'));
+        assert.ok(!serialized.includes('tm_runtime_current_private'));
+      } finally {
+        await CaptureDeliveryReports.removeAsync({ projectId });
+      }
+    });
+
+    it('rejects unsupported delivery diagnostic endpoints instead of widening the query', async function () {
+      const { callMcpTool } = await import('../server/capture_routes');
+      const project = {
+        _id: `project-mcp-invalid-delivery-endpoint-${Date.now()}`,
+        name: 'MCP Invalid Delivery Endpoint Project',
+      };
+
+      await assert.rejects(
+        () => callMcpTool(project, 'tracemind.query_delivery_diagnostics', {
+          endpoint: 'unknown_endpoint',
+        }),
+        /endpoint is not supported/,
+      );
     });
 
     it('clamps delivery diagnostics to retention and ignores implausible recovery durations', async function () {
@@ -3966,7 +4230,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(setup.structuredContent.projectKey, 'tm_proj_test');
       assert.strictEqual(setup.structuredContent.tokenType, 'public_auto_capture_project_key');
       assert.strictEqual(setup.structuredContent.agentSetupNotice.checkTool, 'tracemind.check_agent_setup');
-      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.07.19.1');
+      assert.strictEqual(setup.structuredContent.agentSetupNotice.guidanceVersion, '2026.07.23.1');
       assert.ok(setup.structuredContent.captureScriptUrl.includes('/capture.js'));
       assert.strictEqual(setup.structuredContent.webCaptureScript.latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.ok(setup.structuredContent.webCaptureScript.upgradePrompt.includes('window.TraceMind.status()'));
@@ -5094,6 +5358,356 @@ projectKey: tm_proj_sensitive`,
     assert.strictEqual(zhMessages['Data retention'], '数据保留');
     assert.strictEqual(translateMessage(zhMessages, 'delivery diagnostics keep {{days}} days', { days: 7 }), '上报诊断保留 7 天');
     assert.strictEqual(translateMessage(zhMessages, 'Raw behavior logs are retained for {{days}} days.', { days: 30 }), '原始行为日志保留 30 天。');
+  });
+
+  describe('Runtime context contract', function () {
+    function validRuntimeContext(overrides = {}) {
+      return {
+        schemaVersion: 1,
+        runtimeInstanceId: 'tm_runtime_test',
+        sequence: 42,
+        lifecycleState: 'foreground',
+        connectivityState: 'online',
+        lifecycleEvidence: 'document_visibility',
+        connectivityEvidence: 'platform_connectivity',
+        lifecycleConfidence: 'high',
+        connectivityConfidence: 'low',
+        ...overrides,
+      };
+    }
+
+    function validRecoveryEpisode(overrides = {}) {
+      return {
+        schemaVersion: 1,
+        episodeId: 'tm_episode_test',
+        originRuntimeInstanceId: 'tm_runtime_origin',
+        currentRuntimeInstanceId: 'tm_runtime_origin',
+        startedAt: '2026-07-23T01:00:00.000Z',
+        lastObservedAt: '2026-07-23T01:01:40.000Z',
+        totalDurationMs: 100000,
+        foregroundOnlineMs: 80000,
+        foregroundOfflineMs: 0,
+        backgroundOnlineMs: 0,
+        backgroundOfflineMs: 0,
+        runtimeAbsentMs: 0,
+        unknownMs: 20000,
+        recoveredInNewRuntime: false,
+        failureTrigger: 'transport_failure',
+        evidenceFlags: ['visibility_observed', 'transport_failed'],
+        ignored: 'drop-me',
+        ...overrides,
+      };
+    }
+
+    it('sanitizes runtime context and redacts internal runtime identity', function () {
+      const sanitized = sanitizeRuntimeContext({
+        ...validRuntimeContext(),
+        nested: { unsafe: true },
+      });
+
+      assert.deepStrictEqual(sanitized, validRuntimeContext());
+      assert.deepStrictEqual(publicRuntimeContext(sanitized), {
+        schemaVersion: 1,
+        sequence: 42,
+        lifecycleState: 'foreground',
+        connectivityState: 'online',
+        lifecycleEvidence: 'document_visibility',
+        connectivityEvidence: 'platform_connectivity',
+        lifecycleConfidence: 'high',
+        connectivityConfidence: 'low',
+      });
+      assert.strictEqual(sanitizeRuntimeContext(validRuntimeContext({ schemaVersion: 2 })), null);
+      assert.strictEqual(sanitizeRuntimeContext(validRuntimeContext({ lifecycleState: 'visible' })), null);
+      assert.strictEqual(sanitizeRuntimeContext(validRuntimeContext({ sequence: -1 })), null);
+      assert.strictEqual(sanitizeRuntimeContext(validRuntimeContext({ runtimeInstanceId: 'x'.repeat(121) })), null);
+      assert.strictEqual(sanitizeRuntimeContext(validRuntimeContext({
+        lifecycleState: 'foreground',
+        lifecycleEvidence: 'unknown',
+        lifecycleConfidence: 'high',
+      })), null);
+      assert.strictEqual(sanitizeRuntimeContext(validRuntimeContext({
+        connectivityState: 'online',
+        connectivityEvidence: 'transport_failure',
+        connectivityConfidence: 'high',
+      })), null);
+    });
+
+    it('validates delivery recovery duration invariants', function () {
+      const sanitized = sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode());
+      assert.deepStrictEqual(sanitized, {
+        schemaVersion: 1,
+        episodeId: 'tm_episode_test',
+        originRuntimeInstanceId: 'tm_runtime_origin',
+        currentRuntimeInstanceId: 'tm_runtime_origin',
+        startedAt: '2026-07-23T01:00:00.000Z',
+        lastObservedAt: '2026-07-23T01:01:40.000Z',
+        totalDurationMs: 100000,
+        foregroundOnlineMs: 80000,
+        foregroundOfflineMs: 0,
+        backgroundOnlineMs: 0,
+        backgroundOfflineMs: 0,
+        runtimeAbsentMs: 0,
+        unknownMs: 20000,
+        recoveredInNewRuntime: false,
+        failureTrigger: 'transport_failure',
+        evidenceFlags: ['visibility_observed', 'transport_failed'],
+      });
+
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({ totalDurationMs: 99999 })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({ unknownMs: -1, totalDurationMs: 79999 })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        totalDurationMs: 7 * 24 * 60 * 60 * 1000 + 1,
+        foregroundOnlineMs: 7 * 24 * 60 * 60 * 1000 + 1,
+        unknownMs: 0,
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        startedAt: '2026-07-23T01:02:00.000Z',
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        evidenceFlags: ['visibility_observed', 'raw_request_body'],
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        lastObservedAt: 'not-a-date',
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        lastObservedAt: new Date(Date.now() + 60 * 1000).toISOString(),
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        lastObservedAt: '2026-07-23T01:01:41.000Z',
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        failureTrigger: 'timeout',
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        recoveredInNewRuntime: 'false',
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        currentRuntimeInstanceId: 'tm_runtime_other',
+      })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
+        currentRuntimeInstanceId: 'tm_runtime_other',
+        recoveredInNewRuntime: true,
+        runtimeAbsentMs: 20000,
+        foregroundOnlineMs: 60000,
+      })), null);
+    });
+
+    it('classifies delivery recovery episodes by deterministic precedence', function () {
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
+        recoveredInNewRuntime: true,
+        currentRuntimeInstanceId: 'tm_runtime_current',
+        foregroundOnlineMs: 0,
+        runtimeAbsentMs: 80000,
+        evidenceFlags: ['visibility_observed', 'transport_failed', 'new_runtime'],
+      })), 'new_runtime_recovery');
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
+        foregroundOnlineMs: 0,
+        foregroundOfflineMs: 80000,
+      })), 'offline');
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
+        foregroundOnlineMs: 0,
+        backgroundOnlineMs: 80000,
+      })), 'background_suspended');
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode()), 'foreground_network_failure');
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
+        foregroundOnlineMs: 50000,
+        backgroundOnlineMs: 30000,
+      })), 'mixed');
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
+        foregroundOnlineMs: 0,
+        unknownMs: 100000,
+      })), 'unknown');
+    });
+
+    it('grades delivery recovery evidence by unknown duration share', function () {
+      assert.strictEqual(deliveryRecoveryEvidenceQuality(validRecoveryEpisode({
+        foregroundOnlineMs: 90000,
+        unknownMs: 10000,
+      })), 'high');
+      assert.strictEqual(deliveryRecoveryEvidenceQuality(validRecoveryEpisode()), 'medium');
+      assert.strictEqual(deliveryRecoveryEvidenceQuality(validRecoveryEpisode({
+        foregroundOnlineMs: 60000,
+        unknownMs: 40000,
+      })), 'low');
+      assert.strictEqual(deliveryRecoveryEvidenceQuality(validRecoveryEpisode({
+        foregroundOnlineMs: 0,
+        unknownMs: 100000,
+      })), 'unknown');
+      assert.strictEqual(deliveryRecoveryEvidenceQuality(validRecoveryEpisode({
+        foregroundOnlineMs: 90000,
+        unknownMs: 10000,
+        evidenceFlags: ['clock_anomaly'],
+      })), 'low');
+    });
+
+    it('summarizes and additively merges runtime context coverage', function () {
+      const first = summarizeRuntimeContexts([
+        { runtimeContext: validRuntimeContext() },
+        { runtimeContext: validRuntimeContext({
+          lifecycleState: 'background',
+          connectivityState: 'offline',
+          connectivityConfidence: 'medium',
+        }) },
+        {},
+      ]);
+      assert.deepStrictEqual(first, {
+        totalEvents: 3,
+        observedEvents: 2,
+        missingEvents: 1,
+        coverageRate: 2 / 3,
+        lifecycleCounts: [
+          { state: 'foreground', count: 1 },
+          { state: 'background', count: 1 },
+        ],
+        connectivityCounts: [
+          { state: 'online', count: 1 },
+          { state: 'offline', count: 1 },
+        ],
+        lifecycleConfidenceCounts: [
+          { confidence: 'high', count: 2 },
+        ],
+        connectivityConfidenceCounts: [
+          { confidence: 'medium', count: 1 },
+          { confidence: 'low', count: 1 },
+        ],
+      });
+
+      const merged = mergeRuntimeContextSummaries([
+        first,
+        summarizeRuntimeContexts([
+          { runtimeContext: validRuntimeContext({
+            lifecycleState: 'unknown',
+            lifecycleEvidence: 'unknown',
+            lifecycleConfidence: 'unknown',
+          }) },
+          {},
+        ]),
+      ]);
+      assert.strictEqual(merged.totalEvents, 5);
+      assert.strictEqual(merged.observedEvents, 3);
+      assert.strictEqual(merged.missingEvents, 2);
+      assert.strictEqual(merged.coverageRate, 3 / 5);
+      assert.deepStrictEqual(merged.lifecycleCounts, [
+        { state: 'foreground', count: 1 },
+        { state: 'background', count: 1 },
+        { state: 'unknown', count: 1 },
+      ]);
+    });
+  });
+
+  describe('Runtime context ingestion, projection, query, and summary', function () {
+    const storedContext = {
+      schemaVersion: 1,
+      runtimeInstanceId: 'tm_runtime_pipeline',
+      sequence: 7,
+      lifecycleState: 'background',
+      connectivityState: 'offline',
+      lifecycleEvidence: 'document_visibility',
+      connectivityEvidence: 'platform_connectivity',
+      lifecycleConfidence: 'high',
+      connectivityConfidence: 'medium',
+    };
+
+    it('propagates runtime context into semantic events and redacts runtime identity publicly', function () {
+      const behavior = {
+        _id: 'raw-runtime-context',
+        projectId: 'project-runtime-context',
+        type: 'click',
+        path: '/checkout',
+        runtimeContext: storedContext,
+        createdAt: new Date('2026-07-23T01:00:00.000Z'),
+      };
+      const semantic = buildSemanticEvent(behavior);
+
+      assert.deepStrictEqual(semantic.runtimeContext, storedContext);
+      assert.deepStrictEqual(publicRawBehavior(behavior).runtimeContext, {
+        schemaVersion: 1,
+        sequence: 7,
+        lifecycleState: 'background',
+        connectivityState: 'offline',
+        lifecycleEvidence: 'document_visibility',
+        connectivityEvidence: 'platform_connectivity',
+        lifecycleConfidence: 'high',
+        connectivityConfidence: 'medium',
+      });
+      assert.deepStrictEqual(publicSemanticEvent(semantic).runtimeContext, publicRawBehavior(behavior).runtimeContext);
+      assert.ok(!JSON.stringify(publicSemanticEvent(semantic)).includes('tm_runtime_pipeline'));
+    });
+
+    it('builds strict nested runtime context queries', function () {
+      assert.deepStrictEqual(buildEventQuery('project-runtime-context', {
+        lifecycleState: 'foreground',
+        connectivityState: 'online',
+      }), {
+        projectId: 'project-runtime-context',
+        'runtimeContext.lifecycleState': 'foreground',
+        'runtimeContext.connectivityState': 'online',
+      });
+      assert.deepStrictEqual(buildRawBehaviorQuery('project-runtime-context', {
+        lifecycleState: 'background',
+        connectivityState: 'offline',
+      }), {
+        projectId: 'project-runtime-context',
+        'runtimeContext.lifecycleState': 'background',
+        'runtimeContext.connectivityState': 'offline',
+      });
+      assert.throws(
+        () => buildEventQuery('project-runtime-context', { lifecycleState: 'visible' }),
+        /lifecycleState is not supported/,
+      );
+      assert.throws(
+        () => buildRawBehaviorQuery('project-runtime-context', { connectivityState: 'wifi' }),
+        /connectivityState is not supported/,
+      );
+    });
+
+    it('summarizes observed and missing runtime context in semantic samples', function () {
+      const summary = summarizeSemanticEvents([
+        {
+          eventType: 'click',
+          path: '/checkout',
+          runtimeContext: storedContext,
+        },
+        {
+          eventType: 'submit',
+          path: '/checkout',
+          runtimeContext: {
+            ...storedContext,
+            sequence: 8,
+            lifecycleState: 'foreground',
+            connectivityState: 'online',
+            connectivityEvidence: 'transport_success',
+            connectivityConfidence: 'high',
+          },
+        },
+        {
+          eventType: 'page_view',
+          path: '/',
+        },
+      ]);
+
+      assert.deepStrictEqual(summary.runtimeContext, {
+        totalEvents: 3,
+        observedEvents: 2,
+        missingEvents: 1,
+        coverageRate: 2 / 3,
+        lifecycleCounts: [
+          { state: 'foreground', count: 1 },
+          { state: 'background', count: 1 },
+        ],
+        connectivityCounts: [
+          { state: 'online', count: 1 },
+          { state: 'offline', count: 1 },
+        ],
+        lifecycleConfidenceCounts: [
+          { confidence: 'high', count: 2 },
+        ],
+        connectivityConfidenceCounts: [
+          { confidence: 'high', count: 1 },
+          { confidence: 'medium', count: 1 },
+        ],
+      });
+    });
   });
 
   it('turns click behavior into a semantic event', function () {
@@ -6300,6 +6914,20 @@ projectKey: tm_proj_sensitive`,
       failedFlushes: 2,
       lastSuccessfulFlushAt: null,
       lastFailedFlushAt: new Date('2026-05-09T10:05:00.000Z'),
+      attributedEpisodeCount: 0,
+      recoveredInNewRuntimeCount: 0,
+      recoveryDurationTotalMs: 0,
+      recoveryDurationMs: { sampleCount: 0, min: null, average: null, max: null },
+      recoveryClassificationCounts: {},
+      evidenceQualityCounts: {},
+      durationCompositionMs: {
+        foregroundOnline: 0,
+        foregroundOffline: 0,
+        backgroundOnline: 0,
+        backgroundOffline: 0,
+        runtimeAbsent: 0,
+        unknown: 0,
+      },
     });
   });
 
@@ -6342,7 +6970,53 @@ projectKey: tm_proj_sensitive`,
       failedFlushes: 1,
       lastSuccessfulFlushAt: new Date('2026-05-09T10:50:00.000Z'),
       lastFailedFlushAt: new Date('2026-05-09T10:55:00.000Z'),
+      attributedEpisodeCount: 0,
+      recoveredInNewRuntimeCount: 0,
+      recoveryDurationTotalMs: 0,
+      recoveryDurationMs: { sampleCount: 0, min: null, average: null, max: null },
+      recoveryClassificationCounts: {},
+      evidenceQualityCounts: {},
+      durationCompositionMs: {
+        foregroundOnline: 0,
+        foregroundOffline: 0,
+        backgroundOnline: 0,
+        backgroundOffline: 0,
+        runtimeAbsent: 0,
+        unknown: 0,
+      },
     });
+  });
+
+  it('re-aggregates attributed recovery durations from exact hourly totals', function () {
+    const firstHour = summarizeCaptureDelivery([
+      {
+        reportCount: 2,
+        attributedEpisodeCount: 2,
+        recoveryDurationSampleCount: 2,
+        recoveryDurationTotalMs: 101,
+        recoveryDurationMinMs: 40,
+        recoveryDurationMaxMs: 61,
+      },
+    ]);
+    const secondHour = summarizeCaptureDelivery([
+      {
+        reportCount: 3,
+        attributedEpisodeCount: 3,
+        recoveryDurationSampleCount: 3,
+        recoveryDurationTotalMs: 302,
+        recoveryDurationMinMs: 50,
+        recoveryDurationMaxMs: 152,
+      },
+    ]);
+
+    const daily = summarizeCaptureDelivery([firstHour, secondHour]);
+
+    assert.strictEqual(daily.attributedEpisodeCount, 5);
+    assert.strictEqual(daily.recoveryDurationMs.sampleCount, 5);
+    assert.strictEqual(daily.recoveryDurationTotalMs, 403);
+    assert.strictEqual(daily.recoveryDurationMs.min, 40);
+    assert.strictEqual(daily.recoveryDurationMs.average, 81);
+    assert.strictEqual(daily.recoveryDurationMs.max, 152);
   });
 
   if (Meteor.isServer) {
@@ -7815,6 +8489,29 @@ projectKey: tm_proj_sensitive`,
           failedFlushes: 0,
           lastSuccessfulFlushAt: new Date('2026-05-12T16:50:00.000Z'),
           lastFailedFlushAt: null,
+          attributedEpisodeCount: 2,
+          recoveredInNewRuntimeCount: 0,
+          recoveryDurationTotalMs: 300,
+          recoveryDurationMs: {
+            sampleCount: 2,
+            min: 100,
+            average: 150,
+            max: 200,
+          },
+          recoveryClassificationCounts: {
+            offline_interruption: 2,
+          },
+          evidenceQualityCounts: {
+            strong: 2,
+          },
+          durationCompositionMs: {
+            foregroundOnline: 20,
+            foregroundOffline: 260,
+            backgroundOnline: 0,
+            backgroundOffline: 0,
+            runtimeAbsent: 0,
+            unknown: 20,
+          },
         },
       });
       await ProjectHourlyReports.insertAsync({
@@ -7837,6 +8534,29 @@ projectKey: tm_proj_sensitive`,
           failedFlushes: 1,
           lastSuccessfulFlushAt: null,
           lastFailedFlushAt: new Date('2026-05-12T17:10:00.000Z'),
+          attributedEpisodeCount: 1,
+          recoveredInNewRuntimeCount: 1,
+          recoveryDurationTotalMs: 450,
+          recoveryDurationMs: {
+            sampleCount: 1,
+            min: 450,
+            average: 450,
+            max: 450,
+          },
+          recoveryClassificationCounts: {
+            new_runtime_recovery: 1,
+          },
+          evidenceQualityCounts: {
+            medium: 1,
+          },
+          durationCompositionMs: {
+            foregroundOnline: 0,
+            foregroundOffline: 0,
+            backgroundOnline: 0,
+            backgroundOffline: 0,
+            runtimeAbsent: 450,
+            unknown: 0,
+          },
         },
       });
       await CaptureDeliveryReports.insertAsync({
@@ -7872,6 +8592,31 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(report.delivery.failedFlushes, 1);
       assert.strictEqual(report.delivery.lastSuccessfulFlushAt.getTime(), new Date('2026-05-12T16:50:00.000Z').getTime());
       assert.strictEqual(report.delivery.lastFailedFlushAt.getTime(), new Date('2026-05-12T17:10:00.000Z').getTime());
+      assert.strictEqual(report.delivery.attributedEpisodeCount, 3);
+      assert.strictEqual(report.delivery.recoveredInNewRuntimeCount, 1);
+      assert.strictEqual(report.delivery.recoveryDurationTotalMs, 750);
+      assert.deepStrictEqual(report.delivery.recoveryDurationMs, {
+        sampleCount: 3,
+        min: 100,
+        average: 250,
+        max: 450,
+      });
+      assert.deepStrictEqual(report.delivery.recoveryClassificationCounts, {
+        offline_interruption: 2,
+        new_runtime_recovery: 1,
+      });
+      assert.deepStrictEqual(report.delivery.evidenceQualityCounts, {
+        strong: 2,
+        medium: 1,
+      });
+      assert.deepStrictEqual(report.delivery.durationCompositionMs, {
+        foregroundOnline: 20,
+        foregroundOffline: 260,
+        backgroundOnline: 0,
+        backgroundOffline: 0,
+        runtimeAbsent: 450,
+        unknown: 20,
+      });
     });
 
     it('builds today daily health from completed hourly reports and matching previous hours', async function () {
@@ -9002,6 +9747,172 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(rollups[0].lastSuccessfulFlushAt, undefined);
     });
 
+    it('deduplicates and classifies delivery recovery attribution before hourly rollup', async function () {
+      const projectId = `project-delivery-recovery-${Date.now()}`;
+      const projectKey = `tm_proj_delivery_recovery_${Date.now()}`;
+      const lastObservedAt = new Date();
+      const startedAt = new Date(lastObservedAt.getTime() - 100000);
+      const recoveryEpisode = {
+        schemaVersion: 1,
+        episodeId: `tm_episode_server_${Date.now()}`,
+        originRuntimeInstanceId: 'tm_runtime_server',
+        currentRuntimeInstanceId: 'tm_runtime_server',
+        startedAt: startedAt.toISOString(),
+        lastObservedAt: lastObservedAt.toISOString(),
+        totalDurationMs: 100000,
+        foregroundOnlineMs: 100000,
+        foregroundOfflineMs: 0,
+        backgroundOnlineMs: 0,
+        backgroundOfflineMs: 0,
+        runtimeAbsentMs: 0,
+        unknownMs: 0,
+        recoveredInNewRuntime: false,
+        failureTrigger: 'transport_failure',
+        evidenceFlags: ['transport_failed', 'transport_succeeded', 'visibility_observed'],
+      };
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-delivery-recovery',
+        name: 'Delivery Recovery Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+      await CaptureDeliveryReports.insertAsync({
+        projectId,
+        projectKey,
+        endpoint: 'capture',
+        platform: 'web',
+        sourceType: 'web',
+        sourceKey: 'app.example.com',
+        sourceLabel: 'app.example.com',
+        sourceDetails: {},
+        sent: 1,
+        accepted: 1,
+        ignored: 0,
+        droppedOldest: 0,
+        droppedStorage: 0,
+        retryCount: 1,
+        coalescedPresence: 0,
+        maxQueueDepth: 1,
+        deliveryEpisodeId: recoveryEpisode.episodeId,
+        recoveryEpisode,
+        recoveryDurationMs: 100000,
+        recoveryClassification: 'foreground_network_failure',
+        recoveryEvidenceQuality: 'high',
+        recoveryAcknowledgement: 'server_ack',
+        recoveredInNewRuntime: false,
+        aggregateStored: false,
+        createdAt: lastObservedAt,
+      });
+      const retriedRecoveryEpisode = {
+        ...recoveryEpisode,
+        startedAt: new Date(lastObservedAt.getTime() - 200000).toISOString(),
+        totalDurationMs: 200000,
+        foregroundOnlineMs: 200000,
+      };
+
+      const payload = {
+        projectKey,
+        sessionId: 'tm_sess_delivery_recovery',
+        deviceId: 'tm_dev_delivery_recovery',
+        deliveryStats: {
+          batchId: 'tm_batch_delivery_recovery',
+          reason: 'retry',
+          queued: 1,
+          sent: 1,
+          retryCount: 1,
+          maxQueueDepth: 1,
+          recoveryEpisode: retriedRecoveryEpisode,
+        },
+        events: [
+          { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
+        ],
+      };
+      await ingestCapturePayload(payload, { headers: {}, socket: {} });
+      await ingestCapturePayload(payload, { headers: {}, socket: {} });
+
+      const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+      const rollups = await captureDeliveryHourlyRollups().find({ projectId }).fetchAsync();
+      assert.strictEqual(reports.length, 1);
+      assert.strictEqual(reports[0].recoveryAcknowledgement, 'server_ack');
+      assert.strictEqual(reports[0].recoveryClassification, 'foreground_network_failure');
+      assert.strictEqual(reports[0].recoveryEvidenceQuality, 'high');
+      assert.strictEqual(reports[0].recoveryDurationMs, 100000);
+      assert.strictEqual(reports[0].aggregateStored, true);
+      assert.strictEqual(rollups.length, 1);
+      assert.strictEqual(rollups[0].reportCount, 1);
+      assert.strictEqual(rollups[0].attributedEpisodeCount, 1);
+      assert.strictEqual(rollups[0].recoveryDurationSampleCount, 1);
+      assert.strictEqual(rollups[0].recoveryDurationTotalMs, 100000);
+      assert.strictEqual(rollups[0].recoveryDurationMinMs, 100000);
+      assert.strictEqual(rollups[0].recoveryDurationMaxMs, 100000);
+      assert.strictEqual(rollups[0].recoveryClassificationCounts.foreground_network_failure, 1);
+      assert.strictEqual(rollups[0].evidenceQualityCounts.high, 1);
+      assert.strictEqual(rollups[0].durationCompositionMs.foregroundOnline, 100000);
+    });
+
+    it('keeps capture ingestion working when recovery episode evidence is malformed', async function () {
+      const projectId = `project-malformed-delivery-recovery-${Date.now()}`;
+      const projectKey = `tm_proj_malformed_delivery_recovery_${Date.now()}`;
+      const lastObservedAt = new Date();
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-malformed-delivery-recovery',
+        name: 'Malformed Delivery Recovery Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestCapturePayload({
+        projectKey,
+        deliveryStats: {
+          batchId: 'tm_batch_malformed_delivery_recovery',
+          reason: 'retry',
+          queued: 1,
+          sent: 1,
+          retryCount: 1,
+          maxQueueDepth: 1,
+          recoveryEpisode: {
+            schemaVersion: 1,
+            episodeId: 'tm_episode_malformed',
+            originRuntimeInstanceId: 'tm_runtime_malformed',
+            currentRuntimeInstanceId: 'tm_runtime_malformed',
+            startedAt: new Date(lastObservedAt.getTime() - 1000).toISOString(),
+            lastObservedAt: lastObservedAt.toISOString(),
+            totalDurationMs: 1000,
+            foregroundOnlineMs: 999,
+            foregroundOfflineMs: 0,
+            backgroundOnlineMs: 0,
+            backgroundOfflineMs: 0,
+            runtimeAbsentMs: 0,
+            unknownMs: 0,
+            recoveredInNewRuntime: false,
+            failureTrigger: 'transport_failure',
+            evidenceFlags: ['transport_failed'],
+          },
+        },
+        events: [
+          { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
+        ],
+      }, { headers: {}, socket: {} });
+
+      const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
+      const rollups = await captureDeliveryHourlyRollups().find({ projectId }).fetchAsync();
+
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.accepted, 1);
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 1);
+      assert.strictEqual(reports.length, 1);
+      assert.strictEqual(reports[0].deliveryEpisodeId, undefined);
+      assert.strictEqual(reports[0].aggregateStored, true);
+      assert.strictEqual(rollups.length, 1);
+      assert.strictEqual(rollups[0].attributedEpisodeCount, undefined);
+    });
+
     it('accepts batched presence payloads and records delivery stats', async function () {
       const projectId = `project-presence-batch-${Date.now()}`;
       const projectKey = `tm_proj_presence_batch_${Date.now()}`;
@@ -9249,6 +10160,69 @@ projectKey: tm_proj_sensitive`,
 
       assert.deepStrictEqual(result, { ok: true, ignored: true });
       assert.strictEqual(await PresenceSessions.find({ projectId }).countAsync(), 0);
+    });
+
+    it('stores sanitized runtime context on capture and presence records', async function () {
+      const projectId = `project-runtime-context-${Date.now()}`;
+      const projectKey = `tm_proj_runtime_context_${Date.now()}`;
+      const runtimeContext = {
+        schemaVersion: 1,
+        runtimeInstanceId: 'tm_runtime_ingestion',
+        sequence: 11,
+        lifecycleState: 'foreground',
+        connectivityState: 'online',
+        lifecycleEvidence: 'document_visibility',
+        connectivityEvidence: 'transport_success',
+        lifecycleConfidence: 'high',
+        connectivityConfidence: 'high',
+        unsafeNestedValue: { rawContent: 'must-not-persist' },
+      };
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-runtime-context',
+        name: 'Runtime Context Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const captureResult = await ingestCapturePayload({
+        projectKey,
+        type: 'page_view',
+        path: '/runtime',
+        source: { type: 'web', url: 'https://app.example.com/runtime' },
+        runtimeContext,
+      }, { headers: {}, socket: {} });
+      const presenceResult = await ingestPresencePayload({
+        projectKey,
+        presenceId: 'tm_pres_runtime_context',
+        state: 'start',
+        path: '/runtime',
+        source: { type: 'web', url: 'https://app.example.com/runtime' },
+        runtimeContext: { ...runtimeContext, sequence: 12 },
+      }, { headers: {}, socket: {} });
+
+      const behavior = await RawBehaviors.findOneAsync({ projectId });
+      const presence = await PresenceSessions.findOneAsync({ projectId });
+      assert.deepStrictEqual(captureResult, expectedSingleCaptureResult());
+      assert.deepStrictEqual(presenceResult, { ok: true, ignored: false });
+      assert.deepStrictEqual(behavior.runtimeContext, {
+        schemaVersion: 1,
+        runtimeInstanceId: 'tm_runtime_ingestion',
+        sequence: 11,
+        lifecycleState: 'foreground',
+        connectivityState: 'online',
+        lifecycleEvidence: 'document_visibility',
+        connectivityEvidence: 'transport_success',
+        lifecycleConfidence: 'high',
+        connectivityConfidence: 'high',
+      });
+      assert.deepStrictEqual(presence.runtimeContext, {
+        ...behavior.runtimeContext,
+        sequence: 12,
+      });
+      assert.ok(!JSON.stringify({ behavior, presence }).includes('must-not-persist'));
     });
 
     it('stores source fields for accepted capture requests', async function () {

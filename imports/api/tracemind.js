@@ -11,6 +11,13 @@ import {
   emptyHourlyComparison,
   percentChange,
 } from './project_health_summary';
+import {
+  RUNTIME_CONNECTIVITY_STATES,
+  RUNTIME_LIFECYCLE_STATES,
+  mergeRuntimeContextSummaries,
+  publicRuntimeContext,
+  summarizeRuntimeContexts,
+} from './runtime_context';
 
 export {
   Developers,
@@ -584,7 +591,27 @@ export function summarizeCaptureDelivery(reports = []) {
     failedFlushes: 0,
     lastSuccessfulFlushAt: null,
     lastFailedFlushAt: null,
+    attributedEpisodeCount: 0,
+    recoveredInNewRuntimeCount: 0,
+    recoveryDurationTotalMs: 0,
+    recoveryDurationMs: {
+      sampleCount: 0,
+      min: null,
+      average: null,
+      max: null,
+    },
+    recoveryClassificationCounts: {},
+    evidenceQualityCounts: {},
+    durationCompositionMs: {
+      foregroundOnline: 0,
+      foregroundOffline: 0,
+      backgroundOnline: 0,
+      backgroundOffline: 0,
+      runtimeAbsent: 0,
+      unknown: 0,
+    },
   };
+  let recoveryDurationTotalMs = 0;
 
   reports.forEach((report) => {
     const reportCount = Number(report.reportCount);
@@ -614,8 +641,81 @@ export function summarizeCaptureDelivery(reports = []) {
       summary.lastSuccessfulFlushAt,
       report.lastSuccessfulFlushAt || (!hasFailedFlushes && !reportFailed ? report.createdAt : null),
     );
+
+    const episodeCount = Math.max(0, Number(
+      report.attributedEpisodeCount
+        ?? (report.deliveryEpisodeId || report.recoveryEpisode ? 1 : 0),
+    ) || 0);
+    const recoveryDurationSummary = report.recoveryDurationMs
+      && typeof report.recoveryDurationMs === 'object'
+      && !Array.isArray(report.recoveryDurationMs)
+      ? report.recoveryDurationMs
+      : null;
+    const recoverySampleCount = Math.max(0, Number(
+      report.recoveryDurationSampleCount
+        ?? recoveryDurationSummary?.sampleCount
+        ?? (Number.isFinite(Number(report.recoveryDurationMs)) ? 1 : 0),
+    ) || 0);
+    const recoveryTotal = Number(
+      report.recoveryDurationTotalMs
+        ?? recoveryDurationSummary?.total
+        ?? (Number.isFinite(Number(report.recoveryDurationMs)) ? report.recoveryDurationMs : 0),
+    ) || 0;
+    const recoveryMin = Number(
+      report.recoveryDurationMinMs
+        ?? recoveryDurationSummary?.min
+        ?? report.recoveryDurationMs,
+    );
+    const recoveryMax = Number(
+      report.recoveryDurationMaxMs
+        ?? recoveryDurationSummary?.max
+        ?? report.recoveryDurationMs,
+    );
+    summary.attributedEpisodeCount += episodeCount;
+    summary.recoveredInNewRuntimeCount += Math.max(0, Number(
+      report.recoveredInNewRuntimeCount ?? (report.recoveredInNewRuntime ? 1 : 0),
+    ) || 0);
+    summary.recoveryDurationMs.sampleCount += recoverySampleCount;
+    recoveryDurationTotalMs += Math.max(0, recoveryTotal);
+    if (recoverySampleCount > 0 && Number.isFinite(recoveryMin)) {
+      summary.recoveryDurationMs.min = summary.recoveryDurationMs.min === null
+        ? recoveryMin
+        : Math.min(summary.recoveryDurationMs.min, recoveryMin);
+    }
+    if (recoverySampleCount > 0 && Number.isFinite(recoveryMax)) {
+      summary.recoveryDurationMs.max = summary.recoveryDurationMs.max === null
+        ? recoveryMax
+        : Math.max(summary.recoveryDurationMs.max, recoveryMax);
+    }
+    Object.entries(report.recoveryClassificationCounts || (
+      report.recoveryClassification ? { [report.recoveryClassification]: 1 } : {}
+    )).forEach(([key, count]) => {
+      summary.recoveryClassificationCounts[key] = (summary.recoveryClassificationCounts[key] || 0)
+        + Math.max(0, Number(count) || 0);
+    });
+    Object.entries(report.evidenceQualityCounts || (
+      report.recoveryEvidenceQuality ? { [report.recoveryEvidenceQuality]: 1 } : {}
+    )).forEach(([key, count]) => {
+      summary.evidenceQualityCounts[key] = (summary.evidenceQualityCounts[key] || 0)
+        + Math.max(0, Number(count) || 0);
+    });
+    const composition = report.durationCompositionMs || (report.recoveryEpisode ? {
+      foregroundOnline: report.recoveryEpisode.foregroundOnlineMs,
+      foregroundOffline: report.recoveryEpisode.foregroundOfflineMs,
+      backgroundOnline: report.recoveryEpisode.backgroundOnlineMs,
+      backgroundOffline: report.recoveryEpisode.backgroundOfflineMs,
+      runtimeAbsent: report.recoveryEpisode.runtimeAbsentMs,
+      unknown: report.recoveryEpisode.unknownMs,
+    } : {});
+    Object.keys(summary.durationCompositionMs).forEach((key) => {
+      summary.durationCompositionMs[key] += Math.max(0, Number(composition[key]) || 0);
+    });
   });
 
+  summary.recoveryDurationTotalMs = recoveryDurationTotalMs;
+  summary.recoveryDurationMs.average = summary.recoveryDurationMs.sampleCount
+    ? Math.round(recoveryDurationTotalMs / summary.recoveryDurationMs.sampleCount)
+    : null;
   return summary;
 }
 
@@ -659,6 +759,24 @@ function applyAttributionFilters(query, filters = {}) {
   if (landingPath) query['attribution.landingPath'] = landingPath;
 }
 
+function applyRuntimeContextFilters(query, filters = {}) {
+  if (filters.lifecycleState !== undefined) {
+    const lifecycleState = String(filters.lifecycleState || '');
+    if (!RUNTIME_LIFECYCLE_STATES.has(lifecycleState)) {
+      throw new TypeError('lifecycleState is not supported.');
+    }
+    query['runtimeContext.lifecycleState'] = lifecycleState;
+  }
+
+  if (filters.connectivityState !== undefined) {
+    const connectivityState = String(filters.connectivityState || '');
+    if (!RUNTIME_CONNECTIVITY_STATES.has(connectivityState)) {
+      throw new TypeError('connectivityState is not supported.');
+    }
+    query['runtimeContext.connectivityState'] = connectivityState;
+  }
+}
+
 export function buildEventQuery(projectId, filters = {}) {
   const query = { projectId };
   const startAt = validDate(filters.startAt);
@@ -674,6 +792,7 @@ export function buildEventQuery(projectId, filters = {}) {
   if (filters.actionKey) query.actionKey = String(filters.actionKey);
   if (filters.path) query.path = String(filters.path);
   applyAttributionFilters(query, filters);
+  applyRuntimeContextFilters(query, filters);
   if (startAt || endAt) {
     query.occurredAt = {};
     if (startAt) query.occurredAt.$gte = startAt;
@@ -699,6 +818,7 @@ export function buildRawBehaviorQuery(projectId, filters = {}) {
   if (filters.actionKey) query.actionKey = String(filters.actionKey);
   if (filters.path) query.path = String(filters.path);
   applyAttributionFilters(query, filters);
+  applyRuntimeContextFilters(query, filters);
   if (startAt || endAt) {
     query.occurredAt = {};
     if (startAt) query.occurredAt.$gte = startAt;
@@ -722,6 +842,7 @@ export function publicProject(project) {
 }
 
 export function publicSemanticEvent(event) {
+  const runtimeContext = publicRuntimeContext(event.runtimeContext);
   return {
     _id: event._id,
     projectId: event.projectId,
@@ -755,6 +876,7 @@ export function publicSemanticEvent(event) {
     relatedTargetHash: event.relatedTargetHash,
     correlationId: event.correlationId,
     attribution: normalizeAttribution(event.attribution),
+    ...(runtimeContext ? { runtimeContext } : {}),
     properties: event.properties,
     context: event.context,
     occurredAt: event.occurredAt,
@@ -763,6 +885,7 @@ export function publicSemanticEvent(event) {
 }
 
 export function publicRawBehavior(behavior) {
+  const runtimeContext = publicRuntimeContext(behavior.runtimeContext);
   return {
     _id: behavior._id,
     projectId: behavior.projectId,
@@ -795,6 +918,7 @@ export function publicRawBehavior(behavior) {
     relatedTargetHash: behavior.relatedTargetHash,
     correlationId: behavior.correlationId,
     attribution: normalizeAttribution(behavior.attribution),
+    ...(runtimeContext ? { runtimeContext } : {}),
     method: behavior.method,
     status: behavior.status,
     properties: behavior.properties,
@@ -1215,6 +1339,7 @@ function summarizeWindow({
   const bounceSessions = new Map();
   const trafficRecords = [];
   const sdkRecords = [];
+  const windowEvents = [];
   let failureEventCount = 0;
   let lastEventAt = null;
   let eventCount = 0;
@@ -1222,6 +1347,7 @@ function summarizeWindow({
   events.forEach((event) => {
     const occurredAt = eventTime(event);
     if (!occurredAt || occurredAt < windowStart || occurredAt >= windowEnd) return;
+    windowEvents.push(event);
     sdkRecords.push(event);
     const actorId = actorIdForEvent(event);
     if (actorId) activeUsers.add(actorId);
@@ -1315,6 +1441,7 @@ function summarizeWindow({
     topBouncePages: topBouncePagesForSessions(bounceSessions, 3),
     captureScriptFindings: captureScriptFindingsForRecords(sdkRecords),
     sdkUpgradeFindings: sdkUpgradeFindingsForRecords(sdkRecords),
+    runtimeContext: summarizeRuntimeContexts(windowEvents),
   };
 
   if (includeRollupDetails) {
@@ -1328,6 +1455,7 @@ function summarizeWindow({
       durationUsers: topDurations(durationUsers, Number.MAX_SAFE_INTEGER),
       durationPaths: topDurations(durationPaths, Number.MAX_SAFE_INTEGER),
       topBouncePages: topBouncePagesForSessions(bounceSessions, Number.MAX_SAFE_INTEGER),
+      runtimeContext: summarizeRuntimeContexts(windowEvents),
     };
   }
 
@@ -1527,6 +1655,7 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
   const captureScriptFindings = [];
   const sdkUpgradeFindings = [];
   const deliverySummaries = [];
+  const runtimeContextSummaries = [];
   let eventCount = 0;
   let failureEventCount = 0;
   let lastEventAt = null;
@@ -1557,6 +1686,9 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
     captureScriptFindings.push(...(current.captureScriptFindings || []));
     sdkUpgradeFindings.push(...(current.sdkUpgradeFindings || []));
     if (report.delivery) deliverySummaries.push(report.delivery);
+    if (rollup.runtimeContext || current.runtimeContext) {
+      runtimeContextSummaries.push(rollup.runtimeContext || current.runtimeContext);
+    }
   });
 
   const totalDurationMs = [...durationUsers.values()].reduce((sum, item) => sum + item.durationMs, 0);
@@ -1590,6 +1722,7 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
       topBouncePages: aggregatedBouncePages(bouncePages, 3),
       captureScriptFindings: uniqueFindings(captureScriptFindings),
       sdkUpgradeFindings: uniqueFindings(sdkUpgradeFindings),
+      runtimeContext: mergeRuntimeContextSummaries(runtimeContextSummaries),
       newUsers: Number.isFinite(newUsers) ? Math.max(0, newUsers) : 0,
       retention: retention || emptyHealthWindow().retention,
     },

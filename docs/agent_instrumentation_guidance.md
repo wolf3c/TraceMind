@@ -48,7 +48,7 @@ Agent 分析产品行为时应先按只读路径使用 MCP：
 1. `tracemind.project_info`：先确认当前 MCP 对应的 TraceMind 项目，并与项目级 instruction 中的 expected `projectId` 比对；不匹配时停止。读取 `availableCapabilities.currentOnline`、`availableCapabilities.projectHealth` 和 `availableCapabilities.deliveryDiagnostics`，确认当前项目的实时在线、项目健康和近期上报诊断能力入口。
 2. `tracemind.project_health`：读取项目日报，回答今天是否正常、较前一日变化、需关注项和上报健康。今天的日报使用已结束小时聚合，并与昨天同一小时段对比。
 3. `tracemind.recent_online`：读取近 30 分钟实时在线态势，回答现在是否有人在线、用户集中在哪些页面/地区和最近高频事件。
-4. `tracemind.query_delivery_diagnostics`：`project_health.delivery` 出现失败、重试、丢弃或队列异常时，查询最近 7 天的脱敏聚合。只使用小时/source/platform、reason 类别、HTTP 状态类别、队列深度、重试/丢弃计数和可用恢复耗时；不返回或索要原始错误、请求/响应体、URL、日志、用户内容或 session/device/batch 标识。
+4. `tracemind.query_delivery_diagnostics`：`project_health.delivery` 出现失败、重试、丢弃或队列异常时，查询最近 7 天的脱敏聚合。优先使用 endpoint、恢复分类、证据质量、时长组成和归因覆盖率；`recoveryDurationMs` 是区间归因，`legacyElapsedDurationMs` 只是旧版未归因墙钟时间，不能解释为前台等待。事件下钻可用 `lifecycleState` / `connectivityState`，并说明上下文覆盖率。
 5. `tracemind.summary`：在日报或实时态势指向的时间窗口内看最近语义事件样本概览、DAU/设备数线索、presence 在线时长和流量来源分布。读取 `summarySample`；`summary.totalEvents`、`topActions`、`dailyActiveUsers` 是样本口径，不是自然日全量指标。`topActions` 是原始 actionKey 排行；判断用户意图时优先使用 `topIntentActions`，把 `topFieldInteractions` 作为输入框、表单字段等高频编辑/聚焦噪声或弱信号单独说明。
 6. `tracemind.query_events`：按路径、事件名、用户、session、`actionKey`、`targetHash`、`attributionSource`、`attributionMedium`、`attributionCampaign` 或 `landingPath` 下钻语义证据。
 7. `tracemind.query_raw_behaviors`：只有语义证据不足或需要排查采集问题时才使用。

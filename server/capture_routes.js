@@ -31,6 +31,12 @@ import {
 } from '/imports/api/tracemind';
 import { SDK_RELEASE_MANIFEST, latestSdkForSetup } from '/imports/api/sdk_release';
 import { summarizeSemanticEvents } from '/imports/api/semantic';
+import {
+  classifyDeliveryRecoveryEpisode,
+  deliveryRecoveryEvidenceQuality,
+  sanitizeDeliveryRecoveryEpisode,
+  sanitizeRuntimeContext,
+} from '/imports/api/runtime_context';
 import { queueProjectDailyHealthRefresh, reportDateForDate, resolveProjectDailyHealth } from './daily_reports';
 import {
   recordSetupAttemptFirstCapture,
@@ -464,13 +470,14 @@ export function mcpTools(project) {
     {
       name: 'tracemind.query_delivery_diagnostics',
       title: projectScopedTitle('TraceMind Query Delivery Diagnostics', project),
-      description: projectScopedDescription('查询最近 7 天失败、重试或丢弃上报的脱敏聚合；按小时、source/platform、reason 类别和 HTTP 状态类别返回诊断报告数、重试/丢弃计数、队列峰值和可用的恢复耗时，不返回原始错误、请求/响应体、URL、日志、用户内容或 session/device/batch 标识。', project),
+      description: projectScopedDescription('查询最近 7 天失败、重试或丢弃上报的脱敏聚合；按小时、endpoint、source/platform、reason 与证据分类返回诊断计数、队列峰值、可归因恢复区间和单独标注的旧版墙钟耗时，不返回运行实例/区间标识、原始错误、请求/响应体、URL、日志或用户内容。', project),
       inputSchema: {
         type: 'object',
         properties: {
           startAt: { type: 'string', description: 'ISO 时间，查询起点；默认最近 24 小时，最多保留最近 7 天。' },
           endAt: { type: 'string', description: 'ISO 时间，查询终点；默认当前时间。' },
           platform: { type: 'string', description: '可选平台过滤，例如 web、ios、android、server。' },
+          endpoint: { type: 'string', enum: ['capture', 'presence', 'user_feedback'], description: '可选上报端点过滤。' },
           sourceType: { type: 'string', description: '可选来源类型过滤，例如 web、server_app、mcp_server。' },
           sourceKey: { type: 'string', description: '可选稳定来源 key 过滤，例如 hostname、bundle id 或服务名。' },
         },
@@ -675,6 +682,8 @@ export function mcpTools(project) {
           deviceId: { type: 'string', description: '设备 ID。' },
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
           actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
+          lifecycleState: { type: 'string', enum: ['foreground', 'background', 'unknown'], description: '按事件发生时的生命周期证据过滤。' },
+          connectivityState: { type: 'string', enum: ['online', 'offline', 'unknown'], description: '按事件发生时的联网证据过滤。' },
           attributionSource: { type: 'string', description: '流量归因来源，可来自 Web UTM/referrer 或 native deeplink/referrer app，例如 github、google、direct、partner。' },
           attributionMedium: { type: 'string', description: '流量归因媒介，例如 social、cpc、direct、deeplink、universal_link、app_link。' },
           attributionCampaign: { type: 'string', description: '流量归因 campaign，例如 launch-week。' },
@@ -704,6 +713,8 @@ export function mcpTools(project) {
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
           actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
           path: { type: 'string', description: '页面或接口路径。' },
+          lifecycleState: { type: 'string', enum: ['foreground', 'background', 'unknown'], description: '按事件发生时的生命周期证据过滤。' },
+          connectivityState: { type: 'string', enum: ['online', 'offline', 'unknown'], description: '按事件发生时的联网证据过滤。' },
           attributionSource: { type: 'string', description: '流量归因来源，可来自 Web UTM/referrer 或 native deeplink/referrer app，例如 github、google、direct、partner。' },
           attributionMedium: { type: 'string', description: '流量归因媒介，例如 social、cpc、direct、deeplink、universal_link、app_link。' },
           attributionCampaign: { type: 'string', description: '流量归因 campaign，例如 launch-week。' },
@@ -733,6 +744,8 @@ export function mcpTools(project) {
           targetHash: { type: 'string', description: '元素目标哈希，用于区分同页相同文案的按钮或输入框。' },
           actionKey: { type: 'string', description: '稳定交互动作 key，用于按工程标识和路径聚合行为。' },
           path: { type: 'string', description: '页面或接口路径。' },
+          lifecycleState: { type: 'string', enum: ['foreground', 'background', 'unknown'], description: '按行为发生时的生命周期证据过滤。' },
+          connectivityState: { type: 'string', enum: ['online', 'offline', 'unknown'], description: '按行为发生时的联网证据过滤。' },
           attributionSource: { type: 'string', description: '流量归因来源，可来自 Web UTM/referrer 或 native deeplink/referrer app，例如 github、google、direct、partner。' },
           attributionMedium: { type: 'string', description: '流量归因媒介，例如 social、cpc、direct、deeplink、universal_link、app_link。' },
           attributionCampaign: { type: 'string', description: '流量归因 campaign，例如 launch-week。' },
@@ -1236,7 +1249,8 @@ function deliveryDiagnosticsReasonClass(report = {}) {
   return 'unknown';
 }
 
-function deliveryDiagnosticsRecoveryDuration(report, reasonClass) {
+function deliveryDiagnosticsLegacyElapsedDuration(report, reasonClass) {
+  if (report.deliveryEpisodeId) return null;
   if (!['http', 'dns', 'tls', 'timeout', 'network'].includes(reasonClass)) return null;
   const failedAt = safeDate(report.lastFailedFlushAt);
   const recoveredAt = safeDate(report.createdAt);
@@ -1244,6 +1258,42 @@ function deliveryDiagnosticsRecoveryDuration(report, reasonClass) {
   const duration = recoveredAt.getTime() - failedAt.getTime();
   const maxDuration = deliveryDiagnosticsRetentionDays() * 24 * 60 * 60 * 1000;
   return duration <= maxDuration ? duration : null;
+}
+
+function deliveryDiagnosticsAttributedRecoveryEpisode(report) {
+  const episode = sanitizeDeliveryRecoveryEpisode(report.recoveryEpisode);
+  return episode && report.deliveryEpisodeId === episode.episodeId ? episode : null;
+}
+
+function emptyDurationComposition() {
+  return {
+    foregroundOnline: 0,
+    foregroundOffline: 0,
+    backgroundOnline: 0,
+    backgroundOffline: 0,
+    runtimeAbsent: 0,
+    unknown: 0,
+  };
+}
+
+function addDurationComposition(target, episode = {}) {
+  target.foregroundOnline += safeCount(episode.foregroundOnlineMs);
+  target.foregroundOffline += safeCount(episode.foregroundOfflineMs);
+  target.backgroundOnline += safeCount(episode.backgroundOnlineMs);
+  target.backgroundOffline += safeCount(episode.backgroundOfflineMs);
+  target.runtimeAbsent += safeCount(episode.runtimeAbsentMs);
+  target.unknown += safeCount(episode.unknownMs);
+}
+
+function incrementLabelCount(counts, label) {
+  if (!label) return;
+  counts[label] = safeCount(counts[label]) + 1;
+}
+
+function publicLabelCounts(counts, key) {
+  return Object.entries(counts)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([label, count]) => ({ [key]: label, count }));
 }
 
 function emptyRecoveryDurationSummary() {
@@ -1285,6 +1335,12 @@ function summarizeDeliveryDiagnostics(reports = []) {
     droppedStorage: 0,
     maxQueueDepth: 0,
     recoveryDurationMs: emptyRecoveryDurationSummary(),
+    legacyElapsedDurationMs: emptyRecoveryDurationSummary(),
+    attributedEpisodeCount: 0,
+    recoveredInNewRuntimeCount: 0,
+    recoveryClassificationCounts: {},
+    evidenceQualityCounts: {},
+    durationCompositionMs: emptyDurationComposition(),
   };
 
   reports.forEach((report) => {
@@ -1295,6 +1351,14 @@ function summarizeDeliveryDiagnostics(reports = []) {
     const sourceKey = safeString(report.sourceKey, 200, 'unknown');
     const reasonClass = deliveryDiagnosticsReasonClass(report);
     const httpStatusClass = deliveryDiagnosticsHttpStatusClass(report.lastError);
+    const endpoint = safeString(report.endpoint, 40, 'unknown');
+    const recoveryEpisode = deliveryDiagnosticsAttributedRecoveryEpisode(report);
+    const recoveryClassification = recoveryEpisode
+      ? classifyDeliveryRecoveryEpisode(recoveryEpisode)
+      : 'legacy';
+    const recoveryEvidenceQuality = recoveryEpisode
+      ? deliveryRecoveryEvidenceQuality(recoveryEpisode)
+      : 'legacy';
     const bucketStartAt = deliveryDiagnosticsBucketStart(createdAt);
     const bucketEndAt = new Date(bucketStartAt.getTime() + DELIVERY_DIAGNOSTICS_BUCKET_MS);
     const key = JSON.stringify([
@@ -1302,23 +1366,36 @@ function summarizeDeliveryDiagnostics(reports = []) {
       platform,
       sourceType,
       sourceKey,
+      endpoint,
       reasonClass,
       httpStatusClass,
+      recoveryClassification,
+      recoveryEvidenceQuality,
     ]);
     const group = groups.get(key) || {
       startAt: bucketStartAt,
       endAt: bucketEndAt,
       source: { platform, sourceType, sourceKey },
+      endpoint,
       reasonClass,
       httpStatusClass,
+      recoveryClassification,
+      recoveryEvidenceQuality,
       diagnosticReportCount: 0,
       retryCount: 0,
       droppedOldest: 0,
       droppedStorage: 0,
       maxQueueDepth: 0,
       recoveryDurationMs: emptyRecoveryDurationSummary(),
+      legacyElapsedDurationMs: emptyRecoveryDurationSummary(),
+      attributedEpisodeCount: 0,
+      recoveredInNewRuntimeCount: 0,
+      recoveryClassificationCounts: {},
+      evidenceQualityCounts: {},
+      durationCompositionMs: emptyDurationComposition(),
     };
-    const recoveryDuration = deliveryDiagnosticsRecoveryDuration(report, reasonClass);
+    const recoveryDuration = recoveryEpisode?.totalDurationMs ?? null;
+    const legacyElapsedDuration = deliveryDiagnosticsLegacyElapsedDuration(report, reasonClass);
 
     group.diagnosticReportCount += 1;
     group.retryCount += safeCount(report.retryCount);
@@ -1326,6 +1403,14 @@ function summarizeDeliveryDiagnostics(reports = []) {
     group.droppedStorage += safeCount(report.droppedStorage);
     group.maxQueueDepth = Math.max(group.maxQueueDepth, safeCount(report.maxQueueDepth));
     addRecoveryDuration(group.recoveryDurationMs, recoveryDuration);
+    addRecoveryDuration(group.legacyElapsedDurationMs, legacyElapsedDuration);
+    if (recoveryDuration !== null) {
+      group.attributedEpisodeCount += 1;
+      group.recoveredInNewRuntimeCount += recoveryEpisode.recoveredInNewRuntime ? 1 : 0;
+      incrementLabelCount(group.recoveryClassificationCounts, recoveryClassification);
+      incrementLabelCount(group.evidenceQualityCounts, recoveryEvidenceQuality);
+      addDurationComposition(group.durationCompositionMs, recoveryEpisode);
+    }
     groups.set(key, group);
 
     summary.diagnosticReportCount += 1;
@@ -1334,23 +1419,41 @@ function summarizeDeliveryDiagnostics(reports = []) {
     summary.droppedStorage += safeCount(report.droppedStorage);
     summary.maxQueueDepth = Math.max(summary.maxQueueDepth, safeCount(report.maxQueueDepth));
     addRecoveryDuration(summary.recoveryDurationMs, recoveryDuration);
+    addRecoveryDuration(summary.legacyElapsedDurationMs, legacyElapsedDuration);
+    if (recoveryDuration !== null) {
+      summary.attributedEpisodeCount += 1;
+      summary.recoveredInNewRuntimeCount += recoveryEpisode.recoveredInNewRuntime ? 1 : 0;
+      incrementLabelCount(summary.recoveryClassificationCounts, recoveryClassification);
+      incrementLabelCount(summary.evidenceQualityCounts, recoveryEvidenceQuality);
+      addDurationComposition(summary.durationCompositionMs, recoveryEpisode);
+    }
   });
 
+  function publicDiagnosticsAggregate(value) {
+    const denominator = value.attributedEpisodeCount + value.legacyElapsedDurationMs.sampleCount;
+    return {
+      ...value,
+      recoveryDurationMs: publicRecoveryDurationSummary(value.recoveryDurationMs),
+      legacyElapsedDurationMs: {
+        semantics: 'unattributed_wall_clock_elapsed',
+        ...publicRecoveryDurationSummary(value.legacyElapsedDurationMs),
+      },
+      recoveryClassificationCounts: publicLabelCounts(value.recoveryClassificationCounts, 'classification'),
+      evidenceQualityCounts: publicLabelCounts(value.evidenceQualityCounts, 'quality'),
+      attributionCoverage: denominator ? value.attributedEpisodeCount / denominator : 0,
+    };
+  }
+
   return {
-    summary: {
-      ...summary,
-      recoveryDurationMs: publicRecoveryDurationSummary(summary.recoveryDurationMs),
-    },
+    summary: publicDiagnosticsAggregate(summary),
     buckets: [...groups.values()]
-      .map((group) => ({
-        ...group,
-        recoveryDurationMs: publicRecoveryDurationSummary(group.recoveryDurationMs),
-      }))
+      .map(publicDiagnosticsAggregate)
       .sort((left, right) => (
         left.startAt - right.startAt
         || left.source.platform.localeCompare(right.source.platform)
         || left.source.sourceType.localeCompare(right.source.sourceType)
         || left.source.sourceKey.localeCompare(right.source.sourceKey)
+        || left.endpoint.localeCompare(right.endpoint)
         || left.reasonClass.localeCompare(right.reasonClass)
         || left.httpStatusClass.localeCompare(right.httpStatusClass)
       )),
@@ -1366,9 +1469,14 @@ async function readDeliveryDiagnostics(project, args = {}) {
   };
   const sourceType = safeString(args.sourceType, 80).trim();
   const sourceKey = safeString(args.sourceKey, 200).trim();
+  const endpoint = safeString(args.endpoint, 40).trim();
   const requestedPlatform = safeString(args.platform, 40).toLowerCase().trim();
   if (sourceType) query.sourceType = sourceType;
   if (sourceKey) query.sourceKey = sourceKey;
+  if (endpoint && !['capture', 'presence', 'user_feedback'].includes(endpoint)) {
+    throw new Meteor.Error('invalid-delivery-diagnostics-endpoint', 'endpoint is not supported.');
+  }
+  if (endpoint) query.endpoint = endpoint;
   if (requestedPlatform && !DELIVERY_DIAGNOSTICS_PLATFORMS.has(requestedPlatform)) {
     throw new Meteor.Error('invalid-delivery-diagnostics-platform', 'platform is not supported.');
   }
@@ -1389,6 +1497,13 @@ async function readDeliveryDiagnostics(project, args = {}) {
         maxQueueDepth: 1,
         lastError: 1,
         lastFailedFlushAt: 1,
+        endpoint: 1,
+        deliveryEpisodeId: 1,
+        recoveryDurationMs: 1,
+        recoveryClassification: 1,
+        recoveryEvidenceQuality: 1,
+        recoveredInNewRuntime: 1,
+        recoveryEpisode: 1,
         createdAt: 1,
       },
     },
@@ -4179,12 +4294,12 @@ export async function ingestUserFeedbackPayload(payload = {}, req = {}) {
     const result = firstError && accepted === 0
       ? { ok: false, findings: firstError.findings || [], accepted, ignored }
       : { ok: true, accepted, ignored, results };
-    await recordDeliveryReport(project, payload, req, 'user_feedback', result);
+    await safelyRecordDeliveryReport(project, payload, req, 'user_feedback', result);
     return result;
   }
 
   const result = await insertUserFeedbackEvent(project, payload, req);
-  await recordDeliveryReport(project, payload, req, 'user_feedback', {
+  await safelyRecordDeliveryReport(project, payload, req, 'user_feedback', {
     accepted: result.ok && !result.ignored ? 1 : 0,
     ignored: result.ignored ? 1 : 0,
   });
@@ -4506,7 +4621,8 @@ function deliveryHourStart(date) {
 }
 
 function deliveryIsDiagnostic(report) {
-  return Boolean(report.lastError)
+  return Boolean(report.deliveryEpisodeId)
+    || Boolean(report.lastError)
     || Number(report.retryCount) > 0
     || Number(report.droppedOldest) > 0
     || Number(report.droppedStorage) > 0;
@@ -4519,7 +4635,8 @@ function deliveryReportDocument(project, payload = {}, req = {}, endpoint, resul
   const sourcePayload = deliverySourcePayload(payload);
   const source = normalizeCaptureSource(sourcePayload, req.headers || {});
   const lastFailedFlushAt = safeDate(stats.lastFailedFlushAt);
-  return {
+  const recoveryEpisode = sanitizeDeliveryRecoveryEpisode(stats.recoveryEpisode);
+  const report = {
     projectId: project._id,
     projectKey: project.projectKey,
     endpoint: safeString(endpoint, 40),
@@ -4545,6 +4662,16 @@ function deliveryReportDocument(project, payload = {}, req = {}, endpoint, resul
     ...(lastFailedFlushAt ? { lastFailedFlushAt } : {}),
     createdAt: new Date(),
   };
+  if (recoveryEpisode) {
+    report.deliveryEpisodeId = recoveryEpisode.episodeId;
+    report.recoveryEpisode = recoveryEpisode;
+    report.recoveryDurationMs = recoveryEpisode.totalDurationMs;
+    report.recoveryClassification = classifyDeliveryRecoveryEpisode(recoveryEpisode);
+    report.recoveryEvidenceQuality = deliveryRecoveryEvidenceQuality(recoveryEpisode);
+    report.recoveryAcknowledgement = 'server_ack';
+    report.recoveredInNewRuntime = recoveryEpisode.recoveredInNewRuntime;
+  }
+  return report;
 }
 
 async function upsertDeliveryHourlyRollup(report) {
@@ -4556,6 +4683,34 @@ async function upsertDeliveryHourlyRollup(report) {
     maxQueueDepth: report.maxQueueDepth,
     lastSeenAt: report.createdAt,
   };
+  const minFields = {};
+  const incrementFields = {
+    reportCount: 1,
+    sent: report.sent,
+    accepted: report.accepted,
+    ignored: report.ignored,
+    droppedOldest: report.droppedOldest,
+    droppedStorage: report.droppedStorage,
+    retryCount: report.retryCount,
+    coalescedPresence: report.coalescedPresence,
+    failedFlushes: failedFlush ? 1 : 0,
+  };
+  if (report.deliveryEpisodeId && report.recoveryEpisode) {
+    incrementFields.attributedEpisodeCount = 1;
+    incrementFields.recoveredInNewRuntimeCount = report.recoveredInNewRuntime ? 1 : 0;
+    incrementFields.recoveryDurationSampleCount = 1;
+    incrementFields.recoveryDurationTotalMs = report.recoveryDurationMs;
+    incrementFields['durationCompositionMs.foregroundOnline'] = report.recoveryEpisode.foregroundOnlineMs;
+    incrementFields['durationCompositionMs.foregroundOffline'] = report.recoveryEpisode.foregroundOfflineMs;
+    incrementFields['durationCompositionMs.backgroundOnline'] = report.recoveryEpisode.backgroundOnlineMs;
+    incrementFields['durationCompositionMs.backgroundOffline'] = report.recoveryEpisode.backgroundOfflineMs;
+    incrementFields['durationCompositionMs.runtimeAbsent'] = report.recoveryEpisode.runtimeAbsentMs;
+    incrementFields['durationCompositionMs.unknown'] = report.recoveryEpisode.unknownMs;
+    incrementFields[`recoveryClassificationCounts.${report.recoveryClassification}`] = 1;
+    incrementFields[`evidenceQualityCounts.${report.recoveryEvidenceQuality}`] = 1;
+    minFields.recoveryDurationMinMs = report.recoveryDurationMs;
+    maxFields.recoveryDurationMaxMs = report.recoveryDurationMs;
+  }
   if (failedFlush) maxFields.lastFailedFlushAt = report.createdAt;
   else maxFields.lastSuccessfulFlushAt = report.createdAt;
 
@@ -4584,17 +4739,8 @@ async function upsertDeliveryHourlyRollup(report) {
         sourceDetails: report.sourceDetails,
         updatedAt: now,
       },
-      $inc: {
-        reportCount: 1,
-        sent: report.sent,
-        accepted: report.accepted,
-        ignored: report.ignored,
-        droppedOldest: report.droppedOldest,
-        droppedStorage: report.droppedStorage,
-        retryCount: report.retryCount,
-        coalescedPresence: report.coalescedPresence,
-        failedFlushes: failedFlush ? 1 : 0,
-      },
+      $inc: incrementFields,
+      ...(Object.keys(minFields).length ? { $min: minFields } : {}),
       $max: maxFields,
     },
     { upsert: true },
@@ -4605,6 +4751,39 @@ async function recordDeliveryReport(project, payload = {}, req = {}, endpoint, r
   const report = deliveryReportDocument(project, payload, req, endpoint, result);
   if (!report) return;
 
+  if (report.deliveryEpisodeId) {
+    const key = {
+      projectId: report.projectId,
+      endpoint: report.endpoint,
+      deliveryEpisodeId: report.deliveryEpisodeId,
+    };
+    await CaptureDeliveryReports.rawCollection().updateOne(
+      key,
+      { $setOnInsert: { ...report, aggregateStored: false } },
+      { upsert: true },
+    );
+    const claim = await CaptureDeliveryReports.rawCollection().updateOne(
+      { ...key, aggregateStored: false },
+      { $set: { aggregateStored: 'pending' } },
+    );
+    if (claim.modifiedCount === 0) return;
+    try {
+      const storedReport = await CaptureDeliveryReports.rawCollection().findOne(key);
+      await upsertDeliveryHourlyRollup(storedReport || report);
+      await CaptureDeliveryReports.rawCollection().updateOne(
+        key,
+        { $set: { aggregateStored: true } },
+      );
+    } catch (error) {
+      await CaptureDeliveryReports.rawCollection().updateOne(
+        { ...key, aggregateStored: 'pending' },
+        { $set: { aggregateStored: false } },
+      );
+      throw error;
+    }
+    return;
+  }
+
   await upsertDeliveryHourlyRollup(report);
   if (!deliveryIsDiagnostic(report)) return;
 
@@ -4612,6 +4791,18 @@ async function recordDeliveryReport(project, payload = {}, req = {}, endpoint, r
     ...report,
     aggregateStored: true,
   });
+}
+
+async function safelyRecordDeliveryReport(project, payload = {}, req = {}, endpoint, result = {}) {
+  try {
+    await recordDeliveryReport(project, payload, req, endpoint, result);
+  } catch (error) {
+    console.error('[TraceMind] delivery observability write failed', {
+      projectId: project?._id,
+      endpoint,
+      errorType: error?.name || 'Error',
+    });
+  }
 }
 
 function validateEventName(eventName) {
@@ -5197,10 +5388,86 @@ export function clientScript(host) {
   var staticUserId = script && script.getAttribute('data-tracemind-user-id');
   var userIdProvider = script && script.getAttribute('data-tracemind-user-id-provider');
   var sourceFramework = frameworkName(script && script.getAttribute('data-tracemind-framework'));
+  var pageContext = window.__TraceMindPageContext;
+  if (!pageContext || typeof pageContext !== 'object' || !pageContext.runtimeInstanceId) {
+    pageContext = {
+      runtimeInstanceId: 'tm_runtime_' + Math.random().toString(36).slice(2) + Date.now().toString(36),
+      sequence: 0,
+      lifecycleState: 'unknown',
+      connectivityState: 'unknown',
+      lifecycleEvidence: 'unknown',
+      connectivityEvidence: 'unknown',
+      lifecycleConfidence: 'unknown',
+      connectivityConfidence: 'unknown'
+    };
+    window.__TraceMindPageContext = pageContext;
+  }
 
   function runtimeActive() {
     return window.__TraceMindRuntime === runtime && runtime.disabled !== true;
   }
+
+  function setLifecycleState(state, evidence, confidence) {
+    pageContext.lifecycleState = state;
+    pageContext.lifecycleEvidence = evidence;
+    pageContext.lifecycleConfidence = confidence;
+  }
+
+  function updateLifecycleFromVisibility() {
+    if (document.visibilityState === 'visible') {
+      setLifecycleState('foreground', 'document_visibility', 'high');
+    } else if (document.visibilityState === 'hidden') {
+      setLifecycleState('background', 'document_visibility', 'high');
+    } else {
+      setLifecycleState('unknown', 'unknown', 'unknown');
+    }
+  }
+
+  function setConnectivityState(state, evidence, confidence) {
+    pageContext.connectivityState = state;
+    pageContext.connectivityEvidence = evidence;
+    pageContext.connectivityConfidence = confidence;
+  }
+
+  function updateConnectivityFromPlatform() {
+    if (navigator.onLine === false) {
+      setConnectivityState('offline', 'platform_connectivity', 'medium');
+    } else if (navigator.onLine === true) {
+      setConnectivityState('online', 'platform_connectivity', 'low');
+    } else {
+      setConnectivityState('unknown', 'unknown', 'unknown');
+    }
+  }
+
+  function markTransportSuccess() {
+    setConnectivityState('online', 'transport_success', 'high');
+  }
+
+  function markTransportFailure() {
+    if (navigator.onLine === false) {
+      setConnectivityState('offline', 'platform_connectivity', 'medium');
+    } else {
+      setConnectivityState('unknown', 'transport_failure', 'low');
+    }
+  }
+
+  function runtimeContextSnapshot() {
+    pageContext.sequence += 1;
+    return {
+      schemaVersion: 1,
+      runtimeInstanceId: pageContext.runtimeInstanceId,
+      sequence: pageContext.sequence,
+      lifecycleState: pageContext.lifecycleState,
+      connectivityState: pageContext.connectivityState,
+      lifecycleEvidence: pageContext.lifecycleEvidence,
+      connectivityEvidence: pageContext.connectivityEvidence,
+      lifecycleConfidence: pageContext.lifecycleConfidence,
+      connectivityConfidence: pageContext.connectivityConfidence
+    };
+  }
+
+  updateLifecycleFromVisibility();
+  updateConnectivityFromPlatform();
 
   function frameworkName(value) {
     var text = String(value || '').trim().toLowerCase();
@@ -5455,7 +5722,8 @@ export function clientScript(host) {
       maxQueueDepth: 0,
       lastError: '',
       lastFlushAt: '',
-      lastFailedFlushAt: ''
+      lastFailedFlushAt: '',
+      recoveryEpisodes: {}
     };
   }
 
@@ -5473,6 +5741,229 @@ export function clientScript(host) {
     writeLocal(statsStorageKey, JSON.stringify(deliveryStats));
   }
 
+  var RECOVERY_EPISODE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+  var RECOVERY_ENDPOINT_KINDS = ['capture', 'presence', 'feedback'];
+  var RECOVERY_DURATION_FIELDS = [
+    'foregroundOnlineMs',
+    'foregroundOfflineMs',
+    'backgroundOnlineMs',
+    'backgroundOfflineMs',
+    'runtimeAbsentMs',
+    'unknownMs'
+  ];
+  var RECOVERY_EVIDENCE_FLAGS = {
+    visibility_observed: true,
+    platform_online: true,
+    platform_offline: true,
+    transport_failed: true,
+    transport_succeeded: true,
+    page_hidden: true,
+    page_shown: true,
+    page_frozen: true,
+    page_resumed: true,
+    page_discarded: true,
+    new_runtime: true,
+    clock_anomaly: true
+  };
+
+  function recoveryEpisodeId() {
+    return 'tm_episode_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  function addRecoveryEvidence(episode, flag) {
+    if (!episode || !RECOVERY_EVIDENCE_FLAGS[flag]) return;
+    if (!Array.isArray(episode.evidenceFlags)) episode.evidenceFlags = [];
+    if (episode.evidenceFlags.indexOf(flag) === -1) {
+      episode.evidenceFlags.push(flag);
+      episode.evidenceFlags.sort();
+    }
+  }
+
+  function recoveryDurationTotal(episode) {
+    return RECOVERY_DURATION_FIELDS.reduce(function (total, field) {
+      return total + Number(episode && episode[field] || 0);
+    }, 0);
+  }
+
+  function validStoredRecoveryEpisode(episode) {
+    if (!episode || episode.schemaVersion !== 1) return false;
+    if (typeof episode.episodeId !== 'string' || !episode.episodeId || episode.episodeId.length > 120) return false;
+    if (typeof episode.originRuntimeInstanceId !== 'string' || !episode.originRuntimeInstanceId
+      || episode.originRuntimeInstanceId.length > 120) return false;
+    if (typeof episode.currentRuntimeInstanceId !== 'string' || !episode.currentRuntimeInstanceId
+      || episode.currentRuntimeInstanceId.length > 120) return false;
+    if (episode.failureTrigger !== 'transport_failure' && episode.failureTrigger !== 'platform_offline') return false;
+    var startedAtMs = Date.parse(episode.startedAt);
+    var lastObservedAtMs = Date.parse(episode.lastObservedAt);
+    if (!Number.isFinite(startedAtMs) || !Number.isFinite(lastObservedAtMs) || lastObservedAtMs < startedAtMs) return false;
+    if (!Number.isInteger(episode.totalDurationMs) || episode.totalDurationMs < 0) return false;
+    for (var i = 0; i < RECOVERY_DURATION_FIELDS.length; i += 1) {
+      var value = episode[RECOVERY_DURATION_FIELDS[i]];
+      if (!Number.isInteger(value) || value < 0) return false;
+    }
+    if (typeof episode.recoveredInNewRuntime !== 'boolean') return false;
+    var runtimeChanged = episode.originRuntimeInstanceId !== episode.currentRuntimeInstanceId;
+    var hasNewRuntimeFlag = Array.isArray(episode.evidenceFlags)
+      && episode.evidenceFlags.indexOf('new_runtime') >= 0;
+    if (episode.recoveredInNewRuntime !== runtimeChanged
+      || (runtimeChanged && (episode.runtimeAbsentMs <= 0 || !hasNewRuntimeFlag))
+      || (!runtimeChanged && (episode.runtimeAbsentMs !== 0 || hasNewRuntimeFlag))) return false;
+    return recoveryDurationTotal(episode) === episode.totalDurationMs
+      && lastObservedAtMs - startedAtMs === episode.totalDurationMs;
+  }
+
+  function recoveryBucket(episode) {
+    var lifecycle = episode.observedLifecycleState;
+    var connectivity = episode.observedConnectivityState;
+    if (lifecycle === 'foreground' && connectivity === 'online') return 'foregroundOnlineMs';
+    if (lifecycle === 'foreground' && connectivity === 'offline') return 'foregroundOfflineMs';
+    if (lifecycle === 'background' && connectivity === 'online') return 'backgroundOnlineMs';
+    if (lifecycle === 'background' && connectivity === 'offline') return 'backgroundOfflineMs';
+    return 'unknownMs';
+  }
+
+  function settleRecoveryEpisode(episode, nowMs) {
+    if (!episode) return;
+    var observedAtMs = Date.parse(episode.lastObservedAt);
+    if (!Number.isFinite(observedAtMs) || nowMs < observedAtMs) {
+      addRecoveryEvidence(episode, 'clock_anomaly');
+      return;
+    }
+    var elapsed = nowMs - observedAtMs;
+    if (episode.currentRuntimeInstanceId !== pageContext.runtimeInstanceId) {
+      if (elapsed === 0) return;
+      episode.runtimeAbsentMs += elapsed;
+      episode.currentRuntimeInstanceId = pageContext.runtimeInstanceId;
+      episode.recoveredInNewRuntime = true;
+      addRecoveryEvidence(episode, 'new_runtime');
+    } else {
+      episode[recoveryBucket(episode)] += elapsed;
+    }
+    episode.totalDurationMs += elapsed;
+    episode.lastObservedAt = new Date(nowMs).toISOString();
+    episode.observedLifecycleState = pageContext.lifecycleState;
+    episode.observedConnectivityState = pageContext.connectivityState;
+  }
+
+  function settleAllRecoveryEpisodes(flag) {
+    var nowMs = Date.now();
+    RECOVERY_ENDPOINT_KINDS.forEach(function (kind) {
+      var episode = deliveryStats.recoveryEpisodes[kind];
+      if (!episode) return;
+      settleRecoveryEpisode(episode, nowMs);
+      addRecoveryEvidence(episode, flag);
+    });
+  }
+
+  function syncRecoveryEpisodeObservations() {
+    RECOVERY_ENDPOINT_KINDS.forEach(function (kind) {
+      var episode = deliveryStats.recoveryEpisodes[kind];
+      if (!episode) return;
+      episode.observedLifecycleState = pageContext.lifecycleState;
+      episode.observedConnectivityState = pageContext.connectivityState;
+    });
+    persistDeliveryStats();
+  }
+
+  function initializeRecoveryEpisodes() {
+    var stored = deliveryStats.recoveryEpisodes;
+    deliveryStats.recoveryEpisodes = {};
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+      persistDeliveryStats();
+      return;
+    }
+    var nowMs = Date.now();
+    RECOVERY_ENDPOINT_KINDS.forEach(function (kind) {
+      var episode = stored[kind];
+      if (!validStoredRecoveryEpisode(episode)) return;
+      var startedAtMs = Date.parse(episode.startedAt);
+      if (nowMs - startedAtMs > RECOVERY_EPISODE_MAX_MS) return;
+      episode.evidenceFlags = (Array.isArray(episode.evidenceFlags) ? episode.evidenceFlags : [])
+        .filter(function (flag, index, flags) {
+          return RECOVERY_EVIDENCE_FLAGS[flag] && flags.indexOf(flag) === index;
+        })
+        .sort();
+      episode.observedLifecycleState = episode.observedLifecycleState || 'unknown';
+      episode.observedConnectivityState = episode.observedConnectivityState || 'unknown';
+      deliveryStats.recoveryEpisodes[kind] = episode;
+      settleRecoveryEpisode(episode, nowMs);
+      if (document.wasDiscarded === true) addRecoveryEvidence(episode, 'page_discarded');
+    });
+    persistDeliveryStats();
+  }
+
+  function openRecoveryEpisode(kind, failureTrigger) {
+    var existing = deliveryStats.recoveryEpisodes[kind];
+    if (existing) {
+      addRecoveryEvidence(existing, failureTrigger === 'platform_offline' ? 'platform_offline' : 'transport_failed');
+      persistDeliveryStats();
+      return existing;
+    }
+    var nowIso = new Date().toISOString();
+    var episode = {
+      schemaVersion: 1,
+      episodeId: recoveryEpisodeId(),
+      originRuntimeInstanceId: pageContext.runtimeInstanceId,
+      currentRuntimeInstanceId: pageContext.runtimeInstanceId,
+      startedAt: nowIso,
+      lastObservedAt: nowIso,
+      totalDurationMs: 0,
+      foregroundOnlineMs: 0,
+      foregroundOfflineMs: 0,
+      backgroundOnlineMs: 0,
+      backgroundOfflineMs: 0,
+      runtimeAbsentMs: 0,
+      unknownMs: 0,
+      recoveredInNewRuntime: false,
+      failureTrigger: failureTrigger,
+      evidenceFlags: [],
+      observedLifecycleState: pageContext.lifecycleState,
+      observedConnectivityState: pageContext.connectivityState
+    };
+    if (pageContext.lifecycleEvidence !== 'unknown') addRecoveryEvidence(episode, 'visibility_observed');
+    if (pageContext.connectivityState === 'offline') addRecoveryEvidence(episode, 'platform_offline');
+    if (pageContext.connectivityState === 'online') addRecoveryEvidence(episode, 'platform_online');
+    if (failureTrigger === 'transport_failure') addRecoveryEvidence(episode, 'transport_failed');
+    deliveryStats.recoveryEpisodes[kind] = episode;
+    persistDeliveryStats();
+    return episode;
+  }
+
+  function recoveryEpisodeSnapshot(kind) {
+    var episode = deliveryStats.recoveryEpisodes[kind];
+    if (!episode) return null;
+    settleRecoveryEpisode(episode, Date.now());
+    if (episode.totalDurationMs > RECOVERY_EPISODE_MAX_MS) {
+      delete deliveryStats.recoveryEpisodes[kind];
+      persistDeliveryStats();
+      return null;
+    }
+    persistDeliveryStats();
+    return {
+      schemaVersion: 1,
+      episodeId: episode.episodeId,
+      originRuntimeInstanceId: episode.originRuntimeInstanceId,
+      currentRuntimeInstanceId: episode.currentRuntimeInstanceId,
+      startedAt: episode.startedAt,
+      lastObservedAt: episode.lastObservedAt,
+      totalDurationMs: episode.totalDurationMs,
+      foregroundOnlineMs: episode.foregroundOnlineMs,
+      foregroundOfflineMs: episode.foregroundOfflineMs,
+      backgroundOnlineMs: episode.backgroundOnlineMs,
+      backgroundOfflineMs: episode.backgroundOfflineMs,
+      runtimeAbsentMs: episode.runtimeAbsentMs,
+      unknownMs: episode.unknownMs,
+      recoveredInNewRuntime: episode.recoveredInNewRuntime,
+      failureTrigger: episode.failureTrigger,
+      evidenceFlags: episode.evidenceFlags.slice()
+    };
+  }
+
+  function clearRecoveryEpisode(kind) {
+    delete deliveryStats.recoveryEpisodes[kind];
+    persistDeliveryStats();
+  }
+
   function loadQueue() {
     try {
       var parsed = JSON.parse(readLocal(queueStorageKey) || '[]');
@@ -5487,6 +5978,7 @@ export function clientScript(host) {
   }
 
   var queue = loadQueue();
+  initializeRecoveryEpisodes();
 
   function persistQueue() {
     var encoded = JSON.stringify(queue);
@@ -5596,7 +6088,7 @@ export function clientScript(host) {
     var record = {
       id: recordId(),
       kind: kind,
-      payload: payload,
+      payload: Object.assign({}, payload || {}, { runtimeContext: runtimeContextSnapshot() }),
       attempts: 0,
       nextAttemptAt: 0,
       createdAt: Date.now()
@@ -5627,12 +6119,12 @@ export function clientScript(host) {
     return selected;
   }
 
-  function deliveryReport(reason, records) {
+  function deliveryReport(kind, reason, records) {
     var retryCount = deliveryStats.retryCount;
     records.forEach(function (record) {
       retryCount += record.attempts || 0;
     });
-    return {
+    var report = {
       batchId: batchId(),
       reason: reason || 'scheduled',
       queued: queue.length,
@@ -5645,6 +6137,9 @@ export function clientScript(host) {
       lastError: deliveryStats.lastError,
       lastFailedFlushAt: deliveryStats.lastFailedFlushAt
     };
+    var recoveryEpisode = recoveryEpisodeSnapshot(kind);
+    if (recoveryEpisode) report.recoveryEpisode = recoveryEpisode;
+    return report;
   }
 
   function resetReportedStats() {
@@ -5665,7 +6160,7 @@ export function clientScript(host) {
     persistQueue();
   }
 
-  function markRecordsFailed(records, error) {
+  function markRecordsFailed(kind, records, error) {
     var now = Date.now();
     var message = error && error.message ? error.message : 'network_error';
     records.forEach(function (record) {
@@ -5675,6 +6170,10 @@ export function clientScript(host) {
     deliveryStats.retryCount += records.length;
     deliveryStats.lastError = String(message).slice(0, 160);
     deliveryStats.lastFailedFlushAt = new Date().toISOString();
+    settleAllRecoveryEpisodes('transport_failed');
+    markTransportFailure();
+    syncRecoveryEpisodeObservations();
+    openRecoveryEpisode(kind, 'transport_failure');
     persistQueue();
     persistDeliveryStats();
     scheduleFlush(retryDelay(1));
@@ -5731,6 +6230,9 @@ export function clientScript(host) {
       keepalive: !!unloadMode
     }).then(function (response) {
       if (!response.ok) throw new Error('http_' + response.status);
+      settleAllRecoveryEpisodes('transport_succeeded');
+      markTransportSuccess();
+      syncRecoveryEpisodeObservations();
       if (typeof response.json === 'function') {
         return response.json().then(function (body) {
           handleServerResponse(body);
@@ -5760,7 +6262,7 @@ export function clientScript(host) {
       deviceFingerprint: fingerprint,
       platform: 'web',
       events: records.map(function (record) { return record.payload; }),
-      deliveryStats: deliveryReport(reason, records)
+      deliveryStats: deliveryReport(kind, reason, records)
     };
     var targetEndpoint = kind === 'capture' ? endpoint : (kind === 'presence' ? presenceEndpoint : feedbackEndpoint);
     var result = sendBatch(targetEndpoint, body, unloadMode);
@@ -5770,14 +6272,27 @@ export function clientScript(host) {
       return Promise.resolve();
     }
     if (result === false) {
-      markRecordsFailed(records, new Error('beacon_rejected'));
+      markRecordsFailed(kind, records, new Error('beacon_rejected'));
       return Promise.resolve();
     }
     return result.then(function () {
       removeRecords(records);
+      clearRecoveryEpisode(kind);
       resetReportedStats();
     }).catch(function (error) {
-      markRecordsFailed(records, error);
+      markRecordsFailed(kind, records, error);
+    });
+  }
+
+  function openOfflineEpisodesForDueRecords() {
+    [
+      ['capture', CAPTURE_BATCH_SIZE],
+      ['presence', PRESENCE_BATCH_SIZE],
+      ['feedback', FEEDBACK_BATCH_SIZE]
+    ].forEach(function (entry) {
+      if (dueRecords(entry[0], entry[1], Infinity).length > 0) {
+        openRecoveryEpisode(entry[0], 'platform_offline');
+      }
     });
   }
 
@@ -5787,7 +6302,13 @@ export function clientScript(host) {
       clearTimeout(flushTimer);
       flushTimer = null;
     }
-    if (!unloadMode && navigator.onLine === false) return Promise.resolve(queueStatus());
+    if (!unloadMode && navigator.onLine === false) {
+      settleAllRecoveryEpisodes('platform_offline');
+      setConnectivityState('offline', 'platform_connectivity', 'medium');
+      syncRecoveryEpisodeObservations();
+      openOfflineEpisodesForDueRecords();
+      return Promise.resolve(queueStatus());
+    }
     if (flushing && !unloadMode) return Promise.resolve(queueStatus());
     flushing = true;
     return flushKind('capture', reason, unloadMode)
@@ -6478,12 +6999,18 @@ export function clientScript(host) {
     captureRouteChange(function () { replaceState.apply(history, args); });
   };
   window.addEventListener('popstate', function () {
+    if (!runtimeActive()) return;
     sendRouteChangeIfChanged(routeCapturePath());
   });
   window.addEventListener('hashchange', function () {
+    if (!runtimeActive()) return;
     sendRouteChangeIfChanged(routeCapturePath());
   });
   document.addEventListener('visibilitychange', function () {
+    if (!runtimeActive()) return;
+    settleAllRecoveryEpisodes(document.visibilityState === 'hidden' ? 'page_hidden' : 'page_shown');
+    updateLifecycleFromVisibility();
+    syncRecoveryEpisodeObservations();
     if (document.visibilityState === 'hidden') {
       stopPresence('background');
       flushQueue('visibilitychange', true);
@@ -6493,11 +7020,13 @@ export function clientScript(host) {
     }
   });
   window.addEventListener('blur', function () {
+    if (!runtimeActive()) return;
     windowIsFocused = false;
     pauseActiveWindow();
     sendPresence('heartbeat');
   });
   window.addEventListener('focus', function () {
+    if (!runtimeActive()) return;
     windowIsFocused = true;
     if (currentPresenceId) {
       resumeActiveWindow();
@@ -6506,12 +7035,48 @@ export function clientScript(host) {
       startPresence('foreground');
     }
   });
-  window.addEventListener('online', function () { flushQueue('online', false); });
+  window.addEventListener('online', function () {
+    if (!runtimeActive()) return;
+    settleAllRecoveryEpisodes('platform_online');
+    updateConnectivityFromPlatform();
+    syncRecoveryEpisodeObservations();
+    flushQueue('online', false);
+  });
+  window.addEventListener('offline', function () {
+    if (!runtimeActive()) return;
+    settleAllRecoveryEpisodes('platform_offline');
+    updateConnectivityFromPlatform();
+    syncRecoveryEpisodeObservations();
+    openOfflineEpisodesForDueRecords();
+  });
+  window.addEventListener('pageshow', function () {
+    if (!runtimeActive()) return;
+    settleAllRecoveryEpisodes('page_shown');
+    updateLifecycleFromVisibility();
+    syncRecoveryEpisodeObservations();
+  });
+  document.addEventListener('freeze', function () {
+    if (!runtimeActive()) return;
+    settleAllRecoveryEpisodes('page_frozen');
+    updateLifecycleFromVisibility();
+    syncRecoveryEpisodeObservations();
+  });
+  document.addEventListener('resume', function () {
+    if (!runtimeActive()) return;
+    settleAllRecoveryEpisodes('page_resumed');
+    updateLifecycleFromVisibility();
+    syncRecoveryEpisodeObservations();
+  });
   window.addEventListener('pagehide', function () {
+    if (!runtimeActive()) return;
+    settleAllRecoveryEpisodes('page_hidden');
+    updateLifecycleFromVisibility();
+    syncRecoveryEpisodeObservations();
     stopPresence('end');
     flushQueue('pagehide', true);
   });
   window.addEventListener('beforeunload', function () {
+    if (!runtimeActive()) return;
     stopPresence('end');
     flushQueue('beforeunload', true);
   });
@@ -6720,6 +7285,7 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
   const path = isAppError
     ? safePathWithoutQuery(payload.path || rawProperties.path || rawProperties.screen, '/')
     : safeString(payload.path, 500, '/');
+  const runtimeContext = sanitizeRuntimeContext(payload.runtimeContext);
 
   if (isSourceBlocked(project, source)) {
     return { ok: true, ignored: true };
@@ -6757,6 +7323,7 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     relatedTargetHash: safeString(payload.relatedTargetHash || context.relatedTargetHash, 160),
     correlationId: safeString(payload.correlationId || context.correlationId, 160),
     attribution: normalizeAttribution(payload.attribution),
+    ...(runtimeContext ? { runtimeContext } : {}),
     method: safeString(payload.method, 20),
     status: safeString(payload.status, 20),
     properties,
@@ -6859,7 +7426,7 @@ export async function ingestCapturePayload(payload = {}, req = {}) {
       await flushIngestionGuardRollups();
     }
     const result = { ok: true, ...summary };
-    await recordDeliveryReport(project, payload, req, 'capture', result);
+    await safelyRecordDeliveryReport(project, payload, req, 'capture', result);
     return result;
   }
 
@@ -6868,7 +7435,7 @@ export async function ingestCapturePayload(payload = {}, req = {}) {
   if (summary.dropped > 0) {
     await flushIngestionGuardRollups();
   }
-  await recordDeliveryReport(project, payload, req, 'capture', summary);
+  await safelyRecordDeliveryReport(project, payload, req, 'capture', summary);
   return {
     ...result,
     accepted: summary.accepted,
@@ -6912,6 +7479,7 @@ async function upsertPresenceEvent(project, payload = {}, req = {}) {
   const durationMs = Math.max(0, (endedAt || occurredAt).getTime() - new Date(startedAt).getTime());
   const activeDurationMs = safeCount(payload.activeDurationMs);
   const lastActiveAt = safeDate(payload.lastActiveAt);
+  const runtimeContext = sanitizeRuntimeContext(payload.runtimeContext);
   const idleTimeoutMs = Math.max(0, Number(payload.idleTimeoutMs) || ACTIVE_IDLE_TIMEOUT_MS);
   const modifier = {
     $setOnInsert: {
@@ -6936,6 +7504,7 @@ async function upsertPresenceEvent(project, payload = {}, req = {}) {
       sourceLabel: source.sourceLabel,
       sourceDetails: source.sourceDetails,
       attribution: normalizeAttribution(payload.attribution),
+      ...(runtimeContext ? { runtimeContext } : {}),
       path: safeString(payload.path, 500, '/'),
       title: safeString(payload.title, 160),
       screen: safeString(payload.screen, 160),
@@ -6991,12 +7560,12 @@ export async function ingestPresencePayload(payload = {}, req = {}) {
     }
 
     const result = { ok: true, accepted, ignored };
-    await recordDeliveryReport(project, payload, req, 'presence', result);
+    await safelyRecordDeliveryReport(project, payload, req, 'presence', result);
     return result;
   }
 
   const result = await upsertPresenceEvent(project, payload, req);
-  await recordDeliveryReport(project, payload, req, 'presence', {
+  await safelyRecordDeliveryReport(project, payload, req, 'presence', {
     accepted: result.ignored ? 0 : 1,
     ignored: result.ignored ? 1 : 0,
   });

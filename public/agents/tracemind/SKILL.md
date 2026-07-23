@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.07.19.1
+version: 2026.07.23.1
 description: Use when reviewing TraceMind product operations, online health, or analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -13,7 +13,7 @@ Use this skill whenever you review product operations, online performance, featu
 When a customer asks about product operations, such as "how was today", "yesterday's data", "last 24 hours performance", "is anyone online", "how did promotion perform", or "where did usage drop", do not start with instrumentation setup. First use the bound TraceMind MCP server and call `tracemind.project_info`, then use Dashboard-aligned operations data:
 
 - `tracemind.project_health` is the project health dashboard source for natural-day and completed-hour reporting. Prefer `project_health.health.current`, `project_health.health.trends`, `project_health.health.hourlyComparison`, `project_health.delivery`, `attentionSummary`, and `attentionItems` when answering daily operations questions.
-- `tracemind.query_delivery_diagnostics` is the privacy-safe 7-day drilldown for delivery failures, retries, drops, queue depth, and recovery duration. It returns hourly source/platform, reason classes, and HTTP status classes without raw errors, request/response bodies, URLs, logs, user content, or session/device/batch identifiers.
+- `tracemind.query_delivery_diagnostics` is the privacy-safe 7-day drilldown for delivery failures, retries, drops, queue depth, and recovery attribution. It returns hourly endpoint/source/platform, evidence classifications and duration composition. Treat `recoveryDurationMs` as attributed only when episode-backed; `legacyElapsedDurationMs` is unattributed wall-clock time and is never foreground wait. Runtime/episode IDs and raw diagnostic content are omitted.
 - `tracemind.recent_online` is the same source as the dashboard's last-30-minutes online card. Use it for current online users, 5-minute buckets, active pages, regions, and high-frequency events.
 - `tracemind.summary` and `tracemind.query_events` are drilldown tools for non-natural-day windows, paths, events, users, sessions, devices, actions, target hashes, and traffic attribution. `tracemind.summary` returns a capped recent semantic-event sample; read `summarySample` and treat `summary.totalEvents`, `topActions`, and `dailyActiveUsers` as sample-derived evidence, not full-day totals. They support evidence review but do not replace the dashboard daily report.
 - `tracemind.project_info` returns `availableCapabilities`: use `currentOnline.tool` for current online users, real-time users, active now, active pages, and last 30 minutes activity; use `projectHealth.tool` for product health, today health, daily health, delivery health, attention items, and change verification; use `deliveryDiagnostics.tool` for recent privacy-safe delivery root-cause drilldown. Do not replace these capabilities with sampled `tracemind.summary`.
@@ -39,7 +39,7 @@ Agents can answer these Dashboard-aligned operations questions directly from exi
 
 TraceMind separates recent drilldown detail from long-term analysis summaries:
 
-- Capture delivery diagnostics for failed, retried, or dropped flushes are retained for 7 days. Query them with `tracemind.query_delivery_diagnostics`, which exposes only privacy-safe aggregates and never raw errors or request/response bodies. Successful flushes are kept as hourly health rollups; for older upload health, use `project_health.delivery`, hourly reports, and daily reports.
+- Capture delivery diagnostics for failed, retried, or dropped flushes are retained for 7 days. Query them with `tracemind.query_delivery_diagnostics`, which exposes only privacy-safe attributed/legacy aggregates and never runtime IDs, episode IDs, raw errors, or request/response bodies. Use `lifecycleState` and `connectivityState` filters for evidence-backed event analysis and report missing-context coverage. Successful flushes are kept as hourly health rollups; for older upload health, use `project_health.delivery`, hourly reports, and daily reports.
 - Presence sessions are retained for 10 days. For older online users, active-time, and page-duration trends, use hourly reports and daily reports.
 - Raw behavior logs and semantic events are retained for 10 days. If `tracemind.query_raw_behaviors` or `tracemind.query_events` returns no detail outside that window, do not assume data loss; use `tracemind.project_health`, hourly reports, and daily reports first.
 - Hourly health reports and daily health reports currently have no TTL and are the primary source for older product behavior analysis.

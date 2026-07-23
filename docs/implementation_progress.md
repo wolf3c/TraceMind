@@ -1,5 +1,12 @@
 # TraceMind MVP Implementation Progress
 
+## 2026-07-23
+
+### Completed
+
+- Added the shared runtime-context contract and a Web reference implementation with evidence/confidence fields on capture and presence records. Event queries and summaries can now separate foreground/background and online/offline/unknown evidence while reporting missing-context coverage.
+- Replaced ambiguous Web delivery recovery timestamps with persisted per-endpoint episodes, exact duration composition, new-runtime detection, server-side validation/classification, pre-rollup deduplication, exact hourly-to-daily duration aggregation, and explicit separation of attributed recovery from legacy wall-clock elapsed time. Lifecycle evidence events no longer invent background state when Page Visibility still reports foreground. Web and agent guidance markers are now `2026.07.23.1`; native and server SDK implementations remain phased follow-up work.
+
 ## 2026-07-19
 
 ### Completed

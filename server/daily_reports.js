@@ -646,6 +646,14 @@ export async function ensureTraceMindIndexes() {
     RawBehaviors.rawCollection().createIndex({ projectId: 1, 'attribution.source': 1, occurredAt: -1 }, { name: 'raw_project_attribution_source_time' }),
     CaptureDeliveryReports.rawCollection().createIndex({ projectId: 1, createdAt: -1 }),
     CaptureDeliveryReports.rawCollection().createIndex({ createdAt: -1, projectId: 1 }, { name: 'delivery_time_project' }),
+    CaptureDeliveryReports.rawCollection().createIndex(
+      { projectId: 1, endpoint: 1, deliveryEpisodeId: 1 },
+      {
+        unique: true,
+        name: 'delivery_episode_project_endpoint_unique',
+        partialFilterExpression: { deliveryEpisodeId: { $type: 'string' } },
+      },
+    ),
     FeedbackReports.rawCollection().createIndex(
       { projectId: 1, mcpTokenId: 1, feedbackFingerprint: 1, createdAt: -1 },
       { name: 'feedback_project_token_fingerprint_time' },

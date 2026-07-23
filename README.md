@@ -10,7 +10,7 @@ TraceMind 的 MCP 查询路径面向这些高频客户问题：
 - 现在是否有人在用：调用 `tracemind.recent_online` 查看近 30 分钟在线用户、5 分钟桶、地区 Top3、活跃页面 Top3 和高频事件 Top3。
 - 用户在做什么：在日报或实时态势判断大盘后，用 `tracemind.summary` 和 `tracemind.query_events` 按路径、事件名、设备来源、流量来源、用户或 session 下钻功能使用；`summary` 返回最近语义事件样本，全天指标以 `project_health` 为准。
 - 用户从哪里来：先看 `project_health` 的 traffic sources，再用 `attributionSource`、`attributionMedium`、`attributionCampaign` 和 `landingPath` 过滤 `summary` / `query_events`，解释增长、下降或转化变化来自哪个渠道。
-- 数据为什么没有送达：先用 `project_health` 查看上报健康，再用 `tracemind.query_delivery_diagnostics` 查询最近 7 天按小时、平台、来源、原因类别和 HTTP 状态类别聚合的失败、重试、丢弃、队列峰值与恢复耗时。该工具不返回原始错误、请求/响应体、URL、日志、用户内容或 session/device/batch 标识。
+- 数据为什么没有送达：先用 `project_health` 查看上报健康，再用 `tracemind.query_delivery_diagnostics` 查询最近 7 天按小时、端点、平台、来源和证据分类聚合的失败、重试、丢弃、队列峰值与恢复区间。`recoveryDurationMs` 是区间证据归因，`legacyElapsedDurationMs` 只是旧版未归因墙钟耗时；该工具不返回运行实例/区间标识或原始诊断内容。
 - 为什么下降或哪里卡住：先用 `project_health` 锁定下降指标和时间窗口；如果上报健康异常，先查 `query_delivery_diagnostics`，再查 `query_events`，只有语义证据不足或需要复核采集行为时才查 `query_raw_behaviors`。
 
 `tracemind.submit_feedback` 不是主分析入口；只有 Agent 发现问题或想法，并且开发者明确确认上报后，才把脱敏摘要和证据引用写入反馈库。
@@ -633,7 +633,7 @@ Dashboard 健康概览里的活跃时长使用更严格的 `activeDurationMs`：
 
 TraceMind 会区分“可下钻明细”和“长期分析口径”：
 
-- `tracemind_capture_delivery_reports` 是上报投递异常诊断明细，保留 7 天。使用 `tracemind.query_delivery_diagnostics` 查询小时/source/platform、reason 类别、HTTP 状态类别、队列深度、重试/丢弃计数和可用恢复耗时等脱敏聚合；它不回显原始错误、请求/响应体、URL、日志、用户内容或 session/device/batch 标识。成功 flush 只写入小时级上报健康聚合，更早的上报健康请看 `project_health.delivery`、小时报告和日报。
+- `tracemind_capture_delivery_reports` 是上报投递异常诊断明细，保留 7 天。使用 `tracemind.query_delivery_diagnostics` 查询小时/endpoint/source/platform、证据分类、时长组成和归因覆盖率。区间支持区分离线、后台挂起、前台网络故障、混合状态与新实例恢复；旧 `lastFailedFlushAt` 只进入 `legacyElapsedDurationMs`。输出不含运行实例/区间标识或原始诊断内容。更早的上报健康请看 `project_health.delivery`、小时报告和日报。
 - `tracemind_presence_sessions` 是在线区间和会话级在线明细，按 `lastSeenAt` 保留 10 天。更早的在线人数、活跃时长和页面停留趋势请看小时报告和日报。
 - `tracemind_raw_behaviors` 是原始行为日志，按 `occurredAt` 保留 10 天。超过窗口后，`tracemind.query_raw_behaviors` 查不到明细不代表数据丢失，应先用 `tracemind.project_health`、小时报告和日报排查。
 - `tracemind_semantic_events` 是语义事件明细，按 `occurredAt` 保留 10 天，用于近期 MCP/LLM 证据下钻。

@@ -1,4 +1,5 @@
 import { EVENT_TYPES, normalizeAttribution, summarizeTrafficAttribution } from './tracemind';
+import { sanitizeRuntimeContext, summarizeRuntimeContexts } from './runtime_context';
 
 function cleanText(value, fallback = '') {
   return String(value || fallback).replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -16,6 +17,7 @@ export function buildSemanticEvent(behavior) {
   const eventType = behavior.type || 'custom';
   const eventName = cleanText(behavior.eventName, eventType);
   const path = cleanText(behavior.path, '/');
+  const runtimeContext = sanitizeRuntimeContext(behavior.runtimeContext);
   const base = {
     projectId: behavior.projectId,
     sessionId: behavior.sessionId,
@@ -47,6 +49,7 @@ export function buildSemanticEvent(behavior) {
     relatedTargetHash: behavior.relatedTargetHash || behavior.context?.relatedTargetHash || '',
     correlationId: behavior.correlationId || behavior.context?.correlationId || '',
     attribution: normalizeAttribution(behavior.attribution),
+    ...(runtimeContext ? { runtimeContext } : {}),
     properties: behavior.properties || {},
     context: behavior.context || {},
     occurredAt: behavior.occurredAt || behavior.createdAt || new Date(),
@@ -251,6 +254,7 @@ export function summarizeSemanticEvents(events) {
     topActions,
     topIntentActions: sortedActionEntries(intentActions),
     topFieldInteractions: sortedActionEntries(fieldInteractions),
+    runtimeContext: summarizeRuntimeContexts(events),
     ...summarizeTrafficAttribution(events, { limit: 5 }),
   };
 }

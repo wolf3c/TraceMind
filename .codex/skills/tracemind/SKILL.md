@@ -1,6 +1,6 @@
 ---
 name: tracemind-instrumentation
-version: 2026.07.19.1
+version: 2026.07.23.1
 description: Use when adding, reviewing, or validating TraceMind analytics instrumentation with the TraceMind MCP.
 ---
 
@@ -32,7 +32,7 @@ If the current active tool list does not show `tracemind.project_health`, `trace
 
 If the tools are still missing, refresh the connector, session, MCP config, or token, then call `tracemind.project_info` again to confirm the project binding. Do not compensate for missing reporting tools by increasing `tracemind.summary.limit`; use the documented fallback source and mark the data gap until discovery is repaired. If `tracemind.summary` is used as fallback evidence, state that the values come from the `summarySample` window.
 
-Capture delivery diagnostics keep 7 days of failed, retried, or dropped reports. `tracemind.query_delivery_diagnostics` returns only privacy-safe hourly source/platform, reason class, HTTP status class, queue depth, retry/drop counts, and available recovery duration; never expose raw errors, request/response bodies, URLs, logs, user content, or session/device/batch identifiers. Older delivery health comes from `tracemind.project_health`, hourly reports, and daily reports.
+Capture delivery diagnostics keep 7 days of failed, retried, or dropped reports. `tracemind.query_delivery_diagnostics` returns privacy-safe hourly endpoint/source/platform aggregates, evidence-based recovery classifications, duration composition, and evidence quality. Treat `recoveryDurationMs` as attributed only when `attributedEpisodeCount > 0`; never interpret `legacyElapsedDurationMs` as foreground wait. Never expose runtime/episode IDs, raw errors, request/response bodies, URLs, logs, user content, or session/device/batch identifiers. Event analysis may filter `lifecycleState` and `connectivityState`; missing context is an explicit coverage gap. Older delivery health comes from `tracemind.project_health`, hourly reports, and daily reports.
 
 ## Product Behavior Analysis Workflows
 

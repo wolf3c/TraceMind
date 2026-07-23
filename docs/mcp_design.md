@@ -194,7 +194,7 @@ Output:
 
 ### `tracemind.project_health`
 
-读取当前 MCP token 绑定项目的健康报告，帮助 Agent 先回答“今天产品是否正常、哪里需要关注、较前一天发生了什么变化、上线前后健康是否可接受”，再决定是否下钻到语义事件或原始行为。它是 `availableCapabilities.projectHealth` 的权威工具。报告由小时级健康数据聚合而来：历史日期按完整自然日对比，今天只使用已结束小时并与昨天同一小时段对比。工具返回项目级健康、趋势、关注项、上报健康、Web 采集脚本更新 findings 和数据保留规则，不返回内部 actor/session hash 字段，也不替代 `tracemind.recent_online` 的实时在线人数。
+读取当前 MCP token 绑定项目的健康报告，帮助 Agent 先回答“今天产品是否正常、哪里需要关注、较前一天发生了什么变化、上线前后健康是否可接受”，再决定是否下钻到语义事件或原始行为。它是 `availableCapabilities.projectHealth` 的权威工具。报告由小时级健康数据聚合得出：历史日期按完整自然日对比，今天只使用已结束小时并与昨天同一小时段对比；上报恢复时长保留小时级精确总量，并用总量与样本数重新计算日报平均值，不平均小时平均值。工具返回项目级健康、趋势、关注项、上报健康、Web 采集脚本更新 findings 和数据保留规则，不返回内部 actor/session hash 字段，也不替代 `tracemind.recent_online` 的实时在线人数。
 
 Input:
 
@@ -285,7 +285,7 @@ Output:
         "sourceType": "web",
         "sourceKey": "app.example.com",
         "observedReleaseId": "legacy",
-        "latestReleaseId": "2026.07.19.1",
+        "latestReleaseId": "2026.07.23.1",
         "message": "检测到旧 Web Auto Capture 脚本仍在运行。"
       }
     ]
@@ -317,7 +317,7 @@ Output:
 
 ### `tracemind.query_delivery_diagnostics`
 
-查询当前 MCP token 绑定项目最近 7 天的投递失败、重试或丢弃诊断，并只返回脱敏聚合。默认窗口为最近 24 小时；可用 `startAt` / `endAt` 指定 ISO 时间，超出保留窗口的起点会被截断。`platform`、`sourceType` 和 `sourceKey` 在数据库计数与 5000 条上限之前过滤，使 `matchedReportCount`、`analyzedReportCount` 和 `truncated` 始终描述同一筛选集合。结果固定按小时、`platform`、`sourceType`、`sourceKey`、`reasonClass` 和 `httpStatusClass` 分组，并通过 `dataLimit.truncated` 明确是否达到上限。
+查询当前 MCP token 绑定项目最近 7 天的投递失败、重试或丢弃诊断，并只返回脱敏聚合。默认窗口为最近 24 小时；可用 `startAt` / `endAt` 指定 ISO 时间，超出保留窗口的起点会被截断。`endpoint`、`platform`、`sourceType` 和 `sourceKey` 在数据库计数与 5000 条上限之前过滤，使 `matchedReportCount`、`analyzedReportCount` 和 `truncated` 始终描述同一筛选集合。结果按小时、endpoint、来源、原因、恢复分类和证据质量分组。
 
 Input:
 
@@ -326,6 +326,7 @@ Input:
   "startAt": "2026-07-18T14:29:50.000Z",
   "endAt": "2026-07-18T16:00:00.000Z",
   "platform": "web",
+  "endpoint": "capture",
   "sourceType": "web",
   "sourceKey": "app.example.com"
 }
@@ -347,12 +348,30 @@ Output:
     "droppedOldest": 0,
     "droppedStorage": 0,
     "maxQueueDepth": 41,
-    "recoveryDurationMs": {
-      "sampleCount": 2,
-      "min": 31000,
-      "average": 45500,
-      "max": 60000
-    }
+    "attributedEpisodeCount": 2,
+    "recoveredInNewRuntimeCount": 1,
+    "recoveryDurationMs": { "sampleCount": 2, "min": 31000, "average": 45500, "max": 60000 },
+    "legacyElapsedDurationMs": {
+      "semantics": "unattributed_wall_clock_elapsed",
+      "sampleCount": 1,
+      "min": 90000,
+      "average": 90000,
+      "max": 90000
+    },
+    "recoveryClassificationCounts": [
+      { "classification": "foreground_network_failure", "count": 1 },
+      { "classification": "new_runtime_recovery", "count": 1 }
+    ],
+    "evidenceQualityCounts": [{ "quality": "high", "count": 2 }],
+    "durationCompositionMs": {
+      "foregroundOnline": 31000,
+      "foregroundOffline": 0,
+      "backgroundOnline": 0,
+      "backgroundOffline": 0,
+      "runtimeAbsent": 60000,
+      "unknown": 0
+    },
+    "attributionCoverage": 0.6666666666666666
   },
   "buckets": [
     {
@@ -361,17 +380,15 @@ Output:
         "sourceType": "web",
         "sourceKey": "app.example.com"
       },
+      "endpoint": "capture",
+      "recoveryClassification": "foreground_network_failure",
+      "recoveryEvidenceQuality": "high",
       "reasonClass": "network",
       "httpStatusClass": "none",
       "diagnosticReportCount": 2,
       "retryCount": 4,
       "maxQueueDepth": 41,
-      "recoveryDurationMs": {
-        "sampleCount": 2,
-        "min": 31000,
-        "average": 45500,
-        "max": 60000
-      }
+      "recoveryDurationMs": { "sampleCount": 1, "min": 31000, "average": 31000, "max": 31000 }
     }
   ]
 }
@@ -379,7 +396,7 @@ Output:
 
 `reasonClass` 只使用 `storage`、`queue_overflow`、`http`、`dns`、`tls`、`timeout`、`network`、`retry` 和 `unknown`；`httpStatusClass` 只使用 `1xx` 到 `5xx` 或 `none`。实现可在服务端读取受限 `lastError` 以完成分类，但 MCP 输出绝不回显原始错误，也不返回请求体、响应体、URL、日志、用户内容、`sessionId`、`deviceId` 或 `batchId`。
 
-`recoveryDurationMs` 只统计能把安全 `lastFailedFlushAt` 与后续恢复诊断接收时间配对的 transport failure 样本；旧 Web runtime 没有该字段时 `sampleCount` 为 0，不做推算。异常客户端时钟、负值或超过 7 天的样本会被忽略。这个字段从 Web script release `2026.07.19.1` 开始可用，因此上线前后分析必须按实际 runtime release 边界解释。
+`recoveryDurationMs` 只统计通过严格校验的区间样本；服务端根据时长组成分类并给出证据质量。`legacyElapsedDurationMs` 只保留旧 `lastFailedFlushAt` 到报告接收时间的未归因墙钟差，绝不能描述为前台等待、离线时长或后台挂起。异常时钟、负值、破坏总和约束或超过 7 天的区间会被忽略，但不阻塞行为采集。该契约从 Web script release `2026.07.23.1` 开始；运行实例 ID 与区间 ID 仅用于内部去重，不出现在 MCP 输出。
 
 ### `tracemind.recent_online`
 
@@ -427,7 +444,7 @@ Output:
 Dashboard 是视觉入口，MCP 是同口径的 agent 查询入口，不维护第二套运营解释。客户问“今天怎么样、昨天数据、过去一天表现、线上是否有人、推广效果、哪里下降”时：
 
 - `tracemind.project_health` 对应项目健康看板，返回 `health.current`、`health.trends`、`health.hourlyComparison`、`delivery`、`attentionSummary` 和 `attentionItems`。它覆盖活跃用户、新用户、留存、活跃会话、事件/会话、流量来源、活跃时长、跳出页、总事件、上报健康和日报/小时趋势。
-- `tracemind.query_delivery_diagnostics` 对应最近 7 天的上报异常脱敏下钻，返回小时/source/platform、reason 类别、HTTP 状态类别、队列峰值、重试/丢弃计数和可用恢复耗时，不返回原始诊断内容或用户标识。
+- `tracemind.query_delivery_diagnostics` 对应最近 7 天的上报异常脱敏下钻，返回小时/endpoint/source/platform、恢复分类、证据质量、时长组成、归因覆盖率，以及单独标注的旧版墙钟耗时，不返回内部标识或原始诊断内容。
 - `tracemind.recent_online` 对应近 30 分钟在线卡片，返回在线用户、5 分钟桶、Top 地区、Top 活跃页面和 Top 高频事件。
 - `tracemind.summary` / `tracemind.query_events` 用于 10 天内的非自然日时间窗、功能路径、事件名、actionKey、targetHash、用户、session、设备和流量来源归因下钻。`summary` 只汇总最近语义事件样本，`summarySample` 会返回默认/实际/最大 limit 和 `totalsAreSampled`；它们提供证据聚合，不替代 Dashboard 日报口径。
 - `tracemind.query_raw_behaviors` 只用于 10 天内复核原始行为明细；上报投递异常诊断明细保留 7 天，成功 flush 只保留小时级上报健康聚合，presence 会话明细和语义事件明细保留 10 天，日/小时健康报告当前长期保留。
@@ -466,12 +483,12 @@ Output:
   "captureSnippet": "<script src=\"https://tracemind-capture.pages.dev/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
   "initSnippet": "<script src=\"https://tracemind-capture.pages.dev/capture.js\" data-tracemind-token=\"tm_proj_xxx\" async></script>",
   "webCaptureScript": {
-    "latestReleaseId": "2026.07.19.1",
+    "latestReleaseId": "2026.07.23.1",
     "versionSource": "sourceDetails.scriptReleaseId",
     "updateFindingCode": "web_capture_script_update_required",
     "upgradePrompt": "TraceMind 检测到旧 Web Auto Capture 脚本仍在运行。请执行：...",
     "verificationSteps": [
-      "Open the customer app and confirm window.TraceMind.status().scriptReleaseId === \"2026.07.19.1\".",
+      "Open the customer app and confirm window.TraceMind.status().scriptReleaseId === \"2026.07.23.1\".",
       "Trigger a real page load, click, input, or submit event.",
       "Call tracemind.project_health and confirm health.captureScriptFindings is empty or no longer includes the Web source."
     ]
