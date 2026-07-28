@@ -1,6 +1,6 @@
 # TraceMind Product Backlog
 
-> Last reviewed: 2026-07-23
+> Last reviewed: 2026-07-28
 >
 > This is the source of truth for active product and release follow-up work. Completed implementation history remains in [`implementation_progress.md`](./implementation_progress.md).
 
@@ -15,7 +15,7 @@
 ## Recommended Order
 
 1. Close the release and production-verification loop for runtime-context recovery attribution.
-2. Fix the P1 blocked-source boundary so local/server telemetry cannot pollute customer analysis.
+2. Publish and verify the P1 blocked-source boundary so blocked telemetry cannot pollute customer analysis.
 3. Design proactive incident and recovery notifications.
 4. Roll the shared runtime-context contract out to applicable SDK runtimes.
 5. Add Dashboard visualization after production data proves the contract is useful and stable.
@@ -25,7 +25,7 @@
 | ID | Priority | Status | Item | Evidence / Dependency | Next Review |
 | --- | --- | --- | --- | --- | --- |
 | TM-REL-001 | P2 | 待验证 | Release and verify runtime-context delivery recovery attribution | Release `2026.7.23-1` deployed from `88f3e81`; first live `new_runtime_recovery` evidence received; 24-hour observation pending | 2026-07-24 after the observation window |
-| TM-SRC-001 | P1 | 待方案 | Align blocked-source policy across Web and `server_app` ingestion and analysis | Feedback `SrvgpyG4bbPkGyHzR`; historical event-query semantics need a product decision | Before next feature work |
+| TM-SRC-001 | P1 | 待发布 | Align blocked-source policy across Web and `server_app` ingestion and analysis | Commit `957c9ea` defines and implements the contract; deployment and production verification remain | After the next production release |
 | TM-ALERT-001 | P2 | 待方案 | Add proactive important-incident and recovery notifications | Feedback `oSYMbGhavJYRp6KLp`; depends on incident lifecycle, thresholds, channels, and dedupe policy | After TM-SRC-001 |
 | TM-RUNTIME-002 | P2 | 待实施 | Extend runtime context to applicable native/client SDKs | Shared contract exists; Web/Hybrid WebView is the reference implementation | After TM-REL-001 evidence review |
 | TM-DASH-001 | P3 | 待方案 | Visualize recovery classification, evidence quality, and coverage in Dashboard | Depends on stable production data from TM-REL-001 | After production evidence is representative |
@@ -52,19 +52,20 @@
 
 ### TM-SRC-001 — Align blocked-source boundaries
 
-- Problem evidence: blocking `web:localhost` does not block `server_app` events, and current event/raw queries do not reapply project blocked-source policy.
+- Problem evidence: an exact blocked source could still write delivery diagnostics and hourly health, while related Web and `server_app` sources lacked an explicit independent-management contract.
 - 2026-07-28 implementation decision: blocking matches only the exact `sourceType + sourceKey` and is forward-only. Related Web and `server_app` sources must be blocked separately; existing historical evidence remains queryable. New blocked-source capture, presence, user feedback, delivery diagnostics, and hourly health writes are all ignored. Mixed-source batches keep per-event business processing but omit indivisible batch-level delivery statistics instead of attributing them from the first event.
 - Target user and scenario: customers who need local, test, or unauthorized sources excluded from product-health and MCP analysis.
 - Expected result: the block model has explicit ingestion and historical-analysis semantics across source types.
 - Success criteria:
-  - decide whether blocking affects only future ingestion or also hides historical evidence from MCP/health;
-  - define how related Web and `server_app` sources are grouped without broad accidental blocking;
-  - blocked sources cannot add new health/analysis evidence;
-  - query behavior, project health, source management, documentation, and tests use the same policy;
-  - feedback `SrvgpyG4bbPkGyHzR` is resolved only after production verification.
-- Minimum validation: reproduce with a test source, apply the chosen policy, verify capture rejection and all relevant query/health surfaces.
+  - production uses exact `sourceType + sourceKey` blocking without cross-source wildcard behavior;
+  - blocked capture, presence, user feedback, delivery diagnostics, and hourly health no longer add new evidence;
+  - historical evidence remains queryable and related Web/`server_app` sources remain independently manageable;
+  - mixed-source batches process business records per event without attributing indivisible delivery statistics to the first source;
+  - console copy, documentation, tests, and production behavior use the same policy;
+  - feedback `MDCQuC9N4j9kyPDrJ` and `SrvgpyG4bbPkGyHzR` are resolved only after production verification.
+- Minimum validation: deploy the committed server/UI change, block controlled Web and `server_app` sources separately, verify new business and delivery-health writes are absent, and confirm historical evidence remains queryable.
 - Owner: TraceMind owner.
-- Failure action: do not use hostname-only or cross-source wildcard blocking until the false-positive risk is understood.
+- Failure action: keep both feedback reports open and roll back the server/UI release if exact-source ingestion, delivery health, or historical query behavior regresses.
 
 ### TM-ALERT-001 — Proactive incident and recovery notifications
 
