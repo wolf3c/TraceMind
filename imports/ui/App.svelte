@@ -1019,8 +1019,12 @@
 
   async function blockSource(source) {
     if (!primaryProject || !source) return;
-    const sourceName = source.sourceLabel || source.sourceKey;
-    if (!window.confirm(translateNow("Block source {{source}}? New events from it will be silently rejected.", { source: sourceName }))) return;
+    const sourceType = source.sourceType || "unknown";
+    const sourceKey = source.sourceKey || "unknown";
+    if (!window.confirm(translateNow(
+      "Block {{sourceType}} / {{sourceKey}}? Future events, presence, user feedback, and delivery health from this exact source will be ignored. Historical data will be retained.",
+      { sourceType, sourceKey },
+    ))) return;
 
     loading = true;
     showStatus("");
@@ -1032,7 +1036,7 @@
         reason: "Blocked from console",
       });
       replaceProjectSourceState(updatedProject);
-      showSuccessStatus(translateNow("Source blocked. Future events from it will not enter the database."));
+      showSuccessStatus(translateNow("Source blocked. Future events, presence, user feedback, and delivery health from this exact source will be ignored; historical data is retained."));
     } catch (error) {
       showStatus(errorMessage(error));
     } finally {

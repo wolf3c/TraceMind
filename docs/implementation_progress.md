@@ -2,6 +2,19 @@
 
 > Active release and product follow-up work is tracked in [`product_backlog.md`](./product_backlog.md).
 
+## 2026-07-28
+
+### Completed
+
+- Unified forward-only blocked-source handling at the delivery observability boundary: exact blocked `sourceType + sourceKey` requests no longer create capture/presence/user-feedback delivery diagnostics or hourly health rollups after their business writes are ignored.
+- Made batch delivery attribution deterministic: mixed-source business records are still processed per event, while indivisible batch-level delivery statistics are omitted instead of being attributed from the first event.
+- Defined the source-governance contract across the console, README, and Auto Capture design: blocking is exact rather than cross-source, historical evidence remains available, and related Web/server sources must be blocked separately.
+- Added capture, presence, user-feedback, and mixed-source order regression coverage for delivery-health writes.
+
+### Pending
+
+- Deploy the server/UI change, verify blocked Web and server-app sources in production, and then decide whether feedback `MDCQuC9N4j9kyPDrJ` and `SrvgpyG4bbPkGyHzR` have enough evidence to close.
+
 ## 2026-07-23
 
 ### Completed

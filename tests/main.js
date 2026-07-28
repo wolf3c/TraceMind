@@ -4074,6 +4074,48 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(await SemanticEvents.find({ projectId }).countAsync(), semanticBefore);
     });
 
+    it('does not record user feedback or delivery health for a blocked source', async function () {
+      const { ingestUserFeedbackPayload } = await import('../server/capture_routes');
+      const UserFeedbackReports = TraceMindApi.UserFeedbackReports;
+      const projectId = `project-user-feedback-blocked-${Date.now()}`;
+      const projectKey = `tm_proj_user_feedback_blocked_${Date.now()}`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-user-feedback-blocked',
+        name: 'Blocked User Feedback Project',
+        projectKey,
+        blockedSources: [{ sourceType: 'web', sourceKey: 'blocked.example', blockedAt: new Date() }],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const result = await ingestUserFeedbackPayload({
+        projectKey,
+        sessionId: 'tm_sess_feedback_blocked',
+        source: { type: 'web', url: 'https://blocked.example/settings' },
+        deliveryStats: {
+          batchId: 'tm_batch_feedback_blocked',
+          reason: 'retry',
+          queued: 1,
+          sent: 1,
+          retryCount: 2,
+          maxQueueDepth: 1,
+          lastError: 'network_error',
+          lastFailedFlushAt: '2026-05-08T01:00:00.000Z',
+        },
+        message: {
+          kind: 'issue',
+          title: 'Settings issue',
+          body: 'The settings change did not finish.',
+        },
+      }, { headers: {}, socket: {} });
+
+      assert.deepStrictEqual(result, { ok: true, ignored: true });
+      assert.strictEqual(await UserFeedbackReports.find({ projectId }).countAsync(), 0);
+      assert.strictEqual(await CaptureDeliveryReports.find({ projectId }).countAsync(), 0);
+      assert.strictEqual(await TraceMindApi.CaptureDeliveryHourlyRollups.find({ projectId }).countAsync(), 0);
+    });
+
     it('rejects sensitive end-user feedback fields while allowing consented contact fields', async function () {
       const { ingestUserFeedbackPayload } = await import('../server/capture_routes');
       const UserFeedbackReports = TraceMindApi.UserFeedbackReports;
@@ -9584,7 +9626,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(rollups[0].lastFailedFlushAt, undefined);
     });
 
-    it('records capture delivery stats separately from raw behavior', async function () {
+    it('skips mixed-source capture delivery health regardless of event order', async function () {
       const projectId = `project-capture-delivery-${Date.now()}`;
       const projectKey = `tm_proj_delivery_${Date.now()}`;
       await Projects.insertAsync({
@@ -9597,58 +9639,60 @@ projectKey: tm_proj_sensitive`,
         createdAt: new Date(),
       });
 
-      const result = await ingestCapturePayload({
-        projectKey,
-        sessionId: 'tm_sess_delivery',
-        deviceId: 'tm_dev_delivery',
-        deliveryStats: {
-          batchId: 'tm_batch_capture',
-          reason: 'scheduled',
-          queued: 3,
-          sent: 3,
-          droppedOldest: 2,
-          droppedStorage: 1,
-          retryCount: 4,
-          coalescedPresence: 0,
-          maxQueueDepth: 30,
+      const batches = [
+        {
+          batchId: 'tm_batch_capture_allowed_first',
+          events: [
+            { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
+            { type: 'click', source: { type: 'web', url: 'https://blocked.example/' } },
+            { type: 'submit', source: { type: 'web', url: 'https://app.example.com/signup' } },
+          ],
         },
-        events: [
-          { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
-          { type: 'click', source: { type: 'web', url: 'https://blocked.example/' } },
-          { type: 'submit', source: { type: 'web', url: 'https://app.example.com/signup' } },
-        ],
-      }, { headers: {}, socket: {} });
+        {
+          batchId: 'tm_batch_capture_blocked_first',
+          events: [
+            { type: 'click', source: { type: 'web', url: 'https://blocked.example/' } },
+            { type: 'page_view', source: { type: 'web', url: 'https://app.example.com/' } },
+            { type: 'submit', source: { type: 'web', url: 'https://app.example.com/signup' } },
+          ],
+        },
+      ];
+
+      for (const batch of batches) {
+        const result = await ingestCapturePayload({
+          projectKey,
+          sessionId: 'tm_sess_delivery',
+          deviceId: 'tm_dev_delivery',
+          deliveryStats: {
+            batchId: batch.batchId,
+            reason: 'scheduled',
+            queued: 3,
+            sent: 3,
+            droppedOldest: 2,
+            droppedStorage: 1,
+            retryCount: 4,
+            coalescedPresence: 0,
+            maxQueueDepth: 30,
+          },
+          events: batch.events,
+        }, { headers: {}, socket: {} });
+
+        assert.strictEqual(result.ok, true);
+        assert.strictEqual(result.accepted, 2);
+        assert.strictEqual(result.ignored, 1);
+      }
 
       const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
       const reports = await CaptureDeliveryReports.find({ projectId }).fetchAsync();
       const rollups = await captureDeliveryHourlyRollups().find({ projectId }).fetchAsync();
 
-      assert.strictEqual(result.ok, true);
-      assert.strictEqual(result.accepted, 2);
-      assert.strictEqual(result.ignored, 1);
-      assert.strictEqual(behaviors.length, 2);
-      assert.strictEqual(reports.length, 1);
-      assert.strictEqual(rollups.length, 1);
-      assert.strictEqual(rollups[0].sent, 3);
-      assert.strictEqual(rollups[0].accepted, 2);
-      assert.strictEqual(rollups[0].ignored, 1);
-      assert.strictEqual(rollups[0].retryCount, 4);
-      assert.strictEqual(rollups[0].droppedOldest, 2);
-      assert.strictEqual(rollups[0].droppedStorage, 1);
-      assert.strictEqual(rollups[0].failedFlushes, 1);
-      assert.ok(rollups[0].lastFailedFlushAt instanceof Date);
-      assert.strictEqual(rollups[0].lastSuccessfulFlushAt, undefined);
-      assert.strictEqual(reports[0].endpoint, 'capture');
-      assert.strictEqual(reports[0].batchId, 'tm_batch_capture');
-      assert.strictEqual(reports[0].aggregateStored, true);
-      assert.strictEqual(reports[0].accepted, 2);
-      assert.strictEqual(reports[0].ignored, 1);
-      assert.strictEqual(reports[0].droppedOldest, 2);
-      assert.strictEqual(reports[0].droppedStorage, 1);
+      assert.strictEqual(behaviors.length, 4);
+      assert.strictEqual(reports.length, 0);
+      assert.strictEqual(rollups.length, 0);
       assert.strictEqual(await SemanticEvents.find({ projectId }).countAsync(), 0);
     });
 
-    it('keeps ignored-only delivery in hourly rollups without diagnostic detail', async function () {
+    it('does not record delivery health for capture from a blocked source', async function () {
       const projectId = `project-capture-delivery-ignored-${Date.now()}`;
       const projectKey = `tm_proj_delivery_ignored_${Date.now()}`;
       await Projects.insertAsync({
@@ -9672,9 +9716,11 @@ projectKey: tm_proj_sensitive`,
           sent: 1,
           droppedOldest: 0,
           droppedStorage: 0,
-          retryCount: 0,
+          retryCount: 2,
           coalescedPresence: 0,
           maxQueueDepth: 1,
+          lastError: 'network_error',
+          lastFailedFlushAt: '2026-05-08T01:00:00.000Z',
         },
         events: [
           { type: 'click', source: { type: 'web', url: 'https://blocked.example/' } },
@@ -9688,11 +9734,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(result.accepted, 0);
       assert.strictEqual(result.ignored, 1);
       assert.strictEqual(reports.length, 0);
-      assert.strictEqual(rollups.length, 1);
-      assert.strictEqual(rollups[0].sent, 1);
-      assert.strictEqual(rollups[0].accepted, 0);
-      assert.strictEqual(rollups[0].ignored, 1);
-      assert.strictEqual(rollups[0].failedFlushes, 0);
+      assert.strictEqual(rollups.length, 0);
       assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 0);
     });
 
@@ -10156,10 +10198,22 @@ projectKey: tm_proj_sensitive`,
         presenceId: 'tm_pres_blocked',
         source: { type: 'web', url: 'https://evil.example/pricing' },
         state: 'start',
+        deliveryStats: {
+          batchId: 'tm_batch_presence_blocked',
+          reason: 'retry',
+          queued: 1,
+          sent: 1,
+          retryCount: 3,
+          maxQueueDepth: 2,
+          lastError: 'network_error',
+          lastFailedFlushAt: '2026-05-08T01:00:00.000Z',
+        },
       }, { headers: {}, socket: {} });
 
       assert.deepStrictEqual(result, { ok: true, ignored: true });
       assert.strictEqual(await PresenceSessions.find({ projectId }).countAsync(), 0);
+      assert.strictEqual(await CaptureDeliveryReports.find({ projectId }).countAsync(), 0);
+      assert.strictEqual(await captureDeliveryHourlyRollups().find({ projectId }).countAsync(), 0);
     });
 
     it('stores sanitized runtime context on capture and presence records', async function () {

@@ -4599,18 +4599,27 @@ function sanitizeAppErrorContext(fields = {}) {
   return sanitizeAppErrorFields(fields, APP_ERROR_CONTEXT_KEYS);
 }
 
-function deliverySourcePayload(payload = {}) {
-  const firstEvent = Array.isArray(payload.events) && payload.events.length > 0
-    ? safeObject(payload.events[0])
-    : {};
-  return {
-    ...payload,
-    ...firstEvent,
-    source: firstEvent.source || payload.source,
-    sourceType: firstEvent.sourceType || payload.sourceType,
-    sourceKey: firstEvent.sourceKey || payload.sourceKey,
-    platform: firstEvent.platform || payload.platform,
+function deliverySourcePayload(payload = {}, req = {}) {
+  const events = Array.isArray(payload.events) ? payload.events : [];
+  const sourcePayloadForEvent = (event = {}) => {
+    const eventPayload = safeObject(event);
+    return {
+      ...payload,
+      ...eventPayload,
+      source: eventPayload.source || payload.source,
+      sourceType: eventPayload.sourceType || payload.sourceType,
+      sourceKey: eventPayload.sourceKey || payload.sourceKey,
+      platform: eventPayload.platform || payload.platform,
+    };
   };
+  const sourcePayload = sourcePayloadForEvent(events[0]);
+  const source = normalizeCaptureSource(sourcePayload, req.headers || {});
+  const hasMixedSources = events.slice(1).some((event) => {
+    const candidate = normalizeCaptureSource(sourcePayloadForEvent(event), req.headers || {});
+    return candidate.sourceType !== source.sourceType || candidate.sourceKey !== source.sourceKey;
+  });
+  if (hasMixedSources) return null;
+  return sourcePayload;
 }
 
 const DELIVERY_ROLLUP_HOUR_MS = 60 * 60 * 1000;
@@ -4632,7 +4641,8 @@ function deliveryReportDocument(project, payload = {}, req = {}, endpoint, resul
   const stats = safeObject(payload.deliveryStats, 4096);
   if (Object.keys(stats).length === 0) return null;
 
-  const sourcePayload = deliverySourcePayload(payload);
+  const sourcePayload = deliverySourcePayload(payload, req);
+  if (!sourcePayload) return null;
   const source = normalizeCaptureSource(sourcePayload, req.headers || {});
   const lastFailedFlushAt = safeDate(stats.lastFailedFlushAt);
   const recoveryEpisode = sanitizeDeliveryRecoveryEpisode(stats.recoveryEpisode);
@@ -4749,7 +4759,7 @@ async function upsertDeliveryHourlyRollup(report) {
 
 async function recordDeliveryReport(project, payload = {}, req = {}, endpoint, result = {}) {
   const report = deliveryReportDocument(project, payload, req, endpoint, result);
-  if (!report) return;
+  if (!report || isSourceBlocked(project, report)) return;
 
   if (report.deliveryEpisodeId) {
     const key = {

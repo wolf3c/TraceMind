@@ -438,7 +438,9 @@ TraceMindServer.capture(
 
 `data-tracemind-token` 是公开项目 key，不是密钥。为了保持一行脚本的低接入成本，MVP 不要求开发者预先配置白名单。
 
-服务端会统计每个项目的采集来源。这里的 `sourceType + sourceKey` 表示哪个 App、SDK、MCP server 或服务在写入公开项目 key，不表示用户从哪个营销渠道跳转进来。开发者可以在控制台看到最近写入该项目 key 的采集来源、事件数和最近出现时间；已屏蔽来源即使没有近期事件，也会保留在列表中以便解除屏蔽。发现异常来源后，可以屏蔽对应 `sourceType + sourceKey`。屏蔽命中后，`/api/capture` 仍返回正常 ok，但不会插入 `RawBehaviors`，也不会产生语义事件。
+服务端会统计每个项目的采集来源。这里的 `sourceType + sourceKey` 表示哪个 App、SDK、MCP server 或服务在写入公开项目 key，不表示用户从哪个营销渠道跳转进来。开发者可以在控制台看到最近写入该项目 key 的采集来源、事件数和最近出现时间；已屏蔽来源即使没有近期事件，也会保留在列表中以便解除屏蔽。发现异常来源后，可以屏蔽对应的精确 `sourceType + sourceKey`。规则不会跨来源类型自动扩散：`web:localhost` 与 `server_app:yezi2-server` 是两个独立来源，如需同时停止必须分别屏蔽，避免 hostname 推断误伤同名或共享环境。
+
+屏蔽采用 forward-only 语义：规则生效后，命中来源的 capture、presence、user feedback 业务写入，以及随请求携带的 delivery diagnostics 和小时健康汇总都会被忽略；采集接口仍返回正常 ok。规则生效前已经存储的事件、Presence、投递诊断、小时报告和日报继续保留并可查询，不做删除、回填或查询时隐藏。这样解除屏蔽不会改变历史口径，来源列表也能保留被屏蔽项供后续恢复。批次级投递统计只有在批次内事件归一化为同一个精确来源时才会落库；混合来源批次的业务记录仍逐条处理，但投递统计因无法按来源安全拆分而不写入，避免由首条事件顺序决定归因。
 
 Web 采集脚本升级检测使用 `sourceDetails.scriptReleaseId`。缺失 release id 表示 legacy 脚本仍在运行；release id 小于当前手动发布标识表示旧脚本仍在运行；当前 release id 不产生 finding；最近没有 Web 上报时状态未知。项目健康聚合会把旧脚本上报归纳为 `captureScriptFindings[{ code: "web_capture_script_update_required", observedReleaseId, latestReleaseId, sourceKey }]`。这个机制只能确认“旧脚本正在运行并上报”，不能直接证明某个客户本地缓存了旧脚本但没有运行。
 

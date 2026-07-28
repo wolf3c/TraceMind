@@ -53,6 +53,7 @@
 ### TM-SRC-001 — Align blocked-source boundaries
 
 - Problem evidence: blocking `web:localhost` does not block `server_app` events, and current event/raw queries do not reapply project blocked-source policy.
+- 2026-07-28 implementation decision: blocking matches only the exact `sourceType + sourceKey` and is forward-only. Related Web and `server_app` sources must be blocked separately; existing historical evidence remains queryable. New blocked-source capture, presence, user feedback, delivery diagnostics, and hourly health writes are all ignored. Mixed-source batches keep per-event business processing but omit indivisible batch-level delivery statistics instead of attributing them from the first event.
 - Target user and scenario: customers who need local, test, or unauthorized sources excluded from product-health and MCP analysis.
 - Expected result: the block model has explicit ingestion and historical-analysis semantics across source types.
 - Success criteria:
