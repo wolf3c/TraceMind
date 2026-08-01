@@ -45,6 +45,9 @@
   let dashboardAttentionItems = $derived(health?.attentionItems || []);
   let dashboardAttentionSummary = $derived(dashboardAttentionItems[0]?.message || "");
   let dashboardNeedsAttention = $derived(Boolean(dashboardAttentionItems.length));
+  let actorMetricsV2 = $derived(healthCurrent?.actorMetricsV2 || {});
+  let actorMetricsCoverage = $derived(actorMetricsV2?.coverage || "unavailable");
+  let actorMetricsComplete = $derived(actorMetricsCoverage === "complete");
 
   function recentOnlineBarHeight(bucket) {
     const value = Number(bucket?.onlineUsers || 0);
@@ -62,6 +65,47 @@
 
   function metricTrendClass(value) {
     return healthSamplesPending ? "trend-flat" : trendClass(value);
+  }
+
+  function nullableActorMetric(value) {
+    return value === null || value === undefined ? "—" : formatNumber(value);
+  }
+
+  function actorCoverageLabel() {
+    if (actorMetricsCoverage === "complete") return $t("Complete coverage");
+    if (actorMetricsCoverage === "partial") return $t("Partial coverage");
+    return $t("Unavailable");
+  }
+
+  function actorCoverageDescription() {
+    if (actorMetricsCoverage === "partial") {
+      return $t("Some completed hours lack v2 actor evidence; v2 counts are hidden and only legacy values are shown.");
+    }
+    return $t("This report has no usable v2 actor evidence; only legacy observed actors are shown.");
+  }
+
+  function actorFirstSeenSummary() {
+    if (actorMetricsComplete) {
+      return $t("{{count}} first-seen canonical actors", {
+        count: nullableActorMetric(actorMetricsV2.firstSeenCanonicalActors),
+      });
+    }
+    return $t("Legacy · {{count}} first-seen actors", {
+      count: formatNumber(healthCurrent.newUsers),
+    });
+  }
+
+  function actorReconciliationText() {
+    return $t(
+      "{{observed}} observed - {{merges}} merges - {{operational}} operational - {{unclassified}} unclassified = {{canonical}} canonical user actors",
+      {
+        observed: nullableActorMetric(actorMetricsV2.observedActors),
+        merges: nullableActorMetric(actorMetricsV2.identityMergeCount),
+        operational: nullableActorMetric(actorMetricsV2.operationalActors),
+        unclassified: nullableActorMetric(actorMetricsV2.unclassifiedActors),
+        canonical: nullableActorMetric(actorMetricsV2.canonicalUserActors),
+      },
+    );
   }
 
   const deliveryRetention = DATA_RETENTION_POLICY.detailWindows.find((item) => item.dataSet === "capture_delivery_reports")?.retentionDays || 7;
@@ -191,12 +235,16 @@
   {/if}
   <details class="health-card hourly-trend-card">
     <summary>
-      <span>{$t("Active users")}</span>
+      <span>{$t("Observed actors")}</span>
       <div class="health-metric-row">
         <strong>{healthSamplesPending ? $t("No samples yet") : formatNumber(healthCurrent.activeUsers)}</strong>
         <span class="health-metric-side">
-          <em>{healthSamplesPending ? $t("Current hour is excluded") : `${formatNumber(healthCurrent.newUsers)} ${$t("new users")}`}</em>
-          <span class={`trend-inline ${metricTrendClass(health?.trends?.activeUsers)}`} title={trendDescription(health?.trends?.activeUsers)} aria-label={trendDescription(health?.trends?.activeUsers)}>
+          <em>{healthSamplesPending ? $t("Current hour is excluded") : actorFirstSeenSummary()}</em>
+          <span
+            class={`trend-inline ${metricTrendClass(health?.trends?.activeUsers)}`}
+            title={trendDescription(health?.trends?.activeUsers)}
+            aria-label={trendDescription(health?.trends?.activeUsers)}
+          >
             {trendText(health?.trends?.activeUsers)}
           </span>
         </span>
@@ -206,13 +254,41 @@
       {/if}
     </summary>
     <dl class="health-detail-list">
-      <div><dt>{$t("New users")}</dt><dd>{formatNumber(healthCurrent.newUsers)}</dd></div>
-      <div><dt>{$t("D2 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d2)}</dd></div>
-      <div><dt>{$t("D3 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d3)}</dd></div>
-      <div><dt>{$t("D7 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d7)}</dd></div>
-      <div><dt>{$t("D30 retention")}</dt><dd>{retentionText(healthCurrent.retention?.d30)}</dd></div>
-      <div><dt>{$t("User regions")}</dt><dd>{topCountText(healthCurrent.userRegions?.[0])}</dd></div>
-      <div><dt>{$t("User devices")}</dt><dd>{topCountText(healthCurrent.deviceDistribution?.[0])}</dd></div>
+      {#if healthSamplesPending}
+        <div><dt>{$t("Actor metric coverage")}</dt><dd>{$t("No samples yet")}</dd></div>
+      {:else}
+        <div><dt>{$t("Actor metric coverage")}</dt><dd>{actorCoverageLabel()}</dd></div>
+        {#if actorMetricsComplete}
+          <div class="health-detail-row-stacked">
+            <dt>{$t("Actor reconciliation")}</dt>
+            <dd>{actorReconciliationText()}</dd>
+          </div>
+          <div><dt>{$t("Canonical user actors")}</dt><dd>{nullableActorMetric(actorMetricsV2.canonicalUserActors)}</dd></div>
+          <div><dt>{$t("Identified actors")}</dt><dd>{nullableActorMetric(actorMetricsV2.identifiedActors)}</dd></div>
+          <div><dt>{$t("Anonymous client actors")}</dt><dd>{nullableActorMetric(actorMetricsV2.anonymousActors)}</dd></div>
+          <div><dt>{$t("Operational actors")}</dt><dd>{nullableActorMetric(actorMetricsV2.operationalActors)}</dd></div>
+          <div><dt>{$t("Unclassified actors")}</dt><dd>{nullableActorMetric(actorMetricsV2.unclassifiedActors)}</dd></div>
+          <div><dt>{$t("First-seen canonical actors")}</dt><dd>{nullableActorMetric(actorMetricsV2.firstSeenCanonicalActors)}</dd></div>
+          <div><dt>{$t("Safe identity merges")}</dt><dd>{nullableActorMetric(actorMetricsV2.identityMergeCount)}</dd></div>
+          <div><dt>{$t("Identity conflicts")}</dt><dd>{nullableActorMetric(actorMetricsV2.identityConflictCount)}</dd></div>
+          <div class="health-detail-row-stacked">
+            <dt>{$t("Canonical user actors")}</dt>
+            <dd>{$t("Canonical user actors use deterministic identity relationships only; they do not prove humans, bots, registrations, or account counts.")}</dd>
+          </div>
+        {:else}
+          <div class="health-detail-row-stacked">
+            <dt>{actorCoverageLabel()}</dt>
+            <dd>{actorCoverageDescription()}</dd>
+          </div>
+        {/if}
+        <div><dt>{$t("Legacy first-seen actors")}</dt><dd>{formatNumber(healthCurrent.newUsers)}</dd></div>
+        <div><dt>{$t("D2 retention")} · {$t("Legacy actor metric")}</dt><dd>{retentionText(healthCurrent.retention?.d2)}</dd></div>
+        <div><dt>{$t("D3 retention")} · {$t("Legacy actor metric")}</dt><dd>{retentionText(healthCurrent.retention?.d3)}</dd></div>
+        <div><dt>{$t("D7 retention")} · {$t("Legacy actor metric")}</dt><dd>{retentionText(healthCurrent.retention?.d7)}</dd></div>
+        <div><dt>{$t("D30 retention")} · {$t("Legacy actor metric")}</dt><dd>{retentionText(healthCurrent.retention?.d30)}</dd></div>
+        <div><dt>{$t("User regions")}</dt><dd>{topCountText(healthCurrent.userRegions?.[0])}</dd></div>
+        <div><dt>{$t("User devices")}</dt><dd>{topCountText(healthCurrent.deviceDistribution?.[0])}</dd></div>
+      {/if}
     </dl>
   </details>
   <details class="health-card hourly-trend-card">
@@ -239,14 +315,22 @@
   </details>
   <details class="health-card">
     <summary>
-      <span>{$t("Traffic sources")}</span>
+      <span>{$t("Attribution sources")}</span>
       <strong>{healthSamplesPending ? $t("No samples yet") : (healthCurrent.trafficSources?.[0] ? topItemLabel(healthCurrent.trafficSources[0]) : $t("No data"))}</strong>
       <small class="trend-flat">
-        {healthSamplesPending ? $t("Waiting for completed hour") : (healthCurrent.trafficSources?.[0] ? `${formatNumber(healthCurrent.trafficSources[0].count)} ${$t("visits")}` : $t("No data"))}
+        {healthSamplesPending ? $t("Waiting for completed hour") : (healthCurrent.trafficSources?.[0] ? $t("Attribution count: {{count}}", { count: formatNumber(healthCurrent.trafficSources[0].count) }) : $t("No data"))}
       </small>
       <em>{healthSamplesPending ? $t("Current hour is excluded") : $t("first-touch attribution")}</em>
     </summary>
     <dl class="health-detail-list">
+      <div class="health-detail-row-stacked">
+        <dt>{$t("Attribution count meaning")}</dt>
+        <dd>{$t("Attribution counts sum hourly rollups deduplicated by existing attribution keys; the same identifier can contribute in multiple hours. They are not people or formal visits.")}</dd>
+      </div>
+      <div class="health-detail-row-stacked">
+        <dt>{$t("direct meaning")}</dt>
+        <dd>{$t("direct means no usable referrer, UTM, or deeplink source; it does not prove a human visit.")}</dd>
+      </div>
       <div class="health-detail-row-stacked">
         <dt>{$t("Top traffic sources")}</dt>
         <dd>
