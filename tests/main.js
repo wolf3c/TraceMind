@@ -35,6 +35,7 @@ import {
   latestSdkForSetup,
 } from '../imports/api/sdk_release';
 import * as TraceMindApi from '../imports/api/tracemind';
+import { attentionItemsForHealth } from '../imports/api/project_health_summary';
 import { buildAgentInstallPrompt, buildWebCaptureUpdatePrompt } from '../imports/ui/agent_setup';
 import { WEB_CAPTURE_UPDATE_TARGET, buildProjectActionNotices } from '../imports/ui/project_action_notices';
 import { resolveConsoleState } from '../imports/ui/console_state';
@@ -3236,6 +3237,53 @@ projectKey: tm_proj_sensitive`,
       assert.ok(!sensitiveJson.includes('tm_proj_sensitive'));
     });
 
+    describe('Actor metrics explanation copy', function () {
+      if (!Meteor.isServer) return;
+
+      it('keeps the legacy active-user drop rule but names it an observed-actor drop', function () {
+        const items = attentionItemsForHealth(
+          {
+            activeUsers: 1,
+            sessionCount: 3,
+            eventCount: 0,
+            failureEventCount: 0,
+            lastEventAt: null,
+            topEvents: [],
+          },
+          {
+            activeUsers: 4,
+            sessionCount: 3,
+            eventCount: 0,
+            failureEventCount: 0,
+            lastEventAt: null,
+            topEvents: [],
+          },
+          new Date('2026-08-01T08:00:00.000Z'),
+          { comparisonWindow: 'day' },
+        );
+
+        const item = items.find((candidate) => candidate.code === 'active_users_dropped');
+        assert.ok(item);
+        assert.strictEqual(item.severity, 'medium');
+        assert.ok(item.message.includes('观测 Actor'));
+        assert.ok(!item.message.includes('活跃用户'));
+      });
+
+      it('describes actor and attribution boundaries on project_health without changing its schema', async function () {
+        const { mcpTools } = await import('../server/capture_routes');
+        const tool = mcpTools({ _id: 'actor-copy-project', name: 'Actor Copy Project' })
+          .find((candidate) => candidate.name === 'tracemind.project_health');
+
+        assert.ok(tool);
+        assert.ok(tool.description.includes('actorMetricsV2'));
+        assert.ok(tool.description.includes('不证明真人或注册'));
+        assert.ok(tool.description.includes('按小时口径汇总'));
+        assert.ok(tool.description.includes('不等于人数或正式访问'));
+        assert.strictEqual(tool.inputSchema.required, undefined);
+        assert.strictEqual(tool.inputSchema.properties.reportDate.type, 'string');
+      });
+    });
+
     it('v2 actor metrics safeguards returns unavailable historical metrics through materialized MCP health', async function () {
       const { callMcpTool, mcpTools } = await import('../server/capture_routes');
       const projectId = `project-mcp-health-${Date.now()}`;
@@ -6319,7 +6367,7 @@ projectKey: tm_proj_sensitive`,
     const messages = health.attentionItems.map((item) => item.message);
 
     assert.strictEqual(health.window.granularity, 'day');
-    assert.strictEqual(health.attentionSummary, '所选日期活跃用户较前一天下降 75%。');
+    assert.strictEqual(health.attentionSummary, '所选日期观测 Actor 较前一天下降 75%。');
     assert.ok(messages.some((message) => message === '所选日期用户行为事件较前一天下降 90%。'));
     assert.ok(messages.every((message) => !message.includes('24h')));
   });

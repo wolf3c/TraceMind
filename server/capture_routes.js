@@ -456,7 +456,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.project_health',
       title: projectScopedTitle('TraceMind Project Health', project),
-      description: projectScopedDescription('读取 Dashboard 同源的日报/小时项目健康结构、数据保留规则、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断产品健康、today health、daily health、delivery health、trend changes、change verification、今天是否正常、上线前/发布后是否需要关注，再下钻语义事件证据；不用于实时在线人数，实时用户请用 tracemind.recent_online。', project),
+      description: projectScopedDescription('读取 Dashboard 同源的日报/小时项目健康结构、数据保留规则、SDK 升级提示和 agent setup 更新提醒，帮助 agent 先判断产品健康、today health、daily health、delivery health、trend changes、change verification、今天是否正常、上线前/发布后是否需要关注，再下钻语义事件证据；不用于实时在线人数，实时用户请用 tracemind.recent_online。actorMetricsV2 只解释确定性 Actor 分类与安全合并，不证明真人或注册；流量归因计数按小时口径汇总，同一标识跨小时可能重复，不等于人数或正式访问。', project),
       inputSchema: {
         type: 'object',
         properties: {

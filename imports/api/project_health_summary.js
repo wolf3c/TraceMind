@@ -123,7 +123,7 @@ export function attentionItemsForHealth(current, previous, now, { comparisonWind
     items.push({ code: 'no_recent_events', severity: 'medium', message: `${labels.trailingWindow}没有收到新事件。` });
   }
   if (previous.activeUsers >= 3 && activeUsersChange <= -0.4) {
-    items.push({ code: 'active_users_dropped', severity: 'medium', message: `${labels.currentWindow}活跃用户较${labels.previousWindow}下降 ${formatPercentForMessage(activeUsersChange)}。` });
+    items.push({ code: 'active_users_dropped', severity: 'medium', message: `${labels.currentWindow}观测 Actor 较${labels.previousWindow}下降 ${formatPercentForMessage(activeUsersChange)}。` });
   }
   if (previous.sessionCount >= 3 && sessionsChange <= -0.4) {
     items.push({ code: 'sessions_dropped', severity: 'medium', message: `${labels.currentWindow}活跃会话较${labels.previousWindow}下降 ${formatPercentForMessage(sessionsChange)}。` });
