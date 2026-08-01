@@ -20,11 +20,14 @@ export function isValidCompleteActorMetricsV2(actorMetrics) {
     Number.isInteger(actorMetrics[field]) && actorMetrics[field] >= 0
   ))) return false;
 
-  return actorMetrics.observedActors
-    - actorMetrics.identityMergeCount
-    - actorMetrics.operationalActors
-    - actorMetrics.unclassifiedActors
-    === actorMetrics.canonicalUserActors;
+  return actorMetrics.identifiedActors + actorMetrics.anonymousActors
+    === actorMetrics.canonicalUserActors
+    && actorMetrics.firstSeenCanonicalActors <= actorMetrics.canonicalUserActors
+    && actorMetrics.observedActors
+      - actorMetrics.identityMergeCount
+      - actorMetrics.operationalActors
+      - actorMetrics.unclassifiedActors
+      === actorMetrics.canonicalUserActors;
 }
 
 export function emptyActorMetricsV2(coverage = 'unavailable') {

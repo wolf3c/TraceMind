@@ -9,6 +9,15 @@
 - Added additive hourly/daily v2 actor evidence and aggregate metrics, including mutually exclusive actor categories, cross-hour safe anonymous-to-user merging, self-alias/conflict handling, canonical first-seen counts, compact HMAC evidence, and strict historical coverage projection.
 - Added v1-preserving v2 failure isolation, a 12 MiB report preflight, and one Mongo/BSON document-too-large fallback; legacy metrics, raw legacy publication behavior, UI, SDKs, retention, trends, and alerts remain unchanged, with no migration, backfill, or collection.
 
+### Actor Metrics Phase 2A
+
+- Implemented the Phase 2A explanation layer on the existing additive v2 actor data contract.
+- Verified the complete state in Chinese and English and the unavailable state in English on the desktop Browser, including the four-column layout and no document-level horizontal overflow.
+- Verified that local MCP health for 2026-07-31 returned complete v2 metrics matching the UI: observed/canonical/identified/anonymous/operational/unclassified/first-seen/merges/conflicts = 10/6/4/2/1/1/3/2/1.
+- Precisely removed the local test account, project, and fixtures after verification.
+- The Chinese unavailable-state recheck and the 390 x 844 mobile recheck were interrupted when the verification session began refreshing repeatedly and the user closed the pages; both remain unverified in this pass.
+- This work remains local: not deployed, merged, or pushed.
+
 ## 2026-07-28
 
 ### Completed

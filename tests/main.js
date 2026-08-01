@@ -3319,7 +3319,9 @@ projectKey: tm_proj_sensitive`,
           ['negative', { ...validActorMetrics, identityConflictCount: -1 }],
           ['wrong version', { ...validActorMetrics, version: 1 }],
           ['wrong coverage', { ...validActorMetrics, coverage: 'partial' }],
-          ['inconsistent formula', { ...validActorMetrics, canonicalUserActors: 7 }],
+          ['inconsistent formula', { ...validActorMetrics, observedActors: 11 }],
+          ['inconsistent canonical partition', { ...validActorMetrics, anonymousActors: 1 }],
+          ['first seen exceeds canonical', { ...validActorMetrics, firstSeenCanonicalActors: 7 }],
         ];
 
         invalidCases.forEach(([label, actorMetrics]) => {
