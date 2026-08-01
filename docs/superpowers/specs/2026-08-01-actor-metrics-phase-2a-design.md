@@ -1,6 +1,6 @@
 # Actor Metrics Phase 2A Explanation Layer Design
 
-**Status:** Implemented locally; not deployed
+**Status:** Deployed in `2026.8.1-1`
 
 **Date:** 2026-08-01
 
