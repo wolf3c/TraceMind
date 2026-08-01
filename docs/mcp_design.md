@@ -324,9 +324,11 @@ Output:
 }
 ```
 
-`health.hourlyComparison` 面向 Dashboard 和 Agent 的结构化解释：它只包含可展示的小时标签、当前窗口值、前一日同小时值和窗口边界，不包含内部 actor/session 去重键。Dashboard 使用它在活跃用户、活跃会话、人均活跃时长和总事件卡片内展示小时折线；Agent 可用同一字段解释下降发生在哪些小时。
+`health.hourlyComparison` 面向 Dashboard 和 Agent 的结构化解释：它只包含可展示的小时标签、当前窗口值、前一日同小时值和窗口边界，不包含内部 actor/session 去重键。Dashboard 使用它在观测 Actor、活跃会话、人均活跃时长和总事件卡片内展示小时折线；Agent 可用同一字段解释下降发生在哪些小时。观测 Actor 的主值、趋势、小时折线和留存仍是 v1 口径。
 
-`health.current.actorMetricsV2` 是确定性的 actor 解释，不证明人类/机器人身份，也不证明注册事实。遗留的 `activeUsers` 保持 v1 观测 actor 计数，遗留的 `newUsers` 保持 v1 首次出现 actor 计数，二者都不是注册数。`coverage` 为 `complete` 时返回完整计数；为 `partial` 或 `unavailable` 时，v2 计数字段均为 `null`。上例中 14 个观测 actor 在安全合并前互斥分为 8 identified、4 client-anonymous、1 operational、1 unclassified；2 个匿名 actor 合并后剩余 2 个 anonymous，因此 canonical user actors 为 `8 + 2 = 10`。
+`health.current.actorMetricsV2` 是确定性的 actor 解释，不证明人类/机器人身份，也不证明注册事实。遗留的 `activeUsers` 保持 v1 观测 actor 计数，遗留的 `newUsers` 保持 v1 首次出现 actor 计数，二者都不是注册数，且应标示为 legacy first-seen actors。`coverage` 为 `complete` 时才解释和展示完整 v2 计数；为 `partial` 或 `unavailable` 时，v2 计数字段均为 `null`。v2 是已有观测 Actor 卡片的展开说明，不替换 v1 的主值、趋势、小时折线或留存。其对账关系为：`observedActors - identityMergeCount - operationalActors - unclassifiedActors = canonicalUserActors`。上例中 14 个观测 actor 在安全合并前互斥分为 8 identified、4 client-anonymous、1 operational、1 unclassified；2 个匿名 actor 合并后剩余 2 个 anonymous，因此 canonical user actors 为 `8 + 2 = 10`。
+
+`trafficSources`、`trafficMediums`、`trafficCampaigns` 和 `trafficLandingPaths` 保持既有 JSON schema 与聚合方式。归因计数由各小时归因 rollup 内去重后的记录相加；同一标识可在不同小时再次计入，所以它不是人数，也不是严格或正式的访问次数。`direct` 仅表示没有可用的 referrer、UTM 或 deeplink 归因来源。
 
 MCP 和公开输出只包含聚合计数；HMAC actor key 与匿名到用户的 alias pair 只留在私有报告字段。旧的 finalized daily report 即使没有回填，也会由 MCP `project_health` 合成 `coverage: "unavailable"` 的完整 null-valued v2 对象。原始 Meteor publication 不改写旧文档：遗留日报缺少 `current.actorMetricsV2` 就表示 unavailable；新日报仍通过既有公开 `current` 字段发布聚合对象。
 
@@ -460,7 +462,7 @@ Output:
 
 Dashboard 是视觉入口，MCP 是同口径的 agent 查询入口，不维护第二套运营解释。客户问“今天怎么样、昨天数据、过去一天表现、线上是否有人、推广效果、哪里下降”时：
 
-- `tracemind.project_health` 对应项目健康看板，返回 `health.current`、`health.trends`、`health.hourlyComparison`、`delivery`、`attentionSummary` 和 `attentionItems`。它覆盖活跃用户、新用户、留存、活跃会话、事件/会话、流量来源、活跃时长、跳出页、总事件、上报健康和日报/小时趋势。
+- `tracemind.project_health` 对应项目健康看板，返回 `health.current`、`health.trends`、`health.hourlyComparison`、`delivery`、`attentionSummary` 和 `attentionItems`。它覆盖 v1 观测 Actor、legacy first-seen actors、v1 留存、活跃会话、事件/会话、归因来源、活跃时长、跳出页、总事件、上报健康和日报/小时趋势；`actorMetricsV2` 仅在完整覆盖时提供展开解释。
 - `tracemind.query_delivery_diagnostics` 对应最近 7 天的上报异常脱敏下钻，返回小时/endpoint/source/platform、恢复分类、证据质量、时长组成、归因覆盖率，以及单独标注的旧版墙钟耗时，不返回内部标识或原始诊断内容。
 - `tracemind.recent_online` 对应近 30 分钟在线卡片，返回在线用户、5 分钟桶、Top 地区、Top 活跃页面和 Top 高频事件。
 - `tracemind.summary` / `tracemind.query_events` 用于 10 天内的非自然日时间窗、功能路径、事件名、actionKey、targetHash、用户、session、设备和流量来源归因下钻。`summary` 只汇总最近语义事件样本，`summarySample` 会返回默认/实际/最大 limit 和 `totalsAreSampled`；它们提供证据聚合，不替代 Dashboard 日报口径。

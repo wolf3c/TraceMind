@@ -237,7 +237,7 @@ page_view
 
 开发者通过对话即可分析产品。
 
-项目健康回答必须区分遗留观测 actor 与确定性 v2 canonical actor，并暴露版本和覆盖度；两者都不能表述为已证明的人类或注册。概率式 bot 评分、30 分钟访问、注册事件、v2 留存/告警与 Dashboard 切换仍是后续以证据驱动的工作。
+Actor Metrics Phase 2A 在 Dashboard 与 MCP 暴露确定性的解释层：项目健康回答必须区分遗留观测 actor 与确定性 v2 canonical actor，并暴露版本和覆盖度；两者都不能表述为已证明的人类、机器人或注册。人类/机器人评分、30 分钟访问、注册事实、v2 趋势、v2 留存和 v2 告警触发仍是后续以证据驱动的工作。这里的 Actor Metrics Phase 2A 独立于本文后面的全局产品路线图 `Phase 2`。
 
 例如：
 

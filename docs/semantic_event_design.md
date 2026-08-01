@@ -87,7 +87,7 @@
 
 - `userId` 是业务系统识别出的登录用户 ID，用于 DAU、留存、转化和用户路径分析。
 - `anonymousId` 是 TraceMind 为未登录访客生成的匿名 ID；当 `userId` 缺失时，用它作为临时用户口径。
-- `sessionId` 表示一次访问会话，适合分析单次访问路径。
+- `sessionId` 是由 SDK/runtime 管理的关联标识，用于串联相关行为；不同 runtime 的生命周期并不一致，不能直接解释为 30 分钟访问或正式 visit。Phase 2A 只修正文案，不改变 session 生命周期。
 - `deviceId` 是本地持久设备 ID，和 `sessionId` 一起用于跨 session 识别同一设备。
 - `deviceFingerprint` 是基于稳定设备信息计算的轻量指纹，只作为辅助去重字段，不替代登录用户 ID。
 - DAU 口径使用 `userId || anonymousId` 按自然日去重。
