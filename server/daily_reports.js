@@ -24,6 +24,9 @@ import {
   UserFeedbackReports,
   aggregateProjectHealthHourlyReports,
   buildProjectHealthHourlyComparison,
+  emptyActorEvidenceV2,
+  emptyActorMetricsV2,
+  summarizeActorEvidenceV2,
   summarizeCaptureDelivery,
   summarizeProjectHealthRollupForWindow,
   summarizeProjectHealthFromDailyReports,
@@ -32,6 +35,8 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REPORT_TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
 const ACTOR_SET_VERSION = 1;
+const ACTOR_METRICS_VERSION = 2;
+export const MAX_PROJECT_HEALTH_REPORT_ESTIMATED_BYTES = 12 * 1024 * 1024;
 const FINAL_REPORT_INTERVAL_MS = 60 * 60 * 1000;
 const HOURLY_DRAFT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const RECENT_COMPLETED_HOUR_COUNT = 2;
@@ -144,6 +149,104 @@ function activeActorKeysFor(projectId, events = [], sessions = []) {
     ...events.map((event) => actorKey(projectId, actorIdForEvent(event))),
     ...sessions.map((session) => actorKey(projectId, actorIdForPresence(session))),
   ]);
+}
+
+function actorEvidenceV2For(projectId, records = [], observedActorKeys = []) {
+  const clientAnonymousActorKeys = [];
+  const identifiedActorKeys = [];
+  const operationalActorKeys = [];
+  const unclassifiedActorKeys = [];
+  const aliasPairs = [];
+  const clientSources = new Set(['web', 'ios', 'macos', 'android', 'mini_program', 'browser_extension']);
+  const operationalSources = new Set(['server', 'server_app', 'mcp_server', 'agent_skill']);
+
+  records.forEach((record) => {
+    const userId = record.userId;
+    const anonymousId = record.anonymousId;
+    const fallbackId = record.anonymousId || record.deviceId || record.deviceFingerprint || '';
+    const sourceType = String(record.sourceType || '').trim().toLowerCase();
+    const actorId = userId || fallbackId;
+    const actorKeyValue = actorKey(projectId, actorId);
+    if (!actorKeyValue) return;
+
+    if (userId) {
+      identifiedActorKeys.push(actorKeyValue);
+    } else if (clientSources.has(sourceType)) {
+      clientAnonymousActorKeys.push(actorKeyValue);
+    } else if (operationalSources.has(sourceType)) {
+      operationalActorKeys.push(actorKeyValue);
+    } else {
+      unclassifiedActorKeys.push(actorKeyValue);
+    }
+
+    if (anonymousId && userId) {
+      aliasPairs.push({
+        anonymousActorKey: actorKey(projectId, anonymousId),
+        userActorKey: actorKeyValue,
+      });
+    }
+  });
+
+  const summary = summarizeActorEvidenceV2({
+    version: ACTOR_METRICS_VERSION,
+    clientAnonymousActorKeys,
+    identifiedActorKeys,
+    operationalActorKeys,
+    unclassifiedActorKeys,
+    aliasPairs,
+  }, { observedActorKeys });
+  return summary;
+}
+
+function unavailableV2Report(candidateReport = {}) {
+  return {
+    ...candidateReport,
+    actorEvidenceV2: emptyActorEvidenceV2(),
+    current: {
+      ...(candidateReport.current || {}),
+      actorMetricsV2: emptyActorMetricsV2(),
+    },
+  };
+}
+
+export function prepareProjectHealthReportForStorage(
+  candidateReport,
+  byteLimit = MAX_PROJECT_HEALTH_REPORT_ESTIMATED_BYTES,
+) {
+  const estimatedBytes = Buffer.byteLength(JSON.stringify(candidateReport), 'utf8');
+  return estimatedBytes <= byteLimit ? candidateReport : unavailableV2Report(candidateReport);
+}
+
+function isDocumentTooLargeError(error) {
+  return [10334, 17419].includes(Number(error?.code))
+    || /(?:BSON|document|object).{0,40}(?:too large|exceeds (?:the )?maximum|larger than (?:the )?maximum)/i
+      .test(String(error?.message || ''));
+}
+
+export async function persistProjectHealthReport(collection, selector, candidateReport, computedAt) {
+  const report = prepareProjectHealthReportForStorage(candidateReport);
+  const write = (storedReport) => collection.updateAsync(
+    selector,
+    {
+      $set: storedReport,
+      $setOnInsert: { createdAt: computedAt },
+    },
+    { upsert: true },
+  );
+
+  try {
+    await write(report);
+  } catch (error) {
+    const hasDroppableV2 = (
+      report.actorEvidenceV2?.version === 2
+      && report.actorEvidenceV2.coverage !== 'unavailable'
+    ) || (
+      report.current?.actorMetricsV2?.version === 2
+      && report.current.actorMetricsV2.coverage !== 'unavailable'
+    );
+    if (!hasDroppableV2 || !isDocumentTooLargeError(error)) throw error;
+    await write(unavailableV2Report(report));
+  }
 }
 
 function sessionIdForPresence(session = {}) {
@@ -283,6 +386,18 @@ export async function computeProjectHourlyReport(projectId, hourStartInput, { fo
     loadDayDeliveryReports(projectId, hourStartAt, hourEndAt),
   ]);
   const activeActorKeys = activeActorKeysFor(projectId, events, presenceSessions);
+  let actorEvidenceV2;
+  let actorMetricsV2;
+  try {
+    ({ actorEvidenceV2, actorMetricsV2 } = actorEvidenceV2For(
+      projectId,
+      [...events, ...presenceSessions],
+      activeActorKeys,
+    ));
+  } catch (_error) {
+    actorEvidenceV2 = emptyActorEvidenceV2();
+    actorMetricsV2 = emptyActorMetricsV2();
+  }
   const sessionKeys = sessionKeysFor(projectId, presenceSessions);
   const summary = summarizeProjectHealthRollupForWindow({
     events,
@@ -294,6 +409,7 @@ export async function computeProjectHourlyReport(projectId, hourStartInput, { fo
   const { rollup, ...current } = summary;
   current.activeUsers = activeActorKeys.length;
   current.sessionCount = sessionKeys.length;
+  current.actorMetricsV2 = actorMetricsV2;
 
   const report = {
     projectId,
@@ -309,6 +425,7 @@ export async function computeProjectHourlyReport(projectId, hourStartInput, { fo
     },
     actorSetVersion: ACTOR_SET_VERSION,
     activeActorKeys,
+    actorEvidenceV2,
     sessionKeys,
     current,
     rollup,
@@ -316,14 +433,7 @@ export async function computeProjectHourlyReport(projectId, hourStartInput, { fo
     updatedAt: computedAt,
   };
 
-  await ProjectHourlyReports.updateAsync(
-    { projectId, hourKey },
-    {
-      $set: report,
-      $setOnInsert: { createdAt: computedAt },
-    },
-    { upsert: true },
-  );
+  await persistProjectHealthReport(ProjectHourlyReports, { projectId, hourKey }, report, computedAt);
 
   return ProjectHourlyReports.findOneAsync({ projectId, hourKey });
 }
@@ -363,8 +473,28 @@ export async function computeProjectDailyReport(projectId, reportDateInput, {
   const seenBefore = await previousActorKeys(projectId, reportDate);
   const newActorKeys = activeActorKeys.filter((key) => !seenBefore.has(key));
   const retention = await retentionForExistingReports(projectId, reportDate, activeActorKeys);
+  let actorEvidenceV2Summary;
+  try {
+    actorEvidenceV2Summary = summarizeActorEvidenceV2(currentAggregate.actorEvidenceV2, {
+      observedActorKeys: currentAggregate.activeActorKeys,
+      historicalActorKeys: seenBefore,
+    });
+  } catch (_error) {
+    actorEvidenceV2Summary = {
+      actorEvidenceV2: emptyActorEvidenceV2(),
+      actorMetricsV2: emptyActorMetricsV2(),
+    };
+  }
+  const dailyV2Unavailable = actorEvidenceV2Summary.actorMetricsV2.coverage === 'unavailable';
+  const actorMetricsV2 = dailyV2Unavailable
+    ? emptyActorMetricsV2()
+    : {
+      ...currentAggregate.current.actorMetricsV2,
+      firstSeenCanonicalActors: actorEvidenceV2Summary.actorMetricsV2.firstSeenCanonicalActors,
+    };
   const current = {
     ...currentAggregate.current,
+    actorMetricsV2,
     newUsers: newActorKeys.length,
     retention,
   };
@@ -397,6 +527,7 @@ export async function computeProjectDailyReport(projectId, reportDateInput, {
     },
     actorSetVersion: ACTOR_SET_VERSION,
     activeActorKeys,
+    actorEvidenceV2: dailyV2Unavailable ? emptyActorEvidenceV2() : currentAggregate.actorEvidenceV2,
     sessionKeys: currentAggregate.sessionKeys,
     newActorKeys,
     firstSeenActorKeys: newActorKeys,
@@ -410,14 +541,7 @@ export async function computeProjectDailyReport(projectId, reportDateInput, {
     updatedAt: computedAt,
   };
 
-  await ProjectDailyReports.updateAsync(
-    { projectId, reportDate },
-    {
-      $set: report,
-      $setOnInsert: { createdAt: computedAt },
-    },
-    { upsert: true },
-  );
+  await persistProjectHealthReport(ProjectDailyReports, { projectId, reportDate }, report, computedAt);
 
   return ProjectDailyReports.findOneAsync({ projectId, reportDate });
 }

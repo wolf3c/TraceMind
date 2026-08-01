@@ -3236,7 +3236,7 @@ projectKey: tm_proj_sensitive`,
       assert.ok(!sensitiveJson.includes('tm_proj_sensitive'));
     });
 
-    it('returns materialized project health through MCP without internal actor hashes', async function () {
+    it('v2 actor metrics safeguards returns unavailable historical metrics through materialized MCP health', async function () {
       const { callMcpTool, mcpTools } = await import('../server/capture_routes');
       const projectId = `project-mcp-health-${Date.now()}`;
       const otherProjectId = `${projectId}-other`;
@@ -3362,6 +3362,20 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'raw_behaviors').collectionName, 'tracemind_raw_behaviors');
       assert.strictEqual(structured.dataRetention.detailWindows.find((item) => item.dataSet === 'semantic_events').retentionDays, 10);
       assert.strictEqual(structured.health.current.eventCount, 6);
+      assert.deepStrictEqual(structured.health.current.actorMetricsV2, {
+        version: 2,
+        coverage: 'unavailable',
+        observedActors: null,
+        canonicalUserActors: null,
+        identifiedActors: null,
+        anonymousActors: null,
+        operationalActors: null,
+        unclassifiedActors: null,
+        firstSeenCanonicalActors: null,
+        identityMergeCount: null,
+        identityConflictCount: null,
+      });
+      assert.strictEqual(structured.health.previous.actorMetricsV2.coverage, 'unavailable');
       assert.strictEqual(structured.health.captureScriptFindings[0].sourceKey, 'app.example.com');
       assert.strictEqual(structured.health.current.captureScriptFindings[0].latestReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.strictEqual(structured.health.previous.eventCount, 20);
@@ -7061,10 +7075,346 @@ projectKey: tm_proj_sensitive`,
     assert.strictEqual(daily.recoveryDurationMs.max, 152);
   });
 
+  it('aggregates v2 actor evidence across complete hourly reports', function () {
+    const aggregate = TraceMindApi.aggregateProjectHealthHourlyReports([
+      {
+        hourStartAt: new Date('2026-05-12T16:00:00.000Z'),
+        activeActorKeys: ['anon-hash'],
+        actorEvidenceV2: {
+          version: 2,
+          coverage: 'complete',
+          clientAnonymousActorKeys: ['anon-hash'],
+          identifiedActorKeys: [],
+          operationalActorKeys: [],
+          unclassifiedActorKeys: [],
+          aliasPairs: [],
+        },
+      },
+      {
+        hourStartAt: new Date('2026-05-12T17:00:00.000Z'),
+        activeActorKeys: ['user-hash'],
+        actorEvidenceV2: {
+          version: 2,
+          coverage: 'complete',
+          clientAnonymousActorKeys: [],
+          identifiedActorKeys: ['user-hash'],
+          operationalActorKeys: [],
+          unclassifiedActorKeys: [],
+          aliasPairs: [{ anonymousActorKey: 'anon-hash', userActorKey: 'user-hash' }],
+        },
+      },
+    ]);
+
+    assert.strictEqual(aggregate.current.activeUsers, 2);
+    assert.deepStrictEqual(aggregate.current.actorMetricsV2, {
+      version: 2,
+      coverage: 'complete',
+      observedActors: 2,
+      canonicalUserActors: 1,
+      identifiedActors: 1,
+      anonymousActors: 0,
+      operationalActors: 0,
+      unclassifiedActors: 0,
+      firstSeenCanonicalActors: null,
+      identityMergeCount: 1,
+      identityConflictCount: 0,
+    });
+    assert.deepStrictEqual(aggregate.actorEvidenceV2, {
+      version: 2,
+      coverage: 'complete',
+      clientAnonymousActorKeys: ['anon-hash'],
+      identifiedActorKeys: ['user-hash'],
+      operationalActorKeys: [],
+      unclassifiedActorKeys: [],
+      aliasPairs: [{ anonymousActorKey: 'anon-hash', userActorKey: 'user-hash' }],
+    });
+  });
+
+  it('aggregates v2 actor evidence with partial coverage when a legacy hour is included', function () {
+    const aggregate = TraceMindApi.aggregateProjectHealthHourlyReports([
+      {
+        activeActorKeys: ['complete-hash'],
+        actorEvidenceV2: {
+          version: 2,
+          coverage: 'complete',
+          clientAnonymousActorKeys: ['complete-hash'],
+          identifiedActorKeys: [],
+          operationalActorKeys: [],
+          unclassifiedActorKeys: [],
+          aliasPairs: [],
+        },
+      },
+      { activeActorKeys: ['legacy-hash'] },
+    ]);
+
+    assert.strictEqual(aggregate.current.activeUsers, 2);
+    assert.deepStrictEqual(aggregate.current.actorMetricsV2, {
+      version: 2,
+      coverage: 'partial',
+      observedActors: null,
+      canonicalUserActors: null,
+      identifiedActors: null,
+      anonymousActors: null,
+      operationalActors: null,
+      unclassifiedActors: null,
+      firstSeenCanonicalActors: null,
+      identityMergeCount: null,
+      identityConflictCount: null,
+    });
+    assert.strictEqual(aggregate.actorEvidenceV2.coverage, 'partial');
+    assert.strictEqual(Object.hasOwn(aggregate.actorEvidenceV2, 'observedActorKeys'), false);
+  });
+
+  it('aggregates v2 actor evidence as unavailable for legacy-only and empty reports', function () {
+    const legacyOnlyAggregate = TraceMindApi.aggregateProjectHealthHourlyReports([
+      { activeActorKeys: ['legacy-a'] },
+      { activeActorKeys: ['legacy-b'] },
+    ]);
+    const emptyAggregate = TraceMindApi.aggregateProjectHealthHourlyReports([]);
+    const unavailableMetrics = {
+      version: 2,
+      coverage: 'unavailable',
+      observedActors: null,
+      canonicalUserActors: null,
+      identifiedActors: null,
+      anonymousActors: null,
+      operationalActors: null,
+      unclassifiedActors: null,
+      firstSeenCanonicalActors: null,
+      identityMergeCount: null,
+      identityConflictCount: null,
+    };
+
+    assert.strictEqual(legacyOnlyAggregate.current.activeUsers, 2);
+    assert.deepStrictEqual(legacyOnlyAggregate.current.actorMetricsV2, unavailableMetrics);
+    assert.deepStrictEqual(emptyAggregate.current.actorMetricsV2, unavailableMetrics);
+    assert.strictEqual(emptyAggregate.current.activeUsers, 0);
+    assert.strictEqual(legacyOnlyAggregate.actorEvidenceV2.coverage, 'unavailable');
+    assert.strictEqual(emptyAggregate.actorEvidenceV2.coverage, 'unavailable');
+  });
+
+  it('aggregates v2 actor evidence only from strictly versioned reports', function () {
+    const aggregate = TraceMindApi.aggregateProjectHealthHourlyReports([
+      {
+        activeActorKeys: ['string-version-hash'],
+        actorEvidenceV2: {
+          version: '2',
+          coverage: 'complete',
+        },
+      },
+    ]);
+
+    assert.strictEqual(aggregate.current.activeUsers, 1);
+    assert.strictEqual(aggregate.current.actorMetricsV2.coverage, 'unavailable');
+    assert.strictEqual(aggregate.actorEvidenceV2.coverage, 'unavailable');
+    assert.strictEqual(Object.hasOwn(aggregate.actorEvidenceV2, 'observedActorKeys'), false);
+  });
+
+  it('uses alias-only anonymous history for v2 canonical first seen', function () {
+    const summary = TraceMindApi.summarizeActorEvidenceV2({
+      version: 2,
+      coverage: 'complete',
+      clientAnonymousActorKeys: [],
+      identifiedActorKeys: ['user-hash'],
+      operationalActorKeys: [],
+      unclassifiedActorKeys: [],
+      aliasPairs: [{ anonymousActorKey: 'returning-anon-hash', userActorKey: 'user-hash' }],
+    }, {
+      observedActorKeys: ['user-hash'],
+      historicalActorKeys: new Set(['returning-anon-hash']),
+    });
+
+    assert.strictEqual(summary.actorMetricsV2.firstSeenCanonicalActors, 0);
+  });
+
+  it('v2 actor metrics safeguards synthesizes unavailable metrics for historical daily reports', function () {
+    const summary = summarizeProjectHealthFromDailyReports({
+      currentReport: {
+        reportDate: '2026-05-12',
+        current: { activeUsers: 4, eventCount: 6 },
+      },
+      previousReport: {
+        reportDate: '2026-05-11',
+        current: { activeUsers: 10, eventCount: 20 },
+      },
+    });
+    const unavailableMetrics = {
+      version: 2,
+      coverage: 'unavailable',
+      observedActors: null,
+      canonicalUserActors: null,
+      identifiedActors: null,
+      anonymousActors: null,
+      operationalActors: null,
+      unclassifiedActors: null,
+      firstSeenCanonicalActors: null,
+      identityMergeCount: null,
+      identityConflictCount: null,
+    };
+
+    assert.deepStrictEqual(summary.current.actorMetricsV2, unavailableMetrics);
+    assert.deepStrictEqual(summary.previous.actorMetricsV2, unavailableMetrics);
+  });
+
+  it('v2 actor metrics safeguards partitions mixed categories and never merges a self alias', function () {
+    const observedActorKeys = ['anonymous', 'identified-self', 'identified-other', 'operational', 'unclassified'];
+    const summary = TraceMindApi.summarizeActorEvidenceV2({
+      version: 2,
+      coverage: 'complete',
+      clientAnonymousActorKeys: ['anonymous', 'identified-self'],
+      identifiedActorKeys: ['identified-self', 'identified-other'],
+      operationalActorKeys: ['anonymous', 'operational'],
+      unclassifiedActorKeys: ['unclassified'],
+      aliasPairs: [
+        { anonymousActorKey: 'identified-self', userActorKey: 'identified-self' },
+        { anonymousActorKey: 'identified-self', userActorKey: 'identified-other' },
+      ],
+    }, { observedActorKeys });
+    const evidence = summary.actorEvidenceV2;
+    const categoryKeys = [
+      ...evidence.identifiedActorKeys,
+      ...evidence.clientAnonymousActorKeys,
+      ...evidence.operationalActorKeys,
+      ...evidence.unclassifiedActorKeys,
+    ];
+
+    assert.deepStrictEqual(evidence.identifiedActorKeys, ['identified-other', 'identified-self']);
+    assert.deepStrictEqual(evidence.clientAnonymousActorKeys, []);
+    assert.deepStrictEqual(evidence.operationalActorKeys, ['operational']);
+    assert.deepStrictEqual(evidence.unclassifiedActorKeys, ['anonymous', 'unclassified']);
+    assert.strictEqual(new Set(categoryKeys).size, observedActorKeys.length);
+    assert.strictEqual(categoryKeys.length, observedActorKeys.length);
+    assert.strictEqual(Object.hasOwn(evidence, 'observedActorKeys'), false);
+    assert.strictEqual(summary.actorMetricsV2.observedActors, 5);
+    assert.strictEqual(summary.actorMetricsV2.identityMergeCount, 0);
+    assert.strictEqual(summary.actorMetricsV2.identityConflictCount, 1);
+  });
+
+  it('v2 actor metrics safeguards canonicalizes moderate actor evidence deterministically', function () {
+    const pairCount = 600;
+    const anonymousActorKeys = Array.from({ length: pairCount }, (_, index) => `anonymous-${index}`);
+    const identifiedActorKeys = Array.from({ length: pairCount }, (_, index) => `identified-${index}`);
+    const observedActorKeys = [...anonymousActorKeys, ...identifiedActorKeys];
+    const evidence = {
+      version: 2,
+      coverage: 'complete',
+      clientAnonymousActorKeys: [...anonymousActorKeys].reverse(),
+      identifiedActorKeys: [...identifiedActorKeys].reverse(),
+      operationalActorKeys: [],
+      unclassifiedActorKeys: [],
+      aliasPairs: anonymousActorKeys.map((anonymousActorKey, index) => ({
+        anonymousActorKey,
+        userActorKey: identifiedActorKeys[index],
+      })).reverse(),
+    };
+
+    const first = TraceMindApi.summarizeActorEvidenceV2(evidence, { observedActorKeys });
+    const second = TraceMindApi.summarizeActorEvidenceV2(evidence, { observedActorKeys });
+
+    assert.deepStrictEqual(second, first);
+    assert.strictEqual(first.actorMetricsV2.observedActors, 1200);
+    assert.strictEqual(first.actorMetricsV2.canonicalUserActors, 600);
+    assert.strictEqual(first.actorMetricsV2.identifiedActors, 600);
+    assert.strictEqual(first.actorMetricsV2.anonymousActors, 0);
+    assert.strictEqual(first.actorMetricsV2.identityMergeCount, 600);
+    assert.strictEqual(Object.hasOwn(first.actorEvidenceV2, 'observedActorKeys'), false);
+  });
+
+  it('v2 actor metrics safeguards excludes observed non-client aliases from canonical history', function () {
+    const summary = TraceMindApi.summarizeActorEvidenceV2({
+      version: 2,
+      coverage: 'complete',
+      clientAnonymousActorKeys: [],
+      identifiedActorKeys: ['identified'],
+      operationalActorKeys: ['operational'],
+      unclassifiedActorKeys: [],
+      aliasPairs: [{ anonymousActorKey: 'operational', userActorKey: 'identified' }],
+    }, {
+      observedActorKeys: ['identified', 'operational'],
+      historicalActorKeys: ['operational'],
+    });
+
+    assert.strictEqual(summary.actorMetricsV2.identityMergeCount, 0);
+    assert.strictEqual(summary.actorMetricsV2.firstSeenCanonicalActors, 1);
+  });
+
+  it('v2 actor metrics safeguards keeps unavailable hourly fallback evidence empty', function () {
+    const aggregate = TraceMindApi.aggregateProjectHealthHourlyReports([{
+      activeActorKeys: ['legacy-actor'],
+      actorEvidenceV2: {
+        version: 2,
+        coverage: 'unavailable',
+        clientAnonymousActorKeys: [],
+        identifiedActorKeys: [],
+        operationalActorKeys: [],
+        unclassifiedActorKeys: [],
+        aliasPairs: [],
+      },
+    }]);
+
+    assert.strictEqual(aggregate.current.actorMetricsV2.coverage, 'unavailable');
+    assert.deepStrictEqual(aggregate.actorEvidenceV2, {
+      version: 2,
+      coverage: 'unavailable',
+      clientAnonymousActorKeys: [],
+      identifiedActorKeys: [],
+      operationalActorKeys: [],
+      unclassifiedActorKeys: [],
+      aliasPairs: [],
+    });
+  });
+
+  it('v2 actor metrics safeguards keeps v1 hourly aggregation available when v2 evidence fails', function () {
+    const aggregate = TraceMindApi.aggregateProjectHealthHourlyReports([{
+      activeActorKeys: ['legacy-actor'],
+      current: { eventCount: 3, sessionCount: 2 },
+      actorEvidenceV2: {
+        version: 2,
+        coverage: 'complete',
+        clientAnonymousActorKeys: [Symbol('invalid-v2-key'), 'valid-v2-key'],
+        identifiedActorKeys: [],
+        operationalActorKeys: [],
+        unclassifiedActorKeys: [],
+        aliasPairs: [],
+      },
+    }]);
+
+    assert.strictEqual(aggregate.current.activeUsers, 1);
+    assert.strictEqual(aggregate.current.eventCount, 3);
+    assert.strictEqual(aggregate.current.sessionCount, 2);
+    assert.strictEqual(aggregate.current.actorMetricsV2.coverage, 'unavailable');
+    assert.deepStrictEqual(aggregate.actorEvidenceV2.clientAnonymousActorKeys, []);
+  });
+
+  it('v2 actor metrics safeguards ignores malformed hourly evidence before reading category arrays', function () {
+    const aggregate = TraceMindApi.aggregateProjectHealthHourlyReports([{
+      activeActorKeys: ['legacy-actor'],
+      current: { eventCount: 3, sessionCount: 2 },
+      actorEvidenceV2: {
+        version: 2,
+        coverage: 'complete',
+        clientAnonymousActorKeys: 'malformed-array',
+        identifiedActorKeys: [],
+        operationalActorKeys: [],
+        unclassifiedActorKeys: [],
+        aliasPairs: [],
+      },
+    }]);
+
+    assert.strictEqual(aggregate.current.activeUsers, 1);
+    assert.strictEqual(aggregate.current.eventCount, 3);
+    assert.strictEqual(aggregate.current.sessionCount, 2);
+    assert.strictEqual(aggregate.current.actorMetricsV2.coverage, 'unavailable');
+    assert.deepStrictEqual(aggregate.actorEvidenceV2.clientAnonymousActorKeys, []);
+  });
+
   if (Meteor.isServer) {
     let ingestCapturePayload;
     let ingestPresencePayload;
     let computeProjectDailyReport;
+    let computeProjectHourlyReport;
+    let prepareProjectHealthReportForStorage;
+    let persistProjectHealthReport;
     let ensureTraceMindIndexes;
     let refreshProjectDailyDraft;
     let refreshCompletedHourDraftReports;
@@ -7093,6 +7443,9 @@ projectKey: tm_proj_sensitive`,
       ingestCapturePayload = captureRoutes.ingestCapturePayload;
       ingestPresencePayload = captureRoutes.ingestPresencePayload;
       computeProjectDailyReport = dailyReports.computeProjectDailyReport;
+      computeProjectHourlyReport = dailyReports.computeProjectHourlyReport;
+      prepareProjectHealthReportForStorage = dailyReports.prepareProjectHealthReportForStorage;
+      persistProjectHealthReport = dailyReports.persistProjectHealthReport;
       ensureTraceMindIndexes = dailyReports.ensureTraceMindIndexes;
       refreshProjectDailyDraft = dailyReports.refreshProjectDailyDraft;
       refreshCompletedHourDraftReports = dailyReports.refreshCompletedHourDraftReports;
@@ -7115,6 +7468,178 @@ projectKey: tm_proj_sensitive`,
     afterEach(async function () {
       resetProductUsageInstrumentationForTest?.();
       resetIngestionGuardForTest?.();
+    });
+
+    it('v2 actor metrics safeguards replaces oversized v2 data without changing legacy report fields', function () {
+      const candidate = {
+        projectId: 'storage-budget-project',
+        reportDate: '2026-05-12',
+        actorSetVersion: 1,
+        activeActorKeys: ['actor-a', 'actor-b'],
+        sessionKeys: ['session-a'],
+        newActorKeys: ['actor-b'],
+        firstSeenActorKeys: ['actor-b'],
+        current: {
+          activeUsers: 2,
+          eventCount: 7,
+          actorMetricsV2: {
+            version: 2,
+            coverage: 'complete',
+            observedActors: 2,
+            canonicalUserActors: 2,
+            identifiedActors: 1,
+            anonymousActors: 1,
+            operationalActors: 0,
+            unclassifiedActors: 0,
+            firstSeenCanonicalActors: 2,
+            identityMergeCount: 0,
+            identityConflictCount: 0,
+          },
+        },
+        actorEvidenceV2: {
+          version: 2,
+          coverage: 'complete',
+          clientAnonymousActorKeys: ['actor-a'],
+          identifiedActorKeys: ['actor-b'],
+          operationalActorKeys: [],
+          unclassifiedActorKeys: [],
+          aliasPairs: [],
+        },
+        delivery: { accepted: 7 },
+      };
+
+      const prepared = prepareProjectHealthReportForStorage(candidate, 1);
+
+      assert.notStrictEqual(prepared, candidate);
+      assert.strictEqual(prepared.projectId, candidate.projectId);
+      assert.strictEqual(prepared.reportDate, candidate.reportDate);
+      assert.strictEqual(prepared.actorSetVersion, 1);
+      assert.deepStrictEqual(prepared.activeActorKeys, candidate.activeActorKeys);
+      assert.deepStrictEqual(prepared.sessionKeys, candidate.sessionKeys);
+      assert.deepStrictEqual(prepared.newActorKeys, candidate.newActorKeys);
+      assert.deepStrictEqual(prepared.firstSeenActorKeys, candidate.firstSeenActorKeys);
+      assert.strictEqual(prepared.current.activeUsers, 2);
+      assert.strictEqual(prepared.current.eventCount, 7);
+      assert.deepStrictEqual(prepared.delivery, candidate.delivery);
+      assert.deepStrictEqual(prepared.actorEvidenceV2, {
+        version: 2,
+        coverage: 'unavailable',
+        clientAnonymousActorKeys: [],
+        identifiedActorKeys: [],
+        operationalActorKeys: [],
+        unclassifiedActorKeys: [],
+        aliasPairs: [],
+      });
+      assert.strictEqual(prepared.current.actorMetricsV2.coverage, 'unavailable');
+      assert.strictEqual(prepared.current.actorMetricsV2.observedActors, null);
+      assert.strictEqual(candidate.current.actorMetricsV2.coverage, 'complete');
+    });
+
+    it('v2 actor metrics safeguards retries document-too-large writes once with unavailable v2', async function () {
+      const writes = [];
+      const collection = {
+        async updateAsync(selector, update, options) {
+          writes.push({ selector, update, options });
+          if (writes.length === 1) {
+            const error = new Error('BSON document too large');
+            error.code = 10334;
+            throw error;
+          }
+        },
+      };
+      const report = {
+        actorSetVersion: 1,
+        activeActorKeys: ['actor-a'],
+        current: {
+          eventCount: 4,
+          actorMetricsV2: {
+            version: 2,
+            coverage: 'complete',
+            observedActors: 1,
+          },
+        },
+        actorEvidenceV2: {
+          version: 2,
+          coverage: 'complete',
+          clientAnonymousActorKeys: ['actor-a'],
+          identifiedActorKeys: [],
+          operationalActorKeys: [],
+          unclassifiedActorKeys: [],
+          aliasPairs: [],
+        },
+      };
+
+      await persistProjectHealthReport(collection, { projectId: 'project-a' }, report, new Date('2026-05-12T16:00:00.000Z'));
+
+      assert.strictEqual(writes.length, 2);
+      assert.strictEqual(writes[0].update.$set.current.actorMetricsV2.coverage, 'complete');
+      assert.strictEqual(writes[1].update.$set.actorSetVersion, 1);
+      assert.deepStrictEqual(writes[1].update.$set.activeActorKeys, ['actor-a']);
+      assert.strictEqual(writes[1].update.$set.current.eventCount, 4);
+      assert.strictEqual(writes[1].update.$set.current.actorMetricsV2.coverage, 'unavailable');
+      assert.deepStrictEqual(writes[1].update.$set.actorEvidenceV2.clientAnonymousActorKeys, []);
+    });
+
+    it('v2 actor metrics safeguards retries document-too-large writes for partial v2 evidence', async function () {
+      const writes = [];
+      const collection = {
+        async updateAsync(selector, update, options) {
+          writes.push({ selector, update, options });
+          if (writes.length === 1) {
+            const error = new Error('BSON document too large');
+            error.code = 10334;
+            throw error;
+          }
+        },
+      };
+      const report = {
+        actorSetVersion: 1,
+        activeActorKeys: ['actor-a'],
+        current: {
+          eventCount: 4,
+          actorMetricsV2: {
+            version: 2,
+            coverage: 'partial',
+            observedActors: null,
+          },
+        },
+        actorEvidenceV2: {
+          version: 2,
+          coverage: 'partial',
+          clientAnonymousActorKeys: ['actor-a'],
+          identifiedActorKeys: [],
+          operationalActorKeys: [],
+          unclassifiedActorKeys: [],
+          aliasPairs: [],
+        },
+      };
+
+      await persistProjectHealthReport(collection, { projectId: 'project-partial' }, report, new Date('2026-05-12T16:00:00.000Z'));
+
+      assert.strictEqual(writes.length, 2);
+      assert.strictEqual(writes[0].update.$set.actorEvidenceV2.coverage, 'partial');
+      assert.strictEqual(writes[1].update.$set.actorSetVersion, 1);
+      assert.deepStrictEqual(writes[1].update.$set.activeActorKeys, ['actor-a']);
+      assert.strictEqual(writes[1].update.$set.current.eventCount, 4);
+      assert.strictEqual(writes[1].update.$set.current.actorMetricsV2.coverage, 'unavailable');
+      assert.deepStrictEqual(writes[1].update.$set.actorEvidenceV2.clientAnonymousActorKeys, []);
+    });
+
+    it('v2 actor metrics safeguards does not hide unrelated report write failures', async function () {
+      const expected = new Error('document size metadata unavailable');
+      const collection = {
+        async updateAsync() {
+          throw expected;
+        },
+      };
+
+      await assert.rejects(
+        persistProjectHealthReport(collection, { projectId: 'project-b' }, {
+          current: {},
+          actorEvidenceV2: { version: 2, coverage: 'complete' },
+        }, new Date('2026-05-12T16:00:00.000Z')),
+        (error) => error === expected,
+      );
     });
 
     function captureDeliveryHourlyRollups() {
@@ -8029,7 +8554,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(freshMarker.sentAt, undefined);
     });
 
-    it('publishes owned daily reports without internal actor hash fields', async function () {
+    it('v2 actor metrics safeguards publishes aggregate actor metrics without private actor evidence', async function () {
       const email = `daily-report-pub-${Date.now()}@example.com`;
       const userId = await Meteor.users.insertAsync({
         emails: [{ address: email, verified: true }],
@@ -8063,8 +8588,30 @@ projectKey: tm_proj_sensitive`,
           eventCount: 1,
           activeUsers: 1,
           retention: { d2: { sampleSize: 1, retainedUsers: 1, rate: 1 } },
+          actorMetricsV2: {
+            version: 2,
+            coverage: 'complete',
+            observedActors: 1,
+            canonicalUserActors: 1,
+            identifiedActors: 1,
+            anonymousActors: 0,
+            operationalActors: 0,
+            unclassifiedActors: 0,
+            firstSeenCanonicalActors: 1,
+            identityMergeCount: 0,
+            identityConflictCount: 0,
+          },
         },
         activeActorKeys: ['internal-active-hash'],
+        actorEvidenceV2: {
+          version: 2,
+          coverage: 'complete',
+          clientAnonymousActorKeys: [],
+          identifiedActorKeys: ['internal-active-hash'],
+          operationalActorKeys: [],
+          unclassifiedActorKeys: [],
+          aliasPairs: [],
+        },
         newActorKeys: ['internal-new-hash'],
         firstSeenActorKeys: ['internal-first-hash'],
         createdAt: new Date(),
@@ -8078,7 +8625,9 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(reports.length, 1);
       assert.strictEqual(reports[0].reportDate, '2026-05-12');
       assert.strictEqual(reports[0].current.eventCount, 1);
+      assert.strictEqual(reports[0].current.actorMetricsV2.canonicalUserActors, 1);
       assert.strictEqual(reports[0].activeActorKeys, undefined);
+      assert.strictEqual(reports[0].actorEvidenceV2, undefined);
       assert.strictEqual(reports[0].newActorKeys, undefined);
       assert.strictEqual(reports[0].firstSeenActorKeys, undefined);
     });
@@ -8409,6 +8958,185 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(secondPage.nextOffset, 26);
       assert.strictEqual(secondPage.hasMore, false);
       assert.ok(secondPage.events.some((event) => event.eventName === 'selected_event'));
+    });
+
+    it('v2 actor metrics safeguards builds a disjoint partition across events and presence aliases', async function () {
+      const projectId = `project-hourly-v2-actors-${Date.now()}`;
+      const hourStartAt = new Date('2026-05-12T16:00:00.000Z');
+      await ProjectHourlyReports.removeAsync({ projectId });
+      await SemanticEvents.removeAsync({ projectId });
+      await PresenceSessions.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Hourly V2 Actor Evidence App',
+        projectKey: `tm_proj_hourly_v2_actors_${Date.now()}`,
+        authToken: `tm_auth_hourly_v2_actors_${Date.now()}`,
+        createdAt: new Date(),
+      });
+
+      const acceptedRecords = [
+        { sourceType: 'web', anonymousId: 'anon-login' },
+        { sourceType: 'web', anonymousId: 'anon-login', userId: 'user-login' },
+        { sourceType: 'web', anonymousId: 'anon-client' },
+        { sourceType: 'server_app', anonymousId: 'runtime-only' },
+        { sourceType: 'unknown', anonymousId: 'unknown-only' },
+        { sourceType: 'web', anonymousId: 'anon-conflict' },
+        { sourceType: 'web', anonymousId: 'anon-conflict', userId: 'user-a' },
+        { sourceType: 'web', anonymousId: 'anon-conflict', userId: 'user-b' },
+        { sourceType: 'web', anonymousId: 'same-raw-identity' },
+        { sourceType: 'web', anonymousId: 'same-raw-identity', userId: 'same-raw-identity' },
+      ];
+      await Promise.all(acceptedRecords.map((record, index) => SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: `actor_evidence_${index}`,
+        occurredAt: new Date(hourStartAt.getTime() + index * 60 * 1000),
+        createdAt: new Date(hourStartAt.getTime() + index * 60 * 1000),
+        ...record,
+      })));
+      await PresenceSessions.insertAsync({
+        projectId,
+        presenceId: 'presence-anonymous',
+        sourceType: 'web',
+        anonymousId: 'presence-anon-login',
+        startedAt: new Date('2026-05-12T16:20:00.000Z'),
+        lastSeenAt: new Date('2026-05-12T16:21:00.000Z'),
+      });
+      await PresenceSessions.insertAsync({
+        projectId,
+        presenceId: 'presence-identified',
+        sourceType: 'web',
+        anonymousId: 'presence-anon-login',
+        userId: 'presence-user-login',
+        startedAt: new Date('2026-05-12T16:30:00.000Z'),
+        lastSeenAt: new Date('2026-05-12T16:31:00.000Z'),
+      });
+
+      const report = await computeProjectHourlyReport(projectId, hourStartAt, {
+        force: true,
+        now: new Date('2026-05-12T17:00:00.000Z'),
+      });
+
+      assert.deepStrictEqual(report.current.actorMetricsV2, {
+        version: 2,
+        coverage: 'complete',
+        observedActors: 11,
+        canonicalUserActors: 7,
+        identifiedActors: 5,
+        anonymousActors: 2,
+        operationalActors: 1,
+        unclassifiedActors: 1,
+        firstSeenCanonicalActors: null,
+        identityMergeCount: 2,
+        identityConflictCount: 1,
+      });
+      assert.strictEqual(report.current.activeUsers, 11);
+      const categoryKeys = [
+        ...report.actorEvidenceV2.identifiedActorKeys,
+        ...report.actorEvidenceV2.clientAnonymousActorKeys,
+        ...report.actorEvidenceV2.operationalActorKeys,
+        ...report.actorEvidenceV2.unclassifiedActorKeys,
+      ];
+      assert.strictEqual(categoryKeys.length, 11);
+      assert.strictEqual(new Set(categoryKeys).size, 11);
+      assert.strictEqual(Object.hasOwn(report.actorEvidenceV2, 'observedActorKeys'), false);
+      assert.strictEqual(JSON.stringify(report.actorEvidenceV2).includes('anon-login'), false);
+      assert.strictEqual(JSON.stringify(report.actorEvidenceV2).includes('user-login'), false);
+      assert.strictEqual(JSON.stringify(report.actorEvidenceV2).includes('presence-anon-login'), false);
+      assert.strictEqual(JSON.stringify(report.actorEvidenceV2).includes('presence-user-login'), false);
+
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'actor_evidence_raw_user_id',
+        sourceType: 'web',
+        userId: ' user-spaced ',
+        occurredAt: new Date('2026-05-12T16:10:00.000Z'),
+        createdAt: new Date('2026-05-12T16:10:00.000Z'),
+      });
+      const rawIdReport = await computeProjectHourlyReport(projectId, hourStartAt, {
+        force: true,
+        now: new Date('2026-05-12T17:00:00.000Z'),
+      });
+      const rawUserActorKey = rawIdReport.activeActorKeys.find((key) => !report.activeActorKeys.includes(key));
+      assert.ok(rawUserActorKey);
+      assert.ok(rawIdReport.actorEvidenceV2.identifiedActorKeys.includes(rawUserActorKey));
+    });
+
+    it('keeps returning anonymous identity out of v2 first seen', async function () {
+      const projectId = `project-daily-v2-first-seen-${Date.now()}`;
+      await ProjectDailyReports.removeAsync({ projectId });
+      await ProjectHourlyReports.removeAsync({ projectId });
+      await SemanticEvents.removeAsync({ projectId });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: `developer-${projectId}`,
+        name: 'Daily V2 First Seen App',
+        projectKey: `tm_proj_daily_v2_first_seen_${Date.now()}`,
+        authToken: `tm_auth_daily_v2_first_seen_${Date.now()}`,
+        createdAt: new Date(),
+      });
+
+      await SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        eventName: 'previous_anonymous_activity',
+        sourceType: 'web',
+        anonymousId: 'returning-anon',
+        occurredAt: new Date('2026-05-10T17:30:00.000Z'),
+        createdAt: new Date('2026-05-10T17:30:00.000Z'),
+      });
+      const previousReport = await computeProjectDailyReport(projectId, '2026-05-11', {
+        final: true,
+        now: new Date('2026-05-11T17:00:00.000Z'),
+      });
+
+      await Promise.all([
+        {
+          eventName: 'returning_anonymous_before_login',
+          anonymousId: 'returning-anon',
+          occurredAt: new Date('2026-05-11T16:30:00.000Z'),
+        },
+        {
+          eventName: 'returning_anonymous_login',
+          anonymousId: 'returning-anon',
+          userId: 'identified-returning-user',
+          occurredAt: new Date('2026-05-11T17:30:00.000Z'),
+        },
+        {
+          eventName: 'genuinely_new_anonymous_activity',
+          anonymousId: 'genuinely-new-anon',
+          occurredAt: new Date('2026-05-11T18:30:00.000Z'),
+        },
+      ].map((event) => SemanticEvents.insertAsync({
+        projectId,
+        eventType: 'custom',
+        sourceType: 'web',
+        createdAt: event.occurredAt,
+        ...event,
+      })));
+
+      const report = await computeProjectDailyReport(projectId, '2026-05-12', {
+        final: true,
+        now: new Date('2026-05-12T17:00:00.000Z'),
+      });
+      const health = summarizeProjectHealthFromDailyReports({ currentReport: report, previousReport });
+      const serializedEvidence = JSON.stringify(report.actorEvidenceV2);
+      const serializedHealth = JSON.stringify(health);
+
+      assert.strictEqual(report.current.newUsers, 2);
+      assert.strictEqual(report.current.actorMetricsV2.firstSeenCanonicalActors, 1);
+      assert.strictEqual(report.current.actorMetricsV2.identityMergeCount, 1);
+      assert.strictEqual(report.actorEvidenceV2.coverage, 'complete');
+      assert.strictEqual(serializedEvidence.includes('returning-anon'), false);
+      assert.strictEqual(serializedEvidence.includes('identified-returning-user'), false);
+      assert.strictEqual(serializedEvidence.includes('genuinely-new-anon'), false);
+      assert.deepStrictEqual(health.current.actorMetricsV2, report.current.actorMetricsV2);
+      assert.strictEqual(serializedHealth.includes('actorEvidenceV2'), false);
+      assert.strictEqual(serializedHealth.includes('returning-anon'), false);
+      assert.strictEqual(serializedHealth.includes('identified-returning-user'), false);
+      assert.strictEqual(serializedHealth.includes('genuinely-new-anon'), false);
     });
 
     it('computes daily project reports with hashed actor sets and retention-ready metrics', async function () {

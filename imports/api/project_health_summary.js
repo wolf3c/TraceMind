@@ -1,6 +1,22 @@
 export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
 export const DAILY_REPORT_TIMEZONE = 'Asia/Shanghai';
 
+export function emptyActorMetricsV2(coverage = 'unavailable') {
+  return {
+    version: 2,
+    coverage,
+    observedActors: null,
+    canonicalUserActors: null,
+    identifiedActors: null,
+    anonymousActors: null,
+    operationalActors: null,
+    unclassifiedActors: null,
+    firstSeenCanonicalActors: null,
+    identityMergeCount: null,
+    identityConflictCount: null,
+  };
+}
+
 function validDate(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -139,12 +155,16 @@ export function summarizeProjectHealthFromDailyReports({
   const current = {
     ...emptyHealthWindow(),
     ...(currentReport?.current || {}),
+    actorMetricsV2: currentReport?.current?.actorMetricsV2 || emptyActorMetricsV2(),
     newUsers: Number(currentReport?.current?.newUsers ?? currentReport?.newActorKeys?.length ?? 0),
     retention: retention || emptyHealthWindow().retention,
   };
   const previous = {
     ...emptyHealthWindow(),
     ...(currentReport?.previous || previousReport?.current || {}),
+    actorMetricsV2: currentReport?.previous?.actorMetricsV2
+      || previousReport?.current?.actorMetricsV2
+      || emptyActorMetricsV2(),
     newUsers: Number(currentReport?.previous?.newUsers ?? previousReport?.current?.newUsers ?? previousReport?.newActorKeys?.length ?? 0),
   };
   const currentStart = validDate(currentReport?.sourceWindow?.startAt);

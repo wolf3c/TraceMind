@@ -7,6 +7,7 @@ import {
   DAILY_REPORT_TIMEZONE,
   HEALTH_RETENTION_DAYS,
   attentionItemsForHealth,
+  emptyActorMetricsV2,
   emptyHealthWindow,
   emptyHourlyComparison,
   percentChange,
@@ -42,6 +43,7 @@ export { mcpServerNameForProject } from './project_identity';
 export {
   DAILY_REPORT_TIMEZONE,
   HEALTH_RETENTION_DAYS,
+  emptyActorMetricsV2,
   summarizeProjectHealthFromDailyReports,
 } from './project_health_summary';
 
@@ -1656,9 +1658,16 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
   const sdkUpgradeFindings = [];
   const deliverySummaries = [];
   const runtimeContextSummaries = [];
+  const observedActorKeysV2 = new Set();
+  const clientAnonymousActorKeysV2 = new Set();
+  const identifiedActorKeysV2 = new Set();
+  const operationalActorKeysV2 = new Set();
+  const unclassifiedActorKeysV2 = new Set();
+  const actorAliasPairsV2 = new Map();
   let eventCount = 0;
   let failureEventCount = 0;
   let lastEventAt = null;
+  let completeV2EvidenceReportCount = 0;
 
   reports.forEach((report) => {
     (report.activeActorKeys || []).forEach((key) => activeActorKeys.add(key));
@@ -1689,18 +1698,75 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
     if (rollup.runtimeContext || current.runtimeContext) {
       runtimeContextSummaries.push(rollup.runtimeContext || current.runtimeContext);
     }
+
+    const actorEvidenceV2 = report.actorEvidenceV2;
+    if (actorEvidenceV2?.version !== 2) return;
+    if (actorEvidenceV2.coverage !== 'complete') return;
+    const actorKeyArrays = [
+      actorEvidenceV2.clientAnonymousActorKeys,
+      actorEvidenceV2.identifiedActorKeys,
+      actorEvidenceV2.operationalActorKeys,
+      actorEvidenceV2.unclassifiedActorKeys,
+    ];
+    if (!actorKeyArrays.every((values) => (
+      Array.isArray(values) && values.every((key) => typeof key === 'string' && key)
+    ))) return;
+    if (!Array.isArray(actorEvidenceV2.aliasPairs) || !actorEvidenceV2.aliasPairs.every((pair) => (
+      pair
+      && typeof pair.anonymousActorKey === 'string'
+      && typeof pair.userActorKey === 'string'
+      && pair.anonymousActorKey
+      && pair.userActorKey
+    ))) return;
+    completeV2EvidenceReportCount += 1;
+    (report.activeActorKeys || []).forEach((key) => observedActorKeysV2.add(key));
+    (actorEvidenceV2.clientAnonymousActorKeys || []).forEach((key) => clientAnonymousActorKeysV2.add(key));
+    (actorEvidenceV2.identifiedActorKeys || []).forEach((key) => identifiedActorKeysV2.add(key));
+    (actorEvidenceV2.operationalActorKeys || []).forEach((key) => operationalActorKeysV2.add(key));
+    (actorEvidenceV2.unclassifiedActorKeys || []).forEach((key) => unclassifiedActorKeysV2.add(key));
+    (actorEvidenceV2.aliasPairs || []).forEach(({ anonymousActorKey, userActorKey } = {}) => {
+      if (!anonymousActorKey || !userActorKey) return;
+      actorAliasPairsV2.set(`${anonymousActorKey}\u0000${userActorKey}`, { anonymousActorKey, userActorKey });
+    });
   });
 
   const totalDurationMs = [...durationUsers.values()].reduce((sum, item) => sum + item.durationMs, 0);
   const sessionCount = sessionKeys.size || reports.reduce((sum, report) => sum + Number(report.current?.sessionCount || 0), 0);
   const activeUsers = activeActorKeys.size || reports.reduce((sum, report) => sum + Number(report.current?.activeUsers || 0), 0);
+  const actorEvidenceV2Coverage = reports.length && completeV2EvidenceReportCount === reports.length
+    ? 'complete'
+    : completeV2EvidenceReportCount ? 'partial' : 'unavailable';
+  let actorEvidenceV2Summary;
+  try {
+    actorEvidenceV2Summary = summarizeActorEvidenceV2({
+      version: 2,
+      coverage: actorEvidenceV2Coverage,
+      clientAnonymousActorKeys: [...clientAnonymousActorKeysV2],
+      identifiedActorKeys: [...identifiedActorKeysV2],
+      operationalActorKeys: [...operationalActorKeysV2],
+      unclassifiedActorKeys: [...unclassifiedActorKeysV2],
+      aliasPairs: [...actorAliasPairsV2.values()],
+    }, { observedActorKeys: observedActorKeysV2 });
+  } catch (_error) {
+    actorEvidenceV2Summary = {
+      actorEvidenceV2: emptyActorEvidenceV2(),
+      actorMetricsV2: emptyActorMetricsV2(),
+    };
+  }
+  const actorMetricsV2 = actorEvidenceV2Summary.actorMetricsV2.coverage === 'unavailable'
+    ? emptyActorMetricsV2()
+    : actorEvidenceV2Coverage === 'complete'
+      ? actorEvidenceV2Summary.actorMetricsV2
+      : emptyActorMetricsV2(actorEvidenceV2Coverage);
 
   return {
     activeActorKeys: [...activeActorKeys].sort(),
     sessionKeys: [...sessionKeys].sort(),
+    actorEvidenceV2: actorEvidenceV2Summary.actorEvidenceV2,
     current: {
       ...emptyHealthWindow(),
       activeUsers,
+      actorMetricsV2,
       eventCount,
       sessionCount,
       failureEventCount,
@@ -1727,6 +1793,133 @@ export function aggregateProjectHealthHourlyReports(hourlyReports = [], {
       retention: retention || emptyHealthWindow().retention,
     },
     delivery: summarizeCaptureDelivery(deliverySummaries),
+  };
+}
+
+export function emptyActorEvidenceV2(coverage = 'unavailable') {
+  return {
+    version: 2,
+    coverage,
+    clientAnonymousActorKeys: [],
+    identifiedActorKeys: [],
+    operationalActorKeys: [],
+    unclassifiedActorKeys: [],
+    aliasPairs: [],
+  };
+}
+
+export function summarizeActorEvidenceV2(evidence = {}, {
+  observedActorKeys: observedActorKeyValues,
+  historicalActorKeys = null,
+} = {}) {
+  const uniqueKeys = (values = []) => [...new Set([...values].filter(Boolean))].sort();
+  const version = Number(evidence.version || 2);
+  const coverage = evidence.coverage || 'complete';
+  const historicalActorKeySet = historicalActorKeys == null ? null : new Set(historicalActorKeys);
+  const observedActorKeys = uniqueKeys(observedActorKeyValues || []);
+  const observedActorKeySet = new Set(observedActorKeys);
+  const rawClientAnonymousActorKeySet = new Set(uniqueKeys(evidence.clientAnonymousActorKeys || []));
+  const rawIdentifiedActorKeySet = new Set(uniqueKeys(evidence.identifiedActorKeys || []));
+  const rawOperationalActorKeySet = new Set(uniqueKeys(evidence.operationalActorKeys || []));
+  const rawUnclassifiedActorKeySet = new Set(uniqueKeys(evidence.unclassifiedActorKeys || []));
+  const clientAnonymousActorKeys = [];
+  const identifiedActorKeys = [];
+  const operationalActorKeys = [];
+  const unclassifiedActorKeys = [];
+  const aliasTargetsByAnonymousKey = new Map();
+
+  observedActorKeys.forEach((actorKey) => {
+    if (rawIdentifiedActorKeySet.has(actorKey)) {
+      identifiedActorKeys.push(actorKey);
+      return;
+    }
+    const inClientAnonymous = rawClientAnonymousActorKeySet.has(actorKey);
+    const inOperational = rawOperationalActorKeySet.has(actorKey);
+    const inUnclassified = rawUnclassifiedActorKeySet.has(actorKey);
+    const categoryCount = Number(inClientAnonymous) + Number(inOperational) + Number(inUnclassified);
+    if (categoryCount !== 1) {
+      unclassifiedActorKeys.push(actorKey);
+    } else if (inClientAnonymous) {
+      clientAnonymousActorKeys.push(actorKey);
+    } else if (inOperational) {
+      operationalActorKeys.push(actorKey);
+    } else {
+      unclassifiedActorKeys.push(actorKey);
+    }
+  });
+
+  (evidence.aliasPairs || []).forEach(({ anonymousActorKey, userActorKey } = {}) => {
+    if (!anonymousActorKey || !userActorKey) return;
+    if (!aliasTargetsByAnonymousKey.has(anonymousActorKey)) {
+      aliasTargetsByAnonymousKey.set(anonymousActorKey, new Set());
+    }
+    aliasTargetsByAnonymousKey.get(anonymousActorKey).add(userActorKey);
+  });
+
+  const aliasPairs = [...aliasTargetsByAnonymousKey.entries()]
+    .flatMap(([anonymousActorKey, userActorKeys]) => [...userActorKeys]
+      .sort()
+      .map((userActorKey) => ({ anonymousActorKey, userActorKey })))
+    .sort((left, right) => (
+      left.anonymousActorKey.localeCompare(right.anonymousActorKey)
+      || left.userActorKey.localeCompare(right.userActorKey)
+    ));
+  const clientAnonymousActorKeySet = new Set(clientAnonymousActorKeys);
+  const identifiedActorKeySet = new Set(identifiedActorKeys);
+  const safeClientAnonymousActorKeys = new Set(
+    [...aliasTargetsByAnonymousKey.entries()]
+      .filter(([anonymousActorKey, userActorKeys]) => (
+        userActorKeys.size === 1
+        && clientAnonymousActorKeySet.has(anonymousActorKey)
+        && identifiedActorKeySet.has([...userActorKeys][0])
+        && anonymousActorKey !== [...userActorKeys][0]
+      ))
+      .map(([anonymousActorKey]) => anonymousActorKey),
+  );
+  const canonicalAnonymousActorKeys = clientAnonymousActorKeys.filter((key) => !safeClientAnonymousActorKeys.has(key));
+  const canonicalActorGroups = new Map(identifiedActorKeys.map((key) => [key, new Set([key])]));
+
+  aliasTargetsByAnonymousKey.forEach((userActorKeys, anonymousActorKey) => {
+    if (userActorKeys.size !== 1) return;
+    const userActorKey = [...userActorKeys][0];
+    const preservesAliasOnlyHistory = !observedActorKeySet.has(anonymousActorKey);
+    if (identifiedActorKeySet.has(userActorKey)
+      && (safeClientAnonymousActorKeys.has(anonymousActorKey) || preservesAliasOnlyHistory)) {
+      canonicalActorGroups.get(userActorKey).add(anonymousActorKey);
+    }
+  });
+  canonicalAnonymousActorKeys.forEach((anonymousActorKey) => {
+    canonicalActorGroups.set(anonymousActorKey, new Set([anonymousActorKey]));
+  });
+  const firstSeenCanonicalActors = coverage === 'complete' && historicalActorKeySet
+    ? [...canonicalActorGroups.values()].filter((actorKeys) => (
+      [...actorKeys].every((actorKey) => !historicalActorKeySet.has(actorKey))
+    )).length
+    : null;
+
+  return {
+    actorEvidenceV2: {
+      version,
+      coverage,
+      clientAnonymousActorKeys,
+      identifiedActorKeys,
+      operationalActorKeys,
+      unclassifiedActorKeys,
+      aliasPairs,
+    },
+    actorMetricsV2: {
+      version,
+      coverage,
+      observedActors: observedActorKeys.length,
+      canonicalUserActors: canonicalActorGroups.size,
+      identifiedActors: identifiedActorKeys.length,
+      anonymousActors: canonicalAnonymousActorKeys.length,
+      operationalActors: operationalActorKeys.length,
+      unclassifiedActors: unclassifiedActorKeys.length,
+      firstSeenCanonicalActors,
+      identityMergeCount: safeClientAnonymousActorKeys.size,
+      identityConflictCount: [...aliasTargetsByAnonymousKey.values()].filter((userActorKeys) => userActorKeys.size > 1).length,
+    },
   };
 }
 

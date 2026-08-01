@@ -92,6 +92,11 @@
 - `deviceFingerprint` 是基于稳定设备信息计算的轻量指纹，只作为辅助去重字段，不替代登录用户 ID。
 - DAU 口径使用 `userId || anonymousId` 按自然日去重。
 - Web、iOS、macOS、Android、React Native、小程序和浏览器插件都支持 `identify`。Native、小程序和浏览器插件 SDK 会把 `userId` 持久化到本地身份存储，并让后续自动采集和手动 `custom` 事件带上同一个 `userId`。
+- 健康报告 v1 actor 兼容回退保持 `userId || anonymousId || deviceId || deviceFingerprint`。v2 则确定性解释现有 payload：带 `userId` 的是 identified；客户端 `sourceType` 仅为 `web`、`ios`、`macos`、`android`、`mini_program` 或 `browser_extension`，无 `userId` 时使用既有 `anonymousId || deviceId || deviceFingerprint` actor 的是 client-anonymous；`server`、`server_app`、`mcp_server` 或 `agent_skill` 是 operational；缺失、未知或不受支持的 `sourceType` 是 unclassified。React Native 复用 iOS/Android `sourceType`，Hybrid 复用 Web/Native `sourceType`，二者都不是独立 `sourceType`；这些分类不证明真人、机器人或注册。
+- 分类以已观测 v1 actor key 为全集：identified 优先；否则只命中 client-anonymous / operational / unclassified 中一个类别时保留该类别，零个或多个类别冲突都归 unclassified。四个规范化集合在安全 alias 移除前互斥且完整分割全部观测 actor。
+- 接受的 event 或 presence record 共携带 `anonymousId + userId` 都可提供 alias 证据。只有匿名 key 与用户 key 不同、匿名 key 是已观测且规范化的 client-anonymous、目标是 identified、并且该匿名 key 只有一个目标时才合并；self-alias 只保留为 HMAC 证据且不计 merge，若同时指向另一用户仍是多目标冲突；任何歧义 alias 都不合并。`deviceId`、`deviceFingerprint`、IP、UA、path 和 behavior 永远不是 alias key。
+- v2 由服务端根据既有 payload 计算，Web、iOS、macOS、Android、React Native、Hybrid、Mini Program、Browser Extension、server SDK、MCP 与 Agent Skill 都不需要 SDK 改动。私有 evidence 只保存 version、coverage、四个规范化 HMAC category arrays 与 HMAC alias pairs；观测全集复用根 `activeActorKeys`，不在 evidence 内重复保存。MCP/公开投影只返回聚合数，并严格标示 coverage。
+- 小时和日报写入前按 UTF-8 JSON 估算完整候选文档；超过保守的 12 MiB 预算，或完整候选被 Mongo/BSON 判定 document-too-large 时，只把 v2 evidence 与 public metrics 降级为 `unavailable`，所有 v1 字段保持完整。v2 计算失败同样不得阻断 v1 报告。
 
 ## 设备、IP 与地理信息
 

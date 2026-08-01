@@ -2,6 +2,13 @@
 
 > Active release and product follow-up work is tracked in [`product_backlog.md`](./product_backlog.md).
 
+## 2026-08-01
+
+### Completed
+
+- Added additive hourly/daily v2 actor evidence and aggregate metrics, including mutually exclusive actor categories, cross-hour safe anonymous-to-user merging, self-alias/conflict handling, canonical first-seen counts, compact HMAC evidence, and strict historical coverage projection.
+- Added v1-preserving v2 failure isolation, a 12 MiB report preflight, and one Mongo/BSON document-too-large fallback; legacy metrics, raw legacy publication behavior, UI, SDKs, retention, trends, and alerts remain unchanged, with no migration, backfill, or collection.
+
 ## 2026-07-28
 
 ### Completed
