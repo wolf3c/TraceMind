@@ -16,7 +16,7 @@
 - Verified that local MCP health for 2026-07-31 returned complete v2 metrics matching the UI: observed/canonical/identified/anonymous/operational/unclassified/first-seen/merges/conflicts = 10/6/4/2/1/1/3/2/1.
 - Precisely removed the local test account, project, and fixtures after verification.
 - The Chinese unavailable-state recheck and the 390 x 844 mobile recheck were interrupted when the verification session began refreshing repeatedly and the user closed the pages; both remain unverified in this pass.
-- This work remains local: not deployed, merged, or pushed.
+- This work is merged locally but is not pushed or deployed.
 
 ## 2026-07-28
 
