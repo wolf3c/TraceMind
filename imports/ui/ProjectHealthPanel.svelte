@@ -1,6 +1,7 @@
 <script>
   import HourlyTrendSparkline from "./HourlyTrendSparkline.svelte";
   import { DATA_RETENTION_POLICY } from "../api/data_retention";
+  import { isValidCompleteActorMetricsV2 } from "../api/project_health_summary";
   import { t } from "./i18n/i18n";
 
   let {
@@ -46,8 +47,10 @@
   let dashboardAttentionSummary = $derived(dashboardAttentionItems[0]?.message || "");
   let dashboardNeedsAttention = $derived(Boolean(dashboardAttentionItems.length));
   let actorMetricsV2 = $derived(healthCurrent?.actorMetricsV2 || {});
-  let actorMetricsCoverage = $derived(actorMetricsV2?.coverage || "unavailable");
-  let actorMetricsComplete = $derived(actorMetricsCoverage === "complete");
+  let actorMetricsComplete = $derived(isValidCompleteActorMetricsV2(actorMetricsV2));
+  let actorMetricsCoverage = $derived(
+    actorMetricsComplete ? "complete" : (actorMetricsV2?.coverage === "partial" ? "partial" : "unavailable"),
+  );
 
   function recentOnlineBarHeight(bucket) {
     const value = Number(bucket?.onlineUsers || 0);

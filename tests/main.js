@@ -35,7 +35,10 @@ import {
   latestSdkForSetup,
 } from '../imports/api/sdk_release';
 import * as TraceMindApi from '../imports/api/tracemind';
-import { attentionItemsForHealth } from '../imports/api/project_health_summary';
+import {
+  attentionItemsForHealth,
+  isValidCompleteActorMetricsV2,
+} from '../imports/api/project_health_summary';
 import { buildAgentInstallPrompt, buildWebCaptureUpdatePrompt } from '../imports/ui/agent_setup';
 import { WEB_CAPTURE_UPDATE_TARGET, buildProjectActionNotices } from '../imports/ui/project_action_notices';
 import { resolveConsoleState } from '../imports/ui/console_state';
@@ -3281,6 +3284,51 @@ projectKey: tm_proj_sensitive`,
         assert.ok(tool.description.includes('不等于人数或正式访问'));
         assert.strictEqual(tool.inputSchema.required, undefined);
         assert.strictEqual(tool.inputSchema.properties.reportDate.type, 'string');
+      });
+    });
+
+    describe('Actor metrics presentation contract', function () {
+      const validActorMetrics = {
+        version: 2,
+        coverage: 'complete',
+        observedActors: 10,
+        canonicalUserActors: 6,
+        identifiedActors: 4,
+        anonymousActors: 2,
+        operationalActors: 1,
+        unclassifiedActors: 1,
+        firstSeenCanonicalActors: 3,
+        identityMergeCount: 2,
+        identityConflictCount: 1,
+      };
+
+      it('accepts a complete actor metric object with integer counts and a consistent reconciliation', function () {
+        assert.strictEqual(
+          isValidCompleteActorMetricsV2(validActorMetrics),
+          true,
+        );
+      });
+
+      it('rejects malformed or inconsistent complete actor metric objects', function () {
+        const missingField = { ...validActorMetrics };
+        delete missingField.identityConflictCount;
+        const invalidCases = [
+          ['missing field', missingField],
+          ['numeric string', { ...validActorMetrics, observedActors: '10' }],
+          ['boolean', { ...validActorMetrics, identifiedActors: true }],
+          ['negative', { ...validActorMetrics, identityConflictCount: -1 }],
+          ['wrong version', { ...validActorMetrics, version: 1 }],
+          ['wrong coverage', { ...validActorMetrics, coverage: 'partial' }],
+          ['inconsistent formula', { ...validActorMetrics, canonicalUserActors: 7 }],
+        ];
+
+        invalidCases.forEach(([label, actorMetrics]) => {
+          assert.strictEqual(
+            isValidCompleteActorMetricsV2(actorMetrics),
+            false,
+            label,
+          );
+        });
       });
     });
 

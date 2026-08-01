@@ -1,6 +1,32 @@
 export const HEALTH_RETENTION_DAYS = [2, 3, 7, 30];
 export const DAILY_REPORT_TIMEZONE = 'Asia/Shanghai';
 
+const ACTOR_METRICS_V2_AGGREGATE_FIELDS = [
+  'observedActors',
+  'canonicalUserActors',
+  'identifiedActors',
+  'anonymousActors',
+  'operationalActors',
+  'unclassifiedActors',
+  'firstSeenCanonicalActors',
+  'identityMergeCount',
+  'identityConflictCount',
+];
+
+export function isValidCompleteActorMetricsV2(actorMetrics) {
+  if (!actorMetrics || typeof actorMetrics !== 'object' || Array.isArray(actorMetrics)) return false;
+  if (actorMetrics.version !== 2 || actorMetrics.coverage !== 'complete') return false;
+  if (!ACTOR_METRICS_V2_AGGREGATE_FIELDS.every((field) => (
+    Number.isInteger(actorMetrics[field]) && actorMetrics[field] >= 0
+  ))) return false;
+
+  return actorMetrics.observedActors
+    - actorMetrics.identityMergeCount
+    - actorMetrics.operationalActors
+    - actorMetrics.unclassifiedActors
+    === actorMetrics.canonicalUserActors;
+}
+
 export function emptyActorMetricsV2(coverage = 'unavailable') {
   return {
     version: 2,
