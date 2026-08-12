@@ -117,6 +117,7 @@
       projectKey: project.projectKey,
       mcpTokens: project.mcpTokens || [],
       blockedSources: project.blockedSources || [],
+      healthAlertEnabled: project.healthAlertEnabled === true,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
     };
@@ -799,6 +800,29 @@
       showSuccessStatus(translateNow("Project name updated."));
     } catch (error) {
       showStatus(errorMessage(error));
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function setHealthAlertEnabled(enabled) {
+    if (!primaryProject) return false;
+    loading = true;
+    showStatus("");
+    try {
+      const updatedProject = await callMethod(
+        "tracemind.project.healthAlert.setEnabled",
+        primaryProject._id,
+        enabled,
+      );
+      replaceProject(updatedProject);
+      showSuccessStatus(translateNow(
+        enabled ? "Email health alerts enabled." : "Email health alerts disabled.",
+      ));
+      return true;
+    } catch (error) {
+      showStatus(errorMessage(error));
+      return false;
     } finally {
       loading = false;
     }
@@ -1506,6 +1530,7 @@
           {createProject}
           {cancelProjectCreate}
           {renameProject}
+          {setHealthAlertEnabled}
           {cancelProjectRename}
           {copyText}
           {copyAgentInstallPrompt}

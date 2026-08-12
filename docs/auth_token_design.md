@@ -22,13 +22,13 @@ The developer `authToken` still exists internally for compatibility with early A
 
 Meteor Accounts restores the browser session asynchronously after a page refresh. The console UI must not treat a missing `dashboard` object as proof that the developer is signed out. It distinguishes session restore, confirmed signed-out, dashboard loading, dashboard error, and ready states so production latency does not briefly show the email login form to an already authenticated developer.
 
-After the session is restored, the console calls `tracemind.dashboard.bootstrap()` to create missing developer/project records, then subscribes to `tracemind.developer.profile` and `tracemind.projects`. Minimongo becomes the cache for account and project setup state, including date-independent fields such as project name, project key, MCP tokens, and blocked sources. Project writes still go through methods so server-side ownership checks stay authoritative.
+After the session is restored, the console calls `tracemind.dashboard.bootstrap()` to create missing developer/project records, then subscribes to `tracemind.developer.profile` and `tracemind.projects`. Minimongo becomes the cache for account and project setup state, including date-independent fields such as project name, project key, MCP tokens, blocked sources, and the health-alert opt-in boolean. Project writes still go through methods so server-side ownership checks stay authoritative; internal health-alert lifecycle state is never published.
 
 ## Collections
 
 - `Meteor.users`: owned by Meteor Accounts with `accounts-passwordless`, `accounts-google`, and `accounts-github`.
 - `Developers`: `{ userId, email, authToken, createdAt }`
-- `Projects`: `{ developerId, name, projectKey, mcpTokens, createdAt }`
+- `Projects`: `{ developerId, name, projectKey, mcpTokens, healthAlertEnabled?, healthAlertState?, createdAt }`
 
 ## Server Reads and Methods
 
@@ -37,6 +37,7 @@ After the session is restored, the console calls `tracemind.dashboard.bootstrap(
 - `tracemind.dashboard.bootstrap()`
 - `tracemind.dashboard()`
 - `tracemind.project.create(name)`
+- `tracemind.project.healthAlert.setEnabled(projectId, enabled)`
 - `tracemind.project.summary(projectId)`
 - `tracemind.project.summaryByToken(authToken, projectId)` internal compatibility method, not shown in the UI.
 
@@ -47,6 +48,7 @@ After the session is restored, the console calls `tracemind.dashboard.bootstrap(
 - Google/GitHub OAuth uses provider email only for account binding. GitHub requests `user:email`; neither provider requests repository, organization, code, or offline access.
 - Same normalized email means same Meteor user, developer, and project.
 - Email sending uses Meteor `email` and Mailgun SMTP through `MAIL_URL`.
+- An opted-in Project may use its existing `Developer.email` for privacy-safe health incident and recovery notifications. TraceMind does not add a recipient profile or expose the address through project data; disabling alerts also removes the compact internal lifecycle state.
 - TraceMind exposes `projectKey` for Auto Capture and separate MCP tokens for MCP access. Project keys are public write identifiers and cannot query MCP. MCP tokens can read behavior evidence and terminal user feedback, write developer feedback reports through `tracemind.submit_feedback`, and update only user feedback workflow fields through `tracemind.update_user_feedback`; developer feedback writes are deduplicated and rate limited per project/token.
 - Public project keys are protected by post-ingestion governance rather than a required setup-time whitelist in the MVP: the console shows source statistics, and owners can block a `sourceType + sourceKey` so future events from that source are accepted at the HTTP layer but not stored.
 - Developer `authToken` should stay hidden until there is a separate management API that actually needs it.

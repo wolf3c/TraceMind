@@ -843,6 +843,7 @@ export function publicProject(project) {
     projectKey: project.projectKey,
     mcpTokens: (project.mcpTokens || []).map(publicMcpToken).filter(Boolean),
     blockedSources: (project.blockedSources || []).map(publicBlockedSource).filter(Boolean),
+    healthAlertEnabled: project.healthAlertEnabled === true,
     createdAt: project.createdAt,
   };
 }

@@ -155,6 +155,24 @@ function assertSdkGovernance(setup, sdkName, vendorPath) {
   }
 }
 
+function healthAlertHourlyReport(hourStartAt, current = {}) {
+  const start = new Date(hourStartAt);
+  return {
+    hourKey: start.toISOString(),
+    hourStartAt: start,
+    hourEndAt: new Date(start.getTime() + 60 * 60 * 1000),
+    timezone: 'Asia/Shanghai',
+    current: {
+      activeUsers: 0,
+      sessionCount: 0,
+      eventCount: 0,
+      failureEventCount: 0,
+      topEvents: [],
+      ...current,
+    },
+  };
+}
+
 function assertServerDeployVerificationSetup(setup, expectedPlatform) {
   const structured = setup.structuredContent;
   const json = JSON.stringify(structured);
@@ -7725,10 +7743,14 @@ projectKey: tm_proj_sensitive`,
     let drainIngestionGuardForTest;
     let refreshIngestionGuardBaselines;
     let hydrateIngestionGuardForTest;
+    let buildProjectHealthEmailAlertDecision;
+    let buildProjectHealthAlertEmail;
+    let evaluateProjectHealthEmailAlert;
 
     before(async function () {
       const captureRoutes = await import('../server/capture_routes');
       const dailyReports = await import('../server/daily_reports');
+      const healthAlerts = await import('../server/health_alerts');
       await import('../server/tracemind_publications');
       const methods = await import('../server/tracemind_methods');
       const semanticJobs = await import('../server/semantic_jobs');
@@ -7755,6 +7777,9 @@ projectKey: tm_proj_sensitive`,
       resetIngestionGuardForTest = captureRoutes.resetIngestionGuardForTest;
       drainIngestionGuardForTest = captureRoutes.drainIngestionGuardForTest;
       ({ refreshIngestionGuardBaselines, hydrateIngestionGuardForTest } = await import('../server/ingestion_guard'));
+      buildProjectHealthEmailAlertDecision = healthAlerts.buildProjectHealthEmailAlertDecision;
+      buildProjectHealthAlertEmail = healthAlerts.buildProjectHealthAlertEmail;
+      evaluateProjectHealthEmailAlert = healthAlerts.evaluateProjectHealthEmailAlert;
     });
 
     afterEach(async function () {
@@ -8929,7 +8954,7 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(reports[0].firstSeenActorKeys, undefined);
     });
 
-    it('publishes developer profile and owned projects without internal auth fields', async function () {
+    it('publishes health email alerts without exposing state or internal auth fields', async function () {
       const email = `project-pub-${Date.now()}@example.com`;
       const userId = await Meteor.users.insertAsync({
         emails: [{ address: email, verified: true }],
@@ -8961,6 +8986,14 @@ projectKey: tm_proj_sensitive`,
           reason: 'test',
           blockedAt: new Date(),
         }],
+        healthAlertEnabled: true,
+        healthAlertState: {
+          status: 'open',
+          evaluatedHourKey: '2026-08-12T07:00:00.000Z',
+          openedAt: new Date('2026-08-12T08:00:00.000Z'),
+          codes: ['event_stream_stopped'],
+          updatedAt: new Date('2026-08-12T08:01:00.000Z'),
+        },
         createdAt: new Date(),
       });
       await Projects.insertAsync({
@@ -8978,6 +9011,9 @@ projectKey: tm_proj_sensitive`,
       const projectsCursor = await projectsPublish.apply({ userId }, []);
       const profiles = await profileCursor.fetchAsync();
       const projects = await projectsCursor.fetchAsync();
+      await Projects.updateAsync(ownedProjectId, {
+        $unset: { healthAlertEnabled: 1, healthAlertState: 1 },
+      });
 
       assert.strictEqual(profiles.length, 1);
       assert.strictEqual(profiles[0].email, email);
@@ -8989,6 +9025,8 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(projects[0].projectKey.startsWith('tm_proj_owned_'), true);
       assert.strictEqual(projects[0].mcpTokens[0].id, 'mcp-owned');
       assert.strictEqual(projects[0].blockedSources[0].sourceKey, 'owned.example');
+      assert.strictEqual(projects[0].healthAlertEnabled, true);
+      assert.strictEqual(projects[0].healthAlertState, undefined);
     });
 
     it('creates TraceMind developer data from a Meteor Accounts user', async function () {
@@ -9862,55 +9900,165 @@ projectKey: tm_proj_sensitive`,
       assert.ok(hourlyReports.every((hourlyReport) => hourlyReport.activeActorKeys.every((key) => !key.includes('same-user'))));
     });
 
-    it('refreshes completed-hour draft reports only for projects with recent activity', async function () {
+    it('refreshes active and health-alert-enabled projects after each completed hour', async function () {
       this.timeout(5000);
       const now = new Date('2026-05-12T18:20:00.000Z');
       const activeProjectId = `project-hourly-auto-active-${Date.now()}`;
       const inactiveProjectId = `project-hourly-auto-inactive-${Date.now()}`;
-      await ProjectDailyReports.removeAsync({ projectId: { $in: [activeProjectId, inactiveProjectId] } });
-      await ProjectHourlyReports.removeAsync({ projectId: { $in: [activeProjectId, inactiveProjectId] } });
-      await Projects.insertAsync({
-        _id: activeProjectId,
-        developerId: `developer-${activeProjectId}`,
-        name: 'Hourly Auto Active App',
-        projectKey: `tm_proj_hourly_auto_active_${Date.now()}`,
-        createdAt: new Date(),
-      });
-      await Projects.insertAsync({
-        _id: inactiveProjectId,
-        developerId: `developer-${inactiveProjectId}`,
-        name: 'Hourly Auto Inactive App',
-        projectKey: `tm_proj_hourly_auto_inactive_${Date.now()}`,
-        createdAt: new Date(),
-      });
-      await SemanticEvents.insertAsync({
-        projectId: activeProjectId,
-        eventType: 'custom',
-        eventName: 'recent_completed_hour',
-        anonymousId: 'auto-active-user',
-        sessionId: 'auto-active-session',
-        occurredAt: new Date('2026-05-12T17:10:00.000Z'),
-        createdAt: new Date('2026-05-12T17:10:00.000Z'),
-      });
-      await SemanticEvents.insertAsync({
-        projectId: inactiveProjectId,
-        eventType: 'custom',
-        eventName: 'outside_recent_completed_hours',
-        anonymousId: 'auto-inactive-user',
-        sessionId: 'auto-inactive-session',
-        occurredAt: new Date('2026-05-12T15:50:00.000Z'),
-        createdAt: new Date('2026-05-12T15:50:00.000Z'),
-      });
+      const alertEnabledProjectId = `project-hourly-auto-alert-${Date.now()}`;
+      const projectIds = [activeProjectId, inactiveProjectId, alertEnabledProjectId];
+      try {
+        await Projects.insertAsync({
+          _id: activeProjectId,
+          developerId: `developer-${activeProjectId}`,
+          name: 'Hourly Auto Active App',
+          projectKey: `tm_proj_hourly_auto_active_${Date.now()}`,
+          createdAt: new Date(),
+        });
+        await Projects.insertAsync({
+          _id: inactiveProjectId,
+          developerId: `developer-${inactiveProjectId}`,
+          name: 'Hourly Auto Inactive App',
+          projectKey: `tm_proj_hourly_auto_inactive_${Date.now()}`,
+          createdAt: new Date(),
+        });
+        await Projects.insertAsync({
+          _id: alertEnabledProjectId,
+          developerId: `developer-${alertEnabledProjectId}`,
+          name: 'Hourly Auto Alert App',
+          projectKey: `tm_proj_hourly_auto_alert_${Date.now()}`,
+          healthAlertEnabled: true,
+          createdAt: new Date(),
+        });
+        await SemanticEvents.insertAsync({
+          projectId: activeProjectId,
+          eventType: 'custom',
+          eventName: 'recent_completed_hour',
+          anonymousId: 'auto-active-user',
+          sessionId: 'auto-active-session',
+          occurredAt: new Date('2026-05-12T17:10:00.000Z'),
+          createdAt: new Date('2026-05-12T17:10:00.000Z'),
+        });
+        await SemanticEvents.insertAsync({
+          projectId: inactiveProjectId,
+          eventType: 'custom',
+          eventName: 'outside_recent_completed_hours',
+          anonymousId: 'auto-inactive-user',
+          sessionId: 'auto-inactive-session',
+          occurredAt: new Date('2026-05-12T15:50:00.000Z'),
+          createdAt: new Date('2026-05-12T15:50:00.000Z'),
+        });
 
-      const result = await refreshCompletedHourDraftReports(now);
-      const activeReport = await ProjectDailyReports.findOneAsync({ projectId: activeProjectId, reportDate: '2026-05-13' });
-      const inactiveReport = await ProjectDailyReports.findOneAsync({ projectId: inactiveProjectId, reportDate: '2026-05-13' });
+        const evaluated = [];
+        const result = await refreshCompletedHourDraftReports(now, {
+          evaluateHealthAlert: async (projectId, hourStartAt) => {
+            evaluated.push({ projectId, hourStartAt });
+          },
+        });
+        const activeReport = await ProjectDailyReports.findOneAsync({ projectId: activeProjectId, reportDate: '2026-05-13' });
+        const inactiveReport = await ProjectDailyReports.findOneAsync({ projectId: inactiveProjectId, reportDate: '2026-05-13' });
+        const alertEnabledReport = await ProjectDailyReports.findOneAsync({ projectId: alertEnabledProjectId, reportDate: '2026-05-13' });
 
-      assert.ok(result.projectCount >= 1);
-      assert.strictEqual(result.reportDate, '2026-05-13');
-      assert.strictEqual(activeReport.status, 'draft');
-      assert.strictEqual(activeReport.current.eventCount, 1);
-      assert.strictEqual(inactiveReport, undefined);
+        assert.ok(result.projectCount >= 2);
+        assert.strictEqual(result.reportDate, '2026-05-13');
+        assert.strictEqual(activeReport.status, 'draft');
+        assert.strictEqual(activeReport.current.eventCount, 1);
+        assert.strictEqual(inactiveReport, undefined);
+        assert.strictEqual(alertEnabledReport.status, 'draft');
+        assert.deepStrictEqual(
+          evaluated.filter((item) => item.projectId === alertEnabledProjectId),
+          [{
+            projectId: alertEnabledProjectId,
+            hourStartAt: new Date('2026-05-12T17:00:00.000Z'),
+          }],
+        );
+        assert.strictEqual(evaluated.some((item) => item.projectId === activeProjectId), false);
+        assert.strictEqual(evaluated.some((item) => item.projectId === inactiveProjectId), false);
+      } finally {
+        await SemanticEvents.removeAsync({ projectId: { $in: projectIds } });
+        await ProjectHourlyReports.removeAsync({ projectId: { $in: projectIds } });
+        await ProjectDailyReports.removeAsync({ projectId: { $in: projectIds } });
+        await Projects.removeAsync({ _id: { $in: projectIds } });
+      }
+    });
+
+    it('evaluates the just-completed hour across the report-date boundary', async function () {
+      this.timeout(5000);
+      const now = new Date('2026-05-12T16:05:00.000Z');
+      const projectId = `project-hourly-alert-midnight-${Date.now()}`;
+      try {
+        await Projects.insertAsync({
+          _id: projectId,
+          developerId: `developer-${projectId}`,
+          name: 'Hourly Alert Midnight App',
+          projectKey: `tm_proj_hourly_alert_midnight_${Date.now()}`,
+          healthAlertEnabled: true,
+          createdAt: new Date(),
+        });
+        await ProjectDailyReports.insertAsync({
+          projectId,
+          reportDate: '2026-05-12',
+          status: 'final',
+          createdAt: new Date(),
+        });
+
+        const evaluated = [];
+        const result = await refreshCompletedHourDraftReports(now, {
+          evaluateHealthAlert: async (evaluatedProjectId, hourStartAt) => {
+            evaluated.push({ projectId: evaluatedProjectId, hourStartAt });
+          },
+        });
+
+        assert.strictEqual(result.reportDate, '2026-05-12');
+        assert.deepStrictEqual(
+          evaluated.filter((item) => item.projectId === projectId),
+          [{ projectId, hourStartAt: new Date('2026-05-12T15:00:00.000Z') }],
+        );
+      } finally {
+        await ProjectHourlyReports.removeAsync({ projectId });
+        await ProjectDailyReports.removeAsync({ projectId });
+        await Projects.removeAsync(projectId);
+      }
+    });
+
+    it('alert evaluation failure does not fail hourly report refresh', async function () {
+      this.timeout(5000);
+      const now = new Date('2026-05-12T18:20:00.000Z');
+      const projectId = `project-hourly-alert-failure-${Date.now()}`;
+      const originalConsoleError = console.error;
+      const logs = [];
+      try {
+        console.error = (...args) => logs.push(args);
+        await Projects.insertAsync({
+          _id: projectId,
+          developerId: `developer-${projectId}`,
+          name: 'Hourly Alert Failure App',
+          projectKey: `tm_proj_hourly_alert_failure_${Date.now()}`,
+          healthAlertEnabled: true,
+          createdAt: new Date(),
+        });
+
+        const result = await refreshCompletedHourDraftReports(now, {
+          evaluateHealthAlert: async () => {
+            throw new Error('expected evaluator failure');
+          },
+        });
+
+        assert.ok(result.projectCount >= 1);
+        assert.ok(await ProjectDailyReports.findOneAsync({ projectId, reportDate: '2026-05-13' }));
+        assert.ok(await ProjectHourlyReports.findOneAsync({
+          projectId,
+          hourStartAt: new Date('2026-05-12T17:00:00.000Z'),
+        }));
+        assert.strictEqual(JSON.stringify(logs).includes('expected evaluator failure'), false);
+        assert.strictEqual(JSON.stringify(logs).includes('errorName'), true);
+      } finally {
+        console.error = originalConsoleError;
+        await SemanticEvents.removeAsync({ projectId });
+        await ProjectHourlyReports.removeAsync({ projectId });
+        await ProjectDailyReports.removeAsync({ projectId });
+        await Projects.removeAsync(projectId);
+      }
     });
 
     it('refreshes today drafts without forcing older completed hourly reports', async function () {
@@ -10276,6 +10424,293 @@ projectKey: tm_proj_sensitive`,
         (error) => error.error === 'not-found',
       );
       assert.strictEqual((await Projects.findOneAsync(projectId)).name, 'Renamed Project');
+    });
+
+    it('lets project owners opt in to health email alerts without exposing state', async function () {
+      const ownerUserId = await Meteor.users.insertAsync({
+        emails: [{ address: `health-alert-owner-${Date.now()}@example.com`, verified: true }],
+        createdAt: new Date(),
+      });
+      const otherUserId = await Meteor.users.insertAsync({
+        emails: [{ address: `health-alert-other-${Date.now()}@example.com`, verified: true }],
+        createdAt: new Date(),
+      });
+      const dashboardMethod = Meteor.server.method_handlers['tracemind.dashboard'];
+      const setEnabledMethod = Meteor.server.method_handlers['tracemind.project.healthAlert.setEnabled'];
+      const dashboard = await dashboardMethod.apply({ userId: ownerUserId }, []);
+      const projectId = dashboard.projects[0]._id;
+      const developer = await Developers.findOneAsync({ userId: ownerUserId });
+      const ownerEmail = developer.email;
+
+      assert.strictEqual(dashboard.projects[0].healthAlertEnabled, false);
+      assert.strictEqual(dashboard.projects[0].healthAlertState, undefined);
+      assert.deepStrictEqual(
+        {
+          enabled: TraceMindApi.publicProject({
+            healthAlertEnabled: true,
+            healthAlertState: { status: 'open' },
+          }).healthAlertEnabled,
+          state: TraceMindApi.publicProject({
+            healthAlertEnabled: true,
+            healthAlertState: { status: 'open' },
+          }).healthAlertState,
+        },
+        { enabled: true, state: undefined },
+      );
+
+      try {
+        await Developers.updateAsync(developer._id, { $set: { email: 'invalid-email' } });
+        await assert.rejects(
+          () => setEnabledMethod.apply({ userId: ownerUserId }, [projectId, true]),
+          (error) => error.error === 'email-not-found',
+        );
+      } finally {
+        await Developers.updateAsync(developer._id, { $set: { email: ownerEmail } });
+      }
+
+      const enabledProject = await setEnabledMethod.apply({ userId: ownerUserId }, [projectId, true]);
+      assert.strictEqual(enabledProject.healthAlertEnabled, true);
+      assert.strictEqual(enabledProject.healthAlertState, undefined);
+
+      await Projects.updateAsync(projectId, {
+        $set: {
+          healthAlertState: {
+            status: 'open',
+            evaluatedHourKey: '2026-08-12T07:00:00.000Z',
+            openedAt: new Date('2026-08-12T08:00:00.000Z'),
+            codes: ['event_stream_stopped'],
+            updatedAt: new Date('2026-08-12T08:01:00.000Z'),
+          },
+        },
+      });
+
+      const stillEnabledProject = await setEnabledMethod.apply({ userId: ownerUserId }, [projectId, true]);
+      assert.strictEqual(stillEnabledProject.healthAlertEnabled, true);
+      assert.strictEqual((await Projects.findOneAsync(projectId)).healthAlertState.status, 'open');
+
+      const disabledProject = await setEnabledMethod.apply({ userId: ownerUserId }, [projectId, false]);
+      const storedDisabledProject = await Projects.findOneAsync(projectId);
+      assert.strictEqual(disabledProject.healthAlertEnabled, false);
+      assert.strictEqual(disabledProject.healthAlertState, undefined);
+      assert.strictEqual(storedDisabledProject.healthAlertEnabled, undefined);
+      assert.strictEqual(storedDisabledProject.healthAlertState, undefined);
+
+      await assert.rejects(
+        () => setEnabledMethod.apply({ userId: otherUserId }, [projectId, true]),
+        (error) => error.error === 'not-found',
+      );
+      await assert.rejects(
+        () => setEnabledMethod.apply({ userId: ownerUserId }, [projectId, 'true']),
+        (error) => error.error === 'invalid-request',
+      );
+    });
+
+    it('decides one incident, suppresses an open hour, and decides one recovery', function () {
+      const now = new Date('2026-08-12T08:05:00.000Z');
+      const currentIncident = healthAlertHourlyReport('2026-08-12T07:00:00.000Z', { eventCount: 0 });
+      const previousIncident = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', { eventCount: 12 });
+      const incident = buildProjectHealthEmailAlertDecision({
+        currentReport: currentIncident,
+        previousReport: previousIncident,
+        now,
+      });
+
+      assert.strictEqual(incident.transition, 'incident');
+      assert.deepStrictEqual(incident.nextState.codes, ['event_stream_stopped']);
+      assert.strictEqual(incident.nextState.openedAt.toISOString(), '2026-08-12T08:00:00.000Z');
+      assert.strictEqual(buildProjectHealthEmailAlertDecision({
+        state: incident.nextState,
+        currentReport: currentIncident,
+        previousReport: previousIncident,
+        now,
+      }), null);
+
+      const currentOpen = healthAlertHourlyReport('2026-08-12T08:00:00.000Z', { failureEventCount: 4 });
+      const previousOpen = healthAlertHourlyReport('2026-08-11T08:00:00.000Z', { failureEventCount: 1 });
+      const open = buildProjectHealthEmailAlertDecision({
+        state: incident.nextState,
+        currentReport: currentOpen,
+        previousReport: previousOpen,
+        now,
+      });
+      assert.strictEqual(open.transition, null);
+      assert.deepStrictEqual(open.nextState.codes, ['event_stream_stopped']);
+      assert.strictEqual(open.nextState.openedAt.toISOString(), '2026-08-12T08:00:00.000Z');
+
+      const currentRecovery = healthAlertHourlyReport('2026-08-12T09:00:00.000Z', { eventCount: 8 });
+      const previousRecovery = healthAlertHourlyReport('2026-08-11T09:00:00.000Z', { eventCount: 5 });
+      const recovery = buildProjectHealthEmailAlertDecision({
+        state: open.nextState,
+        currentReport: currentRecovery,
+        previousReport: previousRecovery,
+        now,
+      });
+      assert.strictEqual(recovery.transition, 'recovery');
+      assert.deepStrictEqual(recovery.nextState, {
+        status: 'normal',
+        evaluatedHourKey: '2026-08-12T09:00:00.000Z',
+        updatedAt: now,
+      });
+
+      const normal = buildProjectHealthEmailAlertDecision({
+        currentReport: currentRecovery,
+        previousReport: previousRecovery,
+        now,
+      });
+      assert.strictEqual(normal.transition, null);
+      assert.strictEqual(normal.nextState.status, 'normal');
+      assert.strictEqual(buildProjectHealthEmailAlertDecision({
+        currentReport: currentRecovery,
+        now,
+      }), null);
+    });
+
+    it('builds privacy-safe health alert email', function () {
+      const currentReport = {
+        ...healthAlertHourlyReport('2026-08-12T07:00:00.000Z', { eventCount: 0 }),
+        rawError: 'stack trace',
+        sessionId: 'session-secret',
+      };
+      const previousReport = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', { eventCount: 12 });
+      const decision = buildProjectHealthEmailAlertDecision({
+        currentReport,
+        previousReport,
+        now: new Date('2026-08-12T08:05:00.000Z'),
+      });
+      const message = buildProjectHealthAlertEmail({
+        project: { name: 'AI\n分身术' },
+        developer: { email: 'owner@example.com' },
+        decision,
+        currentReport,
+        previousReport,
+        dashboardUrl: 'https://tracemind.app/',
+      });
+
+      assert.strictEqual(message.subject, '[TraceMind] AI 分身术 需要关注');
+      assert.strictEqual(message.to, 'owner@example.com');
+      assert.match(message.text, /event_stream_stopped/);
+      assert.match(message.text, /当前小时事件数：0/);
+      assert.match(message.text, /对比小时事件数：12/);
+      assert.match(message.text, /当前小时失败事件数：0/);
+      assert.match(message.text, /对比小时失败事件数：0/);
+      assert.match(message.text, /Asia\/Shanghai/);
+      assert.match(message.text, /^https:\/\/tracemind\.app\/$/m);
+      assert.strictEqual(message.text.includes('stack trace'), false);
+      assert.strictEqual(message.text.includes('session-secret'), false);
+      assert.strictEqual(message.subject.includes('\n'), false);
+    });
+
+    it('retries health email delivery and keeps concurrent disable authoritative', async function () {
+      const projectId = `project-health-alert-delivery-${Date.now()}`;
+      const developerId = `developer-health-alert-delivery-${Date.now()}`;
+      const currentIncident = healthAlertHourlyReport('2026-08-12T07:00:00.000Z', { eventCount: 0 });
+      const previousIncident = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', { eventCount: 12 });
+      const currentRecovery = healthAlertHourlyReport('2026-08-12T08:00:00.000Z', { eventCount: 8 });
+      const previousRecovery = healthAlertHourlyReport('2026-08-11T08:00:00.000Z', { eventCount: 5 });
+      const currentSecondIncident = healthAlertHourlyReport('2026-08-12T09:00:00.000Z', { failureEventCount: 4 });
+      const previousSecondIncident = healthAlertHourlyReport('2026-08-11T09:00:00.000Z', { failureEventCount: 1 });
+      const logs = [];
+      const sentMessages = [];
+
+      await Developers.insertAsync({
+        _id: developerId,
+        email: 'health-owner@example.com',
+        createdAt: new Date(),
+      });
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId,
+        name: 'Health Alert Delivery',
+        projectKey: `tm_proj_health_alert_${Date.now()}`,
+        healthAlertEnabled: true,
+        createdAt: new Date(),
+      });
+      for (const report of [
+        currentIncident,
+        previousIncident,
+        currentRecovery,
+        previousRecovery,
+        currentSecondIncident,
+        previousSecondIncident,
+      ]) {
+        await ProjectHourlyReports.insertAsync({ projectId, ...report });
+      }
+
+      try {
+        const failed = await evaluateProjectHealthEmailAlert(projectId, currentIncident.hourStartAt, {
+          now: new Date('2026-08-12T08:05:00.000Z'),
+          dashboardUrl: 'https://tracemind.app/',
+          sendEmail: async () => {
+            const error = new Error('SMTP response contained private detail');
+            error.name = 'SmtpConnectionError';
+            throw error;
+          },
+          logger: (...args) => logs.push(args),
+        });
+        assert.deepStrictEqual(failed, { status: 'failed', transition: 'incident' });
+        assert.strictEqual((await Projects.findOneAsync(projectId)).healthAlertState, undefined);
+        assert.strictEqual(JSON.stringify(logs).includes('SMTP response contained private detail'), false);
+        assert.strictEqual(JSON.stringify(logs).includes('SmtpConnectionError'), true);
+
+        const sent = await evaluateProjectHealthEmailAlert(projectId, currentIncident.hourStartAt, {
+          now: new Date('2026-08-12T08:10:00.000Z'),
+          dashboardUrl: 'https://tracemind.app/',
+          sendEmail: async (message) => sentMessages.push(message),
+        });
+        assert.deepStrictEqual(sent, { status: 'sent', transition: 'incident' });
+        assert.strictEqual(sentMessages.length, 1);
+        assert.strictEqual((await Projects.findOneAsync(projectId)).healthAlertState.status, 'open');
+
+        const unchanged = await evaluateProjectHealthEmailAlert(projectId, currentIncident.hourStartAt, {
+          sendEmail: async (message) => sentMessages.push(message),
+        });
+        assert.deepStrictEqual(unchanged, { status: 'unchanged' });
+        assert.strictEqual(sentMessages.length, 1);
+
+        const recovered = await evaluateProjectHealthEmailAlert(projectId, currentRecovery.hourStartAt, {
+          now: new Date('2026-08-12T09:05:00.000Z'),
+          dashboardUrl: 'https://tracemind.app/',
+          sendEmail: async (message) => sentMessages.push(message),
+        });
+        assert.deepStrictEqual(recovered, { status: 'sent', transition: 'recovery' });
+        assert.strictEqual(sentMessages.length, 2);
+        assert.match(sentMessages[1].subject, /健康信号已恢复$/);
+        assert.deepStrictEqual((await Projects.findOneAsync(projectId)).healthAlertState, {
+          status: 'normal',
+          evaluatedHourKey: currentRecovery.hourKey,
+          updatedAt: new Date('2026-08-12T09:05:00.000Z'),
+        });
+
+        const sentBeforeDisable = await evaluateProjectHealthEmailAlert(projectId, currentSecondIncident.hourStartAt, {
+          now: new Date('2026-08-12T10:05:00.000Z'),
+          dashboardUrl: 'https://tracemind.app/',
+          sendEmail: async () => {
+            await Projects.updateAsync(projectId, {
+              $unset: { healthAlertEnabled: 1, healthAlertState: 1 },
+            });
+          },
+        });
+        assert.deepStrictEqual(sentBeforeDisable, { status: 'sent', transition: 'incident' });
+        assert.strictEqual((await Projects.findOneAsync(projectId)).healthAlertState, undefined);
+
+        const disabled = await evaluateProjectHealthEmailAlert(projectId, currentSecondIncident.hourStartAt, {
+          sendEmail: async () => assert.fail('disabled project must not send'),
+        });
+        assert.deepStrictEqual(disabled, { status: 'disabled' });
+
+        await Projects.updateAsync(projectId, { $set: { healthAlertEnabled: true } });
+        const unavailable = await evaluateProjectHealthEmailAlert(
+          projectId,
+          new Date('2026-08-12T10:00:00.000Z'),
+          { sendEmail: async () => assert.fail('missing reports must not send') },
+        );
+        assert.deepStrictEqual(unavailable, { status: 'unavailable' });
+        assert.strictEqual((await Projects.findOneAsync(projectId)).healthAlertState, undefined);
+      } finally {
+        await ProjectHourlyReports.removeAsync({ projectId });
+        await Projects.removeAsync(projectId);
+        await Developers.removeAsync(developerId);
+      }
     });
 
     it('hard deletes owned projects and their captured data without touching sibling projects', async function () {

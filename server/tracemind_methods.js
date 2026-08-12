@@ -17,6 +17,7 @@ import {
   RawBehaviors,
   SemanticEvents,
   UserFeedbackReports,
+  isValidEmail,
   isSourceBlocked,
   normalizeBlockedSource,
   normalizeToken,
@@ -444,6 +445,30 @@ Meteor.methods({
         updatedAt: new Date(),
       },
     });
+    return publicProject(await Projects.findOneAsync(project._id));
+  },
+
+  async 'tracemind.project.healthAlert.setEnabled'(projectId, enabled) {
+    if (typeof enabled !== 'boolean') {
+      throw new Meteor.Error('invalid-request', 'Enabled must be a boolean.');
+    }
+
+    const developer = await getOrCreateDeveloperForUser(this.userId);
+    const project = await findProjectForDeveloper(projectId, developer._id);
+    if (!project) {
+      throw new Meteor.Error('not-found', 'Project not found.');
+    }
+    if (enabled && !isValidEmail(developer.email)) {
+      throw new Meteor.Error('email-not-found', 'Project owner email is required.');
+    }
+
+    const updatedAt = new Date();
+    await Projects.updateAsync(project._id, enabled
+      ? { $set: { healthAlertEnabled: true, updatedAt } }
+      : {
+          $set: { updatedAt },
+          $unset: { healthAlertEnabled: 1, healthAlertState: 1 },
+        });
     return publicProject(await Projects.findOneAsync(project._id));
   },
 

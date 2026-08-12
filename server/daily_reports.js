@@ -31,6 +31,7 @@ import {
   summarizeProjectHealthRollupForWindow,
   summarizeProjectHealthFromDailyReports,
 } from '/imports/api/tracemind';
+import { evaluateProjectHealthEmailAlert } from './health_alerts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REPORT_TZ_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -599,7 +600,7 @@ async function distinctProjectIds(collection, query) {
   return ids.filter(Boolean).map(String);
 }
 
-async function recentActivityProjectIds(recentStartAt, sourceEndAt) {
+async function completedHourProjects(recentStartAt, sourceEndAt) {
   const [rawProjectIds, semanticProjectIds, presenceProjectIds, deliveryProjectIds, deliveryRollupProjectIds] = await Promise.all([
     distinctProjectIds(RawBehaviors, {
       occurredAt: { $gte: recentStartAt, $lt: sourceEndAt },
@@ -629,12 +630,15 @@ async function recentActivityProjectIds(recentStartAt, sourceEndAt) {
     ...deliveryProjectIds,
     ...deliveryRollupProjectIds,
   ])];
-  if (!candidateIds.length) return [];
-  const projects = await Projects.find(
-    { _id: { $in: candidateIds } },
-    { fields: { _id: 1 } },
+  return Projects.find(
+    {
+      $or: [
+        { _id: { $in: candidateIds } },
+        { healthAlertEnabled: true },
+      ],
+    },
+    { fields: { _id: 1, healthAlertEnabled: 1 } },
   ).fetchAsync();
-  return projects.map((project) => project._id);
 }
 
 export async function refreshProjectDailyDraft(projectId, reportDateInput, {
@@ -659,24 +663,39 @@ export async function refreshProjectDailyDraft(projectId, reportDateInput, {
   });
 }
 
-export async function refreshCompletedHourDraftReports(now = new Date()) {
-  const reportDate = reportDateForDate(now);
+export async function refreshCompletedHourDraftReports(now = new Date(), {
+  evaluateHealthAlert = evaluateProjectHealthEmailAlert,
+} = {}) {
+  const reportDate = reportDateForDate(new Date(now.getTime() - HEALTH_ROLLUP_HOUR_MS));
   const { startAt, sourceEndAt, recentStartAt } = recentCompletedHourWindow(reportDate, now);
   if (sourceEndAt.getTime() <= startAt.getTime()) {
     return { projectCount: 0, reportDate };
   }
 
-  const projectIds = await recentActivityProjectIds(recentStartAt, sourceEndAt);
+  const projects = await completedHourProjects(recentStartAt, sourceEndAt);
+  const completedHourStartAt = new Date(sourceEndAt.getTime() - HEALTH_ROLLUP_HOUR_MS);
   let projectCount = 0;
-  for (const projectId of projectIds) {
+  for (const project of projects) {
     try {
-      await refreshProjectDailyDraft(projectId, reportDate, { now, forceRecentCompletedHours: true });
+      await refreshProjectDailyDraft(project._id, reportDate, { now, forceRecentCompletedHours: true });
       projectCount += 1;
     } catch (error) {
       console.error('[TraceMind] hourly draft report refresh failed', {
-        projectId,
+        projectId: project._id,
         message: error?.message || String(error),
       });
+      continue;
+    }
+
+    if (project.healthAlertEnabled === true) {
+      try {
+        await evaluateHealthAlert(project._id, completedHourStartAt);
+      } catch (error) {
+        console.error('[TraceMind] project health email alert evaluation failed', {
+          projectId: project._id,
+          errorName: error?.name || 'Error',
+        });
+      }
     }
   }
 

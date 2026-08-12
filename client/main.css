@@ -2155,6 +2155,40 @@ code {
   justify-self: end;
 }
 
+.project-setting-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+
+.project-setting-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.project-setting-copy span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.project-setting-control {
+  display: grid;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  place-items: center;
+}
+
+.project-setting-control input {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  accent-color: var(--signal);
+}
+
 .project-action-menu {
   position: relative;
   align-self: end;

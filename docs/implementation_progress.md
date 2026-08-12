@@ -6,6 +6,10 @@
 
 ### Implemented Locally / Pending Review And Release
 
+- Implemented TM-ALERT-001 as an email-only, project-level opt-in. The existing completed-hour refresh now evaluates only the two current high-severity health rules after exact current/prior reports exist, including the just-completed hour across the Asia/Shanghai report-date boundary; it sends one incident on open and one recovery on normal, and suppresses same-hour plus ongoing duplicates.
+- Reused `Developer.email`, Meteor Email/Mailgun, `Project.healthAlertEnabled`, and one compact internal `healthAlertState`; delivery succeeds before state advances so SMTP failures retry, while disabling removes both the opt-in and lifecycle state. No recipient profile, collection, queue, lock, migration, channel abstraction, SDK field, MCP field, or custom event was added.
+- Kept email content to project name, aggregate counts, compared time ranges, rule labels, and the Dashboard root URL. Owner-scoped project responses expose only the boolean and never publish internal lifecycle state.
+- Eight focused server contracts, all 250 Meteor tests, all 26 deploy gates, Svelte diagnostics, real desktop/mobile Dashboard interaction, and TraceMind instrumentation diff validation pass locally. This implementation is not deployed and remains gated until the Web retry-idempotency observation ends at `2026-08-15T08:39:25Z`.
 - Corrected TM-REL-001 with the smallest additive contract: Web and Hybrid WebView recovery episodes now preserve known foreground/background lifecycle in `foregroundUnknownMs` / `backgroundUnknownMs` when a transport failure makes connectivity unknown.
 - Propagated the two counters through strict server validation, deterministic classification, delivery detail/hourly/daily aggregation, and privacy-safe MCP composition. Legacy episodes default the absent fields to zero; existing `unknownMs` is not guessed or backfilled.
 - Confirmed the original gap with failing generated-client and classifier tests, then passed 9 focused cross-layer tests, all 26 deploy gates, and all 244 Meteor tests; TraceMind instrumentation diff validation returned no findings.

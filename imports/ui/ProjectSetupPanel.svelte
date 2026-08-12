@@ -30,6 +30,7 @@
     createProject,
     cancelProjectCreate,
     renameProject,
+    setHealthAlertEnabled,
     cancelProjectRename,
     copyText,
     copyAgentInstallPrompt,
@@ -53,6 +54,12 @@
       showSetupDetails = true;
     }
     changeSelectedProject(event);
+  }
+
+  async function changeHealthAlertEnabled(event) {
+    const input = event.currentTarget;
+    const desired = input.checked;
+    if (!await setHealthAlertEnabled(desired)) input.checked = !desired;
   }
 
   function percent(value) {
@@ -183,6 +190,24 @@
           </button>
         </div>
       </label>
+      <div class="project-setting-row">
+        <div id="health-alert-description" class="project-setting-copy">
+          <strong>{$t("Email health alerts")}</strong>
+          <span>{$t("Check high-severity health signals after each completed hour and email the current project owner.")}</span>
+        </div>
+        <label class="project-setting-control">
+          <span class="sr-only">{$t("Email health alerts")}</span>
+          <input
+            type="checkbox"
+            name="healthAlertEnabled"
+            role="switch"
+            aria-describedby="health-alert-description"
+            checked={primaryProject.healthAlertEnabled === true}
+            onchange={changeHealthAlertEnabled}
+            disabled={loading}
+          />
+        </label>
+      </div>
       <details class="disclosure-panel">
         <summary>
           <span>{$t("Manage MCP tokens")}</span>

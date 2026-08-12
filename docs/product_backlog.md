@@ -16,7 +16,7 @@
 
 1. Complete the 72-hour production observation for Web capture retry idempotency before closing feedback `ouLvFZr46JkPZ4a4T`.
 2. Close the release and production-verification loop for runtime-context recovery attribution.
-3. Design proactive incident and recovery notifications.
+3. Release proactive incident and recovery email notifications after the Web idempotency observation.
 4. Roll the shared runtime-context contract out to applicable SDK runtimes.
 5. Add Dashboard visualization after production data proves the contract is useful and stable.
 
@@ -26,7 +26,7 @@
 | --- | --- | --- | --- | --- | --- |
 | TM-REL-001 | P2 | 待验证 | Correct and verify runtime-context delivery recovery attribution | Controlled checks proved foreground/background transport failures collapse to `unknownMs`; the two-field local fix awaits review, commit, and release | After the Web idempotency observation ends on 2026-08-15 |
 | ouLvFZr46JkPZ4a4T | P1 | 待验证 | Publish and verify Web capture retry idempotency | Release `2026.8.12-1` and controlled same-ID retry passed; 72-hour stability observation remains | 2026-08-15 after the observation window |
-| TM-ALERT-001 | P2 | 待方案 | Add proactive important-incident and recovery notifications | Feedback `oSYMbGhavJYRp6KLp`; depends on incident lifecycle, thresholds, channels, and dedupe policy | Next product-planning review |
+| TM-ALERT-001 | P2 | 待发布 | Add opt-in important-incident and recovery email notifications | Feedback `oSYMbGhavJYRp6KLp`; email-only v1 is implemented locally and remains gated on the Web idempotency observation | After 2026-08-15T08:39:25Z |
 | TM-RUNTIME-002 | P2 | 待实施 | Extend runtime context to applicable native/client SDKs | Shared contract exists; Web/Hybrid WebView is the reference implementation | After TM-REL-001 evidence review |
 | TM-DASH-001 | P3 | 待方案 | Visualize recovery classification, evidence quality, and coverage in Dashboard | Depends on stable production data from TM-REL-001 | After production evidence is representative |
 
@@ -93,14 +93,16 @@
 
 - Problem evidence: project health can create attention items, but TraceMind has no outbound incident lifecycle or recovery notification.
 - Target user and scenario: a small product team that does not continuously watch the Dashboard or ask an agent for health.
-- Expected result: important incidents and recoveries reach the configured destination once, with privacy-safe evidence and a clear lifecycle.
+- Expected result: opted-in projects send one important incident email and one recovery email to the existing project owner address, with privacy-safe aggregate evidence and a clear lifecycle.
+- Local implementation (2026-08-12, not deployed): email-only v1 reuses completed-hour reports, the existing high-severity `event_stream_stopped` and `failure_events_increased` rules, `Developer.email`, and the current Mailgun delivery path. `Project.healthAlertEnabled` is the only owner-visible setting; compact internal state suppresses same-hour and ongoing duplicates, sends before advancing state so SMTP failures retry, and is removed when the owner disables alerts. No recipient profile, channel model, queue, collection, migration, or SDK contract was added.
 - Success criteria:
-  - define incident trigger, severity, open/update/recovered states, cooldown, dedupe, and suppression;
-  - choose initial notification channel and ownership model;
-  - prevent transient noise and repeated recovery messages;
-  - link each notification to privacy-safe project-health evidence;
+  - evaluate only after both the just-completed hour and yesterday's matching hour are available;
+  - email only the current `Developer.email` after explicit project opt-in;
+  - send one incident on transition to open, suppress ongoing and same-hour duplicates, then send one recovery on transition back to normal;
+  - retry after SMTP failure by writing state only after successful delivery;
+  - include only project name, aggregate counts, compared time ranges, rule labels, and the Dashboard root URL;
   - feedback `oSYMbGhavJYRp6KLp` is resolved only after end-to-end delivery and recovery verification.
-- Minimum validation: one controlled incident, one deduplicated ongoing state, and one recovery notification.
+- Minimum validation: after the gated release, one controlled incident, zero ongoing duplicates, one recovery notification, and seven days of observation.
 - Owner: TraceMind owner.
 - Failure action: keep alerts opt-in and do not expand channels until false-positive and delivery evidence is acceptable.
 

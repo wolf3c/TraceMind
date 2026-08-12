@@ -13,6 +13,7 @@ const PROJECT_PUBLIC_FIELDS = {
   projectKey: 1,
   mcpTokens: 1,
   blockedSources: 1,
+  healthAlertEnabled: 1,
   createdAt: 1,
   updatedAt: 1,
 };
