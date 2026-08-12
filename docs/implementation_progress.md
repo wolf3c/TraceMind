@@ -34,10 +34,7 @@
 - Made batch delivery attribution deterministic: mixed-source business records are still processed per event, while indivisible batch-level delivery statistics are omitted instead of being attributed from the first event.
 - Defined the source-governance contract across the console, README, and Auto Capture design: blocking is exact rather than cross-source, historical evidence remains available, and related Web/server sources must be blocked separately.
 - Added capture, presence, user-feedback, and mixed-source order regression coverage for delivery-health writes.
-
-### Pending
-
-- Deploy the server/UI change, verify blocked Web and server-app sources in production, and then decide whether feedback `MDCQuC9N4j9kyPDrJ` and `SrvgpyG4bbPkGyHzR` have enough evidence to close.
+- Deployed release `2026.7.28-1` and closed TM-SRC-001 after controlled production checks showed zero new business, delivery-diagnostic, hourly-health, or ingestion-guard writes for blocked `web:localhost` capture, presence, and user feedback and for a separately blocked `server_app` source. The temporary server block was removed without leaving test data, and feedback `MDCQuC9N4j9kyPDrJ` and `SrvgpyG4bbPkGyHzR` were marked `resolved`.
 
 ## 2026-07-23
 

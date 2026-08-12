@@ -16,10 +16,9 @@
 
 1. Publish and verify Web capture retry idempotency before closing feedback `ouLvFZr46JkPZ4a4T`.
 2. Close the release and production-verification loop for runtime-context recovery attribution.
-3. Publish and verify the P1 blocked-source boundary so blocked telemetry cannot pollute customer analysis.
-4. Design proactive incident and recovery notifications.
-5. Roll the shared runtime-context contract out to applicable SDK runtimes.
-6. Add Dashboard visualization after production data proves the contract is useful and stable.
+3. Design proactive incident and recovery notifications.
+4. Roll the shared runtime-context contract out to applicable SDK runtimes.
+5. Add Dashboard visualization after production data proves the contract is useful and stable.
 
 ## Active Items
 
@@ -27,8 +26,7 @@
 | --- | --- | --- | --- | --- | --- |
 | TM-REL-001 | P2 | 待验证 | Release and verify runtime-context delivery recovery attribution | Release `2026.7.23-1` deployed from `88f3e81`; first live `new_runtime_recovery` evidence received; 24-hour observation pending | 2026-07-24 after the observation window |
 | ouLvFZr46JkPZ4a4T | P1 | 待发布 | Publish and verify Web capture retry idempotency | Local implementation and regression/full tests are complete; controlled production response-loss verification remains | After the next production release |
-| TM-SRC-001 | P1 | 待发布 | Align blocked-source policy across Web and `server_app` ingestion and analysis | Commit `957c9ea` defines and implements the contract; deployment and production verification remain | After the next production release |
-| TM-ALERT-001 | P2 | 待方案 | Add proactive important-incident and recovery notifications | Feedback `oSYMbGhavJYRp6KLp`; depends on incident lifecycle, thresholds, channels, and dedupe policy | After TM-SRC-001 |
+| TM-ALERT-001 | P2 | 待方案 | Add proactive important-incident and recovery notifications | Feedback `oSYMbGhavJYRp6KLp`; depends on incident lifecycle, thresholds, channels, and dedupe policy | Next product-planning review |
 | TM-RUNTIME-002 | P2 | 待实施 | Extend runtime context to applicable native/client SDKs | Shared contract exists; Web/Hybrid WebView is the reference implementation | After TM-REL-001 evidence review |
 | TM-DASH-001 | P3 | 待方案 | Visualize recovery classification, evidence quality, and coverage in Dashboard | Depends on stable production data from TM-REL-001 | After production evidence is representative |
 
@@ -69,12 +67,13 @@
 - Owner: TraceMind owner.
 - Failure action: keep the feedback open, classify the failing runtime/aggregation boundary, and roll back the Web release if capture delivery or privacy regresses.
 
-### TM-SRC-001 — Align blocked-source boundaries
+### TM-SRC-001 — Align blocked-source boundaries（已闭环）
 
 - Problem evidence: an exact blocked source could still write delivery diagnostics and hourly health, while related Web and `server_app` sources lacked an explicit independent-management contract.
 - 2026-07-28 implementation decision: blocking matches only the exact `sourceType + sourceKey` and is forward-only. Related Web and `server_app` sources must be blocked separately; existing historical evidence remains queryable. New blocked-source capture, presence, user feedback, delivery diagnostics, and hourly health writes are all ignored. Mixed-source batches keep per-event business processing but omit indivisible batch-level delivery statistics instead of attributing them from the first event.
 - Target user and scenario: customers who need local, test, or unauthorized sources excluded from product-health and MCP analysis.
 - Expected result: the block model has explicit ingestion and historical-analysis semantics across source types.
+- Closure evidence (2026-07-28): release `2026.7.28-1` deployed the implementation. Controlled `web:localhost` capture, presence, and user-feedback requests returned success while adding zero business, delivery-diagnostic, hourly-health, or ingestion-guard writes. A temporary exact `server_app` block independently produced zero writes; the temporary block was removed and left no test data. Feedback `MDCQuC9N4j9kyPDrJ` and `SrvgpyG4bbPkGyHzR` were then marked `resolved`.
 - Success criteria:
   - production uses exact `sourceType + sourceKey` blocking without cross-source wildcard behavior;
   - blocked capture, presence, user feedback, delivery diagnostics, and hourly health no longer add new evidence;
@@ -132,3 +131,7 @@
 ## Closed Items
 
 Move an item here only after its implementation, production evidence, and linked feedback/status updates are complete. Record the release, verification window, and closing evidence.
+
+| ID | Priority | Closed | Release / Verification | Closing Evidence |
+| --- | --- | --- | --- | --- |
+| TM-SRC-001 | P1 | 2026-07-28 | `2026.7.28-1`; controlled production checks on 2026-07-28 | Exact blocked Web and `server_app` sources produced zero new business or observability writes; temporary configuration was removed; linked feedback reports were marked `resolved`. |
