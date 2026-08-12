@@ -2567,6 +2567,16 @@ describe('TraceMind', function () {
       const { Script, createContext } = await import('vm');
       const { clientScript } = await import('../server/capture_routes');
       const storage = new Map();
+      const currentTime = Date.now();
+      class FakeDate extends Date {
+        constructor(...args) {
+          super(...(args.length ? args : [currentTime]));
+        }
+
+        static now() {
+          return currentTime;
+        }
+      }
       const sandbox = {
         window: {},
         document: {
@@ -2594,7 +2604,7 @@ describe('TraceMind', function () {
         Intl,
         Promise,
         Blob,
-        Date,
+        Date: FakeDate,
         Math,
         JSON,
         Object,
@@ -2647,7 +2657,7 @@ describe('TraceMind', function () {
       const captureEpisode = deliveryStats.recoveryEpisodes.capture;
 
       assert.strictEqual(queued.length, 300);
-      assert.ok(queued.some((record) => record.kind === 'capture' && record.attempts === 1 && record.nextAttemptAt > Date.now()));
+      assert.ok(queued.some((record) => record.kind === 'capture' && record.attempts === 1 && record.nextAttemptAt > currentTime));
       assert.strictEqual(sandbox.window.TraceMind.status().lastError, 'network_error');
       assert.ok(captureEpisode.episodeId.startsWith('tm_episode_'));
       assert.strictEqual(captureEpisode.failureTrigger, 'transport_failure');
@@ -2655,20 +2665,125 @@ describe('TraceMind', function () {
         captureEpisode.totalDurationMs,
         captureEpisode.foregroundOnlineMs
           + captureEpisode.foregroundOfflineMs
+          + captureEpisode.foregroundUnknownMs
           + captureEpisode.backgroundOnlineMs
           + captureEpisode.backgroundOfflineMs
+          + captureEpisode.backgroundUnknownMs
           + captureEpisode.runtimeAbsentMs
           + captureEpisode.unknownMs,
       );
       assert.ok(!JSON.stringify(sandbox.window.TraceMind.status()).includes('tm_episode_'));
 
-      captureEpisode.recoveredInNewRuntime = true;
+      delete captureEpisode.foregroundUnknownMs;
+      delete captureEpisode.backgroundUnknownMs;
       storage.set(statsKey, JSON.stringify(deliveryStats));
       sandbox.window.__TraceMindRuntime.disable();
       new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
-      const reloadedDeliveryStats = JSON.parse(storage.get(statsKey));
+      let reloadedDeliveryStats = JSON.parse(storage.get(statsKey));
+
+      assert.strictEqual(reloadedDeliveryStats.recoveryEpisodes.capture.foregroundUnknownMs, 0);
+      assert.strictEqual(reloadedDeliveryStats.recoveryEpisodes.capture.backgroundUnknownMs, 0);
+
+      const reloadedEpisode = reloadedDeliveryStats.recoveryEpisodes.capture;
+      reloadedEpisode.recoveredInNewRuntime = true;
+      storage.set(statsKey, JSON.stringify(reloadedDeliveryStats));
+      sandbox.window.__TraceMindRuntime.disable();
+      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      reloadedDeliveryStats = JSON.parse(storage.get(statsKey));
 
       assert.strictEqual(reloadedDeliveryStats.recoveryEpisodes.capture, undefined);
+    });
+
+    it('attributes unknown-connectivity recovery time to the observed web lifecycle', async function () {
+      const { Script, createContext } = await import('vm');
+      const { clientScript } = await import('../server/capture_routes');
+
+      async function recoveryEpisodeFor(visibilityState) {
+        const storage = new Map();
+        let currentTime = Date.parse('2026-07-23T01:00:00.000Z');
+        class FakeDate extends Date {
+          constructor(...args) {
+            super(...(args.length ? args : [currentTime]));
+          }
+
+          static now() {
+            return currentTime;
+          }
+        }
+        const sandbox = {
+          window: {},
+          document: {
+            title: 'TraceMind recovery attribution page',
+            referrer: '',
+            visibilityState,
+            currentScript: {
+              getAttribute(name) {
+                if (name === 'data-tracemind-token') return 'tm_proj_test';
+                return null;
+              },
+            },
+            addEventListener() {},
+          },
+          navigator: {
+            userAgent: 'test-agent',
+            language: 'en',
+            platform: 'test',
+            onLine: true,
+          },
+          screen: { width: 1280, height: 720, colorDepth: 24 },
+          location: { origin: 'https://app.example.com', href: 'https://app.example.com/docs', pathname: '/docs', hash: '' },
+          history: { pushState() {}, replaceState() {} },
+          URL,
+          Intl,
+          Promise,
+          Blob,
+          Date: FakeDate,
+          Math,
+          JSON,
+          Object,
+          String,
+          Array,
+          Number,
+          setTimeout() { return 1; },
+          clearTimeout() {},
+          setInterval() { return 1; },
+          clearInterval() {},
+          fetch() {
+            return Promise.reject(new Error('network_error'));
+          },
+        };
+        sandbox.window = {
+          localStorage: {
+            getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+            setItem(key, value) { storage.set(key, value); },
+          },
+          innerWidth: 1280,
+          innerHeight: 720,
+          addEventListener() {},
+        };
+        sandbox.localStorage = sandbox.window.localStorage;
+
+        new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+        sandbox.window.TraceMind.capture('custom', { eventName: `recovery_${visibilityState}` });
+        await sandbox.window.TraceMind.flush();
+        currentTime += 2000;
+        await sandbox.window.TraceMind.flush();
+
+        const statsKey = [...storage.keys()].find((key) => key.startsWith('tracemind_delivery_stats_'));
+        return JSON.parse(storage.get(statsKey)).recoveryEpisodes.capture;
+      }
+
+      const foregroundEpisode = await recoveryEpisodeFor('visible');
+      assert.strictEqual(foregroundEpisode.totalDurationMs, 2000);
+      assert.strictEqual(foregroundEpisode.foregroundUnknownMs, 2000);
+      assert.strictEqual(foregroundEpisode.backgroundUnknownMs, 0);
+      assert.strictEqual(foregroundEpisode.unknownMs, 0);
+
+      const backgroundEpisode = await recoveryEpisodeFor('hidden');
+      assert.strictEqual(backgroundEpisode.totalDurationMs, 2000);
+      assert.strictEqual(backgroundEpisode.foregroundUnknownMs, 0);
+      assert.strictEqual(backgroundEpisode.backgroundUnknownMs, 2000);
+      assert.strictEqual(backgroundEpisode.unknownMs, 0);
     });
 
     it('drops oldest records and reports storage pressure when localStorage quota is tight', async function () {
@@ -3699,10 +3814,12 @@ projectKey: tm_proj_sensitive`,
         startedAt: startedAt.toISOString(),
         lastObservedAt: lastObservedAt.toISOString(),
         totalDurationMs: 120000,
-        foregroundOnlineMs: 60000,
+        foregroundOnlineMs: 0,
         foregroundOfflineMs: 0,
+        foregroundUnknownMs: 60000,
         backgroundOnlineMs: 0,
         backgroundOfflineMs: 0,
+        backgroundUnknownMs: 0,
         runtimeAbsentMs: 60000,
         unknownMs: 0,
         recoveredInNewRuntime: true,
@@ -3743,7 +3860,8 @@ projectKey: tm_proj_sensitive`,
           average: 120000,
           max: 120000,
         });
-        assert.strictEqual(structured.summary.durationCompositionMs.foregroundOnline, 60000);
+        assert.strictEqual(structured.summary.durationCompositionMs.foregroundUnknown, 60000);
+        assert.strictEqual(structured.summary.durationCompositionMs.backgroundUnknown, 0);
         assert.strictEqual(structured.summary.durationCompositionMs.runtimeAbsent, 60000);
         assert.strictEqual(structured.buckets[0].recoveryClassification, 'new_runtime_recovery');
         assert.strictEqual(structured.buckets[0].recoveryEvidenceQuality, 'high');
@@ -5581,8 +5699,10 @@ projectKey: tm_proj_sensitive`,
         totalDurationMs: 100000,
         foregroundOnlineMs: 80000,
         foregroundOfflineMs: 0,
+        foregroundUnknownMs: 0,
         backgroundOnlineMs: 0,
         backgroundOfflineMs: 0,
+        backgroundUnknownMs: 0,
         runtimeAbsentMs: 0,
         unknownMs: 20000,
         recoveredInNewRuntime: false,
@@ -5638,8 +5758,10 @@ projectKey: tm_proj_sensitive`,
         totalDurationMs: 100000,
         foregroundOnlineMs: 80000,
         foregroundOfflineMs: 0,
+        foregroundUnknownMs: 0,
         backgroundOnlineMs: 0,
         backgroundOfflineMs: 0,
+        backgroundUnknownMs: 0,
         runtimeAbsentMs: 0,
         unknownMs: 20000,
         recoveredInNewRuntime: false,
@@ -5649,6 +5771,7 @@ projectKey: tm_proj_sensitive`,
 
       assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({ totalDurationMs: 99999 })), null);
       assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({ unknownMs: -1, totalDurationMs: 79999 })), null);
+      assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({ foregroundUnknownMs: -1 })), null);
       assert.strictEqual(sanitizeDeliveryRecoveryEpisode(validRecoveryEpisode({
         totalDurationMs: 7 * 24 * 60 * 60 * 1000 + 1,
         foregroundOnlineMs: 7 * 24 * 60 * 60 * 1000 + 1,
@@ -5686,6 +5809,17 @@ projectKey: tm_proj_sensitive`,
       })), null);
     });
 
+    it('defaults additive lifecycle recovery durations for stored legacy episodes', function () {
+      const legacyEpisode = validRecoveryEpisode();
+      delete legacyEpisode.foregroundUnknownMs;
+      delete legacyEpisode.backgroundUnknownMs;
+
+      const sanitized = sanitizeDeliveryRecoveryEpisode(legacyEpisode);
+      assert.ok(sanitized);
+      assert.strictEqual(sanitized.foregroundUnknownMs, 0);
+      assert.strictEqual(sanitized.backgroundUnknownMs, 0);
+    });
+
     it('classifies delivery recovery episodes by deterministic precedence', function () {
       assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
         recoveredInNewRuntime: true,
@@ -5702,10 +5836,26 @@ projectKey: tm_proj_sensitive`,
         foregroundOnlineMs: 0,
         backgroundOnlineMs: 80000,
       })), 'background_suspended');
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
+        foregroundOnlineMs: 0,
+        foregroundUnknownMs: 100000,
+        unknownMs: 0,
+      })), 'foreground_network_failure');
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
+        foregroundOnlineMs: 0,
+        backgroundUnknownMs: 100000,
+        unknownMs: 0,
+      })), 'background_suspended');
       assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode()), 'foreground_network_failure');
       assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
         foregroundOnlineMs: 50000,
         backgroundOnlineMs: 30000,
+      })), 'mixed');
+      assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
+        foregroundOnlineMs: 0,
+        foregroundOfflineMs: 60000,
+        foregroundUnknownMs: 30000,
+        unknownMs: 10000,
       })), 'mixed');
       assert.strictEqual(classifyDeliveryRecoveryEpisode(validRecoveryEpisode({
         foregroundOnlineMs: 0,
@@ -7117,8 +7267,10 @@ projectKey: tm_proj_sensitive`,
       durationCompositionMs: {
         foregroundOnline: 0,
         foregroundOffline: 0,
+        foregroundUnknown: 0,
         backgroundOnline: 0,
         backgroundOffline: 0,
+        backgroundUnknown: 0,
         runtimeAbsent: 0,
         unknown: 0,
       },
@@ -7173,8 +7325,10 @@ projectKey: tm_proj_sensitive`,
       durationCompositionMs: {
         foregroundOnline: 0,
         foregroundOffline: 0,
+        foregroundUnknown: 0,
         backgroundOnline: 0,
         backgroundOffline: 0,
+        backgroundUnknown: 0,
         runtimeAbsent: 0,
         unknown: 0,
       },
@@ -9419,9 +9573,11 @@ projectKey: tm_proj_sensitive`,
           },
           durationCompositionMs: {
             foregroundOnline: 20,
-            foregroundOffline: 260,
+            foregroundOffline: 250,
+            foregroundUnknown: 10,
             backgroundOnline: 0,
             backgroundOffline: 0,
+            backgroundUnknown: 0,
             runtimeAbsent: 0,
             unknown: 20,
           },
@@ -9465,9 +9621,11 @@ projectKey: tm_proj_sensitive`,
           durationCompositionMs: {
             foregroundOnline: 0,
             foregroundOffline: 0,
+            foregroundUnknown: 0,
             backgroundOnline: 0,
             backgroundOffline: 0,
-            runtimeAbsent: 450,
+            backgroundUnknown: 50,
+            runtimeAbsent: 400,
             unknown: 0,
           },
         },
@@ -9524,10 +9682,12 @@ projectKey: tm_proj_sensitive`,
       });
       assert.deepStrictEqual(report.delivery.durationCompositionMs, {
         foregroundOnline: 20,
-        foregroundOffline: 260,
+        foregroundOffline: 250,
+        foregroundUnknown: 10,
         backgroundOnline: 0,
         backgroundOffline: 0,
-        runtimeAbsent: 450,
+        backgroundUnknown: 50,
+        runtimeAbsent: 400,
         unknown: 20,
       });
     });
@@ -10673,10 +10833,12 @@ projectKey: tm_proj_sensitive`,
         startedAt: startedAt.toISOString(),
         lastObservedAt: lastObservedAt.toISOString(),
         totalDurationMs: 100000,
-        foregroundOnlineMs: 100000,
+        foregroundOnlineMs: 0,
         foregroundOfflineMs: 0,
+        foregroundUnknownMs: 100000,
         backgroundOnlineMs: 0,
         backgroundOfflineMs: 0,
+        backgroundUnknownMs: 0,
         runtimeAbsentMs: 0,
         unknownMs: 0,
         recoveredInNewRuntime: false,
@@ -10723,7 +10885,7 @@ projectKey: tm_proj_sensitive`,
         ...recoveryEpisode,
         startedAt: new Date(lastObservedAt.getTime() - 200000).toISOString(),
         totalDurationMs: 200000,
-        foregroundOnlineMs: 200000,
+        foregroundUnknownMs: 200000,
       };
 
       const payload = {
@@ -10763,7 +10925,9 @@ projectKey: tm_proj_sensitive`,
       assert.strictEqual(rollups[0].recoveryDurationMaxMs, 100000);
       assert.strictEqual(rollups[0].recoveryClassificationCounts.foreground_network_failure, 1);
       assert.strictEqual(rollups[0].evidenceQualityCounts.high, 1);
-      assert.strictEqual(rollups[0].durationCompositionMs.foregroundOnline, 100000);
+      assert.strictEqual(rollups[0].durationCompositionMs.foregroundOnline, 0);
+      assert.strictEqual(rollups[0].durationCompositionMs.foregroundUnknown, 100000);
+      assert.strictEqual(rollups[0].durationCompositionMs.backgroundUnknown, 0);
     });
 
     it('keeps capture ingestion working when recovery episode evidence is malformed', async function () {

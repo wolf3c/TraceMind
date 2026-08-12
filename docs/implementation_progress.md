@@ -4,6 +4,13 @@
 
 ## 2026-08-12
 
+### Implemented Locally / Pending Review And Release
+
+- Corrected TM-REL-001 with the smallest additive contract: Web and Hybrid WebView recovery episodes now preserve known foreground/background lifecycle in `foregroundUnknownMs` / `backgroundUnknownMs` when a transport failure makes connectivity unknown.
+- Propagated the two counters through strict server validation, deterministic classification, delivery detail/hourly/daily aggregation, and privacy-safe MCP composition. Legacy episodes default the absent fields to zero; existing `unknownMs` is not guessed or backfilled.
+- Confirmed the original gap with failing generated-client and classifier tests, then passed 9 focused cross-layer tests, all 26 deploy gates, and all 244 Meteor tests; TraceMind instrumentation diff validation returned no findings.
+- Kept iOS, macOS, Android, React Native, Mini Program, Browser Extension, server SDKs, MCP runtimes, Agent Skills, and Dashboard UI unchanged. No new entity, collection, index, migration, or deployment was added; production still runs the prior recovery attribution contract until a later release.
+
 ### Released / Observing
 
 - Reused the existing Web capture queue record ID as an internal `clientEventId` instead of introducing a second identifier or storage entity.

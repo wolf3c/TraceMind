@@ -24,11 +24,14 @@ const DELIVERY_EVIDENCE_FLAGS = [
 const DELIVERY_DURATION_FIELDS = [
   'foregroundOnlineMs',
   'foregroundOfflineMs',
+  'foregroundUnknownMs',
   'backgroundOnlineMs',
   'backgroundOfflineMs',
+  'backgroundUnknownMs',
   'runtimeAbsentMs',
   'unknownMs',
 ];
+const ADDITIVE_DELIVERY_DURATION_FIELDS = ['foregroundUnknownMs', 'backgroundUnknownMs'];
 
 export const RUNTIME_LIFECYCLE_STATES = new Set(LIFECYCLE_STATES);
 export const RUNTIME_CONNECTIVITY_STATES = new Set(CONNECTIVITY_STATES);
@@ -151,7 +154,14 @@ export function sanitizeDeliveryRecoveryEpisode(value) {
     ? [...new Set(value.evidenceFlags)]
     : [];
   const durations = Object.fromEntries(
-    DELIVERY_DURATION_FIELDS.map((field) => [field, nonNegativeInteger(value[field])]),
+    DELIVERY_DURATION_FIELDS.map((field) => [
+      field,
+      nonNegativeInteger(
+        value[field] === undefined && ADDITIVE_DELIVERY_DURATION_FIELDS.includes(field)
+          ? 0
+          : value[field],
+      ),
+    ]),
   );
 
   if (
@@ -221,12 +231,15 @@ export function classifyDeliveryRecoveryEpisode(value) {
   const offlineDuration = episode.foregroundOfflineMs + episode.backgroundOfflineMs;
   if (durationShare(offlineDuration, episode.totalDurationMs) >= 0.8) return 'offline';
 
-  const backgroundDuration = episode.backgroundOnlineMs + episode.backgroundOfflineMs;
+  const backgroundDuration = episode.backgroundOnlineMs
+    + episode.backgroundOfflineMs
+    + episode.backgroundUnknownMs;
   if (durationShare(backgroundDuration, episode.totalDurationMs) >= 0.8) return 'background_suspended';
 
+  const foregroundTransportDuration = episode.foregroundOnlineMs + episode.foregroundUnknownMs;
   if (
     episode.failureTrigger === 'transport_failure'
-    && durationShare(episode.foregroundOnlineMs, episode.totalDurationMs) >= 0.8
+    && durationShare(foregroundTransportDuration, episode.totalDurationMs) >= 0.8
   ) {
     return 'foreground_network_failure';
   }

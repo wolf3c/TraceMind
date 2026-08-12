@@ -1269,8 +1269,10 @@ function emptyDurationComposition() {
   return {
     foregroundOnline: 0,
     foregroundOffline: 0,
+    foregroundUnknown: 0,
     backgroundOnline: 0,
     backgroundOffline: 0,
+    backgroundUnknown: 0,
     runtimeAbsent: 0,
     unknown: 0,
   };
@@ -1279,8 +1281,10 @@ function emptyDurationComposition() {
 function addDurationComposition(target, episode = {}) {
   target.foregroundOnline += safeCount(episode.foregroundOnlineMs);
   target.foregroundOffline += safeCount(episode.foregroundOfflineMs);
+  target.foregroundUnknown += safeCount(episode.foregroundUnknownMs);
   target.backgroundOnline += safeCount(episode.backgroundOnlineMs);
   target.backgroundOffline += safeCount(episode.backgroundOfflineMs);
+  target.backgroundUnknown += safeCount(episode.backgroundUnknownMs);
   target.runtimeAbsent += safeCount(episode.runtimeAbsentMs);
   target.unknown += safeCount(episode.unknownMs);
 }
@@ -4712,8 +4716,10 @@ async function upsertDeliveryHourlyRollup(report) {
     incrementFields.recoveryDurationTotalMs = report.recoveryDurationMs;
     incrementFields['durationCompositionMs.foregroundOnline'] = report.recoveryEpisode.foregroundOnlineMs;
     incrementFields['durationCompositionMs.foregroundOffline'] = report.recoveryEpisode.foregroundOfflineMs;
+    incrementFields['durationCompositionMs.foregroundUnknown'] = report.recoveryEpisode.foregroundUnknownMs;
     incrementFields['durationCompositionMs.backgroundOnline'] = report.recoveryEpisode.backgroundOnlineMs;
     incrementFields['durationCompositionMs.backgroundOffline'] = report.recoveryEpisode.backgroundOfflineMs;
+    incrementFields['durationCompositionMs.backgroundUnknown'] = report.recoveryEpisode.backgroundUnknownMs;
     incrementFields['durationCompositionMs.runtimeAbsent'] = report.recoveryEpisode.runtimeAbsentMs;
     incrementFields['durationCompositionMs.unknown'] = report.recoveryEpisode.unknownMs;
     incrementFields[`recoveryClassificationCounts.${report.recoveryClassification}`] = 1;
@@ -5756,8 +5762,10 @@ export function clientScript(host) {
   var RECOVERY_DURATION_FIELDS = [
     'foregroundOnlineMs',
     'foregroundOfflineMs',
+    'foregroundUnknownMs',
     'backgroundOnlineMs',
     'backgroundOfflineMs',
+    'backgroundUnknownMs',
     'runtimeAbsentMs',
     'unknownMs'
   ];
@@ -5797,6 +5805,8 @@ export function clientScript(host) {
 
   function validStoredRecoveryEpisode(episode) {
     if (!episode || episode.schemaVersion !== 1) return false;
+    if (episode.foregroundUnknownMs === undefined) episode.foregroundUnknownMs = 0;
+    if (episode.backgroundUnknownMs === undefined) episode.backgroundUnknownMs = 0;
     if (typeof episode.episodeId !== 'string' || !episode.episodeId || episode.episodeId.length > 120) return false;
     if (typeof episode.originRuntimeInstanceId !== 'string' || !episode.originRuntimeInstanceId
       || episode.originRuntimeInstanceId.length > 120) return false;
@@ -5827,8 +5837,10 @@ export function clientScript(host) {
     var connectivity = episode.observedConnectivityState;
     if (lifecycle === 'foreground' && connectivity === 'online') return 'foregroundOnlineMs';
     if (lifecycle === 'foreground' && connectivity === 'offline') return 'foregroundOfflineMs';
+    if (lifecycle === 'foreground' && connectivity === 'unknown') return 'foregroundUnknownMs';
     if (lifecycle === 'background' && connectivity === 'online') return 'backgroundOnlineMs';
     if (lifecycle === 'background' && connectivity === 'offline') return 'backgroundOfflineMs';
+    if (lifecycle === 'background' && connectivity === 'unknown') return 'backgroundUnknownMs';
     return 'unknownMs';
   }
 
@@ -5920,8 +5932,10 @@ export function clientScript(host) {
       totalDurationMs: 0,
       foregroundOnlineMs: 0,
       foregroundOfflineMs: 0,
+      foregroundUnknownMs: 0,
       backgroundOnlineMs: 0,
       backgroundOfflineMs: 0,
+      backgroundUnknownMs: 0,
       runtimeAbsentMs: 0,
       unknownMs: 0,
       recoveredInNewRuntime: false,
@@ -5959,8 +5973,10 @@ export function clientScript(host) {
       totalDurationMs: episode.totalDurationMs,
       foregroundOnlineMs: episode.foregroundOnlineMs,
       foregroundOfflineMs: episode.foregroundOfflineMs,
+      foregroundUnknownMs: episode.foregroundUnknownMs,
       backgroundOnlineMs: episode.backgroundOnlineMs,
       backgroundOfflineMs: episode.backgroundOfflineMs,
+      backgroundUnknownMs: episode.backgroundUnknownMs,
       runtimeAbsentMs: episode.runtimeAbsentMs,
       unknownMs: episode.unknownMs,
       recoveredInNewRuntime: episode.recoveredInNewRuntime,

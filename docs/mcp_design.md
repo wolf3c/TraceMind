@@ -383,10 +383,12 @@ Output:
     ],
     "evidenceQualityCounts": [{ "quality": "high", "count": 2 }],
     "durationCompositionMs": {
-      "foregroundOnline": 31000,
+      "foregroundOnline": 0,
       "foregroundOffline": 0,
+      "foregroundUnknown": 31000,
       "backgroundOnline": 0,
       "backgroundOffline": 0,
+      "backgroundUnknown": 0,
       "runtimeAbsent": 60000,
       "unknown": 0
     },
@@ -415,7 +417,7 @@ Output:
 
 `reasonClass` 只使用 `storage`、`queue_overflow`、`http`、`dns`、`tls`、`timeout`、`network`、`retry` 和 `unknown`；`httpStatusClass` 只使用 `1xx` 到 `5xx` 或 `none`。实现可在服务端读取受限 `lastError` 以完成分类，但 MCP 输出绝不回显原始错误，也不返回请求体、响应体、URL、日志、用户内容、`sessionId`、`deviceId` 或 `batchId`。
 
-`recoveryDurationMs` 只统计通过严格校验的区间样本；服务端根据时长组成分类并给出证据质量。`legacyElapsedDurationMs` 只保留旧 `lastFailedFlushAt` 到报告接收时间的未归因墙钟差，绝不能描述为前台等待、离线时长或后台挂起。异常时钟、负值、破坏总和约束或超过 7 天的区间会被忽略，但不阻塞行为采集。该契约从 Web script release `2026.07.23.1` 开始；运行实例 ID 与区间 ID 仅用于内部去重，不出现在 MCP 输出。
+`recoveryDurationMs` 只统计通过严格校验的区间样本；服务端根据时长组成分类并给出证据质量。`foregroundUnknown` / `backgroundUnknown` 表示生命周期已知但连接状态未知，不是在线证明；只有生命周期也无法归因的时长才进入 `unknown`。旧区间缺少这两个 additive 字段时按 0 读取，既有 `unknown` 不回填。`legacyElapsedDurationMs` 只保留旧 `lastFailedFlushAt` 到报告接收时间的未归因墙钟差，绝不能描述为前台等待、离线时长或后台挂起。异常时钟、负值、破坏总和约束或超过 7 天的区间会被忽略，但不阻塞行为采集。该契约从 Web script release `2026.07.23.1` 开始；运行实例 ID 与区间 ID 仅用于内部去重，不出现在 MCP 输出。
 
 ### `tracemind.recent_online`
 

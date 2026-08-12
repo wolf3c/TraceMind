@@ -122,7 +122,19 @@ Web Auto Capture 不再把每个事件直接交给 `sendBeacon` 或 `fetch` 后�
 | MCP runtime, Agent Skill | No change. |
 | Dashboard, MCP queries, API responses | No public contract change. |
 
-Web script release `2026.07.23.1` 起，每条 Web 自动采集记录都携带基于 Page Visibility、平台联网提示和 TraceMind transport 结果的 `runtimeContext`。capture、presence、user feedback 分别维护持久化恢复区间，生命周期或联网状态变化前先结算已观察时长；跨新 JavaScript 实例的未观察间隔只进入 `runtimeAbsentMs`。`freeze`、`resume`、`pagehide`、`pageshow` 只作为发生过的证据，生命周期仍由 Page Visibility 判定。只有收到 fetch 确认才关闭区间，`sendBeacon() === true` 不作为服务端确认。服务端严格校验时长和证据、按 `projectId + endpoint + episodeId` 去重，并分类为离线、后台挂起、前台网络故障、混合、未知或新实例恢复。小时健康保留归因样本数和精确总时长，日报由总时长与样本数重新计算平均值，不平均小时平均值。旧版 `lastFailedFlushAt` 继续兼容，但只作为未归因墙钟耗时，不与区间归因混算。
+Web script release `2026.07.23.1` 起，每条 Web 自动采集记录都携带基于 Page Visibility、平台联网提示和 TraceMind transport 结果的 `runtimeContext`。capture、presence、user feedback 分别维护持久化恢复区间，生命周期或联网状态变化前先结算已观察时长；跨新 JavaScript 实例的未观察间隔只进入 `runtimeAbsentMs`。同一运行时发生 transport failure 时，连接状态保持诚实的 `unknown`，但已观察到的生命周期不会丢失：前台和后台时长分别进入 `foregroundUnknownMs` 与 `backgroundUnknownMs`，只有生命周期本身不可归因才进入 `unknownMs`。旧持久化区间缺少这两个新增字段时按 0 读取，既有 `unknownMs` 不猜测、不拆分、不回填。`freeze`、`resume`、`pagehide`、`pageshow` 只作为发生过的证据，生命周期仍由 Page Visibility 判定。只有收到 fetch 确认才关闭区间，`sendBeacon() === true` 不作为服务端确认。服务端严格校验时长和证据、按 `projectId + endpoint + episodeId` 去重，并分类为离线、后台挂起、前台网络故障、混合、未知或新实例恢复；`foreground_network_failure` 只表示失败请求发生在已观察前台，不代表设备或 endpoint 已被证明在线。小时健康保留归因样本数和精确总时长，日报由总时长与样本数重新计算平均值，不平均小时平均值。旧版 `lastFailedFlushAt` 继续兼容，但只作为未归因墙钟耗时，不与区间归因混算。
+
+| Runtime / Surface | Recovery attribution impact |
+| --- | --- |
+| Web | Change: preserve foreground/background lifecycle when transport failure makes connectivity unknown. |
+| Hybrid | Change only in the WebView using `capture.js`; the native shell is unchanged. |
+| iOS, macOS, Android, React Native | No change; native recovery attribution remains follow-up work. |
+| Mini Program, Browser Extension | No change. |
+| Server SDKs | Out of scope; server applications have no foreground/background lifecycle. |
+| MCP runtime, Agent Skill | Out of scope; these are not foreground/background client runtimes. |
+| Capture API, hourly/daily health | Change: accept, validate, and aggregate the two additive duration fields. |
+| MCP queries | Change: expose `foregroundUnknown` and `backgroundUnknown` only as aggregate duration composition. |
+| Dashboard UI | No visible change. |
 
 Presence 也进入同一可靠队列。为了避免离线 heartbeat 挤占关键行为事件，同一 `presenceId` 的 pending heartbeat 会合并为最新一次心跳；`start`、`foreground`、`background` 和 `end` 不合并，保持在线区间边界。
 

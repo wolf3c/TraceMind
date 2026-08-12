@@ -24,7 +24,7 @@
 
 | ID | Priority | Status | Item | Evidence / Dependency | Next Review |
 | --- | --- | --- | --- | --- | --- |
-| TM-REL-001 | P2 | 待验证 | Release and verify runtime-context delivery recovery attribution | Release `2026.7.23-1` deployed from `88f3e81`; first live `new_runtime_recovery` evidence received; 24-hour observation pending | 2026-07-24 after the observation window |
+| TM-REL-001 | P2 | 待验证 | Correct and verify runtime-context delivery recovery attribution | Controlled checks proved foreground/background transport failures collapse to `unknownMs`; the two-field local fix awaits review, commit, and release | After the Web idempotency observation ends on 2026-08-15 |
 | ouLvFZr46JkPZ4a4T | P1 | 待验证 | Publish and verify Web capture retry idempotency | Release `2026.8.12-1` and controlled same-ID retry passed; 72-hour stability observation remains | 2026-08-15 after the observation window |
 | TM-ALERT-001 | P2 | 待方案 | Add proactive important-incident and recovery notifications | Feedback `oSYMbGhavJYRp6KLp`; depends on incident lifecycle, thresholds, channels, and dedupe policy | Next product-planning review |
 | TM-RUNTIME-002 | P2 | 待实施 | Extend runtime context to applicable native/client SDKs | Shared contract exists; Web/Hybrid WebView is the reference implementation | After TM-REL-001 evidence review |
@@ -53,19 +53,21 @@
 
 ### TM-REL-001 — Release runtime-context recovery attribution
 
-- Problem evidence: legacy recovery duration is an unattributed wall-clock interval and cannot distinguish foreground, background, offline, unknown, or a new runtime.
+- Problem evidence: the released contract distinguishes explicit offline and new-runtime recovery, but controlled same-runtime foreground/background transport failures become connectivity `unknown` and then collapse their known lifecycle into `unknownMs`.
 - Target user and scenario: a customer or coding agent diagnosing why captured product behavior arrived late.
 - Expected result: production diagnostics explain recovery using evidence-backed duration composition without exposing runtime or episode identifiers.
 - Release evidence (2026-07-23): Galaxy and Cloudflare published release `2026.7.23-1` / Web guidance `2026.07.23.1`; production diagnostics returned one high-quality `new_runtime_recovery` sample with 1,125 ms attributed as 502 ms foreground-online plus 623 ms runtime-absent, without runtime or episode identifiers.
-- Remaining validation: controlled foreground, background, offline, and Hybrid checks; clearance of pre-release Web/SDK health snapshots; and 24 hours of normal-traffic observation.
+- Failure evidence (2026-07-29): controlled Web/Hybrid checks passed explicit offline, Hybrid offline, and new-runtime paths, but same-runtime foreground and background transport failures each accumulated entirely in `unknownMs` and classified as `unknown`.
+- Local implementation (2026-08-12, not released): add only `foregroundUnknownMs` and `backgroundUnknownMs`, default them to zero for legacy episodes, preserve offline/new-runtime precedence, and expose the matching additive MCP/hourly/daily composition fields. No entity, collection, index, migration, or historical backfill is added.
+- Remaining validation: review and commit the local change, release only after the independent Web idempotency observation, rerun the five controlled Web/Hybrid paths, inspect exact MCP/hourly/daily totals, and then observe normal traffic before closing feedback.
 - Success criteria:
-  - commit `549a7f0` and its release state are pushed through the guarded TraceMind release workflow;
-  - Galaxy and the published Web capture script/guidance report release `2026.07.23.1`;
+  - the original contract and this corrective change are pushed through the guarded TraceMind release workflow;
+  - Galaxy and the published Web capture script report the new corrective release marker; Agent Guidance changes only if its coding-agent contract also changes;
   - controlled production checks verify foreground, background, offline, and new-runtime recovery behavior;
   - `tracemind.query_delivery_diagnostics` returns attributed classifications, duration composition, evidence quality, and no internal runtime/episode IDs;
   - hourly and daily health preserve exact totals and derive averages from total duration and sample count;
   - feedback `Mfnoo3g4ayyLxyD9w` is marked resolved only after the evidence above passes.
-- Minimum validation: deploy, run controlled Web/Hybrid checks, inspect MCP diagnostics and project health, then observe normal traffic for 24 hours.
+- Minimum validation: focused and full local tests, then after deployment run controlled foreground/background/offline/new-runtime/Hybrid checks, inspect MCP diagnostics and project health, and observe normal traffic without treating missing detail as zero.
 - Owner: TraceMind owner.
 - Failure action: keep the feedback open, classify the failing runtime/aggregation boundary, and roll back the Web release if capture delivery or privacy regresses.
 

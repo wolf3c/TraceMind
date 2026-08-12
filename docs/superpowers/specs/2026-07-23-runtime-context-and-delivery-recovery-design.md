@@ -124,9 +124,11 @@ The episode snapshot sent on the next attempt is:
   totalDurationMs: 180000,
   foregroundOnlineMs: 30000,
   foregroundOfflineMs: 60000,
+  foregroundUnknownMs: 30000,
   backgroundOnlineMs: 0,
   backgroundOfflineMs: 30000,
-  runtimeAbsentMs: 60000,
+  backgroundUnknownMs: 0,
+  runtimeAbsentMs: 30000,
   unknownMs: 0,
   recoveredInNewRuntime: true,
   failureTrigger: "transport_failure",
@@ -166,8 +168,10 @@ For an accepted episode:
 totalDurationMs =
   foregroundOnlineMs +
   foregroundOfflineMs +
+  foregroundUnknownMs +
   backgroundOnlineMs +
   backgroundOfflineMs +
+  backgroundUnknownMs +
   runtimeAbsentMs +
   unknownMs
 ```
@@ -177,7 +181,7 @@ Additional rules:
 - all values are finite non-negative integers;
 - `lastObservedAt >= startedAt`;
 - `totalDurationMs <= 7 days`;
-- a same-runtime unobserved gap is `unknownMs` unless an explicit preceding background state was observed continuously;
+- known foreground/background lifecycle with unknown connectivity is recorded as `foregroundUnknownMs` / `backgroundUnknownMs`; `unknownMs` is reserved for duration whose lifecycle itself cannot be attributed;
 - a cross-runtime gap is only `runtimeAbsentMs`;
 - invalid clocks or broken invariants make the episode invalid; the server does not repair or reinterpret it.
 
@@ -201,8 +205,8 @@ Classification precedence:
 
 1. `new_runtime_recovery` when `recoveredInNewRuntime` is true and `runtimeAbsentMs > 0`.
 2. `offline` when foreground/background offline duration is at least 80% of total duration.
-3. `background_suspended` when foreground/background background duration is at least 80% of total duration.
-4. `foreground_network_failure` when `foregroundOnlineMs` is at least 80% of total duration and the failure trigger is `transport_failure`.
+3. `background_suspended` when background online/offline/unknown-connectivity duration is at least 80% of total duration.
+4. `foreground_network_failure` when foreground online/unknown-connectivity duration is at least 80% of total duration and the failure trigger is `transport_failure`. This means the failed request was observed in the foreground; it does not claim the endpoint or device was online.
 5. `mixed` when at least two known duration buckets are non-zero and no prior rule matches.
 6. `unknown` otherwise.
 
@@ -298,8 +302,10 @@ New fields:
   durationCompositionMs: {
     foregroundOnline,
     foregroundOffline,
+    foregroundUnknown,
     backgroundOnline,
     backgroundOffline,
+    backgroundUnknown,
     runtimeAbsent,
     unknown
   },
@@ -363,6 +369,7 @@ Detailed raw behaviors, semantic events, presence sessions, and delivery reports
 - Existing SDKs and old Web runtimes continue to ingest successfully.
 - Old records appear as missing context and contribute to coverage denominators.
 - Existing `lastFailedFlushAt` is accepted only for legacy elapsed reporting.
+- Episodes created before `foregroundUnknownMs` / `backgroundUnknownMs` existed remain valid with those additive fields defaulted to zero. Existing `unknownMs` values are not guessed, split, or backfilled.
 - No backfill is attempted.
 - No persistent data migration is required.
 - One additive partial unique index supports delivery episode deduplication.
@@ -414,6 +421,7 @@ Runtime and episode IDs are not stable customer/user identifiers and are not exp
 
 - An attributed recovery episode always satisfies the duration sum invariant.
 - New-runtime recovery can never be reported as foreground-online wait time.
+- Same-runtime transport failures retain observed foreground/background lifecycle even when connectivity becomes unknown.
 - Offline, background, foreground-network, mixed, and unknown classifications are deterministic.
 - Legacy wall-clock samples are clearly separated from attributed recovery samples.
 - Public responses never expose runtime or episode IDs.

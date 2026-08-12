@@ -607,8 +607,10 @@ export function summarizeCaptureDelivery(reports = []) {
     durationCompositionMs: {
       foregroundOnline: 0,
       foregroundOffline: 0,
+      foregroundUnknown: 0,
       backgroundOnline: 0,
       backgroundOffline: 0,
+      backgroundUnknown: 0,
       runtimeAbsent: 0,
       unknown: 0,
     },
@@ -704,8 +706,10 @@ export function summarizeCaptureDelivery(reports = []) {
     const composition = report.durationCompositionMs || (report.recoveryEpisode ? {
       foregroundOnline: report.recoveryEpisode.foregroundOnlineMs,
       foregroundOffline: report.recoveryEpisode.foregroundOfflineMs,
+      foregroundUnknown: report.recoveryEpisode.foregroundUnknownMs,
       backgroundOnline: report.recoveryEpisode.backgroundOnlineMs,
       backgroundOffline: report.recoveryEpisode.backgroundOfflineMs,
+      backgroundUnknown: report.recoveryEpisode.backgroundUnknownMs,
       runtimeAbsent: report.recoveryEpisode.runtimeAbsentMs,
       unknown: report.recoveryEpisode.unknownMs,
     } : {});
