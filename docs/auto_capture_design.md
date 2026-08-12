@@ -110,6 +110,18 @@ Web Auto Capture 不再把每个事件直接交给 `sendBeacon` 或 `fetch` 后�
 
 普通前台发送会按批次写入 Galaxy `/api/capture` 或 `/api/presence`，每批默认最多 20 条。发送失败时事件保留在队列中，使用 1 秒起步、60 秒封顶的指数退避重试。`online`、`visibilitychange`、`pagehide`、`beforeunload`、presence heartbeat 和 `window.TraceMind.flush()` 都会触发 flush。页面隐藏或卸载时，脚本会把单批控制在约 60KB 内并优先使用 `sendBeacon`。Web 脚本会在 `sourceDetails.scriptReleaseId` 上报当前采集脚本 release id；当 `/api/capture` 或 `/api/presence` 发现旧脚本仍在运行时，响应里返回 `webCaptureScriptUpdate`，支持自动更新的新脚本会用配置的脚本分发 origin 加 cache-buster 拉取最新 `/capture.js` 并让新 runtime 接管，老 runtime 停止上报。
 
+每条 Web capture 队列记录还会把现有队列 ID 作为内部 `clientEventId` 随重试透传。服务端按 `projectId + clientEventId` 保证 Raw Behavior 只写入一次：响应丢失后的相同队列记录返回幂等成功并从客户端队列移除，而相同错误指纹的不同真实发生仍分别保存。该字段不进入 Semantic Event、Dashboard、MCP 或业务属性；旧脚本没有 `clientEventId` 时继续按原有兼容路径接收。本合同只覆盖 Web 与复用 `capture.js` 的 Hybrid WebView，不代表其他 SDK 已具备相同幂等保证。
+
+| Runtime / Surface | Impact |
+| --- | --- |
+| Web | Change: capture queue retries use the existing record ID for project-scoped idempotency. |
+| Hybrid | Change only in the WebView using `capture.js`; the native layer is unchanged. |
+| iOS, macOS, Android, React Native | No change. |
+| Mini Program, Browser Extension | No change. |
+| Server SDKs | No change. |
+| MCP runtime, Agent Skill | No change. |
+| Dashboard, MCP queries, API responses | No public contract change. |
+
 Web script release `2026.07.23.1` 起，每条 Web 自动采集记录都携带基于 Page Visibility、平台联网提示和 TraceMind transport 结果的 `runtimeContext`。capture、presence、user feedback 分别维护持久化恢复区间，生命周期或联网状态变化前先结算已观察时长；跨新 JavaScript 实例的未观察间隔只进入 `runtimeAbsentMs`。`freeze`、`resume`、`pagehide`、`pageshow` 只作为发生过的证据，生命周期仍由 Page Visibility 判定。只有收到 fetch 确认才关闭区间，`sendBeacon() === true` 不作为服务端确认。服务端严格校验时长和证据、按 `projectId + endpoint + episodeId` 去重，并分类为离线、后台挂起、前台网络故障、混合、未知或新实例恢复。小时健康保留归因样本数和精确总时长，日报由总时长与样本数重新计算平均值，不平均小时平均值。旧版 `lastFailedFlushAt` 继续兼容，但只作为未归因墙钟耗时，不与区间归因混算。
 
 Presence 也进入同一可靠队列。为了避免离线 heartbeat 挤占关键行为事件，同一 `presenceId` 的 pending heartbeat 会合并为最新一次心跳；`start`、`foreground`、`background` 和 `end` 不合并，保持在线区间边界。

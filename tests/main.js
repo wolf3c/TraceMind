@@ -1487,10 +1487,17 @@ describe('TraceMind', function () {
       sandbox.localStorage = sandbox.window.localStorage;
 
       new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+      sandbox.window.TraceMind.capture('custom', {
+        eventName: 'manual_client_event_id_override',
+        clientEventId: 'caller_controlled_id',
+      });
       const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
       const queued = JSON.parse(storage.get(queueKey));
+      const queuedCapture = queued.find((record) => record.kind === 'capture' && record.payload.type === 'page_view');
+      const queuedManualCapture = queued.find((record) => record.payload.eventName === 'manual_client_event_id_override');
 
-      assert.ok(queued.some((record) => record.kind === 'capture' && record.payload.type === 'page_view'));
+      assert.ok(queuedCapture);
+      assert.ok(queuedManualCapture);
       assert.ok(queued.some((record) => record.kind === 'presence' && record.payload.state === 'start'));
 
       await sandbox.window.TraceMind.flush();
@@ -1499,11 +1506,16 @@ describe('TraceMind', function () {
       const presenceBody = JSON.parse(fetchCalls.find((call) => call.endpoint.endsWith('/api/presence')).body);
 
       assert.strictEqual(flushedQueue.length, 0);
-      assert.strictEqual(captureBody.events.length, 1);
+      assert.strictEqual(captureBody.events.length, 2);
       assert.strictEqual(presenceBody.events.length, 1);
-      assert.strictEqual(captureBody.events[0].source.details.scriptReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
+      const sentPageView = captureBody.events.find((event) => event.type === 'page_view');
+      const sentManualCapture = captureBody.events.find((event) => event.eventName === 'manual_client_event_id_override');
+      assert.strictEqual(sentPageView.clientEventId, queuedCapture.id);
+      assert.strictEqual(sentManualCapture.clientEventId, queuedManualCapture.id);
+      assert.strictEqual(presenceBody.events[0].clientEventId, undefined);
+      assert.strictEqual(sentPageView.source.details.scriptReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
       assert.strictEqual(presenceBody.events[0].source.details.scriptReleaseId, CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID);
-      assert.strictEqual(captureBody.deliveryStats.sent, 1);
+      assert.strictEqual(captureBody.deliveryStats.sent, 2);
       assert.strictEqual(presenceBody.deliveryStats.sent, 1);
     });
 
@@ -7896,6 +7908,7 @@ projectKey: tm_proj_sensitive`,
         'raw_project_action_time',
         'raw_project_target_time',
         'raw_project_attribution_source_time',
+        'raw_project_client_event_unique',
       ].forEach((name) => assert.ok(rawIndexes.has(name), `missing ${name}`));
       [
         'projectId_1_occurredAt_-1',
@@ -7917,10 +7930,14 @@ projectKey: tm_proj_sensitive`,
         'presence_ended_project',
       ].forEach((name) => assert.ok(presenceIndexes.has(name), `missing ${name}`));
       const rawBehaviorTtlIndex = (await indexesFor(RawBehaviors)).find((index) => index.name === 'raw_behaviors_occurred_ttl');
+      const rawClientEventIndex = (await indexesFor(RawBehaviors)).find((index) => index.name === 'raw_project_client_event_unique');
       const presenceTtlIndex = (await indexesFor(PresenceSessions)).find((index) => index.name === 'presence_last_seen_ttl');
       const semanticTtlIndex = (await indexesFor(SemanticEvents)).find((index) => index.name === 'semantic_events_occurred_ttl');
       assert.deepStrictEqual(rawBehaviorTtlIndex.key, { occurredAt: 1 });
       assert.strictEqual(rawBehaviorTtlIndex.expireAfterSeconds, 10 * 24 * 60 * 60);
+      assert.deepStrictEqual(rawClientEventIndex.key, { projectId: 1, clientEventId: 1 });
+      assert.strictEqual(rawClientEventIndex.unique, true);
+      assert.deepStrictEqual(rawClientEventIndex.partialFilterExpression, { clientEventId: { $type: 'string' } });
       assert.deepStrictEqual(presenceTtlIndex.key, { lastSeenAt: 1 });
       assert.strictEqual(presenceTtlIndex.expireAfterSeconds, 10 * 24 * 60 * 60);
       assert.deepStrictEqual(semanticTtlIndex.key, { occurredAt: 1 });
@@ -11170,6 +11187,164 @@ projectKey: tm_proj_sensitive`,
         referrer: '',
         scriptReleaseId: CURRENT_WEB_CAPTURE_SCRIPT_RELEASE_ID,
       });
+    });
+
+    it('stores one behavior when Web capture retries the same client event ID', async function () {
+      await ensureTraceMindIndexes();
+      const projectId = `project-client-event-id-${Date.now()}`;
+      const projectKey = `tm_proj_client_event_id_${Date.now()}`;
+      const otherProjectId = `${projectId}-other`;
+      const otherProjectKey = `${projectKey}_other`;
+      await Projects.insertAsync({
+        _id: projectId,
+        developerId: 'developer-client-event-id',
+        name: 'Client Event ID Project',
+        projectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+      await Projects.insertAsync({
+        _id: otherProjectId,
+        developerId: 'developer-client-event-id-other',
+        name: 'Other Client Event ID Project',
+        projectKey: otherProjectKey,
+        blockedSources: [],
+        mcpTokens: [],
+        createdAt: new Date(),
+      });
+
+      const event = {
+        projectKey,
+        clientEventId: 'tm_evt_retry_occurrence',
+        type: 'app_error',
+        eventName: 'app_error',
+        sessionId: 'tm_sess_retry_occurrence',
+        path: '/checkout',
+        occurredAt: '2026-08-12T01:00:00.000Z',
+        source: { type: 'web', url: 'https://app.example.com/checkout' },
+        properties: {
+          errorType: 'TypeError',
+          messageFingerprint: 'tm_error_retryoccurrence',
+          status: 'error',
+        },
+      };
+
+      const first = await ingestCapturePayload(event, { headers: {}, socket: {} });
+      const retry = await ingestCapturePayload(event, { headers: {}, socket: {} });
+      const distinct = await ingestCapturePayload({
+        ...event,
+        clientEventId: 'tm_evt_distinct_occurrence',
+      }, { headers: {}, socket: {} });
+      const otherProject = await ingestCapturePayload({
+        ...event,
+        projectKey: otherProjectKey,
+      }, { headers: {}, socket: {} });
+      const concurrentEvent = {
+        ...event,
+        clientEventId: 'tm_evt_concurrent_occurrence',
+      };
+      const concurrentResults = await Promise.all([
+        ingestCapturePayload(concurrentEvent, { headers: {}, socket: {} }),
+        ingestCapturePayload(concurrentEvent, { headers: {}, socket: {} }),
+      ]);
+
+      assert.deepStrictEqual(first, expectedSingleCaptureResult());
+      assert.deepStrictEqual(retry, expectedSingleCaptureResult({ ignored: true }));
+      assert.deepStrictEqual(distinct, expectedSingleCaptureResult());
+      assert.deepStrictEqual(otherProject, expectedSingleCaptureResult());
+      assert.deepStrictEqual(concurrentResults.map((result) => result.accepted).sort(), [0, 1]);
+      assert.deepStrictEqual(concurrentResults.map((result) => result.ignored).sort(), [false, true]);
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 3);
+      assert.strictEqual(await RawBehaviors.find({ projectId: otherProjectId }).countAsync(), 1);
+      const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
+      const clientEventIds = behaviors
+        .map((behavior) => behavior.clientEventId)
+        .sort();
+      assert.deepStrictEqual(clientEventIds, [
+        'tm_evt_concurrent_occurrence',
+        'tm_evt_distinct_occurrence',
+        'tm_evt_retry_occurrence',
+      ]);
+      const retryBehavior = behaviors.find((behavior) => behavior.clientEventId === 'tm_evt_retry_occurrence');
+      assert.strictEqual(buildSemanticEvent(retryBehavior).clientEventId, undefined);
+      assert.strictEqual(publicRawBehavior(retryBehavior).clientEventId, undefined);
+    });
+
+    it('keeps client event idempotency scoped to event-level Web capture payloads', async function () {
+      await ensureTraceMindIndexes();
+      const { projectId, projectKey } = await createGuardProject('project-client-event-scope');
+
+      const webBatch = await ingestCapturePayload({
+        projectKey,
+        platform: 'web',
+        clientEventId: 'tm_evt_invalid_batch_scope',
+        events: [
+          { type: 'custom', eventName: 'web_batch_first', source: { type: 'web', url: 'https://app.example.com/' } },
+          { type: 'custom', eventName: 'web_batch_second', source: { type: 'web', url: 'https://app.example.com/' } },
+        ],
+      }, { headers: {}, socket: {} });
+      const nativeEvent = {
+        projectKey,
+        platform: 'android',
+        clientEventId: 'tm_evt_native_scope',
+        type: 'custom',
+        source: { type: 'android', packageName: 'com.example.app' },
+      };
+      const nativeFirst = await ingestCapturePayload({
+        ...nativeEvent,
+        eventName: 'native_first',
+      }, { headers: {}, socket: {} });
+      const nativeSecond = await ingestCapturePayload({
+        ...nativeEvent,
+        eventName: 'native_second',
+      }, { headers: {}, socket: {} });
+
+      assert.strictEqual(webBatch.accepted, 2);
+      assert.strictEqual(webBatch.ignored, 0);
+      assert.deepStrictEqual(nativeFirst, expectedSingleCaptureResult());
+      assert.deepStrictEqual(nativeSecond, expectedSingleCaptureResult());
+      const behaviors = await RawBehaviors.find({ projectId }).fetchAsync();
+      assert.strictEqual(behaviors.length, 4);
+      assert.ok(behaviors.every((behavior) => behavior.clientEventId === undefined));
+    });
+
+    it('ignores known Web retries before ingestion guard accounting', async function () {
+      await ensureTraceMindIndexes();
+      const { projectId, projectKey } = await createGuardProject('project-client-event-guard');
+      configureIngestionGuardForTest({
+        mode: 'enforce',
+        thresholds: {
+          watchCount: 1,
+          sampledCount: 2,
+          fusedCount: 2,
+          duplicateMinCount: 2,
+          duplicateTopCount: 2,
+          duplicateTopRatio: 0.5,
+        },
+      });
+      const event = {
+        projectKey,
+        clientEventId: 'tm_evt_guard_retry',
+        type: 'custom',
+        eventName: 'web_guard_retry',
+        source: { type: 'web', url: 'https://app.example.com/' },
+        properties: { status: 'failed' },
+      };
+
+      const first = await ingestCapturePayload(event, { headers: {}, socket: {} });
+      await drainIngestionGuardForTest();
+      const beforeRetry = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'web_guard_retry' });
+      const retry = await ingestCapturePayload(event, { headers: {}, socket: {} });
+      await drainIngestionGuardForTest();
+      const afterRetry = await ingestionGuardRollups().findOneAsync({ projectId, eventName: 'web_guard_retry' });
+
+      assert.strictEqual(first.accepted, 1);
+      assert.strictEqual(first.dropped, 0);
+      assert.deepStrictEqual(retry, expectedSingleCaptureResult({ ignored: true }));
+      assert.strictEqual(afterRetry.acceptedCount, beforeRetry.acceptedCount);
+      assert.strictEqual(afterRetry.droppedCount, beforeRetry.droppedCount);
+      assert.strictEqual(await RawBehaviors.find({ projectId }).countAsync(), 1);
     });
 
     it('stores only sanitized attribution fields on raw and semantic events', async function () {

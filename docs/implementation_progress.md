@@ -2,6 +2,14 @@
 
 > Active release and product follow-up work is tracked in [`product_backlog.md`](./product_backlog.md).
 
+## 2026-08-12
+
+### Implemented Locally
+
+- Reused the existing Web capture queue record ID as an internal `clientEventId` instead of introducing a second identifier or storage entity.
+- Added project-scoped Raw Behavior idempotency with a partial unique index, so a response-loss retry is acknowledged before ingestion-guard accounting while distinct occurrences with the same error fingerprint remain separate.
+- Kept delivery retry diagnostics intact and left historical data, URL/resource diagnostic enrichment, native/client SDKs, Dashboard, MCP response shapes, and feedback status unchanged. Five focused regressions, all 26 deploy-gate tests, and all 242 Meteor tests pass locally.
+
 ## 2026-08-01
 
 ### Completed

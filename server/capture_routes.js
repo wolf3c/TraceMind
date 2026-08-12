@@ -6271,7 +6271,11 @@ export function clientScript(host) {
       deviceId: deviceId,
       deviceFingerprint: fingerprint,
       platform: 'web',
-      events: records.map(function (record) { return record.payload; }),
+      events: records.map(function (record) {
+        return kind === 'capture'
+          ? Object.assign({}, record.payload, { clientEventId: record.id })
+          : record.payload;
+      }),
       deliveryStats: deliveryReport(kind, reason, records)
     };
     var targetEndpoint = kind === 'capture' ? endpoint : (kind === 'presence' ? presenceEndpoint : feedbackEndpoint);
@@ -7295,15 +7299,27 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
   const path = isAppError
     ? safePathWithoutQuery(payload.path || rawProperties.path || rawProperties.screen, '/')
     : safeString(payload.path, 500, '/');
+  const clientEventId = source.sourceType === 'web'
+    && typeof payload.clientEventId === 'string'
+    && payload.clientEventId.length <= 120
+    ? payload.clientEventId
+    : '';
   const runtimeContext = sanitizeRuntimeContext(payload.runtimeContext);
 
   if (isSourceBlocked(project, source)) {
+    return { ok: true, ignored: true };
+  }
+  if (clientEventId && await RawBehaviors.findOneAsync(
+    { projectId: project._id, clientEventId },
+    { fields: { _id: 1 } },
+  )) {
     return { ok: true, ignored: true };
   }
 
   const behaviorDoc = {
     projectId: project._id,
     projectKey: project.projectKey,
+    ...(clientEventId ? { clientEventId } : {}),
     sessionId: safeString(payload.sessionId, 120),
     anonymousId: safeString(payload.anonymousId, 120),
     userId: safeString(payload.userId, 160),
@@ -7358,7 +7374,14 @@ async function insertCaptureEvent(project, payload = {}, req = {}) {
     };
   }
 
-  await RawBehaviors.insertAsync(behaviorDoc);
+  try {
+    await RawBehaviors.insertAsync(behaviorDoc);
+  } catch (error) {
+    if (clientEventId && duplicateKey(error)) {
+      return { ok: true, ignored: true };
+    }
+    throw error;
+  }
   queueProductUsageActivity(project, 'capture', payload);
   await recordSetupAttemptSafely(() => recordSetupAttemptFirstCapture(project._id, { eventType }));
 
@@ -7422,6 +7445,7 @@ export async function ingestCapturePayload(payload = {}, req = {}) {
     const summary = emptyCaptureIngestSummary();
     const sharedPayload = { ...payload };
     delete sharedPayload.events;
+    delete sharedPayload.clientEventId;
 
     for (const eventPayload of payload.events.slice(0, 100)) {
       const result = await insertCaptureEvent(project, {

@@ -1,6 +1,6 @@
 # TraceMind Product Backlog
 
-> Last reviewed: 2026-07-28
+> Last reviewed: 2026-08-12
 >
 > This is the source of truth for active product and release follow-up work. Completed implementation history remains in [`implementation_progress.md`](./implementation_progress.md).
 
@@ -14,23 +14,42 @@
 
 ## Recommended Order
 
-1. Close the release and production-verification loop for runtime-context recovery attribution.
-2. Publish and verify the P1 blocked-source boundary so blocked telemetry cannot pollute customer analysis.
-3. Design proactive incident and recovery notifications.
-4. Roll the shared runtime-context contract out to applicable SDK runtimes.
-5. Add Dashboard visualization after production data proves the contract is useful and stable.
+1. Publish and verify Web capture retry idempotency before closing feedback `ouLvFZr46JkPZ4a4T`.
+2. Close the release and production-verification loop for runtime-context recovery attribution.
+3. Publish and verify the P1 blocked-source boundary so blocked telemetry cannot pollute customer analysis.
+4. Design proactive incident and recovery notifications.
+5. Roll the shared runtime-context contract out to applicable SDK runtimes.
+6. Add Dashboard visualization after production data proves the contract is useful and stable.
 
 ## Active Items
 
 | ID | Priority | Status | Item | Evidence / Dependency | Next Review |
 | --- | --- | --- | --- | --- | --- |
 | TM-REL-001 | P2 | 待验证 | Release and verify runtime-context delivery recovery attribution | Release `2026.7.23-1` deployed from `88f3e81`; first live `new_runtime_recovery` evidence received; 24-hour observation pending | 2026-07-24 after the observation window |
+| ouLvFZr46JkPZ4a4T | P1 | 待发布 | Publish and verify Web capture retry idempotency | Local implementation and regression/full tests are complete; controlled production response-loss verification remains | After the next production release |
 | TM-SRC-001 | P1 | 待发布 | Align blocked-source policy across Web and `server_app` ingestion and analysis | Commit `957c9ea` defines and implements the contract; deployment and production verification remain | After the next production release |
 | TM-ALERT-001 | P2 | 待方案 | Add proactive important-incident and recovery notifications | Feedback `oSYMbGhavJYRp6KLp`; depends on incident lifecycle, thresholds, channels, and dedupe policy | After TM-SRC-001 |
 | TM-RUNTIME-002 | P2 | 待实施 | Extend runtime context to applicable native/client SDKs | Shared contract exists; Web/Hybrid WebView is the reference implementation | After TM-REL-001 evidence review |
 | TM-DASH-001 | P3 | 待方案 | Visualize recovery classification, evidence quality, and coverage in Dashboard | Depends on stable production data from TM-REL-001 | After production evidence is representative |
 
 ## Result Cards
+
+### `ouLvFZr46JkPZ4a4T` — Web capture retry idempotency
+
+- Technical status: `待发布`; implemented and verified locally, not deployed.
+- Problem evidence: Web queue records already have a stable local ID, but capture batches previously discarded it before transport, so a response lost after server persistence allowed the same `app_error` occurrence to be inserted again.
+- Target user and scenario: a customer relying on Web or Hybrid WebView error counts and project health while intermittent transport failures trigger queue retries.
+- Expected result: one client occurrence produces one Raw Behavior and one Semantic Event even when the same queue record is delivered more than once; distinct occurrences remain distinct.
+- Success criteria:
+  - the generated Web capture payload reuses the queue record ID as an internal `clientEventId` on every attempt;
+  - the same `projectId + clientEventId` is acknowledged without a second Raw Behavior, while a different ID with the same error fingerprint is accepted;
+  - another project may independently use the same client ID;
+  - the field does not enter public MCP, Dashboard, Semantic Event, or business properties;
+  - legacy clients without the field remain compatible, and delivery retry diagnostics remain available;
+  - feedback `ouLvFZr46JkPZ4a4T` stays open until release and controlled production verification pass.
+- Minimum validation: focused red/green Web and server tests, full repository tests, then one controlled response-loss retry against TraceMind's own project with exactly one resulting Raw/Semantic occurrence.
+- Owner: TraceMind owner.
+- Failure action: keep the feedback open and roll back the Web/server release if event loss, false deduplication, or privacy regression appears.
 
 ### TM-REL-001 — Release runtime-context recovery attribution
 
