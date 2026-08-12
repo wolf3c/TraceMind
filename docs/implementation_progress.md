@@ -4,11 +4,12 @@
 
 ## 2026-08-12
 
-### Implemented Locally
+### Released / Observing
 
 - Reused the existing Web capture queue record ID as an internal `clientEventId` instead of introducing a second identifier or storage entity.
 - Added project-scoped Raw Behavior idempotency with a partial unique index, so a response-loss retry is acknowledged before ingestion-guard accounting while distinct occurrences with the same error fingerprint remain separate.
-- Kept delivery retry diagnostics intact and left historical data, URL/resource diagnostic enrichment, native/client SDKs, Dashboard, MCP response shapes, and feedback status unchanged. Five focused regressions, all 26 deploy-gate tests, and all 242 Meteor tests pass locally.
+- Kept delivery retry diagnostics intact and left historical data, URL/resource diagnostic enrichment, native/client SDKs, Dashboard, MCP response shapes, and feedback status unchanged. Five focused regressions, all 26 deploy-gate tests, and all 242 Meteor tests passed before release.
+- Published release `2026.8.12-1` with Web capture release `2026.08.12.1`. Galaxy and Cloudflare serve byte-identical 31,041-byte scripts, the production partial unique index is active, and repeated controlled delivery of one Web `clientEventId` produced exactly one Raw Behavior and one processed Semantic Event. Feedback remains open for the 72-hour stability observation.
 
 ## 2026-08-01
 

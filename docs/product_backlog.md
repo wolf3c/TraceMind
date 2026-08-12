@@ -14,7 +14,7 @@
 
 ## Recommended Order
 
-1. Publish and verify Web capture retry idempotency before closing feedback `ouLvFZr46JkPZ4a4T`.
+1. Complete the 72-hour production observation for Web capture retry idempotency before closing feedback `ouLvFZr46JkPZ4a4T`.
 2. Close the release and production-verification loop for runtime-context recovery attribution.
 3. Design proactive incident and recovery notifications.
 4. Roll the shared runtime-context contract out to applicable SDK runtimes.
@@ -25,7 +25,7 @@
 | ID | Priority | Status | Item | Evidence / Dependency | Next Review |
 | --- | --- | --- | --- | --- | --- |
 | TM-REL-001 | P2 | 待验证 | Release and verify runtime-context delivery recovery attribution | Release `2026.7.23-1` deployed from `88f3e81`; first live `new_runtime_recovery` evidence received; 24-hour observation pending | 2026-07-24 after the observation window |
-| ouLvFZr46JkPZ4a4T | P1 | 待发布 | Publish and verify Web capture retry idempotency | Local implementation and regression/full tests are complete; controlled production response-loss verification remains | After the next production release |
+| ouLvFZr46JkPZ4a4T | P1 | 待验证 | Publish and verify Web capture retry idempotency | Release `2026.8.12-1` and controlled same-ID retry passed; 72-hour stability observation remains | 2026-08-15 after the observation window |
 | TM-ALERT-001 | P2 | 待方案 | Add proactive important-incident and recovery notifications | Feedback `oSYMbGhavJYRp6KLp`; depends on incident lifecycle, thresholds, channels, and dedupe policy | Next product-planning review |
 | TM-RUNTIME-002 | P2 | 待实施 | Extend runtime context to applicable native/client SDKs | Shared contract exists; Web/Hybrid WebView is the reference implementation | After TM-REL-001 evidence review |
 | TM-DASH-001 | P3 | 待方案 | Visualize recovery classification, evidence quality, and coverage in Dashboard | Depends on stable production data from TM-REL-001 | After production evidence is representative |
@@ -34,17 +34,19 @@
 
 ### `ouLvFZr46JkPZ4a4T` — Web capture retry idempotency
 
-- Technical status: `待发布`; implemented and verified locally, not deployed.
+- Technical status: `待验证`; release `2026.8.12-1` / Web capture `2026.08.12.1` is live and the controlled same-ID retry passed; the 72-hour stability observation remains.
 - Problem evidence: Web queue records already have a stable local ID, but capture batches previously discarded it before transport, so a response lost after server persistence allowed the same `app_error` occurrence to be inserted again.
 - Target user and scenario: a customer relying on Web or Hybrid WebView error counts and project health while intermittent transport failures trigger queue retries.
 - Expected result: one client occurrence produces one Raw Behavior and one Semantic Event even when the same queue record is delivered more than once; distinct occurrences remain distinct.
+- Release evidence (2026-08-12): Galaxy and Cloudflare serve byte-identical 31,041-byte `capture.js` assets with hash `1be92f7e8f324d359b00b2084247bb8260c50201d633affebf7cdce2c27bb25a`; the production partial unique index is active; repeated controlled delivery of one Web `clientEventId` returned success and retained exactly one Raw Behavior and one processed Semantic Event, with zero duplicate groups and zero non-Web `clientEventId` rows.
+- Remaining validation: observe production for 72 hours for duplicate regression, ingestion-guard pollution, non-Web compatibility, and public projection leakage before closing the feedback.
 - Success criteria:
   - the generated Web capture payload reuses the queue record ID as an internal `clientEventId` on every attempt;
   - the same `projectId + clientEventId` is acknowledged without a second Raw Behavior, while a different ID with the same error fingerprint is accepted;
   - another project may independently use the same client ID;
   - the field does not enter public MCP, Dashboard, Semantic Event, or business properties;
   - legacy clients without the field remain compatible, and delivery retry diagnostics remain available;
-  - feedback `ouLvFZr46JkPZ4a4T` stays open until release and controlled production verification pass.
+  - feedback `ouLvFZr46JkPZ4a4T` stays open until the 72-hour production observation passes.
 - Minimum validation: focused red/green Web and server tests, full repository tests, then one controlled response-loss retry against TraceMind's own project with exactly one resulting Raw/Semantic occurrence.
 - Owner: TraceMind owner.
 - Failure action: keep the feedback open and roll back the Web/server release if event loss, false deduplication, or privacy regression appears.
