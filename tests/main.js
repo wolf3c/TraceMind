@@ -1738,7 +1738,7 @@ describe('TraceMind', function () {
         ['data-tracemind-endpoint', 'https://collector.example.com/api/capture'],
         ['data-tracemind-presence-endpoint', 'https://collector.example.com/api/presence'],
         ['data-tracemind-feedback-endpoint', 'https://collector.example.com/api/user-feedback'],
-        ['data-tracemind-framework', 'svelte'],
+        ['data-tracemind-framework', 'hybrid'],
         ['data-tracemind-user-id', 'user_123'],
         ['data-tracemind-user-id-provider', 'TraceMindUser.currentId'],
         ['data-tracemind-unknown', 'do-not-copy'],
@@ -1819,6 +1819,9 @@ describe('TraceMind', function () {
         },
       };
       sandbox.window = {
+        Capacitor: {
+          isNativePlatform() { return true; },
+        },
         TraceMindUser: { currentId: 'user_123' },
         localStorage: {
           getItem(key) { return storage.has(key) ? storage.get(key) : null; },
@@ -1840,7 +1843,7 @@ describe('TraceMind', function () {
       assert.strictEqual(replacement.attributes.get('data-tracemind-endpoint'), 'https://collector.example.com/api/capture');
       assert.strictEqual(replacement.attributes.get('data-tracemind-presence-endpoint'), 'https://collector.example.com/api/presence');
       assert.strictEqual(replacement.attributes.get('data-tracemind-feedback-endpoint'), 'https://collector.example.com/api/user-feedback');
-      assert.strictEqual(replacement.attributes.get('data-tracemind-framework'), 'svelte');
+      assert.strictEqual(replacement.attributes.get('data-tracemind-framework'), 'capacitor');
       assert.strictEqual(replacement.attributes.get('data-tracemind-user-id'), 'user_123');
       assert.strictEqual(replacement.attributes.get('data-tracemind-user-id-provider'), 'TraceMindUser.currentId');
       assert.strictEqual(replacement.attributes.has('data-tracemind-unknown'), false);
@@ -2309,87 +2312,107 @@ describe('TraceMind', function () {
       assert.ok(!serialized.includes('item?id=123'));
     });
 
-    it('attaches optional framework metadata to Web Auto Capture sources', async function () {
+    it('identifies the Web runtime container once and attaches it to capture and presence sources', async function () {
       const { Script, createContext } = await import('vm');
       const { clientScript } = await import('../server/capture_routes');
-      const storage = new Map();
-      const sessionStorage = new Map();
-      const sandbox = {
-        window: {},
-        document: {
-          title: 'Hybrid WebView',
-          referrer: '',
-          visibilityState: 'visible',
-          currentScript: {
-            getAttribute(name) {
-              if (name === 'data-tracemind-token') return 'tm_proj_test';
-              if (name === 'data-tracemind-framework') return 'Capacitor';
-              return null;
+      function capturedFramework(options = {}) {
+        const storage = new Map();
+        const sessionStorage = new Map();
+        const sandbox = {
+          window: {},
+          document: {
+            title: 'Web runtime',
+            referrer: '',
+            visibilityState: 'visible',
+            currentScript: {
+              getAttribute(name) {
+                if (name === 'data-tracemind-token') return 'tm_proj_test';
+                if (name === 'data-tracemind-framework') return options.explicit || null;
+                return null;
+              },
             },
+            addEventListener() {},
           },
+          navigator: {
+            userAgent: 'test-agent',
+            language: 'en',
+            platform: 'test',
+            onLine: true,
+          },
+          screen: { width: 1280, height: 720, colorDepth: 24 },
+          location: {
+            origin: 'https://app.example.com',
+            href: 'https://app.example.com/runtime',
+            pathname: '/runtime',
+            hash: '',
+            hostname: 'app.example.com',
+          },
+          history: { pushState() {}, replaceState() {} },
+          URL,
+          Intl,
+          Promise,
+          Blob,
+          Date,
+          Math,
+          JSON,
+          Object,
+          String,
+          Array,
+          Number,
+          setTimeout() { return 1; },
+          clearTimeout() {},
+          setInterval() { return 1; },
+          clearInterval() {},
+          fetch() {
+            return Promise.resolve({ ok: true, status: 202 });
+          },
+        };
+        sandbox.window = {
+          localStorage: {
+            getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+            setItem(key, value) { storage.set(key, value); },
+          },
+          sessionStorage: {
+            getItem(key) { return sessionStorage.has(key) ? sessionStorage.get(key) : null; },
+            setItem(key, value) { sessionStorage.set(key, value); },
+          },
+          innerWidth: 1280,
+          innerHeight: 720,
           addEventListener() {},
-        },
-        navigator: {
-          userAgent: 'test-agent',
-          language: 'en',
-          platform: 'test',
-          onLine: true,
-        },
-        screen: { width: 1280, height: 720, colorDepth: 24 },
-        location: {
-          origin: 'https://app.example.com',
-          href: 'https://app.example.com/webview',
-          pathname: '/webview',
-          hash: '',
-          hostname: 'app.example.com',
-        },
-        history: { pushState() {}, replaceState() {} },
-        URL,
-        Intl,
-        Promise,
-        Blob,
-        Date,
-        Math,
-        JSON,
-        Object,
-        String,
-        Array,
-        Number,
-        setTimeout() { return 1; },
-        clearTimeout() {},
-        setInterval() { return 1; },
-        clearInterval() {},
-        fetch() {
-          return Promise.resolve({ ok: true, status: 202 });
-        },
-      };
-      sandbox.window = {
-        localStorage: {
-          getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-          setItem(key, value) { storage.set(key, value); },
-        },
-        sessionStorage: {
-          getItem(key) { return sessionStorage.has(key) ? sessionStorage.get(key) : null; },
-          setItem(key, value) { sessionStorage.set(key, value); },
-        },
-        innerWidth: 1280,
-        innerHeight: 720,
-        addEventListener() {},
-      };
-      sandbox.localStorage = sandbox.window.localStorage;
-      sandbox.sessionStorage = sandbox.window.sessionStorage;
+        };
+        sandbox.localStorage = sandbox.window.localStorage;
+        sandbox.sessionStorage = sandbox.window.sessionStorage;
+        if (options.configure) options.configure(sandbox);
 
-      new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
-      sandbox.window.TraceMind.capture('custom', { eventName: 'webview_checkout' });
-      const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
-      const queued = JSON.parse(storage.get(queueKey));
-      const pageView = queued.find((record) => record.kind === 'capture' && record.payload.type === 'page_view');
-      const custom = queued.find((record) => record.kind === 'capture' && record.payload.eventName === 'webview_checkout');
-      const presence = queued.find((record) => record.kind === 'presence' && record.payload.state === 'start');
+        new Script(clientScript('https://tracemind.example.com')).runInContext(createContext(sandbox));
+        sandbox.window.TraceMind.capture('click', { target: 'runtime_button' });
+        const queueKey = [...storage.keys()].find((key) => key.startsWith('tracemind_queue_'));
+        const queued = JSON.parse(storage.get(queueKey));
+        return queued
+          .filter((record) => record.kind === 'presence' || record.payload.type === 'page_view' || record.payload.type === 'click')
+          .map((record) => record.payload.source.details.framework);
+      }
 
-      assert.strictEqual(pageView.payload.source.details.framework, 'capacitor');
-      assert.strictEqual(custom.payload.source.details.framework, 'capacitor');
-      assert.strictEqual(presence.payload.source.details.framework, 'capacitor');
+      const cases = [
+        ['browser fallback', {}, 'browser'],
+        ['explicit container', { explicit: 'Svelte', configure: ({ window }) => { window.Capacitor = { isNativePlatform() { return true; } }; } }, 'svelte'],
+        ['capacitor', { configure: ({ window }) => { window.Capacitor = { isNativePlatform() { return true; } }; } }, 'capacitor'],
+        ['electron', { configure: (sandbox) => { sandbox.process = { versions: { electron: '40.0.0' } }; } }, 'electron'],
+        ['tauri', { configure: ({ window }) => { window.__TAURI__ = {}; } }, 'tauri'],
+        ['cordova', { configure: ({ window }) => { window.cordova = {}; } }, 'cordova'],
+        ['pwa standalone', { configure: ({ window }) => { window.matchMedia = (query) => ({ matches: query === '(display-mode: standalone)' }); } }, 'pwa'],
+        ['pwa minimal ui', { configure: ({ window }) => { window.matchMedia = (query) => ({ matches: query === '(display-mode: minimal-ui)' }); } }, 'pwa'],
+        ['hybrid upgraded', { explicit: 'hybrid', configure: ({ window }) => { window.Capacitor = { isNativePlatform() { return true; } }; } }, 'capacitor'],
+        ['hybrid fallback', { explicit: 'hybrid' }, 'hybrid'],
+        ['conflict priority', { configure: ({ window }) => { window.Capacitor = { isNativePlatform() { return true; } }; window.cordova = {}; } }, 'capacitor'],
+        ['capacitor false falls through', { configure: ({ window }) => { window.Capacitor = { isNativePlatform() { return false; } }; window.cordova = {}; } }, 'cordova'],
+        ['throwing capacitor call falls through', { configure: ({ window }) => { window.Capacitor = { isNativePlatform() { throw new Error('blocked'); } }; window.cordova = {}; } }, 'cordova'],
+        ['throwing host access falls through', { configure: ({ window }) => { Object.defineProperty(window, 'Capacitor', { get() { throw new Error('blocked'); } }); window.cordova = {}; } }, 'cordova'],
+      ];
+
+      cases.forEach(([name, options, expected]) => {
+        assert.deepStrictEqual(capturedFramework(options), [expected, expected, expected], name);
+      });
     });
 
     it('queues web user feedback separately from capture and presence events', async function () {
@@ -4563,6 +4586,8 @@ projectKey: tm_proj_sensitive`,
       assert.ok(setup.structuredContent.manualCaptureExample.includes('window.TraceMind.capture'));
       assert.ok(setup.structuredContent.networkRestrictionChecks.some((check) => check.includes('script-src')));
       assert.ok(setup.structuredContent.networkRestrictionChecks.some((check) => check.includes('connect-src')));
+      assert.ok(setup.structuredContent.sourceModel.includes('framework is the runtime container'));
+      assert.ok(setup.structuredContent.sourceModel.includes('defaults to browser'));
       assert.ok(setup.structuredContent.notes.some((note) => note.includes('Do not use the MCP token')));
       assert.ok(!JSON.stringify(setup.structuredContent).includes('tm_mcp_'));
     });
@@ -4752,6 +4777,9 @@ projectKey: tm_proj_sensitive`,
       assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('implementation("io.github.wolf3c.tracemind:tracemind-android:')));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('/capture.js'));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-token="tm_proj_hybrid"'));
+      assert.ok(hybrid.structuredContent.sourceModel.includes('hybrid is a fallback'));
+      assert.ok(hybrid.structuredContent.sourceModel.includes('Capacitor, Electron, Tauri, Cordova, or PWA'));
+      assert.ok(hybrid.structuredContent.sourceModel.includes('configure an explicit value'));
       assert.ok(hybrid.structuredContent.captureSnippet.includes('data-tracemind-framework="hybrid"'));
       assert.ok(hybrid.structuredContent.install.includes('Web Auto Capture'));
       assert.ok(hybrid.structuredContent.installCommands.some((step) => step.includes('WebView')));

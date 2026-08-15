@@ -1,6 +1,6 @@
 # TraceMind Product Backlog
 
-> Last reviewed: 2026-08-12
+> Last reviewed: 2026-08-15
 >
 > This is the source of truth for active product and release follow-up work. Completed implementation history remains in [`implementation_progress.md`](./implementation_progress.md).
 
@@ -24,6 +24,7 @@
 
 | ID | Priority | Status | Item | Evidence / Dependency | Next Review |
 | --- | --- | --- | --- | --- | --- |
+| Nx3J7JKSvcoZ4fZsB | P2 | 待发布 | Identify the Web runtime container consistently | One AI分身术 shared H5 window had 20 Web events with missing framework; implementation is local and production scale remains unknown | After guarded release and real browser/Capacitor evidence |
 | TM-REL-001 | P2 | 待验证 | Correct and verify runtime-context delivery recovery attribution | Controlled checks proved foreground/background transport failures collapse to `unknownMs`; the two-field local fix awaits review, commit, and release | After the Web idempotency observation ends on 2026-08-15 |
 | ouLvFZr46JkPZ4a4T | P1 | 待验证 | Publish and verify Web capture retry idempotency | Release `2026.8.12-1` and controlled same-ID retry passed; 72-hour stability observation remains | 2026-08-15 after the observation window |
 | TM-ALERT-001 | P2 | 待发布 | Add opt-in important-incident and recovery email notifications | Feedback `oSYMbGhavJYRp6KLp`; email-only v1 is implemented locally and remains gated on the Web idempotency observation | After 2026-08-15T08:39:25Z |
@@ -31,6 +32,15 @@
 | TM-DASH-001 | P3 | 待方案 | Visualize recovery classification, evidence quality, and coverage in Dashboard | Depends on stable production data from TM-REL-001 | After production evidence is representative |
 
 ## Result Cards
+
+### `Nx3J7JKSvcoZ4fZsB` — Web runtime container identification
+
+- Technical status: `待发布`; the generated Web script now writes a runtime-container `framework` for new Web capture and presence events without changing storage or response schemas.
+- Product status: implemented but not validated in production; the feedback remains open.
+- Problem evidence: E1 plus behavior evidence from one AI分身术 shared H5 window: 20 Web events all lacked `framework`; overall customer scale is unknown.
+- Minimum solution: reuse `sourceDetails.framework`; explicit concrete values win, `hybrid` is a fallback, high-confidence detection checks Capacitor, Electron, Tauri, Cordova, then PWA once at initialization, and ordinary Web falls back to `browser`. No UA guessing, new entity, dependency, SDK field, migration, or backfill.
+- Success criteria: after release, the same shared H5 produces `browser` in an ordinary browser and `capacitor` in the native shell, both remain `platform/sourceType: web`, Raw and Semantic stay one-to-one, and Capture, Presence, and delivery health do not regress.
+- Owner: TraceMind owner. Keep the feedback unresolved until real Web/Capacitor production evidence passes; other containers require their own real host evidence before claiming production validation.
 
 ### `ouLvFZr46JkPZ4a4T` — Web capture retry idempotency
 

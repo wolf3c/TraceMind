@@ -2,6 +2,14 @@
 
 > Active release and product follow-up work is tracked in [`product_backlog.md`](./product_backlog.md).
 
+## 2026-08-15
+
+### Implemented Locally / Pending Release And Production Validation
+
+- Reused `sourceDetails.framework` as the Web runtime-container field. New Web capture and presence events now resolve one initialization-time value: a concrete explicit value wins; `hybrid` can upgrade through high-confidence Capacitor, Electron, Tauri, Cordova, or PWA signals; ordinary Web falls back to `browser`.
+- Kept `platform/sourceType: web`, source keys, device UA semantics, privacy projection, storage, MCP response shapes, SDK runtimes, Dashboard, and historical rows unchanged. Host access failures fall through safely; auto-updated scripts carry the resolved value. No entity, dependency, configuration, migration, backfill, SDK edit, version bump, release marker, or deployment was added.
+- Added red/green generated-client coverage for page view, manual capture, presence, detector precedence, explicit and Hybrid fallbacks, thrown host access, and auto-update propagation, plus `capture_setup` contract coverage. Feedback `Nx3J7JKSvcoZ4fZsB` remains open until a guarded release and real AI分身术 browser/Capacitor evidence pass.
+
 ## 2026-08-12
 
 ### Implemented Locally / Pending Review And Release

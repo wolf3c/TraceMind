@@ -100,7 +100,7 @@
 
 ## 设备、IP 与地理信息
 
-- Web 自动采集会发送 `deviceInfo`，包括 UA、语言、平台、时区、屏幕、viewport、硬件并发、内存和 referrer。
+- Web 自动采集会发送 `deviceInfo`，包括 UA、语言、平台、时区、屏幕、viewport、硬件并发、内存和 referrer；新事件还会在 `sourceDetails.framework` 记录初始化时识别的运行容器。有效显式具体值优先，`hybrid` 是可升级的兜底，高置信度宿主依次识别 Capacitor、Electron、Tauri、Cordova 和 PWA，无可靠信号时为 `browser`；浏览器品牌和版本仍只由 UA 表达。
 - iOS/macOS/Android 自动采集会发送平台、系统、框架、bundle id/package name、app label 和 SDK 框架来源；macOS 上 `deviceInfo.os` 为 `macOS`，`platform/sourceType` 为 `macos`；React Native 保持原生 `platform`，并用 `deviceInfo.framework` 或 `sourceDetails.framework` 标记 `react_native`。混合应用不新增事件平台，WebView 保持 Web 来源并可通过 `data-tracemind-framework` 写入 `sourceDetails.framework`，原生壳层保持 Native 来源，并用 framework metadata 标记具体壳层。小程序使用 `platform/sourceType: "mini_program"`，`sourceKey` 优先取 appId，`sourceDetails.provider` 标记微信、支付宝、抖音或钉钉。浏览器插件使用 `platform/sourceType: "browser_extension"`，`sourceKey` 优先取 extension id，只保留 `sourceDetails.browser`、`manifestVersion`、`runtimeContext` 和 `sdkVersion`。
 - 设备指纹只使用较稳定字段，避免 viewport/referrer 变化导致同一设备被频繁重算。
 - 服务端通过请求头采集 IP，包括 `x-forwarded-for`、`cf-connecting-ip`、`x-real-ip` 和 socket 地址。

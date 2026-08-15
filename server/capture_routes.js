@@ -3058,7 +3058,7 @@ function platformSetup(project, platform, options = {}) {
         type: 'web_plus_native',
         key: 'WebView hostname plus native bundle id or package name.',
       },
-      sourceModel: 'Do not create a hybrid event platform. WebView events remain platform web/sourceType web and can mark sourceDetails.framework through data-tracemind-framework; native shell events remain ios, macos, or android and can mark deviceInfo.framework/sourceDetails.framework as hybrid, capacitor, cordova, electron, tauri, or the specific shell framework when available.',
+      sourceModel: 'Do not create a hybrid event platform. WebView events remain platform web/sourceType web; sourceDetails.framework is the runtime container. A concrete data-tracemind-framework value wins; hybrid is a fallback that upgrades to Capacitor, Electron, Tauri, Cordova, or PWA when a high-confidence host signal is available. If Electron or Tauri hides its host signal, configure an explicit value. Native shell events remain ios, macos, or android and keep their existing framework metadata.',
       autoCapturedSignals: [
         'WebView page view, route change, click, input changed without input values, submit, JavaScript error summaries, and active time from Web Auto Capture',
         'Native shell app/session start, screen/view changes, tap/click, input changed without input values, submit, and active time from the matching native SDK',
@@ -3670,7 +3670,7 @@ function platformSetup(project, platform, options = {}) {
       type: 'web',
       key: 'Request Origin or Referer hostname.',
     },
-    sourceModel: 'platform is web; sourceKey is normalized from request Origin or Referer hostname.',
+    sourceModel: 'platform is web; sourceKey is normalized from request Origin or Referer hostname; sourceDetails.framework is the runtime container, honors a concrete data-tracemind-framework value, and defaults to browser when no high-confidence Capacitor, Electron, Tauri, Cordova, or PWA signal is available. Browser brand and version remain in deviceInfo.userAgent.',
     autoCapturedSignals: [
       ...AUTO_CAPTURE_SIGNALS,
       'window error and unhandledrejection summaries as app_error without stack traces',
@@ -5403,7 +5403,7 @@ export function clientScript(host) {
   var feedbackEndpoint = (script && script.getAttribute('data-tracemind-feedback-endpoint')) || '${origins.apiOrigin}/api/user-feedback';
   var staticUserId = script && script.getAttribute('data-tracemind-user-id');
   var userIdProvider = script && script.getAttribute('data-tracemind-user-id-provider');
-  var sourceFramework = frameworkName(script && script.getAttribute('data-tracemind-framework'));
+  var sourceFramework = runtimeContainer(script && script.getAttribute('data-tracemind-framework'));
   var pageContext = window.__TraceMindPageContext;
   if (!pageContext || typeof pageContext !== 'object' || !pageContext.runtimeInstanceId) {
     pageContext = {
@@ -5488,6 +5488,27 @@ export function clientScript(host) {
   function frameworkName(value) {
     var text = String(value || '').trim().toLowerCase();
     return /^[a-z][a-z0-9_-]{0,39}$/.test(text) ? text : '';
+  }
+
+  function runtimeContainer(value) {
+    var explicit = frameworkName(value);
+    if (explicit && explicit !== 'hybrid') return explicit;
+    try {
+      if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform() === true) return 'capacitor';
+    } catch (error) {}
+    try {
+      if (typeof process !== 'undefined' && process && process.versions && process.versions.electron) return 'electron';
+    } catch (error) {}
+    try {
+      if (window.__TAURI__) return 'tauri';
+    } catch (error) {}
+    try {
+      if (window.cordova) return 'cordova';
+    } catch (error) {}
+    try {
+      if (typeof window.matchMedia === 'function' && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: minimal-ui)').matches)) return 'pwa';
+    } catch (error) {}
+    return explicit || 'browser';
   }
 
   function readLocal(key) {
@@ -6227,7 +6248,7 @@ export function clientScript(host) {
     copyScriptAttribute('data-tracemind-endpoint');
     copyScriptAttribute('data-tracemind-presence-endpoint');
     copyScriptAttribute('data-tracemind-feedback-endpoint');
-    copyScriptAttribute('data-tracemind-framework', sourceFramework);
+    if (sourceFramework) nextScript.setAttribute('data-tracemind-framework', sourceFramework);
     copyScriptAttribute('data-tracemind-user-id', staticUserId);
     copyScriptAttribute('data-tracemind-user-id-provider', userIdProvider);
     nextScript.onload = function () {
