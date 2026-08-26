@@ -2,6 +2,14 @@
 
 > Active release and product follow-up work is tracked in [`product_backlog.md`](./product_backlog.md).
 
+## 2026-08-26
+
+### Implemented Locally / Pending Release And Production Validation
+
+- Reduced TM-ALERT-001 email eligibility to `failure_events_increased`; `event_stream_stopped` remains unchanged in Dashboard/MCP health and no longer opens an email incident. The observed 169-hour replay projects 13 incidents and 12 recoveries instead of 31/30, about 58% fewer incident transitions with no first-failure delay; these are signal transitions, not actual delivery receipts.
+- Reused the existing two-state `healthAlertState`. Legacy stream-only open state now silently normalizes to normal, a concurrent failure opens a new incident, and mixed legacy state retains only the failure rule. No field, status, entity, collection, index, migration, queue, threshold, baseline algorithm, SDK/MCP/capture contract, Dashboard control, or dependency was added.
+- Added red/green server coverage for stream-stop suppression, legacy state normalization, failure opening from legacy state, mixed-state filtering, the retained incident/recovery lifecycle, privacy, retry, and concurrent disable semantics. This optimization is not released, deployed, or production-validated; feedback `oSYMbGhavJYRp6KLp` remains `triaged`.
+
 ## 2026-08-15
 
 ### Implemented Locally / Pending Release And Production Validation

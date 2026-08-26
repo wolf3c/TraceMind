@@ -2,13 +2,15 @@
 
 > Date: 2026-08-12
 >
-> Status: 用户已确认方案，待书面规格复核
+> Updated: 2026-08-26
+>
+> Status: v1 已于 `2026.8.15-1` 发布；KISS 降噪优化已在本地实现，待发布与生产验证
 >
 > Feedback: `oSYMbGhavJYRp6KLp` / backlog `TM-ALERT-001`
 
 ## Decision
 
-第一版只提供项目负责人邮件通知，并直接复用现有小时健康报告、`attentionItemsForHealth()`、五分钟刷新任务、开发者登录邮箱和 Meteor Email/Mailgun。
+邮件通知只面向项目负责人，并直接复用现有小时健康报告、`attentionItemsForHealth()`、五分钟刷新任务、开发者登录邮箱和 Meteor Email/Mailgun。邮件 allowlist 只包含 `failure_events_increased`；`event_stream_stopped` 继续保留在 Dashboard/MCP 健康诊断中，但不再触发邮件。
 
 不新增 Incident 实体、MongoDB collection、索引、迁移、规则引擎、通知队列或第三方通知渠道。唯一持久化状态是现有 Project 文档上的启用开关和一个服务端内部状态子文档。
 
@@ -18,10 +20,12 @@
 - TraceMind 已能通过 Dashboard 和 MCP 展示 `needs_attention`、高严重度健康项和 delivery health，但负责人必须主动查看。
 - 2026-07-20 聚合报告记录 944 个事件、210 个失败事件；前一天为 378 个事件、48 个失败事件。小时报告也显示连续失败高峰。
 - 证据足以确认单项目的真实运营缺口，但不足以证明所有客户都需要该能力。因此第一版必须是 opt-in 小范围验证。
+- `2026.8.15-1` 发布后的即时验收确认了一次事故、持续异常不重复和一次恢复；随后 169 小时确定性回放得到 31 次事故和 30 次恢复，说明正常/开放反复切换存在邮件噪声风险。
+- 仅保留 `failure_events_increased` 的同窗口回放得到 13 次事故和 12 次恢复，事故邮件预计减少约 58%，且不增加首次失败告警延迟。该结果是信号回放，不是邮件服务商实际投递量，也不证明长期噪声已经可接受。
 
 ## Product Result
 
-启用邮件健康告警后，项目负责人应在已有高严重度健康信号首次出现时收到一封事故邮件，在该健康信号恢复正常后收到一封恢复邮件；异常持续期间不重复发送。
+启用邮件健康告警后，项目负责人应在失败事件数高于前一天同一已结束小时且大于零时收到一封事故邮件，在该失败规则恢复正常后收到一封恢复邮件；异常持续期间不重复发送。
 
 “恢复”只表示 TraceMind 的健康规则不再触发，不证明客户服务、TraceMind 服务或外部网络已经恢复。
 
@@ -29,11 +33,15 @@
 
 ### Selected: completed-hour health transition email
 
-每五分钟运行的现有健康任务继续生成已结束小时报告。对启用邮件告警的项目，比较最近已结束小时与前一天相同时段，复用 `attentionItemsForHealth()`，并只接受当前已确认的 `event_stream_stopped` 和 `failure_events_increased` 两个 high code。
+每五分钟运行的现有健康任务继续生成已结束小时报告。对启用邮件告警的项目，比较最近已结束小时与前一天相同时段，复用 `attentionItemsForHealth()`，并只接受 `failure_events_increased` 这一 high code。
 
 优点：不引入新指标语义，不重复查询明细事件，不增加实时规则系统，并与 Dashboard/MCP 的现有健康定义保持一致。
 
 代价：告警延迟约 5–65 分钟。这是明确接受的 MVP 边界，不能描述为实时告警。
+
+### Rejected: fixed hysteresis or adaptive scoring
+
+固定连续小时门槛会延迟真实的一小时失败信号；置信度、历史复发风险和恢复积分会增加状态与策略复杂度。现有证据支持先缩小邮件规则，而不是增加新的状态机。
 
 ### Rejected: five-minute rolling incident detector
 
@@ -85,12 +93,18 @@ Webhook 需要 URL 与密钥配置、签名、超时、重试和投递记录；�
 
 ## Evaluation Flow
 
-1. `refreshCompletedHourDraftReports()` 的候选项目由“最近有活动的项目”扩展为“最近有活动的项目 + 已启用邮件告警的项目”。这保证当前小时没有事件时仍能评估 `event_stream_stopped`。
+1. `refreshCompletedHourDraftReports()` 的候选项目继续包含“最近有活动的项目 + 已启用邮件告警的项目”。这保证开放的失败事故在后续无活动时仍能生成当前报告并评估恢复。
 2. 现有逻辑继续物化最近已结束小时以及前一天相同时段的 `ProjectHourlyReports`。
 3. 报告持久化成功后，独立调用邮件告警评估器；邮件逻辑失败不得回滚或阻塞健康报告。
 4. 评估器读取当前小时和前一天相同时段。任一报告缺失时标记为证据不可用，不发送事故或恢复邮件，也不改变现有状态。
-5. 调用现有 `attentionItemsForHealth(current, previous, hourEndAt, { comparisonWindow: 'completed_hours' })`，只保留 `severity === 'high'` 且 code 属于固定 allowlist `event_stream_stopped` / `failure_events_increased` 的项目。未来新增 high rule 不会自动开始发邮件，必须单独评审后加入 allowlist。
+5. 调用现有 `attentionItemsForHealth(current, previous, hourEndAt, { comparisonWindow: 'completed_hours' })`，只保留 `severity === 'high'` 且 code 为 `failure_events_increased` 的项目。`event_stream_stopped` 和未来新增 high rule 不会自动发邮件，必须有新的证据和单独评审才能进入 allowlist。
 6. 同一个 `evaluatedHourKey` 已处理时直接返回。
+
+兼容已有状态：
+
+- 旧 open 状态中的 code 先经过当前 allowlist 过滤；没有剩余有效 code 时视为 normal。
+- 仅含 `event_stream_stopped` 的旧 open 状态在下一次评估时静默保存 normal，不发送空规则恢复邮件。
+- 如果同次评估出现 `failure_events_increased`，按 normal -> open 发送新事故；混合旧状态只保留失败规则，后续恢复邮件也只列出该规则。
 
 状态转换：
 
@@ -101,7 +115,7 @@ Webhook 需要 URL 与密钥配置、签名、超时、重试和投递记录；�
 | open | one or more | 保持 open，只推进 `evaluatedHourKey`，不重复通知。 |
 | open | none | 发送一封健康信号恢复邮件；成功后保存 normal 状态。 |
 
-项目级 open 状态是第一版的天然冷却机制：异常持续期间即使高严重度 code 变化也不发送更新或第二起事故。只有先恢复到 normal，未来再次出现 high 才会发送新的事故邮件。
+项目级 open 状态是天然冷却机制：失败规则持续触发期间不发送更新或第二起事故。只有先恢复到 normal，未来再次触发才会发送新的事故邮件。
 
 ## Email Contract
 
@@ -166,13 +180,15 @@ tracemind.project.healthAlert.setEnabled(projectId, enabled)
 1. 开关默认为 false，只有 owner 能修改。
 2. publication/public Project 只包含 `healthAlertEnabled`，绝不包含 `healthAlertState`。
 3. 启用但无近期活动的项目仍生成可比较的已结束小时报告。
-4. normal -> high 发送一封事故邮件并保存 open。
+4. normal -> `failure_events_increased` 发送一封事故邮件并保存 open。
 5. 同一小时重复刷新和后续持续 high 均不重复发送。
 6. open -> normal 只发送一封“健康信号恢复”邮件。
-7. 当前或对比报告缺失时不误报恢复。
-8. 邮件发送失败不影响健康报告，状态保持不变，下一轮可以重试。
-9. 关闭开关不发送并清除内部状态。
-10. 邮件 payload 和公开投影不包含禁止字段。
+7. `event_stream_stopped` 单独出现时不发送邮件。
+8. 旧 stream-only 和混合 open 状态按当前 allowlist 静默归一，不发送空规则邮件。
+9. 当前或对比报告缺失时不误报恢复。
+10. 邮件发送失败不影响健康报告，状态保持不变，下一轮可以重试。
+11. 关闭开关不发送并清除内部状态。
+12. 邮件 payload 和公开投影不包含禁止字段。
 
 ### Broader verification
 
@@ -183,11 +199,11 @@ tracemind.project.healthAlert.setEnabled(projectId, enabled)
 
 ## Rollout and Product Validation
 
-1. 实现和本地验证可以独立进行；部署不得干扰 Web retry idempotency 的 72 小时观察窗口。
-2. 发布后先只在 `AI分身术` 项目启用。
-3. 完成一次受控 high、一次持续 high 和一次恢复检查，确认分别为 1 封事故、0 封重复、1 封恢复邮件。
-4. 继续观察 7 天，由项目负责人确认邮件是否及时、有用且没有明显噪声。没有依据时不设虚构的点击率或响应时间目标。
-5. 只有端到端验证和观察均通过后，才将 `oSYMbGhavJYRp6KLp` 标记 resolved；否则保持 opt-in，并根据证据调整或停止。
+1. 原始 v1 已随 `2026.8.15-1` 发布，并在 `AI分身术` 完成一次事故、持续异常抑制和一次恢复的即时验收。
+2. 七天回放暴露反复开关噪声后，反馈 `oSYMbGhavJYRp6KLp` 保持 `triaged`，不能据此标记 resolved。
+3. 本次 failure-only 优化必须独立发布；无需数据库迁移，部署前也不修改生产开关或告警状态。
+4. 发布后完成一次受控失败、一次持续失败和一次恢复检查，确认分别为 1 封事故、0 封重复、1 封恢复邮件；若邮件服务商回执可用，以回执验证实际投递。
+5. 继续观察 7 天，由项目负责人确认邮件是否及时、有用且没有明显噪声。只有端到端验证和观察均通过后才将反馈标记 resolved。
 
 回滚只需关闭项目开关或回滚 server/UI 版本。因为没有新 collection、索引或迁移，不需要数据回滚。
 

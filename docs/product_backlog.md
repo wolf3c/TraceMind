@@ -1,6 +1,6 @@
 # TraceMind Product Backlog
 
-> Last reviewed: 2026-08-15
+> Last reviewed: 2026-08-26
 >
 > This is the source of truth for active product and release follow-up work. Completed implementation history remains in [`implementation_progress.md`](./implementation_progress.md).
 
@@ -27,7 +27,7 @@
 | Nx3J7JKSvcoZ4fZsB | P2 | 待发布 | Identify the Web runtime container consistently | One AI分身术 shared H5 window had 20 Web events with missing framework; implementation is local and production scale remains unknown | After guarded release and real browser/Capacitor evidence |
 | TM-REL-001 | P2 | 待验证 | Correct and verify runtime-context delivery recovery attribution | Controlled checks proved foreground/background transport failures collapse to `unknownMs`; the two-field local fix awaits review, commit, and release | After the Web idempotency observation ends on 2026-08-15 |
 | ouLvFZr46JkPZ4a4T | P1 | 待验证 | Publish and verify Web capture retry idempotency | Release `2026.8.12-1` and controlled same-ID retry passed; 72-hour stability observation remains | 2026-08-15 after the observation window |
-| TM-ALERT-001 | P2 | 待发布 | Add opt-in important-incident and recovery email notifications | Feedback `oSYMbGhavJYRp6KLp`; email-only v1 is implemented locally and remains gated on the Web idempotency observation | After 2026-08-15T08:39:25Z |
+| TM-ALERT-001 | P2 | 待优化发布 | Reduce opt-in failure incident and recovery email noise | `2026.8.15-1` 已发布；七天回放发现 31 次事故/30 次恢复，本地 failure-only 策略回放为 13/12 | 优化发布并完成七天实际投递观察后 |
 | TM-RUNTIME-002 | P2 | 待实施 | Extend runtime context to applicable native/client SDKs | Shared contract exists; Web/Hybrid WebView is the reference implementation | After TM-REL-001 evidence review |
 | TM-DASH-001 | P3 | 待方案 | Visualize recovery classification, evidence quality, and coverage in Dashboard | Depends on stable production data from TM-REL-001 | After production evidence is representative |
 
@@ -101,18 +101,20 @@
 
 ### TM-ALERT-001 — Proactive incident and recovery notifications
 
-- Problem evidence: project health can create attention items, but TraceMind has no outbound incident lifecycle or recovery notification.
+- Problem evidence: `2026.8.15-1` 已提供邮件事故生命周期；即时生产验收通过一次事故、持续异常抑制和一次恢复，但随后 169 小时回放得到 31 次事故和 30 次恢复，反复开关造成噪声风险。
 - Target user and scenario: a small product team that does not continuously watch the Dashboard or ask an agent for health.
-- Expected result: opted-in projects send one important incident email and one recovery email to the existing project owner address, with privacy-safe aggregate evidence and a clear lifecycle.
-- Local implementation (2026-08-12, not deployed): email-only v1 reuses completed-hour reports, the existing high-severity `event_stream_stopped` and `failure_events_increased` rules, `Developer.email`, and the current Mailgun delivery path. `Project.healthAlertEnabled` is the only owner-visible setting; compact internal state suppresses same-hour and ongoing duplicates, sends before advancing state so SMTP failures retry, and is removed when the owner disables alerts. No recipient profile, channel model, queue, collection, migration, or SDK contract was added.
+- Expected result: opted-in projects immediately email increases in failure events and send one recovery to the existing project owner address, without emailing `event_stream_stopped` or adding alert-platform complexity.
+- Local optimization (2026-08-26, not deployed): the email allowlist now keeps only `failure_events_increased`; `event_stream_stopped` remains unchanged in Dashboard/MCP health. Legacy stream-only open state silently normalizes, while mixed state retains only the failure rule. The same-window replay projects 13 incidents and 12 recoveries, about 58% fewer incidents than 31/30, without delaying the first failure email. These are replayed signal transitions, not Mailgun delivery receipts. No field, status, entity, collection, queue, index, migration, threshold, SDK/MCP contract, Dashboard setting, or dependency was added.
 - Success criteria:
   - evaluate only after both the just-completed hour and yesterday's matching hour are available;
   - email only the current `Developer.email` after explicit project opt-in;
-  - send one incident on transition to open, suppress ongoing and same-hour duplicates, then send one recovery on transition back to normal;
+  - send one incident only for `failure_events_increased`, suppress ongoing and same-hour duplicates, then send one recovery on transition back to normal;
+  - keep `event_stream_stopped` visible in Dashboard/MCP health without opening an email incident;
+  - silently normalize retired stream-only state and filter mixed legacy state without empty-rule emails;
   - retry after SMTP failure by writing state only after successful delivery;
   - include only project name, aggregate counts, compared time ranges, rule labels, and the Dashboard root URL;
   - feedback `oSYMbGhavJYRp6KLp` is resolved only after end-to-end delivery and recovery verification.
-- Minimum validation: after the gated release, one controlled incident, zero ongoing duplicates, one recovery notification, and seven days of observation.
+- Minimum validation: after the optimization release, one controlled failure incident, zero ongoing duplicates, one recovery notification, and seven days of actual delivery observation.
 - Owner: TraceMind owner.
 - Failure action: keep alerts opt-in and do not expand channels until false-positive and delivery evidence is acceptable.
 

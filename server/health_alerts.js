@@ -14,7 +14,6 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 export const PROJECT_HEALTH_EMAIL_ALERT_CODES = Object.freeze([
-  'event_stream_stopped',
   'failure_events_increased',
 ]);
 
@@ -43,7 +42,10 @@ export function buildProjectHealthEmailAlertDecision({
     item.severity === 'high'
     && PROJECT_HEALTH_EMAIL_ALERT_CODES.includes(item.code)
   ));
-  const previousStatus = state?.status === 'open' ? 'open' : 'normal';
+  const previousCodes = allowedCodes(state?.codes);
+  const previousStatus = state?.status === 'open' && previousCodes.length
+    ? 'open'
+    : 'normal';
   const nextStatus = highItems.length ? 'open' : 'normal';
   const transition = previousStatus === nextStatus
     ? null
@@ -54,7 +56,7 @@ export function buildProjectHealthEmailAlertDecision({
         evaluatedHourKey: currentReport.hourKey,
         openedAt: previousStatus === 'open' ? state.openedAt : currentReport.hourEndAt,
         codes: previousStatus === 'open'
-          ? allowedCodes(state.codes)
+          ? previousCodes
           : allowedCodes(highItems.map((item) => item.code)),
         updatedAt: now,
       }

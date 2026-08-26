@@ -10535,8 +10535,14 @@ projectKey: tm_proj_sensitive`,
 
     it('decides one incident, suppresses an open hour, and decides one recovery', function () {
       const now = new Date('2026-08-12T08:05:00.000Z');
-      const currentIncident = healthAlertHourlyReport('2026-08-12T07:00:00.000Z', { eventCount: 0 });
-      const previousIncident = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', { eventCount: 12 });
+      const currentIncident = healthAlertHourlyReport('2026-08-12T07:00:00.000Z', {
+        eventCount: 8,
+        failureEventCount: 4,
+      });
+      const previousIncident = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', {
+        eventCount: 5,
+        failureEventCount: 1,
+      });
       const incident = buildProjectHealthEmailAlertDecision({
         currentReport: currentIncident,
         previousReport: previousIncident,
@@ -10544,7 +10550,7 @@ projectKey: tm_proj_sensitive`,
       });
 
       assert.strictEqual(incident.transition, 'incident');
-      assert.deepStrictEqual(incident.nextState.codes, ['event_stream_stopped']);
+      assert.deepStrictEqual(incident.nextState.codes, ['failure_events_increased']);
       assert.strictEqual(incident.nextState.openedAt.toISOString(), '2026-08-12T08:00:00.000Z');
       assert.strictEqual(buildProjectHealthEmailAlertDecision({
         state: incident.nextState,
@@ -10562,7 +10568,7 @@ projectKey: tm_proj_sensitive`,
         now,
       });
       assert.strictEqual(open.transition, null);
-      assert.deepStrictEqual(open.nextState.codes, ['event_stream_stopped']);
+      assert.deepStrictEqual(open.nextState.codes, ['failure_events_increased']);
       assert.strictEqual(open.nextState.openedAt.toISOString(), '2026-08-12T08:00:00.000Z');
 
       const currentRecovery = healthAlertHourlyReport('2026-08-12T09:00:00.000Z', { eventCount: 8 });
@@ -10593,13 +10599,148 @@ projectKey: tm_proj_sensitive`,
       }), null);
     });
 
+    it('does not email for event stream stops', function () {
+      const now = new Date('2026-08-12T08:05:00.000Z');
+      const currentReport = healthAlertHourlyReport('2026-08-12T07:00:00.000Z', { eventCount: 0 });
+      const previousReport = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', { eventCount: 12 });
+      const decision = buildProjectHealthEmailAlertDecision({
+        currentReport,
+        previousReport,
+        now,
+      });
+
+      assert.strictEqual(decision.transition, null);
+      assert.deepStrictEqual(decision.highItems, []);
+      assert.deepStrictEqual(decision.nextState, {
+        status: 'normal',
+        evaluatedHourKey: currentReport.hourKey,
+        updatedAt: now,
+      });
+    });
+
+    it('silently retires legacy stream-only alert state', function () {
+      const now = new Date('2026-08-12T09:05:00.000Z');
+      const currentReport = healthAlertHourlyReport('2026-08-12T08:00:00.000Z', { eventCount: 8 });
+      const previousReport = healthAlertHourlyReport('2026-08-11T08:00:00.000Z', { eventCount: 5 });
+      const legacyState = {
+        status: 'open',
+        evaluatedHourKey: '2026-08-12T07:00:00.000Z',
+        openedAt: new Date('2026-08-12T08:00:00.000Z'),
+        codes: ['event_stream_stopped'],
+        updatedAt: new Date('2026-08-12T08:05:00.000Z'),
+      };
+      const decision = buildProjectHealthEmailAlertDecision({
+        state: legacyState,
+        currentReport,
+        previousReport,
+        now,
+      });
+
+      assert.strictEqual(decision.transition, null);
+      assert.deepStrictEqual(decision.nextState, {
+        status: 'normal',
+        evaluatedHourKey: currentReport.hourKey,
+        updatedAt: now,
+      });
+    });
+
+    it('opens a failure incident from legacy stream-only alert state', function () {
+      const now = new Date('2026-08-12T09:05:00.000Z');
+      const currentReport = healthAlertHourlyReport('2026-08-12T08:00:00.000Z', {
+        eventCount: 8,
+        failureEventCount: 4,
+      });
+      const previousReport = healthAlertHourlyReport('2026-08-11T08:00:00.000Z', {
+        eventCount: 5,
+        failureEventCount: 1,
+      });
+      const decision = buildProjectHealthEmailAlertDecision({
+        state: {
+          status: 'open',
+          evaluatedHourKey: '2026-08-12T07:00:00.000Z',
+          openedAt: new Date('2026-08-12T08:00:00.000Z'),
+          codes: ['event_stream_stopped'],
+          updatedAt: new Date('2026-08-12T08:05:00.000Z'),
+        },
+        currentReport,
+        previousReport,
+        now,
+      });
+
+      assert.strictEqual(decision.transition, 'incident');
+      assert.deepStrictEqual(decision.nextState.codes, ['failure_events_increased']);
+      assert.strictEqual(decision.nextState.openedAt.toISOString(), '2026-08-12T09:00:00.000Z');
+    });
+
+    it('keeps only failure alerts from mixed legacy state', function () {
+      const now = new Date('2026-08-12T09:05:00.000Z');
+      const currentReport = healthAlertHourlyReport('2026-08-12T08:00:00.000Z', {
+        eventCount: 8,
+        failureEventCount: 4,
+      });
+      const previousReport = healthAlertHourlyReport('2026-08-11T08:00:00.000Z', {
+        eventCount: 5,
+        failureEventCount: 1,
+      });
+      const openedAt = new Date('2026-08-12T08:00:00.000Z');
+      const decision = buildProjectHealthEmailAlertDecision({
+        state: {
+          status: 'open',
+          evaluatedHourKey: '2026-08-12T07:00:00.000Z',
+          openedAt,
+          codes: ['event_stream_stopped', 'failure_events_increased'],
+          updatedAt: new Date('2026-08-12T08:05:00.000Z'),
+        },
+        currentReport,
+        previousReport,
+        now,
+      });
+
+      assert.strictEqual(decision.transition, null);
+      assert.deepStrictEqual(decision.nextState.codes, ['failure_events_increased']);
+      assert.strictEqual(decision.nextState.openedAt, openedAt);
+
+      const recoveryCurrentReport = healthAlertHourlyReport('2026-08-12T09:00:00.000Z', {
+        eventCount: 8,
+        failureEventCount: 1,
+      });
+      const recoveryPreviousReport = healthAlertHourlyReport('2026-08-11T09:00:00.000Z', {
+        eventCount: 5,
+        failureEventCount: 1,
+      });
+      const recovery = buildProjectHealthEmailAlertDecision({
+        state: decision.nextState,
+        currentReport: recoveryCurrentReport,
+        previousReport: recoveryPreviousReport,
+        now,
+      });
+      const message = buildProjectHealthAlertEmail({
+        project: { name: 'Legacy Alert' },
+        developer: { email: 'owner@example.com' },
+        decision: recovery,
+        currentReport: recoveryCurrentReport,
+        previousReport: recoveryPreviousReport,
+        dashboardUrl: 'https://tracemind.app/',
+      });
+
+      assert.strictEqual(recovery.transition, 'recovery');
+      assert.match(message.text, /failure_events_increased/);
+      assert.strictEqual(message.text.includes('event_stream_stopped'), false);
+    });
+
     it('builds privacy-safe health alert email', function () {
       const currentReport = {
-        ...healthAlertHourlyReport('2026-08-12T07:00:00.000Z', { eventCount: 0 }),
+        ...healthAlertHourlyReport('2026-08-12T07:00:00.000Z', {
+          eventCount: 8,
+          failureEventCount: 4,
+        }),
         rawError: 'stack trace',
         sessionId: 'session-secret',
       };
-      const previousReport = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', { eventCount: 12 });
+      const previousReport = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', {
+        eventCount: 5,
+        failureEventCount: 1,
+      });
       const decision = buildProjectHealthEmailAlertDecision({
         currentReport,
         previousReport,
@@ -10616,11 +10757,12 @@ projectKey: tm_proj_sensitive`,
 
       assert.strictEqual(message.subject, '[TraceMind] AI 分身术 需要关注');
       assert.strictEqual(message.to, 'owner@example.com');
-      assert.match(message.text, /event_stream_stopped/);
-      assert.match(message.text, /当前小时事件数：0/);
-      assert.match(message.text, /对比小时事件数：12/);
-      assert.match(message.text, /当前小时失败事件数：0/);
-      assert.match(message.text, /对比小时失败事件数：0/);
+      assert.match(message.text, /failure_events_increased/);
+      assert.strictEqual(message.text.includes('event_stream_stopped'), false);
+      assert.match(message.text, /当前小时事件数：8/);
+      assert.match(message.text, /对比小时事件数：5/);
+      assert.match(message.text, /当前小时失败事件数：4/);
+      assert.match(message.text, /对比小时失败事件数：1/);
       assert.match(message.text, /Asia\/Shanghai/);
       assert.match(message.text, /^https:\/\/tracemind\.app\/$/m);
       assert.strictEqual(message.text.includes('stack trace'), false);
@@ -10631,10 +10773,22 @@ projectKey: tm_proj_sensitive`,
     it('retries health email delivery and keeps concurrent disable authoritative', async function () {
       const projectId = `project-health-alert-delivery-${Date.now()}`;
       const developerId = `developer-health-alert-delivery-${Date.now()}`;
-      const currentIncident = healthAlertHourlyReport('2026-08-12T07:00:00.000Z', { eventCount: 0 });
-      const previousIncident = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', { eventCount: 12 });
-      const currentRecovery = healthAlertHourlyReport('2026-08-12T08:00:00.000Z', { eventCount: 8 });
-      const previousRecovery = healthAlertHourlyReport('2026-08-11T08:00:00.000Z', { eventCount: 5 });
+      const currentIncident = healthAlertHourlyReport('2026-08-12T07:00:00.000Z', {
+        eventCount: 8,
+        failureEventCount: 4,
+      });
+      const previousIncident = healthAlertHourlyReport('2026-08-11T07:00:00.000Z', {
+        eventCount: 5,
+        failureEventCount: 1,
+      });
+      const currentRecovery = healthAlertHourlyReport('2026-08-12T08:00:00.000Z', {
+        eventCount: 8,
+        failureEventCount: 1,
+      });
+      const previousRecovery = healthAlertHourlyReport('2026-08-11T08:00:00.000Z', {
+        eventCount: 5,
+        failureEventCount: 1,
+      });
       const currentSecondIncident = healthAlertHourlyReport('2026-08-12T09:00:00.000Z', { failureEventCount: 4 });
       const previousSecondIncident = healthAlertHourlyReport('2026-08-11T09:00:00.000Z', { failureEventCount: 1 });
       const logs = [];
