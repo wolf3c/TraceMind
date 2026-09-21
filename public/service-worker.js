@@ -1,4 +1,4 @@
-const TRACE_MIND_SERVICE_WORKER_VERSION = "2026-06-11.1";
+const TRACE_MIND_SERVICE_WORKER_VERSION = "2026-09-21.1";
 const TRACE_MIND_PAGE_CACHE = `tracemind-page-shell-${TRACE_MIND_SERVICE_WORKER_VERSION}`;
 const TRACE_MIND_PAGE_CACHE_PREFIX = "tracemind-page-shell-";
 const TRACE_MIND_SHELL_URL = "/";
@@ -72,6 +72,7 @@ function shouldHandleRequest(request) {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return false;
 
+  if (url.pathname.startsWith("/_oauth/")) return false;
   if (url.pathname.startsWith("/api/")) return false;
   if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) return false;
   if (url.pathname.startsWith("/sockjs/")) return false;

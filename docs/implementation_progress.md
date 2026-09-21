@@ -2,6 +2,14 @@
 
 > Active release and product follow-up work is tracked in [`product_backlog.md`](./product_backlog.md).
 
+## 2026-09-21
+
+### Implemented Locally / Pending Release And Production Validation
+
+- Excluded `/_oauth/` callbacks from console Service Worker interception and bumped its page cache version to `2026-09-21.1`, reusing activation cleanup. Google/GitHub callbacks now bypass the cached homepage.
+- Runtime impact matrix: Web/PWA and Dashboard login — change; iOS, macOS, Android, React Native, Hybrid, Mini Program, Browser Extension, server SDKs, MCP, Agent Skill and API — no change, because this worker owns only the hosted console shell. No SDK, account configuration or UI layout changes.
+- Verification: the OAuth regression failed before the fix and passed after it; all five focused worker checks, 26 deploy gates, release metadata/SDK manifest checks and 255 Meteor server tests passed (`npm test -- --port 3100`). The default port was occupied. The test process exited before the browser connected, so browser/client tests and real provider login acceptance remain unverified; no release or deployment was performed.
+
 ## 2026-08-26
 
 ### Implemented Locally / Pending Release And Production Validation

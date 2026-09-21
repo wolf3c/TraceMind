@@ -12,6 +12,7 @@ Google/GitHub OAuth or email verification login -> project key -> one-line auto 
 ## Architecture
 
 - Meteor Accounts owns Google/GitHub OAuth plus passwordless email fallback login. TraceMind server owns project keys, capture ingestion, semantic extraction, and MCP responses.
+- The console Service Worker bypasses `/_oauth/` callbacks so Meteor can return credentials and close login popups; navigation shell caching must never replace an OAuth response. Cache version changes reuse the existing activation cleanup.
 - Svelte client provides a landing page plus a small developer console.
 - MongoDB stores all MVP data in simple collections under `imports/api/tracemind.js`.
 - The event model keeps identity, session, device, platform, IP/geo, custom properties, and context fields stable so Web, iOS, Android, Mini Program, Browser Extension, MCP, Agent Skill, and ordinary server manual events can share one schema.

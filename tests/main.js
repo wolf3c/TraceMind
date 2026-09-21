@@ -717,6 +717,27 @@ describe('TraceMind', function () {
       assert.ok(harness.cachePuts.includes('/'));
     });
 
+    it('bypasses OAuth callback navigations even with a cached page shell', async function () {
+      if (!Meteor.isServer) return;
+
+      const harness = await loadServiceWorkerHarness();
+      await harness.trigger('install');
+
+      for (const provider of ['google', 'github']) {
+        const result = await harness.trigger('fetch', {
+          request: {
+            url: `https://tracemind.example.com/_oauth/${provider}?state=test&code=test`,
+            method: 'GET',
+            mode: 'navigate',
+            destination: 'document',
+          },
+        });
+        assert.strictEqual(result.responded, false, `${provider} callback should reach the network`);
+      }
+      assert.deepStrictEqual(harness.fetchCalls, []);
+      assert.deepStrictEqual(harness.cachePuts, []);
+    });
+
     it('caches same-origin static assets but bypasses data, capture, MCP, and DDP routes', async function () {
       if (!Meteor.isServer) return;
 
