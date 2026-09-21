@@ -301,7 +301,7 @@ Then add the capture snippet to a small test web page, generate several interact
 ### Completed
 
 - Added a today-only recent-online health card that lazily loads after the main project health cards, using a separate `tracemind.project.recentOnline` method so daily reports and setup metadata remain on the fast path.
-- The card reports unique online users in the last 30 minutes, 5-minute online-user buckets, and expandable Top 3 details for region distribution, longest active-duration pages, and frequent events.
+- The card reports unique online users, six 5-minute buckets, and expandable Top 3 details over the same 30-minute window ending at the latest completed five-minute boundary. Dashboard labels use bucket end times; the unfinished interval is excluded. Dashboard and MCP share this contract; all capture SDKs and Agent Skill integration remain unchanged. The existing visible-tab 60-second refresh remains unchanged.
 - Kept the recent-online count grounded in presence actors (`userId`, `anonymousId`, `deviceId`, or `deviceFingerprint`) rather than session ids, matching the existing dashboard active-user semantics.
 
 ## 2026-05-17

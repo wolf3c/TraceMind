@@ -13,6 +13,7 @@ import {
   ProjectDailyReports,
   ProjectHourlyReports,
   Projects,
+  RECENT_ONLINE_BUCKET_MS,
   RECENT_ONLINE_WINDOW_MS,
   RawBehaviors,
   SemanticEvents,
@@ -268,7 +269,7 @@ async function buildProjectSummary(project, selectedDateInput) {
 }
 
 export async function buildProjectRecentOnline(project) {
-  const now = new Date();
+  const now = new Date(Math.floor(Date.now() / RECENT_ONLINE_BUCKET_MS) * RECENT_ONLINE_BUCKET_MS);
   const windowStart = new Date(now.getTime() - RECENT_ONLINE_WINDOW_MS);
   const events = await SemanticEvents.find(
     {

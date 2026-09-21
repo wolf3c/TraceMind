@@ -1150,9 +1150,10 @@ export function summarizeRecentOnlineActivity({
   windowMs = RECENT_ONLINE_WINDOW_MS,
   bucketMs = RECENT_ONLINE_BUCKET_MS,
 } = {}) {
-  const windowEnd = validDate(now) || new Date();
+  const resolvedNow = validDate(now) || new Date();
   const resolvedBucketMs = Math.max(60 * 1000, Number(bucketMs) || RECENT_ONLINE_BUCKET_MS);
   const resolvedWindowMs = Math.max(resolvedBucketMs, Number(windowMs) || RECENT_ONLINE_WINDOW_MS);
+  const windowEnd = new Date(Math.floor(resolvedNow.getTime() / resolvedBucketMs) * resolvedBucketMs);
   const windowStart = new Date(windowEnd.getTime() - resolvedWindowMs);
   const bucketCount = Math.ceil(resolvedWindowMs / resolvedBucketMs);
   const buckets = Array.from({ length: bucketCount }, (_, index) => {

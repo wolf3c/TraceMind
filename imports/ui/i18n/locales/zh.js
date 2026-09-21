@@ -330,7 +330,7 @@ export default {
   "Day before": "前天",
   "Select report date": "选择报告日期",
   "Online users in last 30 minutes": "近 30 分钟在线人数",
-  "5-minute online users": "每 5 分钟在线人数",
+  "5-minute online users (end time)": "每 5 分钟在线人数（按结束时间）",
   "Loading asynchronously": "异步加载中",
   "Scheduled lazy load": "即将延迟加载",
   "Waiting for lazy load": "等待懒加载",

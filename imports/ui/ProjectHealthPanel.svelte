@@ -158,16 +158,16 @@
           </span>
           <strong>{recentOnline ? formatNumber(recentOnline.totalOnlineUsers) : "..."}</strong>
         </div>
-        <em>{$t("5-minute online users")}</em>
-        <div class="realtime-bar-chart" aria-label={$t("5-minute online users")}>
+        <em>{$t("5-minute online users (end time)")}</em>
+        <div class="realtime-bar-chart" aria-label={$t("5-minute online users (end time)")}>
           {#if recentOnlineBuckets.length}
             {#each recentOnlineBuckets as bucket, index (`recent-online-${index}-${bucket.startAt}`)}
               <div class="realtime-bar">
                 <strong class="realtime-bar-value">{formatNumber(bucket.onlineUsers)}</strong>
-                <div class="realtime-bar-track" title={`${formatTime(bucket.startAt)} · ${formatNumber(bucket.onlineUsers)} ${$t("users")}`}>
+                <div class="realtime-bar-track" title={`${formatTime(bucket.endAt)} · ${formatNumber(bucket.onlineUsers)} ${$t("users")}`}>
                   <span style={`height: ${recentOnlineBarHeight(bucket)}`}></span>
                 </div>
-                <small>{formatTime(bucket.startAt)}</small>
+                <small>{formatTime(bucket.endAt)}</small>
               </div>
             {/each}
           {:else}

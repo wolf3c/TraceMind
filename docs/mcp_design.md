@@ -421,7 +421,7 @@ Output:
 
 ### `tracemind.recent_online`
 
-读取当前 MCP token 绑定项目最近 30 分钟的实时在线态势，帮助 Agent 回答“现在是否有人在用、当前在线人数是多少、用户集中在哪些页面或地区、最近高频事件是什么”。它是 `availableCapabilities.currentOnline` 的权威工具，是实时窗口工具，不并入自然日日报，也不能用 `tracemind.summary` 的样本 DAU 替代。
+读取当前 MCP token 绑定项目最近 30 分钟的实时在线态势，帮助 Agent 回答“现在是否有人在用、当前在线人数是多少、用户集中在哪些页面或地区、最近高频事件是什么”。它是 `availableCapabilities.currentOnline` 的权威工具，不并入自然日日报，也不能用 `tracemind.summary` 的样本 DAU 替代。与 Dashboard 同源，`window`、总人数、六个桶及全部 Top 明细统一截至最近已结束的整 5 分钟、向前 30 分钟；最新不足 5 分钟的数据暂不计入。`buckets.startAt/endAt` 字段结构不变，Dashboard 横轴显示 `endAt`。
 
 Input:
 

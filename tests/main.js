@@ -4087,6 +4087,44 @@ projectKey: tm_proj_sensitive`,
       assert.notStrictEqual(structured.project._id, otherProjectId);
     });
 
+    it('queries the complete aligned window for both dashboard and MCP', async function () {
+      const { buildProjectRecentOnline } = await import('../server/tracemind_methods');
+      const { callMcpTool } = await import('../server/capture_routes');
+      const bucketMs = 5 * 60000;
+      const endMs = Math.floor(Date.now() / bucketMs) * bucketMs;
+      const projectId = `project-aligned-online-${Date.now()}`;
+      const project = { _id: projectId, name: 'Aligned online test' };
+      try {
+        await PresenceSessions.insertAsync({
+          projectId, presenceId: 'earliest', userId: 'earliest', path: '/earliest',
+          startedAt: new Date(endMs - 30 * 60000),
+          lastSeenAt: new Date(endMs - 30 * 60000 + 1), activeDurationMs: 1,
+        });
+        await PresenceSessions.insertAsync({
+          projectId, presenceId: 'unfinished', userId: 'unfinished', path: '/unfinished',
+          startedAt: new Date(endMs), lastSeenAt: new Date(endMs + 60000),
+        });
+        await SemanticEvents.insertAsync({
+          projectId, eventName: 'earliest', occurredAt: new Date(endMs - 30 * 60000),
+        });
+        await SemanticEvents.insertAsync({
+          projectId, eventName: 'unfinished', occurredAt: new Date(endMs),
+        });
+        const dashboard = await buildProjectRecentOnline(project);
+        const { structuredContent: mcp } = await callMcpTool(project, 'tracemind.recent_online', {});
+        // A real-clock boundary crossing cannot compare two different snapshots.
+        if (Math.floor(Date.now() / bucketMs) * bucketMs !== endMs) this.skip();
+        assert.strictEqual(dashboard.window.endAt.getTime(), endMs);
+        assert.strictEqual(dashboard.totalOnlineUsers, 1);
+        assert.deepStrictEqual(dashboard.topEvents, [{ label: 'earliest', count: 1 }]);
+        assert.deepStrictEqual(dashboard.topDurationPaths, [{ path: '/earliest', durationMs: 1, sessions: 1 }]);
+        for (const key of Object.keys(dashboard)) assert.deepStrictEqual(mcp[key], dashboard[key]);
+      } finally {
+        await PresenceSessions.removeAsync({ projectId });
+        await SemanticEvents.removeAsync({ projectId });
+      }
+    });
+
     it('returns an empty MCP recent online result when no users are online', async function () {
       const { callMcpTool } = await import('../server/capture_routes');
       const projectId = `project-mcp-recent-online-empty-${Date.now()}`;
@@ -6753,6 +6791,43 @@ projectKey: tm_proj_sensitive`,
       { label: 'page_view', count: 1 },
       { label: 'signup_completed', count: 1 },
     ]);
+  });
+
+  it('aligns recent online metrics to completed five-minute windows', function () {
+    for (const [time, end] of [
+      ['2026-09-21T18:14:59+08:00', '2026-09-21T18:10:00+08:00'],
+      ['2026-09-21T18:15:00+08:00', '2026-09-21T18:15:00+08:00'],
+      ['2026-09-21T18:15:01+08:00', '2026-09-21T18:15:00+08:00'],
+      ['2026-09-22T00:00:01+08:00', '2026-09-22T00:00:00+08:00'],
+    ]) {
+      const endMs = new Date(end).getTime();
+      const startMs = endMs - 30 * 60 * 1000;
+      const result = TraceMindApi.summarizeRecentOnlineActivity({
+        now: new Date(time),
+        presenceSessions: [
+          { userId: 'old', startedAt: new Date(startMs - 60000), lastSeenAt: new Date(startMs - 1) },
+          { userId: 'inside', path: '/inside', geo: { country: 'US' }, startedAt: new Date(startMs), lastSeenAt: new Date(endMs + 60000), activeDurationMs: 31 * 60000 },
+          { userId: 'future', path: '/future', geo: { country: 'GB' }, startedAt: new Date(endMs), lastSeenAt: new Date(endMs + 60000) },
+        ],
+        events: [
+          { eventName: 'old', occurredAt: new Date(startMs - 1) },
+          { eventName: 'inside', occurredAt: new Date(startMs) },
+          { eventName: 'future', occurredAt: new Date(endMs) },
+        ],
+      });
+      assert.strictEqual(result.window.endAt.getTime(), endMs);
+      assert.strictEqual(result.window.startAt.getTime(), startMs);
+      assert.strictEqual(result.buckets.length, 6);
+      result.buckets.forEach((bucket, index) => {
+        assert.strictEqual(bucket.startAt.getTime(), startMs + index * 5 * 60000);
+        assert.strictEqual(bucket.endAt.getTime(), startMs + (index + 1) * 5 * 60000);
+        assert.strictEqual(bucket.onlineUsers, 1);
+      });
+      assert.strictEqual(result.totalOnlineUsers, 1);
+      assert.deepStrictEqual(result.topRegions, [{ label: 'US', count: 1 }]);
+      assert.deepStrictEqual(result.topDurationPaths, [{ path: '/inside', durationMs: 30 * 60000, sessions: 1 }]);
+      assert.deepStrictEqual(result.topEvents, [{ label: 'inside', count: 1 }]);
+    }
   });
 
   it('summarizes top bounce pages by session-level presence and interactions', function () {
