@@ -10,6 +10,7 @@ import {
   IngestionGuardRollups,
   IngestionGuardStates,
   PresenceSessions,
+  PRESENCE_ONLINE_WINDOW_MS,
   ProjectDailyReports,
   ProjectHourlyReports,
   Projects,
@@ -268,20 +269,20 @@ async function buildProjectSummary(project, selectedDateInput) {
   };
 }
 
-export async function buildProjectRecentOnline(project) {
-  const now = new Date(Math.floor(Date.now() / RECENT_ONLINE_BUCKET_MS) * RECENT_ONLINE_BUCKET_MS);
-  const windowStart = new Date(now.getTime() - RECENT_ONLINE_WINDOW_MS);
+export async function buildProjectRecentOnline(project, now = new Date()) {
+  const windowEnd = new Date(Math.floor(now.getTime() / RECENT_ONLINE_BUCKET_MS) * RECENT_ONLINE_BUCKET_MS);
+  const windowStart = new Date(windowEnd.getTime() - RECENT_ONLINE_WINDOW_MS);
   const events = await SemanticEvents.find(
     {
       projectId: project._id,
-      occurredAt: { $gte: windowStart, $lt: now },
+      occurredAt: { $gte: windowStart, $lt: windowEnd },
     },
     { sort: { occurredAt: -1 } },
   ).fetchAsync();
   const presenceSessions = await PresenceSessions.find(
     {
       projectId: project._id,
-      startedAt: { $lt: now },
+      startedAt: { $lte: now },
       $or: [
         { endedAt: { $gte: windowStart } },
         { lastSeenAt: { $gte: windowStart } },
@@ -291,11 +292,17 @@ export async function buildProjectRecentOnline(project) {
     { sort: { lastSeenAt: -1 } },
   ).fetchAsync();
 
-  return summarizeRecentOnlineActivity({
-    events,
-    presenceSessions,
+  const onlineCutoff = now.getTime() - PRESENCE_ONLINE_WINDOW_MS;
+  const currentPresence = summarizePresenceSessions(
+    presenceSessions.filter((session) => session.lastSeenAt && new Date(session.lastSeenAt).getTime() >= onlineCutoff),
     now,
-  });
+  );
+  return {
+    ...summarizeRecentOnlineActivity({ events, presenceSessions, now }),
+    currentOnlineUsers: currentPresence.onlineUsers,
+    currentOnlineAsOf: now,
+    currentOnlineWindowMs: currentPresence.onlineWindowMs,
+  };
 }
 
 async function userEmail(userId) {

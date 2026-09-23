@@ -355,3 +355,10 @@ Then add the capture snippet to a small test web page, generate several interact
 ### Completed
 
 - Added Web Auto Capture script release detection with `sourceDetails.scriptReleaseId`, `/api/capture` and `/api/presence` auto-update responses, `captureScriptFindings` in project health, Dashboard warnings, MCP `capture_setup` upgrade prompts, and agent setup freshness checks for stale Web script guidance.
+
+### 2026-09-23 — 当前与历史在线人数分离
+- 在现有卡片显示近 30 分钟人数、实际历史区间和当前在线人数，移除重复说明，轮询调整为 15 秒。
+- 复用 PresenceSessions 与现有在线判定，Dashboard/MCP 追加同源当前人数和快照时间，历史统计不变；SDK 与采集协议不变。
+- 本地验证：`TEST_CLIENT=0 npm test -- --port 3190`，258 项服务端测试及 26 项发布门禁检查通过；内置 Browser 使用真实 Svelte 组件和模拟数据检查桌面、390px 窄屏、展开、零值、字段缺失、加载和失败状态。另用加载函数行为检查覆盖 15 秒轮询、可见性、请求互斥和过期响应。
+- 审查后将当前人数汇总限制到最近 15 秒候选，复用相同判定、不增加数据库查询。10 万条合成会话、100 条近期候选，7 次执行的中位数：该计算步骤从 190.7ms 降到 8.7ms；不代表数据库、整条接口或生产压测，15 秒轮询请求频率仍是原来的 4 倍。
+- 自动客户端测试因缺少 puppeteer 未运行；组件预览不等于登录后 Dashboard 端到端或生产验收。部署尚未执行。

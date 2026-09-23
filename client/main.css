@@ -2928,7 +2928,7 @@ code {
 
 .realtime-online-card summary {
   min-height: 124px;
-  grid-template-rows: auto auto minmax(62px, 1fr) auto;
+  grid-template-rows: auto minmax(62px, 1fr) auto auto;
   gap: 4px;
 }
 
@@ -2946,8 +2946,28 @@ code {
   align-items: baseline;
 }
 
-.health-card .realtime-card-head small::before {
-  content: "· ";
+.realtime-history small {
+  display: block;
+  margin-top: 4px;
+}
+
+.realtime-current {
+  text-align: right;
+}
+
+.health-card .realtime-current span {
+  justify-content: flex-end;
+}
+
+.health-card .realtime-current strong {
+  display: block;
+  white-space: nowrap;
+}
+
+.health-card .realtime-current strong small {
+  display: inline;
+  font-size: 14px;
+  font-weight: 400;
 }
 
 .health-card .realtime-card-head strong {

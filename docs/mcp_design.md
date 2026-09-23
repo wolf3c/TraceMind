@@ -31,7 +31,7 @@ Authorization: Bearer MCP_TOKEN
 
 `tracemind.project_info` 同时返回 `availableCapabilities`，作为 Agent 的通用能力目录，而不是第二套工具注册表。核心能力包括：
 
-- `currentOnline`：当前在线用户、实时用户、近 30 分钟活跃页面/地区/高频事件，权威入口是 `tracemind.recent_online`，数据源是 `tracemind_presence_sessions`，不能用 `tracemind.summary` 的样本 DAU 替代。
+- `currentOnline`：当前在线用户、实时用户、近 30 分钟活跃页面/地区/高频事件，权威入口是 `tracemind.recent_online`，当前人数使用 `currentOnlineUsers`、`currentOnlineAsOf`、`currentOnlineWindowMs`，历史人数仍为 `totalOnlineUsers`；柱图、页面、地区与事件排行属于截至最近完整 5 分钟的半小时窗口。数据源是 `tracemind_presence_sessions`，不能用 `tracemind.summary` 的样本 DAU 替代。
 - `projectHealth`：今日/日报/小时健康、delivery health、趋势、attention items 和上线前后 change verification，权威入口是 `tracemind.project_health`，数据源是日报/小时健康报告，不能用 `tracemind.summary` 或 `tracemind.query_events` 替代。
 - `deliveryDiagnostics`：最近 7 天失败、重试或丢弃上报的脱敏根因下钻，权威入口是 `tracemind.query_delivery_diagnostics`，数据源是 `tracemind_capture_delivery_reports`，不能用行为事件或原始行为查询替代。
 

@@ -4101,7 +4101,7 @@ projectKey: tm_proj_sensitive`,
           lastSeenAt: new Date(endMs - 30 * 60000 + 1), activeDurationMs: 1,
         });
         await PresenceSessions.insertAsync({
-          projectId, presenceId: 'unfinished', userId: 'unfinished', path: '/unfinished',
+          projectId, presenceId: 'unfinished', userId: 'unfinished', path: '/unfinished', state: 'end',
           startedAt: new Date(endMs), lastSeenAt: new Date(endMs + 60000),
         });
         await SemanticEvents.insertAsync({
@@ -4118,11 +4118,46 @@ projectKey: tm_proj_sensitive`,
         assert.strictEqual(dashboard.totalOnlineUsers, 1);
         assert.deepStrictEqual(dashboard.topEvents, [{ label: 'earliest', count: 1 }]);
         assert.deepStrictEqual(dashboard.topDurationPaths, [{ path: '/earliest', durationMs: 1, sessions: 1 }]);
-        for (const key of Object.keys(dashboard)) assert.deepStrictEqual(mcp[key], dashboard[key]);
+        for (const key of Object.keys(dashboard).filter((key) => key !== 'currentOnlineAsOf')) assert.deepStrictEqual(mcp[key], dashboard[key]);
+        assert.ok(new Date(mcp.currentOnlineAsOf) >= dashboard.currentOnlineAsOf);
       } finally {
         await PresenceSessions.removeAsync({ projectId });
         await SemanticEvents.removeAsync({ projectId });
       }
+    });
+
+    it('separates current presence from completed five-minute history', async function () {
+      const { buildProjectRecentOnline } = await import('../server/tracemind_methods');
+      const now = new Date('2026-09-23T03:48:00.000Z');
+      const project = { _id: `current-online-${Date.now()}` };
+      const records = [
+        ['active', 'same-user', 'active', 5000],
+        ['duplicate', 'same-user', 'active', 10000],
+        ['boundary', 'boundary-user', 'active', 15000],
+        ['expired', 'expired-user', 'active', 15001],
+        ['ended', 'ended-user', 'end', 1000],
+        ['legacy-ended', 'legacy-ended-user', 'ended', 1000],
+        ['background', 'background-user', 'background', 1000],
+      ];
+      try {
+        for (const [presenceId, userId, state, age] of records) {
+          await PresenceSessions.insertAsync({
+            projectId: project._id, presenceId, userId, state,
+            startedAt: new Date(now.getTime() - 60000),
+            lastSeenAt: new Date(now.getTime() - age),
+          });
+        }
+        const result = await buildProjectRecentOnline(project, now);
+        assert.strictEqual(result.currentOnlineUsers, 2);
+        assert.strictEqual(result.currentOnlineWindowMs, 15000);
+        assert.deepStrictEqual(result.currentOnlineAsOf, now);
+        assert.strictEqual(result.totalOnlineUsers, 0);
+        assert.ok(result.buckets.every((bucket) => bucket.onlineUsers === 0));
+        assert.strictEqual(result.window.endAt.toISOString(), '2026-09-23T03:45:00.000Z');
+      } finally {
+        await PresenceSessions.removeAsync({ projectId: project._id });
+      }
+      assert.strictEqual((await buildProjectRecentOnline(project, now)).currentOnlineUsers, 0);
     });
 
     it('returns an empty MCP recent online result when no users are online', async function () {
@@ -5453,7 +5488,7 @@ projectKey: tm_proj_sensitive`,
   describe('Dashboard recent online loading', function () {
     if (!Meteor.isServer) return;
 
-    it('starts the recent online request on the next browser tick', async function () {
+    it('loads recent online immediately and preserves errors until a valid retry succeeds', async function () {
       const { access, readFile } = await import('node:fs/promises');
       const path = await import('node:path');
       let sourceRoot = '';
@@ -5483,11 +5518,42 @@ projectKey: tm_proj_sensitive`,
 
       const appSource = await readFile(path.join(sourceRoot, 'imports/ui/App.svelte'), 'utf8');
       assert.match(appSource, /const recentOnlineLazyLoadDelayMs = 0;/);
-      assert.match(appSource, /const recentOnlineAutoRefreshIntervalMs = 60 \* 1000;/);
+      assert.match(appSource, /const recentOnlineAutoRefreshIntervalMs = 15 \* 1000;/);
       assert.match(appSource, /window\.setTimeout\([\s\S]*recentOnlineLazyLoadDelayMs\)/);
       assert.match(appSource, /window\.setInterval\([\s\S]*recentOnlineAutoRefreshIntervalMs\)/);
       assert.match(appSource, /document\.visibilityState === "visible"/);
       assert.doesNotMatch(appSource, /window\.setTimeout\([\s\S]*,\s*700\)/);
+
+      const { createContext, runInContext } = await import('node:vm');
+      const context = createContext({
+        Meteor: { userId: () => 'viewer' }, Date,
+        selectedProjectId: 'project', selectedReportDate: 'today', todayReportDate: 'today',
+        recentOnlineRequestId: 0, recentOnlineLoading: false, recentOnlineError: '',
+        recentOnline: { currentOnlineUsers: 4 }, errorMessage: (error) => error.message,
+        callMethod: async () => { throw new Error('offline'); },
+      });
+      runInContext(appSource.slice(
+        appSource.indexOf('  async function loadRecentOnline('),
+        appSource.indexOf('  function openEventStream()'),
+      ), context);
+      await assert.rejects(context.loadRecentOnline(), /offline/);
+      let finishRequest;
+      context.callMethod = () => new Promise((resolve) => { finishRequest = resolve; });
+      const retry = context.loadRecentOnline();
+      assert.strictEqual(context.recentOnlineError, 'offline');
+      finishRequest({ currentOnlineUsers: 0 });
+      await retry;
+      assert.strictEqual(context.recentOnlineError, '');
+      assert.strictEqual(context.recentOnline.currentOnlineUsers, 0);
+      for (const [key, value] of [['selectedProjectId', 'other'], ['selectedReportDate', 'yesterday']]) {
+        context.selectedProjectId = 'project';
+        context.selectedReportDate = 'today';
+        const pending = context.loadRecentOnline();
+        context[key] = value;
+        finishRequest({ currentOnlineUsers: 9 });
+        await pending;
+        assert.strictEqual(context.recentOnline.currentOnlineUsers, 0);
+      }
     });
 
     it('queues project health auto-refresh every five minutes for today', async function () {

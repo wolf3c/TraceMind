@@ -94,3 +94,12 @@ The intended settings shape is:
   }
 }
 ```
+
+### 当前与历史在线人数（2026-09-23）
+现有 recentOnline 查询复用一次 PresenceSessions 读取，当前人数先筛选最近 15 秒候选会话再复用 summarizePresenceSessions，避免对整半小时会话重复计算无用排行；实际查询时刻用于心跳判定；历史窗口仍向下对齐完整 5 分钟。仅追加 currentOnlineUsers、currentOnlineAsOf、currentOnlineWindowMs，Dashboard 与 MCP 同源，不新增存储、接口、采集或 SDK 修改。Dashboard 仅今日且可见时每 15 秒轮询；当前字段缺失或刷新失败显示 —，成功零值显示 0。
+
+| 运行端／表面 | 影响 |
+| --- | --- |
+| Dashboard、服务端统计、查询方法、TraceMind MCP 分析接口 | change：双指标与时间口径 |
+| Web、iOS、macOS、Android、React Native、Hybrid、Mini Program、Browser Extension | no change：复用既有 presence |
+| server SDK、第三方 MCP SDK、Agent Skill 执行端 | out of scope：不新增在线采集，不以业务事件或工具调用推算人数 |

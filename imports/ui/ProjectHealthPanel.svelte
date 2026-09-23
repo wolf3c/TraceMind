@@ -150,21 +150,23 @@
     <details class="health-card realtime-online-card">
       <summary>
         <div class="realtime-card-head">
-          <span>
-            {$t("Online users in last 30 minutes")}
-            <small class={recentOnlineError ? "trend-negative" : "trend-flat"}>
-              {recentOnlineError || (recentOnline ? recentOnlineRefreshAge : (recentOnlineLoading ? $t("Loading asynchronously") : $t("Scheduled lazy load")))}
-            </small>
-          </span>
-          <strong>{recentOnline ? formatNumber(recentOnline.totalOnlineUsers) : "..."}</strong>
+          <div class="realtime-history">
+            <span>{$t("{{count}} users online in the last 30 minutes", { count: recentOnline ? formatNumber(recentOnline.totalOnlineUsers) : "—" })}</span>
+            {#if recentOnline?.window}
+              <small>{formatTime(recentOnline.window.startAt)}–{formatTime(recentOnline.window.endAt)} · {$t("Deduplicated")}</small>
+            {/if}
+          </div>
+          <div class="realtime-current" title={$t("Heartbeat within 15 seconds; refreshes every 15 seconds")}>
+            <span>{$t("Currently online")}</span>
+            <strong>{recentOnlineError ? "—" : nullableActorMetric(recentOnline?.currentOnlineUsers)} <small>{$t(recentOnline?.currentOnlineUsers === 1 ? "person" : "people")}</small></strong>
+          </div>
         </div>
-        <em>{$t("5-minute online users (end time)")}</em>
         <div class="realtime-bar-chart" aria-label={$t("5-minute online users (end time)")}>
           {#if recentOnlineBuckets.length}
             {#each recentOnlineBuckets as bucket, index (`recent-online-${index}-${bucket.startAt}`)}
               <div class="realtime-bar">
                 <strong class="realtime-bar-value">{formatNumber(bucket.onlineUsers)}</strong>
-                <div class="realtime-bar-track" title={`${formatTime(bucket.endAt)} · ${formatNumber(bucket.onlineUsers)} ${$t("users")}`}>
+                <div class="realtime-bar-track" title={`${formatTime(bucket.startAt)}–${formatTime(bucket.endAt)} · ${formatNumber(bucket.onlineUsers)} ${$t("users")}`}>
                   <span style={`height: ${recentOnlineBarHeight(bucket)}`}></span>
                 </div>
                 <small>{formatTime(bucket.endAt)}</small>
@@ -176,6 +178,10 @@
             </p>
           {/if}
         </div>
+        <small>{$t("Each bar: 5 minutes · End time shown")}</small>
+        <small class={recentOnlineError ? "trend-negative" : "trend-flat"}>
+          {recentOnlineError ? `${$t("Refresh failed")}: ${recentOnlineError}` : (recentOnline ? `${$t("Updated")}: ${recentOnlineRefreshAge}` : (recentOnlineLoading ? $t("Loading asynchronously") : $t("Scheduled lazy load")))}
+        </small>
       </summary>
       <dl class="health-detail-list">
         <div><dt>{$t("Online users in last 30 minutes")}</dt><dd>{recentOnline ? formatNumber(recentOnline.totalOnlineUsers) : $t("No data")}</dd></div>

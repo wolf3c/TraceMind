@@ -486,7 +486,7 @@ export function mcpTools(project) {
     {
       name: 'tracemind.recent_online',
       title: projectScopedTitle('TraceMind Recent Online', project),
-      description: projectScopedDescription('读取 Dashboard 同源的近 30 分钟实时在线结构，帮助 agent 判断 current online users、real-time users、active now、currently using product、last 30 minutes、现在是否有人在线、当前在线人数、用户集中在哪些页面或地区，以及最近高频事件；不使用 tracemind.summary 的样本 DAU 替代在线人数。', project),
+      description: projectScopedDescription('读取 Dashboard 同源的当前在线心跳快照与近 30 分钟历史在线结构，当前人数使用 currentOnlineUsers（最近 15 秒心跳且未结束或后台）；totalOnlineUsers、柱图、页面、地区和事件属于截至最近完整 5 分钟的历史窗口，帮助 agent 判断 current online users、real-time users、active now、currently using product、last 30 minutes、现在是否有人在线、当前在线人数、用户集中在哪些页面或地区，以及最近高频事件；不使用 tracemind.summary 的样本 DAU 替代在线人数。', project),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -1587,6 +1587,9 @@ function recentOnlineResult(project, recentOnline = {}) {
     project: { _id: project._id, name: project.name },
     window: recentOnline.window || {},
     totalOnlineUsers: safeCount(recentOnline.totalOnlineUsers),
+    currentOnlineUsers: recentOnline.currentOnlineUsers ?? null,
+    currentOnlineAsOf: recentOnline.currentOnlineAsOf || null,
+    currentOnlineWindowMs: recentOnline.currentOnlineWindowMs ?? null,
     buckets: (recentOnline.buckets || []).map((bucket) => ({
       startAt: bucket.startAt,
       endAt: bucket.endAt,
@@ -5308,7 +5311,7 @@ async function callMcpToolResult(project, name, args = {}, options = {}) {
   if (name === 'tracemind.recent_online') {
     const recentOnline = await readRecentOnline(project);
     return textResult(
-      `TraceMind 近 30 分钟在线用户数：${recentOnline.totalOnlineUsers}。`,
+      `TraceMind 当前在线用户数：${recentOnline.currentOnlineUsers}（截至 ${new Date(recentOnline.currentOnlineAsOf).toISOString()}，心跳有效期 ${recentOnline.currentOnlineWindowMs / 1000} 秒）。近 30 分钟在线用户数：${recentOnline.totalOnlineUsers}（${new Date(recentOnline.window.startAt).toISOString()}–${new Date(recentOnline.window.endAt).toISOString()}）；柱图、地区、页面和事件排行均属于该历史窗口。`,
       recentOnline,
     );
   }

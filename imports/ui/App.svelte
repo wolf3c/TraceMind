@@ -53,7 +53,7 @@
   const eventStreamPageSize = 20;
   const statusAutoDismissMs = 5200;
   const recentOnlineLazyLoadDelayMs = 0;
-  const recentOnlineAutoRefreshIntervalMs = 60 * 1000;
+  const recentOnlineAutoRefreshIntervalMs = 15 * 1000;
   const projectHealthAutoRefreshIntervalMs = 5 * 60 * 1000;
 
   let email = $state("");
@@ -490,7 +490,6 @@
     const requestId = recentOnlineRequestId + 1;
     recentOnlineRequestId = requestId;
     recentOnlineLoading = true;
-    recentOnlineError = "";
 
     try {
       const result = await callMethod("tracemind.project.recentOnline", projectId);
@@ -504,6 +503,7 @@
         return null;
       }
       recentOnline = result;
+      recentOnlineError = "";
       recentOnlineLastLoadedAt = new Date();
       refreshAgeTick = Date.now();
       return result;
